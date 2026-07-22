@@ -1,0 +1,116 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Token-2022 Program",
+    "program_id": "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+    "website": "https://spl.solana.com/token-2022",
+    "github": "https://github.com/solana-program/token-2022"
+  },
+  "version": {
+    "label": "3.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Transfer",
+      "discriminator": "03",
+      "accounts": [
+        {
+          "name": "source",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits accounts.source token balance by data.amount",
+        "credits accounts.destination token balance by data.amount"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "authority must be signer",
+        "RISK: large transfers to new/dormant accounts should be flagged"
+      ]
+    },
+    {
+      "name": "SetAuthority",
+      "discriminator": "0b",
+      "accounts": [
+        {
+          "name": "account_or_mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "current_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "changes authority of accounts.account_or_mint"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "current_authority must be signer",
+        "RISK: AUTHORITY_HIJACK \u2014 always flag. Setting authority to system program burns the account."
+      ]
+    },
+    {
+      "name": "CloseAccount",
+      "discriminator": "09",
+      "accounts": [
+        {
+          "name": "account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "closes accounts.account, transfers lamports to accounts.destination"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "owner must be signer",
+        "RISK: DRAIN \u2014 verify destination is expected"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest"
+}

@@ -1,0 +1,38 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Memo Program",
+    "program_id": "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
+    "website": "https://spl.solana.com/memo",
+    "github": "https://github.com/solana-program/memo"
+  },
+  "version": {
+    "label": "4.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Memo",
+      "discriminator": "",
+      "accounts": [
+        {
+          "name": "signer",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "emits UTF-8 memo string to transaction log \u2014 no state changes"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "no state changes \u2014 pure logging instruction",
+        "safe by default"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest"
+}

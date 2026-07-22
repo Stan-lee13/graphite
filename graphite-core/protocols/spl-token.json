@@ -16,9 +16,27 @@
       "name": "Transfer",
       "discriminator": "03",
       "accounts": [
-        { "name": "source", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "destination", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "source",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "debits accounts.source token balance by data.amount",
@@ -35,8 +53,20 @@
       "name": "InitializeMint",
       "discriminator": "00",
       "accounts": [
-        { "name": "mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "rent_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent_sysvar",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "initializes mint account with decimals, mint_authority, freeze_authority"
@@ -50,9 +80,27 @@
       "name": "MintTo",
       "discriminator": "07",
       "accounts": [
-        { "name": "mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "credits accounts.account token balance by data.amount",
@@ -69,9 +117,27 @@
       "name": "Burn",
       "discriminator": "08",
       "accounts": [
-        { "name": "account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "debits accounts.account token balance by data.amount",
@@ -86,9 +152,27 @@
       "name": "Approve",
       "discriminator": "04",
       "accounts": [
-        { "name": "source", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "delegate", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "owner", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "source",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "delegate",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "sets accounts.source delegated_amount to data.amount for accounts.delegate"
@@ -103,8 +187,20 @@
       "name": "SetAuthority",
       "discriminator": "0b",
       "accounts": [
-        { "name": "account_or_mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "current_authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "account_or_mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "current_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "changes authority (owner, mint_authority, freeze_authority) of accounts.account_or_mint"
@@ -112,7 +208,7 @@
       "allowed_cpis": [],
       "risk_rules": [
         "current_authority must be signer",
-        "RISK: AUTHORITY_HIJACK — this instruction changes who controls the account. Always flag if called by unexpected authority.",
+        "RISK: AUTHORITY_HIJACK \u2014 this instruction changes who controls the account. Always flag if called by unexpected authority.",
         "RISK: setting authority to system program (all zeros) effectively burns the account",
         "RISK: setting freeze_authority should be flagged separately from mint_authority"
       ]
@@ -121,9 +217,27 @@
       "name": "CloseAccount",
       "discriminator": "09",
       "accounts": [
-        { "name": "account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "destination", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "owner", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "closes accounts.account, transfers remaining lamports to accounts.destination",
@@ -132,7 +246,7 @@
       "allowed_cpis": [],
       "risk_rules": [
         "owner must be signer",
-        "RISK: DRAIN — closing account sends all lamports to destination, verify destination is expected"
+        "RISK: DRAIN \u2014 closing account sends all lamports to destination, verify destination is expected"
       ]
     }
   ],

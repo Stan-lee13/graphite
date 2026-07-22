@@ -135,16 +135,15 @@ impl ManifestRegistry {
             if ix.name.is_empty() {
                 return Err(ManifestError::Invalid("instruction with empty name".into()));
             }
-            if ix.discriminator.is_empty() {
-                return Err(ManifestError::Invalid(
-                    format!("instruction '{}' has empty discriminator", ix.name),
-                ));
+            // Empty discriminator is allowed (e.g., Memo program uses raw UTF-8 data
+            // with no instruction selector — the entire data field IS the instruction)
+            if !ix.discriminator.is_empty() {
+                // Validate discriminator is valid hex
+                hex::decode(&ix.discriminator)
+                    .map_err(|e| ManifestError::Invalid(
+                        format!("instruction '{}' has invalid discriminator hex: {e}", ix.name),
+                    ))?;
             }
-            // Validate discriminator is valid hex
-            hex::decode(&ix.discriminator)
-                .map_err(|e| ManifestError::Invalid(
-                    format!("instruction '{}' has invalid discriminator hex: {e}", ix.name),
-                ))?;
         }
         Ok(())
     }
@@ -157,9 +156,14 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 
     let _ = registry.load_from_json(include_str!("../protocols/system-program.json"));
     let _ = registry.load_from_json(include_str!("../protocols/spl-token.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/token-2022.json"));
     let _ = registry.load_from_json(include_str!("../protocols/stake-program.json"));
     let _ = registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"));
     let _ = registry.load_from_json(include_str!("../protocols/squads-v4.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/jupiter-v6.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/memo-program.json"));
 
     registry
 }
@@ -172,7 +176,7 @@ mod tests {
     fn test_seed_manifests_load_successfully() {
         let registry = load_seed_manifests();
         let manifests = registry.list();
-        assert!(manifests.len() >= 5, "expected at least 2 seed manifests");
+        assert!(manifests.len() >= 10, "expected at least 2 seed manifests");
     }
 
     #[test]

@@ -101,10 +101,22 @@ const RISKY_PATTERNS: &[KnownRiskPattern] = &[
         description: "SPL Token SetAuthority — changes who controls the account",
     },
     KnownRiskPattern {
+        program_id: "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+        discriminator: "0b", // SetAuthority
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Token-2022 SetAuthority — changes who controls the account",
+    },
+    KnownRiskPattern {
         program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
         discriminator: "09", // CloseAccount
         pattern: RiskPattern::Drainer,
         description: "SPL Token CloseAccount — closes account and drains all lamports",
+    },
+    KnownRiskPattern {
+        program_id: "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+        discriminator: "09", // CloseAccount
+        pattern: RiskPattern::Drainer,
+        description: "Token-2022 CloseAccount — closes account and drains all lamports",
     },
     KnownRiskPattern {
         program_id: "11111111111111111111111111111111",
@@ -139,17 +151,18 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                 }
             }
         } else {
-            // No manifest — heuristic mode: flag targets that look suspicious
-            for cpi_target in &input.cpi_targets {
-                if is_heuristic_unverified(cpi_target) {
-                    return Ok(RiskVerdict::Blocked {
-                        pattern: RiskPattern::UnexpectedCpi,
-                        reason: format!(
-                            "CPI target '{}' is not in any verified program set",
-                            cpi_target
-                        ),
-                    });
-                }
+            // No manifest data — FAIL-CLOSED (Constitution P12):
+            // When allowed_cpis is empty, ALL CPI targets are unexpected.
+            // This is the safe default — an attacker cannot bypass CPI checking
+            // by constructing a transaction with no manifest allowed_cpis list.
+            if let Some(cpi_target) = input.cpi_targets.first() {
+                return Ok(RiskVerdict::Blocked {
+                    pattern: RiskPattern::UnexpectedCpi,
+                    reason: format!(
+                        "CPI target '{}' is not in manifest's allowed CPI list (no manifest data — fail-closed)",
+                        cpi_target
+                    ),
+                });
             }
         }
     }
@@ -247,21 +260,33 @@ fn detect_compositional_drain(cpi_targets: &[String]) -> bool {
 
 /// Detect hidden transfers: accounts touched but not in expected state changes.
 fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> bool {
-    // If we have expected state changes from the manifest, but the transaction
-    // touches significantly more accounts than the manifest describes,
-    // there may be hidden transfers to untracked accounts.
+    // Hidden transfer detection: flags transactions that touch significantly more
+    // accounts than the manifest's state changes reference.
     //
-    // The manifest's expected_state_changes reference accounts by role
-    // (e.g., "debits accounts.from"). If we have more actual accounts than
-    // the manifest references, it's suspicious.
+    // Phase 1 heuristic: only flag when the manifest uses "accounts." notation
+    // (indicating precise account tracking) AND the discrepancy is large (4x+).
+    // If the manifest uses natural language descriptions (no "accounts." prefix),
+    // hidden transfer detection is skipped — it would produce false positives
+    // on legitimate multi-account protocols like Orca (11 accounts) or
+    // Meteora (15 accounts) whose state changes describe intent, not account roles.
+    //
+    // This is a known limitation — real hidden transfer detection requires
+    // Simulation Integrity (Phase 1.5) to compare pre/post account state.
+    let uses_accounts_notation = expected_changes
+        .iter()
+        .any(|c| c.contains("accounts."));
+
+    if !uses_accounts_notation {
+        return false;
+    }
+
     let referenced_account_count = expected_changes
         .iter()
         .filter(|c| c.contains("accounts."))
         .count();
-    
-    // If the transaction touches 2x more accounts than the manifest references,
-    // flag it as a potential hidden transfer
-    accounts.len() > referenced_account_count * 2 && accounts.len() > 3
+
+    // Only flag when accounts > 4x the referenced count AND at least 8 accounts
+    accounts.len() > referenced_account_count.saturating_mul(4).max(8)
 }
 
 #[cfg(test)]
@@ -289,7 +314,7 @@ mod tests {
             accounts: vec!["account1".to_string()],
             cpi_targets: vec!["verified_target".to_string()],
             expected_state_changes: vec!["transfer".to_string()],
-            allowed_cpis: vec![],
+            allowed_cpis: vec!["verified_target".to_string()],
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
@@ -354,7 +379,11 @@ mod tests {
                 "program_c".to_string(),
             ],
             expected_state_changes: vec![],
-            allowed_cpis: vec![],
+            allowed_cpis: vec![
+                "program_a".to_string(),
+                "program_b".to_string(),
+                "program_c".to_string(),
+            ],
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
@@ -374,11 +403,34 @@ mod tests {
                 "program_e".to_string(),
             ],
             expected_state_changes: vec![],
-            allowed_cpis: vec![],
+            allowed_cpis: vec![
+                "program_a".to_string(),
+                "program_b".to_string(),
+                "program_c".to_string(),
+                "program_d".to_string(),
+                "program_e".to_string(),
+            ],
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
+    }
+
+    #[test]
+    #[test]
+    fn test_empty_allowed_cpis_blocks_all_cpi_fail_closed() {
+        // Constitution P12: when allowed_cpis is empty, ALL CPI targets are blocked
+        let input = RiskAssessmentInput {
+            program_id: "test".to_string(),
+            accounts: vec!["a1".to_string()],
+            cpi_targets: vec!["some_random_program".to_string()],
+            expected_state_changes: vec!["change".to_string()],
+            allowed_cpis: vec![],
+            instruction_discriminator: String::new(),
+        };
+        let result = assess(&input).unwrap();
+        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::UnexpectedCpi, .. }),
+            "Empty allowed_cpis must fail CLOSED — block all CPI targets");
     }
 
     #[test]
@@ -400,13 +452,16 @@ mod tests {
 
     #[test]
     fn test_hidden_transfer_detected() {
-        // Manifest says 1 account change, but transaction touches 5 accounts
+        // Manifest says 1 account change, but transaction touches 10 accounts
+        // (threshold: >4x referenced with "accounts." notation, min 8 accounts)
         let input = RiskAssessmentInput {
             program_id: "some_program".to_string(),
             accounts: vec![
                 "a1".to_string(), "a2".to_string(),
                 "a3".to_string(), "a4".to_string(),
-                "a5".to_string(),
+                "a5".to_string(), "a6".to_string(),
+                "a7".to_string(), "a8".to_string(),
+                "a9".to_string(), "a10".to_string(),
             ],
             cpi_targets: vec![],
             expected_state_changes: vec![

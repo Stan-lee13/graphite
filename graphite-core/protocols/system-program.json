@@ -16,8 +16,20 @@
       "name": "Transfer",
       "discriminator": "02000000",
       "accounts": [
-        { "name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] },
-        { "name": "to", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "from",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "to",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "debits accounts.from by data.amount lamports",
@@ -33,8 +45,20 @@
       "name": "CreateAccount",
       "discriminator": "00000000",
       "accounts": [
-        { "name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] },
-        { "name": "to", "role": "writable", "is_writable": true, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "from",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "to",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "debits accounts.from by (data.lamports + rent_exempt_minimum)",
@@ -50,22 +74,34 @@
       "name": "Assign",
       "discriminator": "01000000",
       "accounts": [
-        { "name": "account", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "account",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "sets accounts.account owner to data.owner"
       ],
- "allowed_cpis": [],
+      "allowed_cpis": [],
       "risk_rules": [
-        "account must be signer — only current owner can reassign",
-        "RISK: changes program ownership — flag if unexpected"
+        "account must be signer \u2014 only current owner can reassign",
+        "RISK: changes program ownership \u2014 flag if unexpected"
       ]
     },
     {
       "name": "Allocate",
       "discriminator": "08000000",
       "accounts": [
-        { "name": "account", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] }
+        {
+          "name": "account",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        }
       ],
       "expected_state_changes": [
         "allocates data.space bytes for accounts.account"
