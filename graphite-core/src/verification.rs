@@ -61,6 +61,9 @@ pub struct VerificationInput {
     pub account_writes: u32,
     #[serde(default)]
     pub cpi_hops: u32,
+    // Phase 1.5: Simulation Integrity (optional — if None, skip simulation check)
+    #[serde(default)]
+    pub simulation_baseline: Option<crate::simulation_integrity::ComputeBaseline>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -99,6 +102,11 @@ pub struct VerificationResult {
     pub manifest_found: bool,
     pub unknown_protocol: bool,
     pub summary: String,
+    // Phase 1.5: Simulation integrity result (None if not checked)
+    #[serde(default)]
+    pub simulation_flagged: Option<bool>,
+    #[serde(default)]
+    pub simulation_divergence: Option<f64>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -229,7 +237,70 @@ impl GraphiteCore {
             instruction_discriminator: input.instruction_discriminator.clone(),
         })?;
 
+        // Step 3b: Intent-Program mismatch (Phase 1.5)
+        let mismatch_risk = crate::risk_engine::detect_intent_program_mismatch(
+            &input.program_id,
+            &input.proposed_intent.intent_type,
+        );
+        let risk_verdict = if let Some(pattern) = mismatch_risk {
+            match risk_verdict {
+                crate::risk_engine::RiskVerdict::Passed => 
+                    crate::risk_engine::RiskVerdict::Blocked {
+                        pattern,
+                        reason: format!(
+                            "Intent-Program mismatch: '{}' intent on program {} which does not support swaps",
+                            input.proposed_intent.intent_type, input.program_id
+                        ),
+                    },
+                other => other,
+            }
+        } else {
+            risk_verdict
+        };
+
         let risk_summary = summarize_risk(&risk_verdict);
+
+        // Step 3.5: Simulation Integrity Check (Phase 1.5)
+        let (sim_flagged, sim_divergence) = if let Some(ref baseline) = input.simulation_baseline {
+            if baseline.sample_count >= 10 && baseline.std_compute_units > 0.0 {
+                match crate::simulation_integrity::check_simulation_integrity(
+                    &crate::simulation_integrity::SimulationIntegrityInput {
+                        program_id: input.program_id.clone(),
+                        simulation_usage: crate::simulation_integrity::ComputeUsage {
+                            compute_units: input.compute_units,
+                            account_writes: input.account_writes,
+                            cpi_hops: input.cpi_hops,
+                        },
+                        baseline: baseline.clone(),
+                        divergence_threshold: 2.0,
+                    },
+                ) {
+                    Ok(result) => (Some(result.flagged), Some(result.divergence_score)),
+                    Err(_) => (None, None),
+                }
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+
+        // If simulation is flagged, add it as a risk finding
+        let risk_summary = if sim_flagged == Some(true) {
+            RiskVerdictSummary {
+                status: "Blocked".to_string(),
+                findings: {
+                    let mut f = risk_summary.findings.clone();
+                    f.push(RiskFinding {
+                        pattern: "SimulationSpoofing".to_string(),
+                        reason: format!("Compute usage diverges from baseline (flagged at >2.0σ)"),
+                    });
+                    f
+                },
+            }
+        } else {
+            risk_summary
+        };
 
         // Step 4: Confidence Computation
         let trust_tier = if manifest_found {
@@ -330,6 +401,8 @@ impl GraphiteCore {
             manifest_found,
             unknown_protocol,
             summary,
+            simulation_flagged: sim_flagged,
+            simulation_divergence: sim_divergence,
         })
     }
 }
@@ -461,6 +534,7 @@ mod tests {
             compute_units: 150,
             account_writes: 2,
             cpi_hops: 0,
+            simulation_baseline: None,
         }
     }
 
@@ -520,6 +594,7 @@ mod tests {
             compute_units: 150,
             account_writes: 2,
             cpi_hops: 1,
+            simulation_baseline: None,
         };
         let result = core.verify(&input).unwrap();
         // Should be blocked due to unverified CPI or authority-related patterns

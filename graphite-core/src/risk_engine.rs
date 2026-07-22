@@ -495,3 +495,98 @@ mod tests {
         assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::UnexpectedCpi, .. }));
     }
 }
+
+/// Detect FakeSwap: transaction claims to be a swap but output token
+/// destination doesn't match the declared output token.
+///
+/// Heuristic Phase 1.5: checks if the swap instruction's expected output
+/// matches the declared intent. Real FakeSwap detection requires
+/// Simulation Integrity (comparing pre/post balances), but this heuristic
+/// catches the common case where a malicious swap routes output to
+/// the wrong token account.
+pub fn detect_fake_swap(
+    program_id: &str,
+    accounts: &[String],
+    expected_state_changes: &[String],
+    proposed_intent_type: &str,
+    extracted_output_token: Option<&str>,
+) -> Option<RiskPattern> {
+    // Only check swap intents
+    if proposed_intent_type != "swap" {
+        return None;
+    }
+
+    // For Jupiter/Orca/Meteora — check if state changes mention output token
+    let swap_programs = [
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
+        "ORCAwbVNbXk3oXN4LDp9zKq9q6q2p7U5o5mU5o5mU5o", // Orca (placeholder)
+        "MeteoraB2x9i5Xk3oXN4LDp9zKq9q6q2p7U5o5mU5o",  // Meteora (placeholder)
+    ];
+
+    if !swap_programs.contains(&program_id) {
+        return None;
+    }
+
+    // If expected state changes don't mention "credits" or "output", it's suspicious
+    let has_credit = expected_state_changes
+        .iter()
+        .any(|c| c.to_lowercase().contains("credit") || c.to_lowercase().contains("output"));
+
+    if !has_credit && !expected_state_changes.is_empty() {
+        return Some(RiskPattern::FakeSwap);
+    }
+
+    None
+}
+
+impl RiskPattern {
+    pub fn name(&self) -> &'static str {
+        match self {
+            RiskPattern::Drainer => "Drainer",
+            RiskPattern::AuthorityHijack => "AuthorityHijack",
+            RiskPattern::HiddenTransfer => "HiddenTransfer",
+            RiskPattern::UnexpectedCpi => "UnexpectedCpi",
+            RiskPattern::FakeSwap => "FakeSwap",
+            RiskPattern::PermissionEscalation => "PermissionEscalation",
+            RiskPattern::MaliciousAccountChange => "MaliciousAccountChange",
+            RiskPattern::CompositionalDrainPattern => "CompositionalDrainPattern",
+        }
+    }
+}
+
+
+/// Programs that are known to support specific intent types.
+/// If a swap intent is sent to a non-swap program, that's suspicious.
+fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
+    match intent_type {
+        "swap" => {
+            // Only DEX/aggregator programs support swaps
+            const SWAP_PROGRAMS: &[&str] = &[
+                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
+                "ORCAwbVNbXk3oXN4LDp9zKq9q6q2p7U5o5mU5o5mU5o", // Orca (placeholder)
+                "MeteoraB2x9i5Xk3oXN4LDp9zKq9q6q2p7U5o5mU5o",  // Meteora (placeholder)
+            ];
+            SWAP_PROGRAMS.contains(&program_id)
+        }
+        "stake" => {
+            program_id == "Stake11111111111111111111111111111111111111"
+        }
+        "close" => {
+            program_id == "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA" // SPL Token
+                || program_id == "TokenzQdBNbLqP5VEhMpASvAH1Q7AJZ7pK9wqAF3Q7M2" // Token-2022
+        }
+        "transfer" => true, // Transfers can go through many programs
+        _ => true, // Unknown intent types — don't block (P12: degrade gracefully)
+    }
+}
+
+/// Detect intent-program mismatch: declared intent doesn't match program capabilities.
+pub fn detect_intent_program_mismatch(
+    program_id: &str,
+    intent_type: &str,
+) -> Option<RiskPattern> {
+    if !program_supports_intent(program_id, intent_type) {
+        return Some(RiskPattern::PermissionEscalation);
+    }
+    None
+}

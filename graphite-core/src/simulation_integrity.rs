@@ -32,7 +32,7 @@ pub struct ComputeUsage {
 }
 
 /// Historical baseline for a program.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ComputeBaseline {
     /// Mean compute units
     pub mean_compute_units: f64,

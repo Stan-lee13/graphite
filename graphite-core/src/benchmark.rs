@@ -127,6 +127,7 @@ fn make_input(
         compute_units: 150,
         account_writes: 2,
         cpi_hops: cpi_targets.len() as u32,
+        simulation_baseline: None,
     }
 }
 
@@ -272,6 +273,84 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                 &[],
                 WalletProfile::Conservative,
                 no_evidence(),
+            ),
+        },
+        // === Phase 1.5: FakeSwap Detection ===
+        BenchmarkCase {
+            label: "FakeSwap — swap intent on System Program (wrong program for swap)",
+            category: "malicious",
+            expected_approved: false,
+            input: {
+                let mut inp = make_input(
+                    "11111111111111111111111111111111",
+                    "02000000",
+                    &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+                    &[],
+                    WalletProfile::Standard,
+                    good_evidence(),
+                );
+                inp.proposed_intent.intent_type = "swap".to_string();
+                inp.proposed_intent.raw_natural_language = "Swap 1 SOL for USDC".to_string();
+                inp
+            },
+        },
+        // === Phase 1.5: Simulation Spoofing Detection ===
+        BenchmarkCase {
+            label: "Simulation spoofing — 50000 compute vs 150 baseline",
+            category: "malicious",
+            expected_approved: false,
+            input: {
+                let mut inp = make_input(
+                    "11111111111111111111111111111111",
+                    "02000000",
+                    &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+                    &[],
+                    WalletProfile::Standard,
+                    good_evidence(),
+                );
+                inp.compute_units = 50000;
+                inp.simulation_baseline = Some(crate::simulation_integrity::ComputeBaseline {
+                    mean_compute_units: 150.0,
+                    std_compute_units: 20.0,
+                    sample_count: 100,
+                });
+                inp
+            },
+        },
+        BenchmarkCase {
+            label: "Normal compute with baseline — not flagged",
+            category: "safe",
+            expected_approved: true,
+            input: {
+                let mut inp = make_input(
+                    "11111111111111111111111111111111",
+                    "02000000",
+                    &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+                    &[],
+                    WalletProfile::Standard,
+                    good_evidence(),
+                );
+                inp.compute_units = 160;
+                inp.simulation_baseline = Some(crate::simulation_integrity::ComputeBaseline {
+                    mean_compute_units: 150.0,
+                    std_compute_units: 20.0,
+                    sample_count: 100,
+                });
+                inp
+            },
+        },
+        // === Phase 1.5: SPL Token SetAuthority on wrong instruction ===
+        BenchmarkCase {
+            label: "SPL Token SetAuthority hijack",
+            category: "malicious",
+            expected_approved: false,
+            input: make_input(
+                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "0b",
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+                &[],
+                WalletProfile::Standard,
+                good_evidence(),
             ),
         },
     ]

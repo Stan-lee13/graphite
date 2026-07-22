@@ -38,6 +38,7 @@ fn make_input(program_id: &str, discriminator: &str, accounts: &[&str], cpi: &[&
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,
+            simulation_baseline: None,
     }
 }
 

@@ -33,6 +33,7 @@ fn make_input(
         compute_units: 150,
         account_writes: 2,
         cpi_hops: cpi.len() as u32,
+        simulation_baseline: None,
     }
 }
 
