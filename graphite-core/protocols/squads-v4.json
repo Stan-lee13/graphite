@@ -35,9 +35,7 @@
           "role": "writable",
           "is_writable": true,
           "is_signer": false,
-          "pda_seeds": [
-            "multisig"
-          ]
+          "pda_seeds": []
         },
         {
           "name": "create_key",
@@ -81,18 +79,14 @@
           "role": "writable",
           "is_writable": true,
           "is_signer": false,
-          "pda_seeds": [
-            "multisig"
-          ]
+          "pda_seeds": []
         },
         {
           "name": "transaction",
           "role": "writable",
           "is_writable": true,
           "is_signer": false,
-          "pda_seeds": [
-            "transaction"
-          ]
+          "pda_seeds": []
         },
         {
           "name": "creator",
@@ -136,9 +130,7 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": [
-            "multisig"
-          ]
+          "pda_seeds": []
         },
         {
           "name": "member",

@@ -31,6 +31,13 @@ pub struct ResolvedAccount {
     pub is_signer: bool,
     pub is_writable: bool,
     pub pda_seeds: Vec<String>,
+    /// True if the account is a PDA and the derived address does not match
+    /// the provided address. This is a SECURITY SIGNAL: the transaction is
+    /// providing an account that doesn't match the protocol's expected PDA,
+    /// which could indicate a spoofing attempt or a misconstructed transaction.
+    /// The verification pipeline MUST treat this as a risk finding (Constitution P4).
+    #[serde(default)]
+    pub pda_mismatch: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -94,6 +101,7 @@ pub fn resolve_accounts(
 
     let mut resolved = Vec::with_capacity(pubkeys.len());
     let mut order = Vec::with_capacity(pubkeys.len());
+    let mut pda_mismatches: Vec<String> = Vec::new();
 
     for (i, pk) in pubkeys.iter().enumerate() {
         let role_def = ix_def.accounts.get(i);
@@ -116,11 +124,15 @@ pub fn resolve_accounts(
                     match solana_types::find_program_address(&seed_refs, &program_pk) {
                         Ok((derived_pk, _bump)) => {
                             if derived_pk != *pk {
-                                // PDA doesn't match — still report it but flag
-                                r.pda_seeds.clone()
-                            } else {
-                                r.pda_seeds.clone()
+                                // PDA MISMATCH: the provided address does not match
+                                // the address derived from the manifest's seed template.
+                                // This is a security signal — flag it for the risk engine.
+                                // We do NOT hard-fail here because the verification pipeline
+                                // needs to complete to produce a full report, but the
+                                // mismatch MUST be surfaced as a Blocked risk finding.
+                                pda_mismatches.push(pk.to_base58());
                             }
+                            r.pda_seeds.clone()
                         }
                         Err(e) => {
                             return Err(AccountResolutionError::PdaDerivationFailed {
@@ -140,6 +152,7 @@ pub fn resolve_accounts(
             }
         };
 
+        let pda_mismatch = is_pda && pda_mismatches.contains(&pk.to_base58());
         resolved.push(ResolvedAccount {
             address: pk.to_base58(),
             role,
@@ -147,6 +160,7 @@ pub fn resolve_accounts(
             is_signer,
             is_writable,
             pda_seeds,
+            pda_mismatch,
         });
         order.push(i);
     }
@@ -170,6 +184,7 @@ fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionRe
             is_signer: false,
             is_writable: false,
             pda_seeds: vec![],
+            pda_mismatch: false,
         })
         .collect();
 

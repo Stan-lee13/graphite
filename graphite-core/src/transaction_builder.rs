@@ -17,6 +17,10 @@ pub enum TransactionBuilderError {
     EmptyProgramId,
     #[error("instruction discriminator is invalid hex: {0}")]
     InvalidDiscriminator(String),
+    #[error("invalid account address (not valid base58 or wrong length): {0}")]
+    InvalidPubkey(String),
+    #[error("invalid program_id (not valid base58 or wrong length): {0}")]
+    InvalidProgramId(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -72,14 +76,17 @@ pub fn build_transaction(plan: &TransactionPlan) -> Result<BuiltTransaction, Tra
         .resolved_accounts
         .iter()
         .map(|ra| {
-            let pk = Pubkey::from_base58(&ra.address).unwrap_or_default();
-            AccountMeta::new(pk, ra.is_signer, ra.is_writable)
+            let pk = Pubkey::from_base58(&ra.address)
+                .map_err(|e| TransactionBuilderError::InvalidPubkey(format!("{}: {}", ra.address, e)))?;
+            Ok(AccountMeta::new(pk, ra.is_signer, ra.is_writable))
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Build the actual Solana instruction (for downstream consumers)
+    let program_pk = Pubkey::from_base58(&plan.program_id)
+        .map_err(|e| TransactionBuilderError::InvalidProgramId(format!("{}: {}", plan.program_id, e)))?;
     let _instruction = Instruction::new(
-        Pubkey::from_base58(&plan.program_id).unwrap_or_default(),
+        program_pk,
         account_metas.clone(),
         {
             let mut data = disc_bytes.clone();
@@ -138,6 +145,7 @@ mod tests {
             is_signer: signer,
             is_writable: writable,
             pda_seeds: vec![],
+            pda_mismatch: false,
         }
     }
 

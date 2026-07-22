@@ -17,7 +17,7 @@ Nothing reaches the wallet before Graphite understands it.
 ```bash
 cd graphite-core
 
-# Run tests (102 tests)
+# Run tests (264 tests across unit, integration, adversarial, red-team, confidence, self-healing)
 cargo test
 
 # Run the benchmark
@@ -41,9 +41,17 @@ cargo run --bin graphite manifests
 
 ### Protocol Manifests
 
-Graphite ships with built-in manifests for:
+Graphite ships with built-in manifests for 10 Solana protocols:
 - **System Program** (Transfer, CreateAccount, Assign, Allocate)
 - **SPL Token Program** (Transfer, InitializeMint, MintTo, Burn, Approve, SetAuthority, CloseAccount)
+- **Token-2022** (Transfer, SetAuthority, CloseAccount)
+- **Stake Program** (DelegateStake, Deactivate, Withdraw)
+- **Raydium AMM V4** (Swap, AddLiquidity)
+- **Squads V4 Multisig** (multisigCreateV2, vaultTransactionCreate)
+- **Jupiter V6** (Swap via route)
+- **Orca Whirlpools** (Swap)
+- **Meteora DLMM** (Swap)
+- **Memo Program** (Memo)
 
 Custom manifests can be loaded at runtime via the `GraphiteCore::load_manifest()` API.
 
@@ -73,8 +81,8 @@ console.log(result.summary);      // "APPROVED | confidence=1.00 | ..."
 ### Benchmark Results
 
 ```
-Total cases:      8
-Scored cases:     6 (safe + malicious only)
+Total cases:      13
+Scored cases:     11 (safe + malicious only)
 Accuracy:         100.0%
 Precision:        100.0%
 Recall:           100.0%

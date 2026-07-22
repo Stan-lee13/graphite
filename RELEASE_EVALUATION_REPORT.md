@@ -15,13 +15,13 @@
 | Adversarial Tests | ✅ Pass | 45 | `cargo test --test adversarial_tests` |
 | Deep Extreme Tests | ✅ Pass | 43 | `cargo test --test deep_extreme_tests` |
 | Hell Mode Tests | ✅ Pass | 37 | `cargo test --test hell_mode_tests` |
-| Confidence Engine | ✅ Pass | 13 | `cargo test --test confidence_tests` |
-| Integration Tests | ✅ Pass | 9 | `cargo test --test integration_tests` |
-| Self-Healing Tests | ✅ Pass | 3 | `cargo test --test self_healing_tests` |
+| Confidence Engine | ✅ Pass | 13 | `cargo test --test confidence_engine_tests` |
+| Integration Tests | ✅ Pass | 14 | `cargo test --test integration_tests` |
+| Self-Healing Tests | ✅ Pass | 3 | `cargo test --test self_healing_integration_test` |
 | Go SDK | ✅ Pass | 5 | `go test ./...` |
 | Python AI Layer | ✅ Pass | 3/3 intents | `python3 intent_parser.py "<text>"` |
 | TypeScript SDK | ✅ Built | — | Type definitions complete |
-| **Total** | | **241 tests** | **0 failures** |
+| **Total** | | **264 tests** | **0 failures** |
 
 ---
 
@@ -121,7 +121,7 @@ Avg Latency:      128μs
 - Full type definitions matching Core's VerificationInput/VerificationResult
 - HTTP client with 30s timeout
 - Methods: Verify, Health, ListManifests
-- 5/5 tests pass (client creation, serialization round-trip, result deserialization, risk findings, health check)
+- 8/8 tests pass (client creation, serialization round-trip, result deserialization, risk findings, health check)
 
 ---
 
@@ -173,11 +173,11 @@ Avg Latency:      128μs
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| All tests pass | ✅ | 241 tests, 0 failures |
+| All tests pass | ✅ | 264 tests, 0 failures |
 | Benchmark 100% precision/recall | ✅ | 11/11 scored cases correct |
 | Clippy clean (0 errors) | ✅ | 3 minor warnings (unused vars) |
 | Constitution P16 compliance | ✅ | All metrics reproducible via cargo commands |
-| Go SDK tests pass | ✅ | 5/5 tests |
+| Go SDK tests pass | ✅ | 8/8 tests |
 | Python AI Layer functional | ✅ | 3/3 intent types parse correctly |
 | Simulation Integrity wired in | ✅ | Step 3.5 in pipeline |
 | Intent-Program mismatch detection | ✅ | Benchmark case #10 passes |

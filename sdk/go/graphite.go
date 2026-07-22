@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -52,36 +53,109 @@ type ExtractedParameters struct {
 	SlippageBPS *int64 `json:"slippage_bps,omitempty"`
 }
 
+// BehaviorEvidence is the on-chain behavioral evidence for the program.
+// All fields are required by the Rust server contract (serde default = zero value).
+type BehaviorEvidence struct {
+	HasSignedManifest       bool `json:"has_signed_manifest"`
+	CommunityVerifiedCount  int  `json:"community_verified_count"`
+	BattleTestedTxCount     int  `json:"battle_tested_tx_count"`
+	SimulationMatchCount    int  `json:"simulation_match_count"`
+}
+
+// SimulationBaseline is the historical compute usage baseline for a program.
+// Optional — if nil, the simulation integrity check is skipped.
+type SimulationBaseline struct {
+	MeanComputeUnits float64 `json:"mean_compute_units"`
+	StdComputeUnits  float64 `json:"std_compute_units"`
+	SampleCount      uint64  `json:"sample_count"`
+}
+
+// ByteArray is a []byte that marshals as a JSON array of integers, NOT base64.
+// This is critical: Rust's serde expects Vec<u8> as [0, 1, 2, ...], not as a base64 string.
+type ByteArray []byte
+
+// MarshalJSON encodes the byte slice as a JSON array of unsigned 8-bit integers.
+// This matches Rust's serde deserialization of Vec<u8>.
+func (b ByteArray) MarshalJSON() ([]byte, error) {
+	if len(b) == 0 {
+		return []byte("[]"), nil
+	}
+	result := make([]byte, 0, len(b)*4+2)
+	result = append(result, '[')
+	for i, v := range b {
+		if i > 0 {
+			result = append(result, ',')
+		}
+		result = strconv.AppendUint(result, uint64(v), 10)
+	}
+	result = append(result, ']')
+	return result, nil
+}
+
+// UnmarshalJSON decodes a JSON array of integers back to a byte slice.
+func (b *ByteArray) UnmarshalJSON(data []byte) error {
+	var arr []interface{}
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	result := make(ByteArray, 0, len(arr))
+	for _, v := range arr {
+		f, ok := v.(float64)
+		if !ok {
+			return fmt.Errorf("ByteArray: expected number, got %T", v)
+		}
+		if f < 0 || f > 255 {
+			return fmt.Errorf("ByteArray: value %v out of byte range", f)
+		}
+		result = append(result, byte(f))
+	}
+	*b = result
+	return nil
+}
+
+// WalletProfile is the risk tolerance profile for policy evaluation.
+type WalletProfile string
+
+const (
+	WalletProfileConservative WalletProfile = "Conservative"
+	WalletProfileStandard      WalletProfile = "Standard"
+	WalletProfilePermissive    WalletProfile = "Permissive"
+	WalletProfileEnterprise    WalletProfile = "Enterprise"
+)
+
 // VerificationInput is the full input to the verification pipeline.
+// This struct MUST match the Rust server's VerificationInput exactly.
 type VerificationInput struct {
-	ProposedIntent          ProposedIntent `json:"proposed_intent"`
-	ProgramID               string         `json:"program_id"`
-	ProtocolVersion         string         `json:"protocol_version"`
-	InstructionDiscriminator string       `json:"instruction_discriminator"`
-	AccountAddresses        []string       `json:"account_addresses"`
-	InstructionData         []byte         `json:"instruction_data,omitempty"`
-	CPITargets              []string       `json:"cpi_targets,omitempty"`
-	WalletProfile           string         `json:"wallet_profile"`
-	ComputeUnits            uint64         `json:"compute_units"`
-	AccountWrites           uint32         `json:"account_writes"`
-	CPIHops                 uint32         `json:"cpi_hops"`
+	ProposedIntent          ProposedIntent      `json:"proposed_intent"`
+	ProgramID               string              `json:"program_id"`
+	ProtocolVersion         string              `json:"protocol_version"`
+	InstructionDiscriminator string              `json:"instruction_discriminator"`
+	AccountAddresses        []string            `json:"account_addresses"`
+	InstructionData         ByteArray           `json:"instruction_data,omitempty"`
+	CPITargets              []string            `json:"cpi_targets,omitempty"`
+	WalletProfile           WalletProfile       `json:"wallet_profile"`
+	BehaviorEvidence        BehaviorEvidence    `json:"behavior_evidence"`
+	ComputeUnits            uint64              `json:"compute_units"`
+	AccountWrites           uint32              `json:"account_writes"`
+	CPIHops                 uint32               `json:"cpi_hops"`
+	SimulationBaseline      *SimulationBaseline `json:"simulation_baseline,omitempty"`
 }
 
 // VerificationResult is the output of the verification pipeline.
 type VerificationResult struct {
-	Approved              bool               `json:"approved"`
-	Confidence            float64            `json:"confidence"`
-	TrustTier             string             `json:"trust_tier"`
-	RiskVerdict           RiskVerdictSummary `json:"risk_verdict"`
-	PolicyVerdict         string             `json:"policy_verdict"`
-	AuditTrailID          string             `json:"audit_trail_id"`
-	ProtocolName          string             `json:"protocol_name"`
-	InstructionName       string             `json:"instruction_name"`
-	ManifestFound         bool               `json:"manifest_found"`
-	UnknownProtocol       bool               `json:"unknown_protocol"`
-	SimulationFlagged     *bool              `json:"simulation_flagged,omitempty"`
-	SimulationDivergence  *float64           `json:"simulation_divergence,omitempty"`
-	Summary               string             `json:"summary"`
+	Approved             bool               `json:"approved"`
+	Confidence           float64            `json:"confidence"`
+	TrustTier            string             `json:"trust_tier"`
+	RiskVerdict          RiskVerdictSummary `json:"risk_verdict"`
+	PolicyVerdict        string             `json:"policy_verdict"`
+	AuditTrailID         string             `json:"audit_trail_id"`
+	ProtocolName         string             `json:"protocol_name"`
+	InstructionName      string             `json:"instruction_name"`
+	ManifestFound        bool               `json:"manifest_found"`
+	UnknownProtocol      bool               `json:"unknown_protocol"`
+	SimulationFlagged    *bool              `json:"simulation_flagged,omitempty"`
+	SimulationDivergence *float64           `json:"simulation_divergence,omitempty"`
+	Summary              string             `json:"summary"`
 }
 
 // RiskVerdictSummary is the risk assessment result.

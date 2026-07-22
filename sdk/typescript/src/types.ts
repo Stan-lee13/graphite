@@ -25,6 +25,17 @@ export interface BehaviorEvidence {
   simulation_match_count: number;
 }
 
+/**
+ * Historical compute usage baseline for simulation integrity checking.
+ * If omitted, the simulation integrity check is skipped.
+ * Required: sample_count >= 10 and std_compute_units > 0 for the check to run.
+ */
+export interface SimulationBaseline {
+  mean_compute_units: number;
+  std_compute_units: number;
+  sample_count: number;
+}
+
 export interface VerificationInput {
   proposed_intent: ProposedIntent;
   program_id: string;
@@ -38,6 +49,9 @@ export interface VerificationInput {
   compute_units?: number;
   account_writes?: number;
   cpi_hops?: number;
+  /** Phase 1.5: Simulation Integrity — if provided, the pipeline checks
+   *  compute usage divergence against this historical baseline. */
+  simulation_baseline?: SimulationBaseline;
 }
 
 export type TrustTier =
@@ -93,6 +107,10 @@ export interface ResolvedAccount {
   is_signer: boolean;
   is_writable: boolean;
   pda_seeds: string[];
+  /** True if the derived PDA does not match the provided address.
+   *  This is a security signal — a PDA mismatch means the transaction
+   *  is sending accounts that don't match the protocol's expected PDA. */
+  pda_mismatch?: boolean;
 }
 
 export interface VerificationResult {
@@ -110,6 +128,9 @@ export interface VerificationResult {
   manifest_found: boolean;
   unknown_protocol: boolean;
   summary: string;
+  /** Phase 1.5: Simulation integrity result (null if not checked) */
+  simulation_flagged?: boolean | null;
+  simulation_divergence?: number | null;
 }
 
 export interface ProtocolManifest {

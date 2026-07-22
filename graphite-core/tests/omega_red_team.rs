@@ -228,7 +228,7 @@ fn exploit_l19_unknown_protocol_permissive_bypass() {
             confidence_of_parse: 1.0,
             extracted_parameters: None,
         },
-        program_id: "UnknownProgram11111111111111111111111111".to_string(),
+        program_id: "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi".to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "02000000".to_string(),
         account_addresses: vec!["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string()],

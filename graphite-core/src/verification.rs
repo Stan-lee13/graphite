@@ -258,7 +258,102 @@ impl GraphiteCore {
             risk_verdict
         };
 
+        // Step 3b.5: FakeSwap Detection
+        // Detect when a swap intent is routed to a known swap program but the
+        // expected state changes don't include output/credit — suggesting the
+        // swap routes output to the wrong token account.
+        let fake_swap = crate::risk_engine::detect_fake_swap(
+            &input.program_id,
+            &input.account_addresses,
+            &expected_state_changes,
+            &input.proposed_intent.intent_type,
+            input.proposed_intent.extracted_parameters
+                .as_ref()
+                .and_then(|p| p.output_token.as_deref()),
+        );
+        let risk_verdict = if let Some(pattern) = fake_swap {
+            match risk_verdict {
+                crate::risk_engine::RiskVerdict::Passed =>
+                    crate::risk_engine::RiskVerdict::Blocked {
+                        pattern,
+                        reason: "FakeSwap: swap intent detected but expected state changes "
+                            .to_string() + "do not include output/credit — output may be routed "
+                            + "to the wrong token account",
+                    },
+                other => other,
+            }
+        } else {
+            risk_verdict
+        };
+
+        // Step 3c: PDA Mismatch Detection
+        // If account resolution found PDA mismatches, surface them as risk findings.
+        // A PDA mismatch means the transaction provides an account that doesn't match
+        // the protocol manifest's expected PDA derivation — a potential spoofing attack.
+        let pda_mismatches: Vec<&ResolvedAccount> = resolution.resolved_accounts
+            .iter()
+            .filter(|a| a.pda_mismatch)
+            .collect();
+        let risk_verdict = if !pda_mismatches.is_empty() {
+            let mismatch_reason = format!(
+                "PDA mismatch: {} account(s) do not match manifest-derived addresses: {}",
+                pda_mismatches.len(),
+                pda_mismatches.iter()
+                    .map(|a| format!("{} (role={})", &a.address[..8], a.role))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            match risk_verdict {
+                crate::risk_engine::RiskVerdict::Passed =>
+                    crate::risk_engine::RiskVerdict::Blocked {
+                        pattern: crate::risk_engine::RiskPattern::MaliciousAccountChange,
+                        reason: mismatch_reason,
+                    },
+                crate::risk_engine::RiskVerdict::Blocked { ref pattern, .. } => {
+                    // Already blocked — add PDA mismatch to findings via summarize_risk downstream
+                    crate::risk_engine::RiskVerdict::Blocked {
+                        pattern: *pattern,
+                        reason: format!("{} | PDA mismatch detected", mismatch_reason),
+                    }
+                }
+            }
+        } else {
+            risk_verdict
+        };
+
         let risk_summary = summarize_risk(&risk_verdict);
+
+        // Step 3c.5: Add PDA mismatch findings to risk summary
+        let risk_summary = if !pda_mismatches.is_empty() && risk_summary.status == "Clear" {
+            RiskVerdictSummary {
+                status: "Blocked".to_string(),
+                findings: vec![RiskFinding {
+                    pattern: "PdaMismatch".to_string(),
+                    reason: format!(
+                        "PDA mismatch on {} account(s) — derived address does not match provided",
+                        pda_mismatches.len()
+                    ),
+                }],
+            }
+        } else if !pda_mismatches.is_empty() {
+            // Already blocked — append the PDA mismatch finding
+            RiskVerdictSummary {
+                status: "Blocked".to_string(),
+                findings: {
+                    let mut f = risk_summary.findings.clone();
+                    f.push(RiskFinding {
+                        pattern: "PdaMismatch".to_string(),
+                        reason: format!(
+                            "PDA mismatch on {} account(s) — derived address does not match provided",
+                            pda_mismatches.len()
+                        ),
+                    });
+                    f
+                },
+            }
+        } else {
+            risk_summary
+        };
 
         // Step 3.5: Simulation Integrity Check (Phase 1.5)
         let (sim_flagged, sim_divergence) = if let Some(ref baseline) = input.simulation_baseline {

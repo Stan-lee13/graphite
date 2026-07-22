@@ -29,7 +29,14 @@ func TestVerificationInputSerialization(t *testing.T) {
 		ProtocolVersion:          "1.0.0",
 		InstructionDiscriminator: "02000000",
 		AccountAddresses:          []string{"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"},
-		WalletProfile:             "Standard",
+		InstructionData:           ByteArray{0x02, 0x00, 0x00, 0x00},
+		WalletProfile:             WalletProfileStandard,
+		BehaviorEvidence: BehaviorEvidence{
+			HasSignedManifest:      false,
+			CommunityVerifiedCount: 5,
+			BattleTestedTxCount:    50000,
+			SimulationMatchCount:   100,
+		},
 		ComputeUnits:              150,
 		AccountWrites:             2,
 	}
@@ -37,6 +44,31 @@ func TestVerificationInputSerialization(t *testing.T) {
 	data, err := json.Marshal(input)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
+	}
+
+	// Verify instruction_data is serialized as array, NOT base64
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal to map failed: %v", err)
+	}
+	instrData, ok := raw["instruction_data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected instruction_data to be a JSON array, got %T: %v", raw["instruction_data"], raw["instruction_data"])
+	}
+	if len(instrData) != 4 {
+		t.Fatalf("expected 4 bytes, got %d", len(instrData))
+	}
+	if instrData[0] != float64(0x02) {
+		t.Errorf("expected first byte 0x02, got %v", instrData[0])
+	}
+
+	// Verify behavior_evidence is present
+	behEv, ok := raw["behavior_evidence"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected behavior_evidence to be a JSON object")
+	}
+	if behEv["community_verified_count"] != float64(5) {
+		t.Errorf("expected community_verified_count=5, got %v", behEv["community_verified_count"])
 	}
 
 	var roundtrip VerificationInput
@@ -49,6 +81,90 @@ func TestVerificationInputSerialization(t *testing.T) {
 	}
 	if roundtrip.ProposedIntent.IntentType != input.ProposedIntent.IntentType {
 		t.Error("IntentType roundtrip mismatch")
+	}
+	if len(roundtrip.InstructionData) != 4 || roundtrip.InstructionData[0] != 0x02 {
+		t.Error("InstructionData roundtrip mismatch")
+	}
+	if roundtrip.BehaviorEvidence.CommunityVerifiedCount != 5 {
+		t.Error("BehaviorEvidence roundtrip mismatch")
+	}
+}
+
+func TestVerificationInputWithSimulationBaseline(t *testing.T) {
+	input := &VerificationInput{
+		ProposedIntent: ProposedIntent{
+			IntentType:         "swap",
+			RawNaturalLanguage: "Swap 1 SOL for USDC",
+			ConfidenceOfParse:  0.9,
+		},
+		ProgramID:                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+		InstructionDiscriminator: "e517cb977ae3ad2a",
+		AccountAddresses:         []string{"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"},
+		WalletProfile:            WalletProfileStandard,
+		BehaviorEvidence: BehaviorEvidence{
+			HasSignedManifest:      true,
+			CommunityVerifiedCount: 10,
+			BattleTestedTxCount:    100000,
+			SimulationMatchCount:   500,
+		},
+		ComputeUnits: 200000,
+		AccountWrites: 5,
+		CPIHops:       3,
+		SimulationBaseline: &SimulationBaseline{
+			MeanComputeUnits: 150000,
+			StdComputeUnits:  20000,
+			SampleCount:      500,
+		},
+	}
+
+	data, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	var raw map[string]interface{}
+	json.Unmarshal(data, &raw)
+
+	simBase, ok := raw["simulation_baseline"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected simulation_baseline to be present as JSON object")
+	}
+	if simBase["sample_count"] != float64(500) {
+		t.Errorf("expected sample_count=500, got %v", simBase["sample_count"])
+	}
+
+	var roundtrip VerificationInput
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if roundtrip.SimulationBaseline == nil {
+		t.Fatal("expected SimulationBaseline after roundtrip")
+	}
+	if roundtrip.SimulationBaseline.SampleCount != 500 {
+		t.Errorf("expected sample_count=500, got %d", roundtrip.SimulationBaseline.SampleCount)
+	}
+}
+
+func TestByteArraySerialization(t *testing.T) {
+	// Empty byte array
+	empty := ByteArray{}
+	data, _ := json.Marshal(empty)
+	if string(data) != "[]" {
+		t.Errorf("expected [], got %s", string(data))
+	}
+
+	// Non-empty byte array — must be [0, 1, 2, ...] NOT base64
+	ba := ByteArray{0, 1, 2, 255}
+	data, _ = json.Marshal(ba)
+	if string(data) != "[0,1,2,255]" {
+		t.Errorf("expected [0,1,2,255], got %s", string(data))
+	}
+
+	// Roundtrip
+	var roundtrip ByteArray
+	json.Unmarshal(data, &roundtrip)
+	if len(roundtrip) != 4 || roundtrip[3] != 255 {
+		t.Error("ByteArray roundtrip failed")
 	}
 }
 
