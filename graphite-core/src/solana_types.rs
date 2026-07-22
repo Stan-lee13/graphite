@@ -51,9 +51,9 @@ impl Pubkey {
     /// The System Program: 11111111111111111111111111111111
     pub const SYSTEM_PROGRAM: Pubkey = Pubkey([0u8; 32]);
 
-    /// SPL Token Program: TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA
+    /// SPL Token Program: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
     pub fn spl_token() -> Pubkey {
-        Pubkey(bs58::decode("TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA")
+        Pubkey(bs58::decode("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
             .into_vec()
             .unwrap()
             .try_into()
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn test_spl_token_roundtrip() {
         let token = Pubkey::spl_token();
-        assert_eq!(token.to_base58(), "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA");
+        assert_eq!(token.to_base58(), "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     }
 
     #[test]

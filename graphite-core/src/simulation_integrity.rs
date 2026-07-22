@@ -86,9 +86,30 @@ pub fn check_simulation_integrity(
         });
     }
     
+    // Red Team fix L6/L6b: Reject NaN and Infinity in baseline values.
+    // NaN mean → NaN z-score → NaN.abs() > threshold is false → bypasses detection.
+    // Infinity std → z-score = 0.0 → bypasses detection.
+    if input.baseline.mean_compute_units.is_nan() 
+        || input.baseline.mean_compute_units.is_infinite()
+        || input.baseline.std_compute_units.is_nan()
+        || input.baseline.std_compute_units.is_infinite() {
+        return Err(SimulationIntegrityError::InvalidData {
+            reason: "baseline contains NaN or Infinity values".to_string(),
+        });
+    }
+    
     // Compute z-score for compute units
     let z_score = (input.simulation_usage.compute_units as f64 - input.baseline.mean_compute_units)
         / input.baseline.std_compute_units;
+    
+    // Sanity check: z-score must not be NaN (Constitution P3)
+    if z_score.is_nan() || z_score.is_infinite() {
+        return Ok(SimulationIntegrityResult {
+            flagged: true, // Fail-safe: flag as suspicious (P12)
+            divergence_score: f64::INFINITY,
+            reason: Some("Z-score computation produced NaN/Infinity — baseline may be corrupted".to_string()),
+        });
+    }
     
     let flagged = z_score.abs() > input.divergence_threshold;
     

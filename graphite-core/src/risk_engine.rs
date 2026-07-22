@@ -95,25 +95,25 @@ struct KnownRiskPattern {
 
 const RISKY_PATTERNS: &[KnownRiskPattern] = &[
     KnownRiskPattern {
-        program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         discriminator: "0b", // SetAuthority
         pattern: RiskPattern::AuthorityHijack,
         description: "SPL Token SetAuthority — changes who controls the account",
     },
     KnownRiskPattern {
-        program_id: "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+        program_id: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         discriminator: "0b", // SetAuthority
         pattern: RiskPattern::AuthorityHijack,
         description: "Token-2022 SetAuthority — changes who controls the account",
     },
     KnownRiskPattern {
-        program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         discriminator: "09", // CloseAccount
         pattern: RiskPattern::Drainer,
         description: "SPL Token CloseAccount — closes account and drains all lamports",
     },
     KnownRiskPattern {
-        program_id: "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+        program_id: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         discriminator: "09", // CloseAccount
         pattern: RiskPattern::Drainer,
         description: "Token-2022 CloseAccount — closes account and drains all lamports",
@@ -185,14 +185,21 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                     reason: pattern.description.to_string(),
                 });
             }
-            // Fallback: check account-based heuristics for authority patterns
-            if pattern.pattern == RiskPattern::AuthorityHijack
-                && input.instruction_discriminator.is_empty()
-                && input.accounts.iter().any(|a| a.contains("authority") || a.contains("owner"))
+            // Red Team fix L8: If discriminator is EMPTY on a known risky program,
+            // block by default — we can't verify the instruction is safe.
+            // P12: fail-closed on unknown. An empty discriminator means we
+            // don't know what instruction is being called. On a token program,
+            // this could be SetAuthority, CloseAccount, or any risky instruction.
+            if input.instruction_discriminator.is_empty()
+                && (pattern.pattern == RiskPattern::AuthorityHijack
+                    || pattern.pattern == RiskPattern::Drainer)
             {
                 return Ok(RiskVerdict::Blocked {
                     pattern: pattern.pattern,
-                    reason: pattern.description.to_string(),
+                    reason: format!(
+                        "{}: empty discriminator on known risky program — cannot verify instruction is safe (P12 fail-closed)",
+                        pattern.description
+                    ),
                 });
             }
         }
@@ -209,7 +216,9 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 4: Compositional drain (deep CPI chains with revisits)
-    if input.cpi_targets.len() > 4 && detect_compositional_drain(&input.cpi_targets) {
+    // Red Team fix L3: Lowered from >4 to >=3 for repeated targets.
+    // 3+ repeated CPI calls to the same program is suspicious even in a short chain.
+    if input.cpi_targets.len() >= 3 && detect_compositional_drain(&input.cpi_targets) {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::CompositionalDrainPattern,
             reason: "Deep CPI chain with repeated program targets — matches compositional drain signature".to_string(),
@@ -248,7 +257,31 @@ fn detect_drainer_pattern(accounts: &[String], expected_changes: &[String]) -> b
     // Check both empty vec AND vec with only empty/whitespace strings
     let has_meaningful_changes = !expected_changes.is_empty()
         && expected_changes.iter().any(|c| !c.trim().is_empty());
-    accounts.len() > 5 && !has_meaningful_changes
+    
+    // Red Team fix L12: Deduplicate accounts before counting.
+    // 6 copies of the same account is only 1 unique account.
+    let unique_accounts: std::collections::HashSet<&String> = accounts.iter().collect();
+    let unique_count = unique_accounts.len();
+    
+    // Case 1: Many UNIQUE accounts, NO meaningful changes → drainer
+    if unique_count >= 5 && !has_meaningful_changes {
+        return true;
+    }
+    
+    // Case 2 (Red Team fix L18): Many unique accounts, but very few state changes relative
+    // to account count. If there are 20+ unique accounts but only 1-2 declared changes,
+    // that's a drainer hiding behind a minimal declaration.
+    // Threshold: unique_count / meaningful_change_count >= 10 AND unique_count >= 20
+    if unique_count >= 20 && has_meaningful_changes {
+        let meaningful_count = expected_changes.iter()
+            .filter(|c| !c.trim().is_empty())
+            .count();
+        if meaningful_count > 0 && unique_count / meaningful_count >= 10 {
+            return true;
+        }
+    }
+    
+    false
 }
 
 /// Detect compositional drain patterns in CPI chain.
@@ -291,7 +324,7 @@ fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> b
     // Only flag when accounts > 6x the referenced count AND at least 12 accounts
     // This prevents false positives on legitimate multi-account protocols
     // (e.g., Orca Whirlpools has 11 accounts with 2 state change references)
-    accounts.len() > referenced_account_count.saturating_mul(6).max(12)
+    accounts.len() >= referenced_account_count.saturating_mul(6).max(12)
 }
 
 #[cfg(test)]
@@ -331,7 +364,7 @@ mod tests {
         // SPL Token SetAuthority should be detected as authority hijack
         // when the accounts include authority-related keywords
         let input = RiskAssessmentInput {
-            program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA".to_string(),
+            program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
             accounts: vec!["authority_account".to_string()],
             cpi_targets: vec![],
             expected_state_changes: vec!["changes authority".to_string()],
@@ -572,7 +605,7 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
             program_id == "Stake11111111111111111111111111111111111111"
         }
         "close" => {
-            program_id == "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA" // SPL Token
+            program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" // SPL Token
                 || program_id == "TokenzQdBNbLqP5VEhMpASvAH1Q7AJZ7pK9wqAF3Q7M2" // Token-2022
         }
         "transfer" => true, // Transfers can go through many programs

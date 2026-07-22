@@ -194,9 +194,11 @@ fn test_single_account_not_flagged_as_drainer() {
 }
 
 #[test]
-fn test_exactly_5_accounts_not_flagged_as_drainer() {
+fn test_exactly_5_accounts_flagged_as_drainer() {
+    // Red Team fix L1: threshold changed from >5 to >=5
     let input = risk_input("program", &["a1","a2","a3","a4","a5"], &[], &[], &[], "");
-    assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed, "exactly 5 accounts should NOT trigger drainer");
+    assert!(matches!(assess(&input).unwrap(), RiskVerdict::Blocked { pattern: RiskPattern::Drainer, .. }),
+        "Red Team L1: exactly 5 accounts now flagged as drainer (>=5)");
 }
 
 #[test]
@@ -208,15 +210,15 @@ fn test_exactly_6_accounts_flagged_as_drainer() {
 #[test]
 fn test_cpi_allowed_list_blocks_unlisted_target() {
     let input = risk_input("program", &["a1"], &["unknown"], &["change"], 
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], "");
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], "");
     assert!(matches!(assess(&input).unwrap(), RiskVerdict::Blocked { pattern: RiskPattern::UnexpectedCpi, .. }));
 }
 
 #[test]
 fn test_cpi_allowed_list_accepts_listed_target() {
     let input = risk_input("program", &["a1"], 
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], &["change"],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], "");
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], &["change"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], "");
     assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
 }
 
@@ -231,7 +233,7 @@ fn test_risk_engine_deterministic_1000_runs() {
 
 #[test]
 fn test_set_authority_discriminator_blocked_on_spl_token() {
-    let input = risk_input("TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+    let input = risk_input("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["account","authority"], &[], &["changes authority"], &[], "0b");
     assert!(matches!(assess(&input).unwrap(), RiskVerdict::Blocked { pattern: RiskPattern::AuthorityHijack, .. }));
 }
@@ -244,9 +246,11 @@ fn test_system_assign_blocked() {
 }
 
 #[test]
-fn test_compositional_drain_boundary_4_cpi_not_flagged() {
+fn test_compositional_drain_4_with_repeat_flagged() {
+    // Red Team fix L3: threshold changed from >4 to >=3
     let input = risk_input("agg", &[], &["a","a","b","c"], &[], &["a","b","c"], "");
-    assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed, "exactly 4 CPI targets should not trigger compositional drain");
+    assert!(matches!(assess(&input).unwrap(), RiskVerdict::Blocked { pattern: RiskPattern::CompositionalDrainPattern, .. }),
+        "Red Team L3: 4 CPI targets with repeat now flagged (>=3)");
 }
 
 #[test]
@@ -290,7 +294,7 @@ fn test_verify_safe_system_transfer_approved() {
 #[test]
 fn test_verify_set_authority_blocked() {
     let core = GraphiteCore::default();
-    let input = make_input("TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "0b",
+    let input = make_input("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &[], WalletProfile::Conservative, good_evidence());
     let result = core.verify(&input).unwrap();
@@ -302,10 +306,10 @@ fn test_verify_set_authority_blocked() {
 fn test_verify_jupiter_swap_with_allowed_cpi_passes_risk() {
     let core = GraphiteCore::default();
     let input = make_input("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "e517cb977ae3ad2a",
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", 
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", 
           "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
           "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J"],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], WalletProfile::Standard, good_evidence());
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], WalletProfile::Standard, good_evidence());
     let result = core.verify(&input).unwrap();
     assert_eq!(result.risk_verdict.status, "Clear",
         "Jupiter swap with allowed CPI should pass risk engine, got: {:?}", result.risk_verdict);
@@ -315,7 +319,7 @@ fn test_verify_jupiter_swap_with_allowed_cpi_passes_risk() {
 fn test_verify_jupiter_swap_with_unlisted_cpi_blocked() {
     let core = GraphiteCore::default();
     let input = make_input("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "e517cb977ae3ad2a",
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
           "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
           "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J"],
         &["MaliciousDrainerProgram1111111111111111111111"], WalletProfile::Conservative, good_evidence());
@@ -341,13 +345,13 @@ fn test_verify_squads_multisig_create() {
 fn test_verify_orca_swap_passes_risk() {
     let core = GraphiteCore::default();
     let input = make_input("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "f8c69e91e17587c8",
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
           "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
           "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J", "4Nd1mYbz1NQ8Tk6eX5N6g5eM6eX5N6g5eM6eX5N6g5eM",
           "11111111111111111111111111111111", "Stake11111111111111111111111111111111111111",
-          "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+          "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
           "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], WalletProfile::Standard, good_evidence());
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], WalletProfile::Standard, good_evidence());
     let result = core.verify(&input).unwrap();
     assert_eq!(result.risk_verdict.status, "Clear");
 }
@@ -356,18 +360,18 @@ fn test_verify_orca_swap_passes_risk() {
 fn test_verify_meteora_swap_passes_risk() {
     let core = GraphiteCore::default();
     let accounts_15: Vec<&str> = vec![
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
         "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
         "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J", "4Nd1mYbz1NQ8Tk6eX5N6g5eM6eX5N6g5eM6eX5N6g5eM",
         "11111111111111111111111111111111", "Stake11111111111111111111111111111111111111",
-        "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+        "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
         "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
         "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
     ];
     let input = make_input("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", "f8c69e91e17587c8",
         &accounts_15,
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], WalletProfile::Standard, good_evidence());
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], WalletProfile::Standard, good_evidence());
     let result = core.verify(&input).unwrap();
     assert_eq!(result.risk_verdict.status, "Clear");
 }
@@ -387,7 +391,7 @@ fn test_verify_stake_delegate_passes_risk() {
 #[test]
 fn test_verify_token_2022_transfer_passes_risk() {
     let core = GraphiteCore::default();
-    let input = make_input("TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f", "03",
+    let input = make_input("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "03",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
           "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &[], WalletProfile::Standard, good_evidence());
@@ -398,7 +402,7 @@ fn test_verify_token_2022_transfer_passes_risk() {
 #[test]
 fn test_verify_token_2022_set_authority_blocked() {
     let core = GraphiteCore::default();
-    let input = make_input("TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f", "0b",
+    let input = make_input("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
         &[], WalletProfile::Conservative, good_evidence());
     let result = core.verify(&input).unwrap();
@@ -511,7 +515,7 @@ fn test_pubkey_from_base58_all_zeros() {
 
 #[test]
 fn test_pubkey_to_base58_round_trip() {
-    let original = "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA";
+    let original = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
     let pk = Pubkey::from_base58(original).unwrap();
     let encoded = pk.to_base58();
     assert_eq!(encoded, original, "Pubkey base58 round-trip failed");
@@ -537,7 +541,7 @@ fn test_all_10_program_ids_round_trip() {
 #[test]
 fn test_pda_derivation_deterministic() {
     use graphite_core::solana_types::find_program_address;
-    let program_id = Pubkey::from_base58("TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA").unwrap();
+    let program_id = Pubkey::from_base58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap();
     let seeds: Vec<Vec<u8>> = vec![b"vault".to_vec()];
     let seeds_ref: Vec<&[u8]> = seeds.iter().map(|s| s.as_slice()).collect();
     let (pda1, bump1) = find_program_address(&seeds_ref, &program_id).unwrap();

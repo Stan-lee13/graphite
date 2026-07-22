@@ -112,7 +112,7 @@ fn risk_input(
 fn h1_max_evidence_cannot_override_risk_block() {
     let core = GraphiteCore::new();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
         WalletProfile::Permissive,
@@ -146,7 +146,7 @@ fn h1_max_evidence_cannot_override_unknown_protocol_block() {
 fn h2_system_transfer_disc_on_spl_token() {
     let core = GraphiteCore::new();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "02000000",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
         WalletProfile::Standard,
@@ -212,7 +212,7 @@ fn h4_transfer_intent_with_closeaccount_disc() {
             confidence_of_parse: 0.99,
             extracted_parameters: None,
         },
-        program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA".to_string(),
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "09".to_string(),
         account_addresses: vec![
@@ -247,7 +247,7 @@ fn h4_swap_intent_with_setauthority_disc() {
             confidence_of_parse: 0.99,
             extracted_parameters: None,
         },
-        program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA".to_string(),
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "0b".to_string(),
         account_addresses: vec![
@@ -325,7 +325,7 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
     let malicious_manifest = r#"{
         "protocol": {
             "name": "Fake Safe Protocol",
-            "program_id": "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+            "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
             "version": "1.0.0"
         },
         "instructions": [
@@ -341,7 +341,7 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
     let _ = core.load_manifest(malicious_manifest);
 
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "0b",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
         WalletProfile::Permissive, max_evidence(),
     );
@@ -358,8 +358,8 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
 fn h7_cpi_target_substring_of_allowed() {
     let input = risk_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", &[],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5D"], &[],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5D"], &[],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
@@ -371,8 +371,8 @@ fn h7_cpi_target_substring_of_allowed() {
 fn h7_cpi_target_prefix_of_allowed() {
     let input = risk_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", &[],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DAxTRA"], &[],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DAxTRA"], &[],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
@@ -385,7 +385,7 @@ fn h7_cpi_target_case_mismatch() {
     let input = risk_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", &[],
         &["tokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], &[],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
@@ -419,22 +419,25 @@ fn h8_all_same_account_6_times_with_state_changes() {
 
 #[test]
 fn h8_all_same_account_6_times_no_state_changes() {
+    // Red Team fix L12: account deduplication means 6 copies of the SAME account
+    // = 1 unique account → NOT a drainer. This test now verifies dedup works
+    // by using 6 DIFFERENT accounts to confirm the drainer still triggers.
     let input = risk_input(
         "11111111111111111111111111111111",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-          "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-          "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-          "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-          "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-          "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
+          "8xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsV",
+          "9xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsW",
+          "AxKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsX",
+          "BxKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsY",
+          "CxKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsZ"],
         &[],
         &[],
         &[],
         "02000000",
     );
     let result = assess(&input).unwrap();
-    assert!(matches!(result, RiskVerdict::Blocked { .. }),
-        "6 accounts with NO state changes should trigger drainer pattern");
+    assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::Drainer, .. }),
+        "6 UNIQUE accounts with NO state changes should trigger drainer pattern");
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -474,7 +477,7 @@ fn h9_unknown_protocol_confidence_zero_evidence() {
 #[test]
 fn h10_safe_state_changes_dont_mask_setauthority() {
     let input = RiskAssessmentInput {
-        program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA".to_string(),
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         accounts: vec!["account1".to_string()],
         cpi_targets: vec![],
         expected_state_changes: vec!["debits accounts.from".to_string(), "credits accounts.to".to_string()],
@@ -489,7 +492,7 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
 #[test]
 fn h10_state_changes_dont_mask_closeaccount() {
     let input = RiskAssessmentInput {
-        program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA".to_string(),
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         accounts: vec!["account1".to_string()],
         cpi_targets: vec![],
         expected_state_changes: vec!["debits accounts.from".to_string(), "credits accounts.to".to_string()],
@@ -748,7 +751,7 @@ fn h21_custom_profile_zero_threshold_still_checks_risk() {
             confidence_of_parse: 0.95,
             extracted_parameters: None,
         },
-        program_id: "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA".to_string(),
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "0b".to_string(),
         account_addresses: vec![
@@ -773,7 +776,7 @@ fn h21_custom_profile_zero_threshold_still_checks_risk() {
 fn h21_permissive_profile_still_blocks_risk() {
     let core = GraphiteCore::new();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "0b",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
         WalletProfile::Permissive, max_evidence(),
     );
@@ -789,7 +792,7 @@ fn h21_permissive_profile_still_blocks_risk() {
 #[test]
 fn h22_10_accounts_with_state_changes_not_flagged() {
     let input = risk_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["a1","a2","a3","a4","a5","a6","a7","a8","a9","a10"],
         &[],
         &["debits accounts.from", "credits accounts.to"],
@@ -804,7 +807,7 @@ fn h22_10_accounts_with_state_changes_not_flagged() {
 #[test]
 fn h22_10_accounts_no_state_changes_drainer() {
     let input = risk_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["a1","a2","a3","a4","a5","a6","a7","a8","a9","a10"],
         &[],
         &[],

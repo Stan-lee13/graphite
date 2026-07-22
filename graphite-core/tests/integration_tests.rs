@@ -70,7 +70,7 @@ fn test_e2e_system_transfer_approved() {
 fn test_e2e_spl_token_transfer() {
     let core = GraphiteCore::new();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "03",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &[],
@@ -109,7 +109,7 @@ fn test_e2e_unknown_protocol_capped() {
 fn test_e2e_risk_engine_blocks_unverified_cpi() {
     let core = GraphiteCore::new();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "03",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &["unverified_malicious_target"],

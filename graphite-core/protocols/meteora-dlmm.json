@@ -129,8 +129,8 @@
         "updates reserve_x and reserve_y"
       ],
       "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
-        "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f"
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
       ],
       "risk_rules": [
         "user_wallet must be signer",
@@ -261,8 +261,8 @@
         "credits reserve_x and reserve_y"
       ],
       "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
-        "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f"
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
       ],
       "risk_rules": [
         "sender must be signer and own the position",

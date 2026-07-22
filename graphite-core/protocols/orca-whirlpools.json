@@ -101,7 +101,7 @@
         "updates whirlpool reserves and tick arrays"
       ],
       "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
       ],
       "risk_rules": [
         "token_authority must be signer",
@@ -198,7 +198,7 @@
         "updates position and tick arrays"
       ],
       "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
       ],
       "risk_rules": [
         "position_authority must be signer and own the position",

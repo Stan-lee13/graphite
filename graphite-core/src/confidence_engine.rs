@@ -126,11 +126,22 @@ pub fn compute_confidence(
     }
     
     let weight_sum: f64 = signals.iter().map(|s| s.weight).sum();
+    // Reject NaN weight sums (Constitution P3)
+    if weight_sum.is_nan() || weight_sum.is_infinite() {
+        return Err(ConfidenceError::WeightsDoNotSumToOne { sum: weight_sum });
+    }
     if (weight_sum - 1.0).abs() > 0.0001 {
         return Err(ConfidenceError::WeightsDoNotSumToOne { sum: weight_sum });
     }
     
     for signal in signals {
+        // Must reject NaN and Infinity in addition to range check.
+        // NaN < 0.0 is false AND NaN > 1.0 is false → NaN passes naive range check.
+        // f64::INFINITY > 1.0 is true → Infinity IS caught, but NaN is NOT.
+        // Fix: explicit NaN check before range comparison (Constitution P3).
+        if signal.value.is_nan() || signal.value.is_infinite() {
+            return Err(ConfidenceError::SignalOutOfRange { value: signal.value });
+        }
         if signal.value < 0.0 || signal.value > 1.0 {
             return Err(ConfidenceError::SignalOutOfRange { value: signal.value });
         }
@@ -146,6 +157,12 @@ pub fn compute_confidence(
         breakdown.push((signal.kind, contribution));
     }
     
+    // Sanity check: confidence must not be NaN (Constitution P3)
+    // This catches any NaN that might slip through edge cases
+    if confidence.is_nan() || confidence.is_infinite() {
+        confidence = 0.0; // Degrade to zero confidence (P12: fail safe)
+    }
+
     // Apply tier-based ceiling (Constitution P6).
     //
     // `ceiling` is the maximum confidence this trust tier is ALLOWED to

@@ -170,7 +170,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             category: "safe",
             expected_approved: true,
             input: make_input(
-                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "03",
                 &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
                 &[],
@@ -183,7 +183,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             category: "safe",
             expected_approved: true,
             input: make_input(
-                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "08",
                 &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
                 &[],
@@ -198,7 +198,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             category: "malicious",
             expected_approved: false,
             input: make_input(
-                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "03",
                 &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
                 &["unverified_malicious_program"],
@@ -224,7 +224,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             category: "malicious",
             expected_approved: false,
             input: make_input(
-                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "0b",
                 &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
                 &[],
@@ -239,7 +239,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             category: "malicious",
             expected_approved: false,
             input: make_input(
-                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "09",
                 &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
                 &[],
@@ -345,7 +345,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             category: "malicious",
             expected_approved: false,
             input: make_input(
-                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "0b",
                 &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
                 &[],

@@ -86,7 +86,7 @@
         "updates AMM pool reserves"
       ],
       "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
       ],
       "risk_rules": [
         "user_source_owner must be signer",
@@ -175,7 +175,7 @@
         "updates AMM pool reserves"
       ],
       "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
       ],
       "risk_rules": [
         "user_owner must be signer",

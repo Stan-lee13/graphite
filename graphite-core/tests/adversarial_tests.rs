@@ -85,7 +85,7 @@ fn test_evasion_set_authority_with_safe_intent_description() {
     // Attacker declares "transfer" as intent but actually calls SetAuthority
     let core = GraphiteCore::default();
     let mut input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "0b",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &[], WalletProfile::Conservative, good_evidence(),
     );
@@ -101,7 +101,7 @@ fn test_evasion_set_authority_on_token_2022_with_safe_intent() {
     // Same attack but on Token-2022 (which shares SPL Token discriminators)
     let core = GraphiteCore::default();
     let input = make_input(
-        "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f", "0b",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &[], WalletProfile::Conservative, good_evidence(),
     );
@@ -116,7 +116,7 @@ fn test_evasion_drainer_with_safe_intent_and_few_accounts() {
     // This is a known Phase 1 limitation — CloseAccount with 2 accounts won't trigger drainer
     let core = GraphiteCore::default();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "09", // CloseAccount
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "09", // CloseAccount
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
           "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
         &[], WalletProfile::Conservative, good_evidence(),
@@ -200,7 +200,7 @@ fn test_spoofing_empty_discriminator_on_known_program() {
     // Attacker sends empty discriminator to a known program (bypass instruction matching)
     let core = GraphiteCore::default();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "", // empty discriminator
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "", // empty discriminator
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
         &[], WalletProfile::Standard, good_evidence(),
     );
@@ -217,10 +217,10 @@ fn test_spoofing_empty_discriminator_on_known_program() {
 // ============================================================
 
 #[test]
-fn test_boundary_drainer_exactly_5_accounts_passes() {
-    // Exactly 5 accounts — one below the drainer threshold
+fn test_boundary_drainer_exactly_5_accounts_blocked() {
+    // Red Team fix L1: Exactly 5 accounts now BLOCKED (threshold changed from >5 to >=5)
     let input = risk_input("prog", &["a1","a2","a3","a4","a5"], &[], &[], &[], "");
-    assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
+    assert!(matches!(assess(&input).unwrap(), RiskVerdict::Blocked { pattern: RiskPattern::Drainer, .. }));
 }
 
 #[test]
@@ -231,16 +231,16 @@ fn test_boundary_drainer_exactly_6_accounts_blocked() {
 }
 
 #[test]
-fn test_boundary_compositional_drain_exactly_4_cpi_passes() {
-    // 4 CPI targets — one below compositional drain threshold
+fn test_boundary_compositional_drain_4_with_repeat_blocked() {
+    // Red Team fix L3: 4 CPI targets with repeat now BLOCKED (threshold changed from >4 to >=3)
     // allowed_cpis includes all targets so CPI check passes, then compositional drain runs
     let input = risk_input("agg", &[], &["a","a","b","c"], &[], &["a","b","c"], "");
-    assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
+    assert!(matches!(assess(&input).unwrap(), RiskVerdict::Blocked { pattern: RiskPattern::CompositionalDrainPattern, .. }));
 }
 
 #[test]
 fn test_boundary_compositional_drain_5_with_repeat_blocked() {
-    // 5 CPI targets with a repeat — at compositional drain threshold
+    // 5 CPI targets with a repeat — still blocked at new threshold (>=3)
     let input = risk_input("agg", &[], &["a","a","b","c","d"], &[], &["a","b","c","d"], "");
     assert!(matches!(assess(&input).unwrap(), RiskVerdict::Blocked { pattern: RiskPattern::CompositionalDrainPattern, .. }));
 }
@@ -274,7 +274,7 @@ fn test_boundary_confidence_exactly_0_55_unknown_protocol() {
 fn test_chaining_drainer_plus_authority_hijack_plus_cpi() {
     // Transaction that triggers drainer (6+ accounts) + authority hijack + unexpected CPI
     let input = risk_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["a1","a2","a3","a4","a5","a6","a7","a8"], // 8 accounts = drainer
         &["unknown_program"], // unexpected CPI
         &["debits accounts.from", "credits accounts.to"],
@@ -305,11 +305,11 @@ fn test_chaining_drainer_plus_hidden_transfer() {
 fn test_chaining_cpi_allowed_but_authority_hijack_still_blocks() {
     // CPI is allowed, but SetAuthority still triggers authority hijack
     let input = risk_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["account", "authority"],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], // allowed CPI
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], // allowed CPI
         &["changes authority"],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
         "0b", // SetAuthority
     );
     let result = assess(&input).unwrap();
@@ -446,7 +446,7 @@ fn test_confusion_almost_spl_token() {
     // Different from SPL Token by one character
     let core = GraphiteCore::default();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DB", // Last char B instead of A
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DB", // Last char B instead of A
         "0b", // SetAuthority discriminator
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &[], WalletProfile::Conservative, good_evidence(),
@@ -479,7 +479,7 @@ fn test_confusion_capital_vs_lowercase_program_id() {
 #[test]
 fn test_authority_theft_spl_token_set_authority_blocked() {
     let input = risk_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["account", "authority"],
         &[], &["changes authority"], &[], "0b",
     );
@@ -489,7 +489,7 @@ fn test_authority_theft_spl_token_set_authority_blocked() {
 #[test]
 fn test_authority_theft_token_2022_set_authority_blocked() {
     let input = risk_input(
-        "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         &["account", "authority"],
         &[], &["changes authority"], &[], "0b",
     );
@@ -509,7 +509,7 @@ fn test_authority_theft_system_assign_blocked() {
 #[test]
 fn test_authority_theft_spl_token_close_account_blocked() {
     let input = risk_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["account", "destination"],
         &[], &["closes account"], &[], "09",
     );
@@ -519,7 +519,7 @@ fn test_authority_theft_spl_token_close_account_blocked() {
 #[test]
 fn test_authority_theft_token_2022_close_account_blocked() {
     let input = risk_input(
-        "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         &["account", "destination"],
         &[], &["closes account"], &[], "09",
     );
@@ -582,7 +582,7 @@ fn test_manifest_injection_extra_instruction_not_loaded() {
     let mut registry = ManifestRegistry::new();
     let malicious_json = r#"{
         "graphite_manifest_version": "1.0",
-        "protocol": {"name": "Evil", "program_id": "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "website": "", "github": ""},
+        "protocol": {"name": "Evil", "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "website": "", "github": ""},
         "version": {"label": "1.0", "effective_from_slot": 0, "previous_version_ref": null},
         "instructions": [{"name": "EvilTransfer", "discriminator": "03", "accounts": [], "expected_state_changes": [], "allowed_cpis": [], "risk_rules": []}],
         "trust_tier": "Unverified"
@@ -591,7 +591,7 @@ fn test_manifest_injection_extra_instruction_not_loaded() {
     assert!(result.is_ok(), "Loading should succeed (it's a valid manifest format)");
     
     // But it should OVERWRITE the existing SPL Token manifest with a weaker one
-    let manifest = registry.get("TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA");
+    let manifest = registry.get("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
     assert!(manifest.is_some());
     let manifest = manifest.unwrap();
     // The malicious manifest only has 1 instruction, overwriting the 7-instruction SPL Token
@@ -607,7 +607,7 @@ fn test_manifest_trust_tier_does_not_affect_risk_engine() {
     // The risk engine operates on discriminators and program IDs,
     // not on the manifest's trust_tier field
     let input = risk_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         &["account", "authority"],
         &[], &["changes authority"], &[], "0b",
     );
@@ -625,7 +625,7 @@ fn test_adversarial_jupiter_with_malicious_cpi_not_allowed() {
     let core = GraphiteCore::default();
     let input = make_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "e517cb977ae3ad2a",
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
           "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
           "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J"],
         &["4Nd1mYbz1NQ8Tk6eX5N6w5eM6eX5N6w5eM6eX5N6w5eM"], // malicious CPI not in allowed list
@@ -643,8 +643,8 @@ fn test_adversarial_squads_with_non_system_cpi_blocked() {
         "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", "8faecbbfaecf93c5",
         &["Stake11111111111111111111111111111111111111", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
           "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
-          "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J", "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"],
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"], // SPL Token not in Squads allowed_cpis
+          "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], // SPL Token not in Squads allowed_cpis
         WalletProfile::Conservative, good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -656,11 +656,11 @@ fn test_adversarial_orca_swap_with_wrong_cpi_blocked() {
     let core = GraphiteCore::default();
     let input = make_input(
         "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "f8c69e91e17587c8",
-        &["TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
           "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
           "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J", "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
           "11111111111111111111111111111111", "Stake11111111111111111111111111111111111111",
-          "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", "TokenzQdQ81QPToVkTX67G9XGX46D3sC9Dq6EicgC6f",
+          "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
           "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"],
         &["SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf"], // Squads not in Orca allowed_cpis
         WalletProfile::Conservative, good_evidence(),
@@ -695,7 +695,7 @@ fn test_full_pipeline_blocked_transaction_has_audit_trail() {
     // Even blocked transactions must have audit trail for forensic analysis
     let core = GraphiteCore::default();
     let input = make_input(
-        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA", "0b",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "0b",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
         &[], WalletProfile::Conservative, good_evidence(),
     );

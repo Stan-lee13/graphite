@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_spl_token_manifest_has_set_authority() {
         let registry = load_seed_manifests();
-        let manifest = registry.get("TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA")
+        let manifest = registry.get("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
             .expect("SPL Token manifest should be loaded");
         let set_auth = manifest.instructions.iter()
             .find(|i| i.name == "SetAuthority")
