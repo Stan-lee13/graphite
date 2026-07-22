@@ -1,6 +1,7 @@
 # Graphite Phase 1 + 1.5 — Release Evaluation Report
 
-**Release:** Phase 1 + 1.5 Complete  
+**Release:** Phase 1 + 1.5 (Hardened, not final production)
+**Maturity:** Security-verification starter with adversarial hardening. Production-ready for integration testing. Not yet deployed against real on-chain exploit corpus.  
 **Date:** 2026-07-22  
 **Repository:** github.com/Stan-lee13/graphite (main @ latest)  
 **Constitution P16 Compliance:** All metrics below are reproducible via `cargo test` and `cargo run --bin graphite benchmark`
@@ -11,17 +12,19 @@
 
 | Component | Status | Test Count | Method |
 |-----------|--------|------------|--------|
-| Rust Core (lib) | ✅ Production | 83 unit | `cargo test --lib` |
+| Rust Core (lib) | ✅ Phase 1.5 | 83 unit | `cargo test --lib` |
 | Adversarial Tests | ✅ Pass | 45 | `cargo test --test adversarial_tests` |
 | Deep Extreme Tests | ✅ Pass | 43 | `cargo test --test deep_extreme_tests` |
 | Hell Mode Tests | ✅ Pass | 37 | `cargo test --test hell_mode_tests` |
+| Omega Red Team | ✅ Pass | 15 | `cargo test --test omega_red_team` |
+| Omega Red Team Regression | ✅ Pass | 11 | `cargo test --test omega_red_team_regression` |
 | Confidence Engine | ✅ Pass | 13 | `cargo test --test confidence_engine_tests` |
 | Integration Tests | ✅ Pass | 14 | `cargo test --test integration_tests` |
 | Self-Healing Tests | ✅ Pass | 3 | `cargo test --test self_healing_integration_test` |
-| Go SDK | ✅ Pass | 5 | `go test ./...` |
-| Python AI Layer | ✅ Pass | 3/3 intents | `python3 intent_parser.py "<text>"` |
-| TypeScript SDK | ✅ Built | — | Type definitions complete |
-| **Total** | | **264 tests** | **0 failures** |
+| Go SDK | ✅ Pass | 7 | `go test ./...` |
+| Python AI Layer | ✅ Pass | 6 | `python3 test_intent_parser.py` |
+| TypeScript SDK | ✅ Built | — | `npx tsc --noEmit` (type-check only, no runtime tests) |
+| **Total** | | **277 tests** | **0 failures** |
 
 ---
 
@@ -40,7 +43,7 @@ True Positives:   7  (malicious → blocked)
 True Negatives:   4  (safe → approved)
 False Positives:  0  (safe → blocked)
 False Negatives:  0  (malicious → approved)
-Avg Latency:      128μs
+Avg Latency:      ~20μs (release build, in-process)
 ```
 
 ### Benchmark Categories
@@ -121,7 +124,7 @@ Avg Latency:      128μs
 - Full type definitions matching Core's VerificationInput/VerificationResult
 - HTTP client with 30s timeout
 - Methods: Verify, Health, ListManifests
-- 8/8 tests pass (client creation, serialization round-trip, result deserialization, risk findings, health check)
+- 7/7 tests pass (client creation, serialization round-trip, result deserialization, risk findings, health check)
 
 ---
 
@@ -173,12 +176,12 @@ Avg Latency:      128μs
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| All tests pass | ✅ | 264 tests, 0 failures |
+| All tests pass | ✅ | 277 tests total (264 Rust + 7 Go + 6 Python), 0 failures |
 | Benchmark 100% precision/recall | ✅ | 11/11 scored cases correct |
 | Clippy clean (0 errors) | ✅ | 3 minor warnings (unused vars) |
 | Constitution P16 compliance | ✅ | All metrics reproducible via cargo commands |
-| Go SDK tests pass | ✅ | 8/8 tests |
-| Python AI Layer functional | ✅ | 3/3 intent types parse correctly |
+| Go SDK tests pass | ✅ | 7/7 tests (client creation, serialization, ByteArray, simulation baseline, risk findings, health check) |
+| Python AI Layer functional | ✅ | 6/6 tests pass (advisory-only, P1 compliant) |
 | Simulation Integrity wired in | ✅ | Step 3.5 in pipeline |
 | Intent-Program mismatch detection | ✅ | Benchmark case #10 passes |
 | Release build compiles | ✅ | 3.1MB binary |

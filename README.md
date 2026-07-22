@@ -17,7 +17,7 @@ Nothing reaches the wallet before Graphite understands it.
 ```bash
 cd graphite-core
 
-# Run tests (264 tests across unit, integration, adversarial, red-team, confidence, self-healing)
+# Run tests (277 tests: 264 Rust + 7 Go + 6 Python)
 cargo test
 
 # Run the benchmark
@@ -80,13 +80,15 @@ console.log(result.summary);      // "APPROVED | confidence=1.00 | ..."
 
 ### Benchmark Results
 
+Reproduce with: `cargo run --bin graphite benchmark`
+
 ```
 Total cases:      13
 Scored cases:     11 (safe + malicious only)
 Accuracy:         100.0%
 Precision:        100.0%
 Recall:           100.0%
-Avg Latency:      ~97μs
+Avg Latency:      ~20μs (release build)
 ```
 
 ## Architecture
