@@ -395,6 +395,10 @@ fn generate_audit_id(
     risk: &RiskVerdictSummary,
 ) -> String {
     use sha2::{Digest, Sha256};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    
+    let seq = COUNTER.fetch_add(1, Ordering::SeqCst);
     let mut hasher = Sha256::new();
     hasher.update(program_id.as_bytes());
     hasher.update(discriminator.as_bytes());
@@ -405,7 +409,7 @@ fn generate_audit_id(
         hasher.update(f.reason.as_bytes());
     }
     let hash = hasher.finalize();
-    format!("gr-{}", hex::encode(&hash[..8]))
+    format!("gr-{}-{:08x}", hex::encode(&hash[..8]), seq)
 }
 
 fn generate_summary(

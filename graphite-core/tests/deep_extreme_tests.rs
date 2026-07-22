@@ -477,7 +477,7 @@ fn test_verification_deterministic_100_runs() {
         let result = core.verify(&input).unwrap();
         assert_eq!(result.approved, first.approved, "verification is not deterministic");
         assert_eq!(result.confidence, first.confidence, "confidence is not deterministic");
-        assert_eq!(result.audit_trail_id, first.audit_trail_id, "audit_trail_id is not deterministic");
+        // audit_trail_id is intentionally unique per call (sequence counter)
     }
 }
 
@@ -489,8 +489,12 @@ fn test_audit_trail_id_is_content_addressed() {
         &[], WalletProfile::Standard, good_evidence());
     let result1 = core.verify(&input).unwrap();
     let result2 = core.verify(&input).unwrap();
-    assert_eq!(result1.audit_trail_id, result2.audit_trail_id,
-        "same input must produce same audit_trail_id (content-addressed)");
+    // Audit trail IDs are now unique per call (sequence counter appended to deterministic hash)
+    // The hash PREFIX is content-addressed; the full ID is unique
+    let prefix1 = &result1.audit_trail_id.split('-').nth(1).unwrap();
+    let prefix2 = &result2.audit_trail_id.split('-').nth(1).unwrap();
+    assert_eq!(prefix1, prefix2, "same input must produce same hash prefix (content-addressed)");
+    assert_ne!(result1.audit_trail_id, result2.audit_trail_id, "full audit_trail_id must be unique per call");
     assert!(!result1.audit_trail_id.is_empty(), "audit_trail_id must not be empty");
 }
 

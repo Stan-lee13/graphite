@@ -245,7 +245,10 @@ fn detect_drainer_pattern(accounts: &[String], expected_changes: &[String]) -> b
     // If transaction touches many accounts but declares no/minimal changes,
     // it's suspicious — a legitimate program with 6+ accounts should declare
     // what it's doing with them.
-    accounts.len() > 5 && expected_changes.is_empty()
+    // Check both empty vec AND vec with only empty/whitespace strings
+    let has_meaningful_changes = !expected_changes.is_empty()
+        && expected_changes.iter().any(|c| !c.trim().is_empty());
+    accounts.len() > 5 && !has_meaningful_changes
 }
 
 /// Detect compositional drain patterns in CPI chain.
@@ -285,8 +288,10 @@ fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> b
         .filter(|c| c.contains("accounts."))
         .count();
 
-    // Only flag when accounts > 4x the referenced count AND at least 8 accounts
-    accounts.len() > referenced_account_count.saturating_mul(4).max(8)
+    // Only flag when accounts > 6x the referenced count AND at least 12 accounts
+    // This prevents false positives on legitimate multi-account protocols
+    // (e.g., Orca Whirlpools has 11 accounts with 2 state change references)
+    accounts.len() > referenced_account_count.saturating_mul(6).max(12)
 }
 
 #[cfg(test)]
@@ -452,8 +457,8 @@ mod tests {
 
     #[test]
     fn test_hidden_transfer_detected() {
-        // Manifest says 1 account change, but transaction touches 10 accounts
-        // (threshold: >4x referenced with "accounts." notation, min 8 accounts)
+        // Manifest says 1 account change, but transaction touches 13 accounts
+        // (threshold: >6x referenced with "accounts." notation, min 12 accounts)
         let input = RiskAssessmentInput {
             program_id: "some_program".to_string(),
             accounts: vec![
@@ -462,6 +467,8 @@ mod tests {
                 "a5".to_string(), "a6".to_string(),
                 "a7".to_string(), "a8".to_string(),
                 "a9".to_string(), "a10".to_string(),
+                "a11".to_string(), "a12".to_string(),
+                "a13".to_string(),
             ],
             cpi_targets: vec![],
             expected_state_changes: vec![
