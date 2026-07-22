@@ -225,6 +225,8 @@ impl GraphiteCore {
             accounts: input.account_addresses.clone(),
             cpi_targets: input.cpi_targets.clone(),
             expected_state_changes: expected_state_changes.clone(),
+            allowed_cpis: allowed_cpis.clone(),
+            instruction_discriminator: input.instruction_discriminator.clone(),
         })?;
 
         let risk_summary = summarize_risk(&risk_verdict);

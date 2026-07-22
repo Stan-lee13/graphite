@@ -1,0 +1,69 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Squads V4 Multisig",
+    "program_id": "6XBGfP17P3KQAKoJb2s5M5fR4aFTXzPeuC1af2GYkvhD",
+    "website": "https://docs.squads.so",
+    "github": "https://github.com/Squads-Protocol/v4"
+  },
+  "version": {
+    "label": "4.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "CreateTransaction",
+      "discriminator": "01",
+      "accounts": [
+        { "name": "multisig", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": ["multisig"] },
+        { "name": "transaction", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": ["transaction"] },
+        { "name": "creator", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "creates a new draft transaction in the multisig"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "creator must be a member of the multisig",
+        "RISK: verify the transaction being created is expected"
+      ]
+    },
+    {
+      "name": "ExecuteTransaction",
+      "discriminator": "08",
+      "accounts": [
+        { "name": "multisig", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": ["multisig"] },
+        { "name": "transaction", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": ["transaction"] },
+        { "name": "member", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "executes the multisig transaction after all required approvals",
+        "performs CPI to target programs as specified in the transaction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "member must be a member of the multisig",
+        "RISK: CPI targets must be reviewed — multisig can execute arbitrary transactions",
+        "RISK: verify all required approvals have been collected before execution"
+      ]
+    },
+    {
+      "name": "AddMember",
+      "discriminator": "03",
+      "accounts": [
+        { "name": "multisig", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": ["multisig"] },
+        { "name": "member", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "adds a new member to the multisig"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "member must be signer and have admin permissions",
+        "RISK: PERMISSION_ESCALATION — adding members changes who can approve transactions"
+      ]
+    }
+  ],
+  "trust_tier": "BattleTested"
+}

@@ -1,0 +1,73 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Raydium AMM V4",
+    "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+    "website": "https://docs.raydium.io/products/amm-v4",
+    "github": "https://github.com/raydium-io/raydium-amm"
+  },
+  "version": {
+    "label": "1.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "SwapBaseIn",
+      "discriminator": "09",
+      "accounts": [
+        { "name": "amm", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "authority", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "open_orders", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "target_orders", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "base_vault", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "quote_vault", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "user_source_token_account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "user_destination_token_account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "user_source_owner", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "debits accounts.user_source_token_account by input amount",
+        "credits accounts.user_destination_token_account by output amount (minus fees)",
+        "updates AMM pool reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "user_source_owner must be signer",
+        "RISK: output amount must match expected swap result within slippage tolerance",
+        "RISK: verify amm pool is legitimate and not a honeypot"
+      ]
+    },
+    {
+      "name": "Deposit",
+      "discriminator": "01",
+      "accounts": [
+        { "name": "amm", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "authority", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "open_orders", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "lp_mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "user_lp_token_account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "base_vault", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "quote_vault", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "user_base_token_account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "user_quote_token_account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "user_owner", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "debits user_base and quote token accounts",
+        "credits user_lp_token_account with LP tokens",
+        "updates AMM pool reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "user_owner must be signer",
+        "RISK: verify LP mint matches the amm pool"
+      ]
+    }
+  ],
+  "trust_tier": "BattleTested"
+}

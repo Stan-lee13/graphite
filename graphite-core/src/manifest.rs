@@ -157,6 +157,9 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 
     let _ = registry.load_from_json(include_str!("../protocols/system-program.json"));
     let _ = registry.load_from_json(include_str!("../protocols/spl-token.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/stake-program.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"));
+    let _ = registry.load_from_json(include_str!("../protocols/squads-v4.json"));
 
     registry
 }
@@ -169,7 +172,7 @@ mod tests {
     fn test_seed_manifests_load_successfully() {
         let registry = load_seed_manifests();
         let manifests = registry.list();
-        assert!(manifests.len() >= 2, "expected at least 2 seed manifests");
+        assert!(manifests.len() >= 5, "expected at least 2 seed manifests");
     }
 
     #[test]

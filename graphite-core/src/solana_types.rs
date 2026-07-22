@@ -61,13 +61,6 @@ impl Pubkey {
     }
 
     /// Token-2022 Program
-    pub fn token_2022() -> Pubkey {
-        Pubkey(bs58::decode("TokenzQdBNbLqP5VEhMpASvAH1Q7AJZ7pK9wqAF3Q7M2")
-            .into_vec()
-            .unwrap()
-            .try_into()
-            .unwrap())
-    }
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)

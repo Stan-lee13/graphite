@@ -219,13 +219,28 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             ),
         },
         BenchmarkCase {
-            label: "Authority hijack attempt",
+            label: "Authority hijack (SetAuthority)",
             category: "malicious",
             expected_approved: false,
             input: make_input(
-                "11111111111111111111111111111111",
-                "02000000",
-                &["8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
+                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "0b",
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+                &[],
+                WalletProfile::Conservative,
+                no_evidence(),
+            ),
+        },
+
+        // CloseAccount drainer
+        BenchmarkCase {
+            label: "Account drain (CloseAccount)",
+            category: "malicious",
+            expected_approved: false,
+            input: make_input(
+                "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+                "09",
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
                 &[],
                 WalletProfile::Conservative,
                 no_evidence(),

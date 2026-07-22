@@ -1,0 +1,75 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Stake Program",
+    "program_id": "Stake11111111111111111111111111111111111111",
+    "website": "https://docs.solana.com/staking/stake-programs",
+    "github": "https://github.com/anza-xyz/agave/tree/master/sdk/program/src/stake"
+  },
+  "version": {
+    "label": "1.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Delegate",
+      "discriminator": "00000000",
+      "accounts": [
+        { "name": "stake", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] },
+        { "name": "vote", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "clock_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "stake_history_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "config_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "authorized", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "delegates stake account to vote account for staking"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "stake must be initialized and have delegated stake authority",
+        "authorized must be signer and match stake account's staker",
+        "RISK: delegating to unknown/unverified vote accounts should be flagged"
+      ]
+    },
+    {
+      "name": "Withdraw",
+      "discriminator": "07000000",
+      "accounts": [
+        { "name": "stake", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "withdrawer", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] },
+        { "name": "clock_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "stake_history_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "to", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "debits accounts.stake by withdrawal amount",
+        "credits accounts.to by withdrawal amount"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "withdrawer must be signer and match stake account's withdrawer authority",
+        "RISK: withdrawing to new/dormant accounts should be flagged"
+      ]
+    },
+    {
+      "name": "Deactivate",
+      "discriminator": "08000000",
+      "accounts": [
+        { "name": "stake", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "clock_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "authorized", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "deactivates stake account — begins cooldown period"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "authorized must be signer and match stake account's staker",
+        "stake must currently be active"
+      ]
+    }
+  ],
+  "trust_tier": "BattleTested"
+}
