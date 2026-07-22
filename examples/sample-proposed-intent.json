@@ -1,0 +1,11 @@
+{
+  "intent_type": "swap",
+  "raw_natural_language": "Swap 0.5 SOL to USDC on a trusted route",
+  "confidence_of_parse": 0.94,
+  "extracted_parameters": {
+    "input_token": "SOL",
+    "output_token": "USDC",
+    "amount": "0.5",
+    "slippage_bps": 50
+  }
+}

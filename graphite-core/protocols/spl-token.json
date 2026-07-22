@@ -1,0 +1,140 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "SPL Token Program",
+    "program_id": "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",
+    "website": "https://spl.solana.com/token",
+    "github": "https://github.com/solana-program/token"
+  },
+  "version": {
+    "label": "3.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Transfer",
+      "discriminator": "03",
+      "accounts": [
+        { "name": "source", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "destination", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "debits accounts.source token balance by data.amount",
+        "credits accounts.destination token balance by data.amount"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "authority must be signer and match source account's delegated authority or owner",
+        "amount must not exceed source balance",
+        "RISK: large transfers to new/dormant accounts should be flagged"
+      ]
+    },
+    {
+      "name": "InitializeMint",
+      "discriminator": "00",
+      "accounts": [
+        { "name": "mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "rent_sysvar", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "initializes mint account with decimals, mint_authority, freeze_authority"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "mint must not already be initialized"
+      ]
+    },
+    {
+      "name": "MintTo",
+      "discriminator": "07",
+      "accounts": [
+        { "name": "mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "credits accounts.account token balance by data.amount",
+        "updates mint supply by data.amount"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "mint_authority must be signer",
+        "RISK: minting to unrelated accounts should be flagged for review",
+        "RISK: unlimited mint authority should be flagged"
+      ]
+    },
+    {
+      "name": "Burn",
+      "discriminator": "08",
+      "accounts": [
+        { "name": "account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "debits accounts.account token balance by data.amount",
+        "decreases mint supply by data.amount"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "authority must be signer and match account's delegated authority or owner"
+      ]
+    },
+    {
+      "name": "Approve",
+      "discriminator": "04",
+      "accounts": [
+        { "name": "source", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "delegate", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
+        { "name": "owner", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "sets accounts.source delegated_amount to data.amount for accounts.delegate"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "owner must be signer",
+        "RISK: approving large amounts should be flagged"
+      ]
+    },
+    {
+      "name": "SetAuthority",
+      "discriminator": "0b",
+      "accounts": [
+        { "name": "account_or_mint", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "current_authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "changes authority (owner, mint_authority, freeze_authority) of accounts.account_or_mint"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "current_authority must be signer",
+        "RISK: AUTHORITY_HIJACK — this instruction changes who controls the account. Always flag if called by unexpected authority.",
+        "RISK: setting authority to system program (all zeros) effectively burns the account",
+        "RISK: setting freeze_authority should be flagged separately from mint_authority"
+      ]
+    },
+    {
+      "name": "CloseAccount",
+      "discriminator": "09",
+      "accounts": [
+        { "name": "account", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "destination", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
+        { "name": "owner", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "closes accounts.account, transfers remaining lamports to accounts.destination",
+        "zeroes account data"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "owner must be signer",
+        "RISK: DRAIN — closing account sends all lamports to destination, verify destination is expected"
+      ]
+    }
+  ],
+  "trust_tier": "BattleTested"
+}

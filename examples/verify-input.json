@@ -1,0 +1,21 @@
+{
+  "proposed_intent": {
+    "intent_type": "transfer",
+    "raw_natural_language": "Transfer 1 SOL to friend",
+    "confidence_of_parse": 0.95
+  },
+  "program_id": "11111111111111111111111111111111",
+  "protocol_version": "1.0.0",
+  "instruction_discriminator": "02000000",
+  "account_addresses": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+  ],
+  "wallet_profile": "Standard",
+  "behavior_evidence": {
+    "has_signed_manifest": false,
+    "community_verified_count": 5,
+    "battle_tested_tx_count": 50000,
+    "simulation_match_count": 100
+  }
+}

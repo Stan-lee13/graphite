@@ -1,0 +1,81 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "System Program",
+    "program_id": "11111111111111111111111111111111",
+    "website": "https://docs.solana.com/runtime/programs#system-program",
+    "github": "https://github.com/anza-xyz/agave/tree/master/sdk/program/src/system"
+  },
+  "version": {
+    "label": "1.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Transfer",
+      "discriminator": "02000000",
+      "accounts": [
+        { "name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] },
+        { "name": "to", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "debits accounts.from by data.amount lamports",
+        "credits accounts.to by data.amount lamports"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "amount must not exceed accounts.from lamport balance",
+        "from must be signer"
+      ]
+    },
+    {
+      "name": "CreateAccount",
+      "discriminator": "00000000",
+      "accounts": [
+        { "name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] },
+        { "name": "to", "role": "writable", "is_writable": true, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "debits accounts.from by (data.lamports + rent_exempt_minimum)",
+        "creates new account at accounts.to with data.space bytes owned by data.owner"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "to must be signer and not already initialized",
+        "owner is set from instruction data (can be any program)"
+      ]
+    },
+    {
+      "name": "Assign",
+      "discriminator": "01000000",
+      "accounts": [
+        { "name": "account", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "sets accounts.account owner to data.owner"
+      ],
+ "allowed_cpis": [],
+      "risk_rules": [
+        "account must be signer — only current owner can reassign",
+        "RISK: changes program ownership — flag if unexpected"
+      ]
+    },
+    {
+      "name": "Allocate",
+      "discriminator": "08000000",
+      "accounts": [
+        { "name": "account", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] }
+      ],
+      "expected_state_changes": [
+        "allocates data.space bytes for accounts.account"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "account must be signer",
+        "space must be reasonable (< 10MB per account)"
+      ]
+    }
+  ],
+  "trust_tier": "BattleTested"
+}

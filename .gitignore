@@ -1,0 +1,11 @@
+/target/
+**/target/
+**/*.rs.bk
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+*.log
+*.pyc
+__pycache__/
+graphite-core/Cargo.lock

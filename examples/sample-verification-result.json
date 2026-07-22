@@ -1,0 +1,13 @@
+{
+  "confidence": 0.83,
+  "breakdown": [
+    { "kind": "ManifestMatch", "raw_value": 1.0, "weight": 0.3, "contribution": 0.3 },
+    { "kind": "SimulationMatch", "raw_value": 0.67, "weight": 0.3, "contribution": 0.2 },
+    { "kind": "HistoricalVolume", "raw_value": 0.4, "weight": 0.25, "contribution": 0.1 },
+    { "kind": "CommunityVerification", "raw_value": 0.5, "weight": 0.15, "contribution": 0.075 }
+  ],
+  "trust_tier": "OfficialManifest",
+  "risk_verdict": { "status": "Clear", "findings": [] },
+  "policy_verdict": "Approved",
+  "audit_trail_id": "gr-0123456789abcdef"
+}
