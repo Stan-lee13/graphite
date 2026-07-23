@@ -1,115 +1,62 @@
 # Graphite
 
-Transaction verification for Solana AI agents. Graphite sits between an AI agent and the wallet, verifying that a constructed transaction actually does what was declared — with a transparent, falsifiable confidence score.
+Transaction intent verification for Solana AI agents.
 
-## What Graphite Does
+Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, staying accurate as protocols evolve.
 
+## Phase 1 + 1.5 — COMPLETE (v0.1.0-alpha)
+
+**Core verification engine** (Rust):
+- 8-layer verification pipeline: Account Resolution → Transaction Construction → Risk → Confidence → Policy → Unknown Protocol Mode
+- 10 seed protocol manifests (System, SPL Token, Token-2022, Stake, Raydium AMM V4, Squads V4, Jupiter V6, Orca Whirlpools, Meteora DLMM, Memo)
+- Risk Engine: 5 P0 patterns (Drainer, AuthorityHijack, HiddenTransfer, UnexpectedCpi, FakeSwap)
+- Unknown Protocol Mode with hard confidence ceiling
+- Benchmark: 13 cases, 100% precision/recall, ~25-66μs avg latency
+
+**Consumer surfaces:**
+- TypeScript SDK + Go SDK (full VerificationResult round-trip)
+- CLI (Rust, feature-gated)
+- Python AI Layer (advisory-only, separate process — P1 compliance)
+- **Solana Agent Kit integration** — end-to-end demo: NL → AI Layer → Graphite Core → SAK execution
+
+**279 tests passing** (266 Rust + 7 Go + 6 Python), 0 clippy warnings.
+
+## Quick Start
+
+### Run the Solana Agent Kit demo
+
+```bash
+# 1. Start Graphite Core
+cd graphite-core && cargo run --release --bin graphite -- server --port 7331
+
+# 2. Start AI Layer (separate process)
+cd python-ai-layer && python3 intent_parser.py --serve --port 8081
+
+# 3. Run the demo (dry-run)
+cd integrations/solana-agent-kit
+npx tsx demo.ts "Swap 0.5 SOL for USDC"
 ```
-AI Agent → Graphite → Wallet → Blockchain
-```
 
-Nothing reaches the wallet before Graphite understands it.
+The demo shows the full flow:
+1. AI Layer parses "Swap 0.5 SOL for USDC" → ProposedIntent
+2. Graphite Core verifies the Jupiter V6 swap → VerificationResult (approved)
+3. Agent would execute via `agent.methods.trade()` (dry-run shows the path)
 
-## Phase 1 MVP
+It also demonstrates the security property — a malicious CPI route is **blocked** by Graphite (fail-closed per Constitution P12).
 
-### Core (Rust)
+### Run the benchmark
 
 ```bash
 cd graphite-core
-
-# Run tests (279 tests: 266 Rust + 7 Go + 6 Python)
-cargo test
-
-# Run the benchmark
-cargo run --bin graphite benchmark
-
-# Start the HTTP server
-cargo run --bin graphite server --port 7331
-
-# Verify a transaction from file
-cargo run --bin graphite verify --file examples/verify-input.json
-
-# List loaded protocol manifests
-cargo run --bin graphite manifests
+cargo run --release --bin graphite -- benchmark
 ```
 
-### API Endpoints
+## Documentation
 
-- `POST /verify` — Verify a transaction
-- `GET /health` — Health check
-- `GET /manifests` — List loaded protocol manifests
-
-### Protocol Manifests
-
-Graphite ships with built-in manifests for 10 Solana protocols:
-- **System Program** (Transfer, CreateAccount, Assign, Allocate)
-- **SPL Token Program** (Transfer, InitializeMint, MintTo, Burn, Approve, SetAuthority, CloseAccount)
-- **Token-2022** (Transfer, SetAuthority, CloseAccount)
-- **Stake Program** (DelegateStake, Deactivate, Withdraw)
-- **Raydium AMM V4** (Swap, AddLiquidity)
-- **Squads V4 Multisig** (multisigCreateV2, vaultTransactionCreate)
-- **Jupiter V6** (Swap via route)
-- **Orca Whirlpools** (Swap)
-- **Meteora DLMM** (Swap)
-- **Memo Program** (Memo)
-
-Custom manifests can be loaded at runtime via the `GraphiteCore::load_manifest()` API.
-
-### TypeScript SDK
-
-```typescript
-import { GraphiteClient } from "@graphite/sdk";
-
-const client = new GraphiteClient({ baseUrl: "http://localhost:7331" });
-
-const result = await client.verify({
-  proposed_intent: {
-    intent_type: "transfer",
-    raw_natural_language: "Transfer 1 SOL to friend",
-    confidence_of_parse: 0.95,
-  },
-  program_id: "11111111111111111111111111111111",
-  instruction_discriminator: "02000000",
-  account_addresses: ["7xKXtg..."],
-});
-
-console.log(result.approved);     // true
-console.log(result.confidence);   // 1.0
-console.log(result.summary);      // "APPROVED | confidence=1.00 | ..."
-```
-
-### Benchmark Results
-
-Reproduce with: `cargo run --bin graphite benchmark`
-
-```
-Total cases:      13
-Scored cases:     11 (safe + malicious only)
-Accuracy:         100.0%
-Precision:        100.0%
-Recall:           100.0%
-Avg Latency:      ~20μs (release build)
-```
-
-## Architecture
-
-Graphite Core is organized around an 8-layer verification pipeline:
-1. Account Resolution
-2. Transaction Construction
-3. Simulation
-4. Protocol Intelligence
-5. Semantic Verification
-6. Policy Engine
-7. Risk Verification
-8. Confidence Engine
-
-Key principles (Constitution):
-- AI proposes, deterministic code verifies (P1)
-- Confidence is always scored, never boolean (P3)
-- Unknown protocols get capped confidence (P6/P12)
-- Risk engine blocks override confidence (hard gate)
-- Everything is deterministic and reproducible (P2)
+- [Release Evaluation Report](RELEASE_EVALUATION_REPORT.md) — P16 compliant, reproducible
+- [Architecture](https://github.com/Stan-lee13/graphite/blob/main/ARCHITECTURE.md) — full system design
+- [Engineering Skill](https://github.com/Stan-lee13/graphite-engineering-skill) — the skill that builds Graphite
 
 ## License
 
-MIT
+MIT — Copyright Victor Stanley
