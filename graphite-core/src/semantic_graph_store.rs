@@ -70,8 +70,7 @@ pub struct Behavior {
 }
 
 /// Evidence contributing to trust tier computation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub struct BehaviorEvidence {
     /// Whether manifest is signed
     pub has_signed_manifest: bool,
@@ -100,26 +99,27 @@ pub mod thresholds {
 pub fn compute_trust_tier(evidence: &BehaviorEvidence) -> TrustTier {
     // Tier 5: Battle-tested (requires volume AND independent credibility)
     if evidence.battle_tested_tx_count >= thresholds::BATTLE_TESTED_TX
-        && (evidence.has_signed_manifest || evidence.community_verified_count >= thresholds::COMMUNITY_VERIFIED)
+        && (evidence.has_signed_manifest
+            || evidence.community_verified_count >= thresholds::COMMUNITY_VERIFIED)
     {
         return TrustTier::BattleTested;
     }
-    
+
     // Tier 4: Community-verified
     if evidence.community_verified_count >= thresholds::COMMUNITY_VERIFIED {
         return TrustTier::CommunityVerified;
     }
-    
+
     // Tier 3: Simulation-validated
     if evidence.simulation_match_count >= thresholds::SIMULATION_MATCH {
         return TrustTier::SimulationValidated;
     }
-    
+
     // Tier 2: Official manifest
     if evidence.has_signed_manifest {
         return TrustTier::OfficialManifest;
     }
-    
+
     // Tier 1: Heuristic-inferred (default for any program with some evidence)
     // Tier 0: Unknown (no evidence at all - not represented in this enum)
     TrustTier::HeuristicInferred
@@ -136,7 +136,7 @@ impl SemanticGraphStore {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Append a new Behavior record (append-only, Constitution P4).
     ///
     /// A normal `append` is always a non-quarantined record — this method
@@ -151,16 +151,16 @@ impl SemanticGraphStore {
                 reason: "program_id cannot be empty".to_string(),
             });
         }
-        
+
         // Compute trust tier from evidence (Constitution P7) — never trust
         // whatever the caller put in `behavior.trust_tier`.
         let trust_tier = compute_trust_tier(&behavior.evidence);
-        
+
         let mut behavior = behavior;
         behavior.trust_tier = trust_tier;
         behavior.quarantined = false;
         behavior.quarantine_reason = None;
-        
+
         // Append (never mutate existing)
         self.behaviors.push(behavior);
         Ok(())
@@ -180,7 +180,11 @@ impl SemanticGraphStore {
     ///
     /// Returns `SemanticGraphError::NotFound` if no record exists yet for
     /// `program_id` — there is nothing to quarantine.
-    pub fn quarantine(&mut self, program_id: &str, reason: String) -> Result<(), SemanticGraphError> {
+    pub fn quarantine(
+        &mut self,
+        program_id: &str,
+        reason: String,
+    ) -> Result<(), SemanticGraphError> {
         let latest = self
             .get(program_id)
             .ok_or_else(|| SemanticGraphError::NotFound {
@@ -198,19 +202,25 @@ impl SemanticGraphStore {
         self.behaviors.push(quarantined_record);
         Ok(())
     }
-    
+
     /// Get Behavior record for a program ID (latest version — reflects
     /// quarantine if `quarantine()` was ever called for this program, since
     /// quarantine appends a new, newer record).
     pub fn get(&self, program_id: &str) -> Option<&Behavior> {
-        self.behaviors.iter().rev().find(|b| b.program_id == program_id)
+        self.behaviors
+            .iter()
+            .rev()
+            .find(|b| b.program_id == program_id)
     }
-    
+
     /// Get all Behavior records for a program ID (all versions, append-only
     /// history — includes pre-quarantine records with their original,
     /// legitimately-earned trust tier, per Constitution P4).
     pub fn get_all_versions(&self, program_id: &str) -> Vec<&Behavior> {
-        self.behaviors.iter().filter(|b| b.program_id == program_id).collect()
+        self.behaviors
+            .iter()
+            .filter(|b| b.program_id == program_id)
+            .collect()
     }
 }
 
@@ -221,7 +231,7 @@ mod tests {
     #[test]
     fn test_append_only_enforcement() {
         let mut store = SemanticGraphStore::new();
-        
+
         let behavior1 = Behavior {
             program_id: "test_program".to_string(),
             version: "1.0".to_string(),
@@ -237,9 +247,9 @@ mod tests {
             quarantined: false,
             quarantine_reason: None,
         };
-        
+
         store.append(behavior1).unwrap();
-        
+
         // Cannot mutate existing record - only append new versions
         assert_eq!(store.behaviors.len(), 1);
     }
@@ -252,7 +262,7 @@ mod tests {
             battle_tested_tx_count: 0,
             simulation_match_count: 0,
         };
-        
+
         let tier = compute_trust_tier(&evidence);
         assert_eq!(tier, TrustTier::OfficialManifest);
     }
@@ -266,7 +276,7 @@ mod tests {
             battle_tested_tx_count: 1500, // High volume
             simulation_match_count: 10,
         };
-        
+
         let tier = compute_trust_tier(&evidence);
         assert_ne!(tier, TrustTier::BattleTested);
     }
@@ -279,49 +289,53 @@ mod tests {
             battle_tested_tx_count: 100,
             simulation_match_count: 5,
         };
-        
+
         let tier1 = compute_trust_tier(&evidence);
         let tier2 = compute_trust_tier(&evidence);
-        
+
         assert_eq!(tier1, tier2);
     }
 
     #[test]
     fn test_get_returns_latest_version() {
         let mut store = SemanticGraphStore::new();
-        
-        store.append(Behavior {
-            program_id: "test".to_string(),
-            version: "1.0".to_string(),
-            expected_state_changes: vec![],
-            allowed_cpis: vec![],
-            trust_tier: TrustTier::Unknown,
-            evidence: BehaviorEvidence {
-                has_signed_manifest: true,
-                community_verified_count: 0,
-                battle_tested_tx_count: 0,
-                simulation_match_count: 0,
-            },
-            quarantined: false,
-            quarantine_reason: None,
-        }).unwrap();
-        
-        store.append(Behavior {
-            program_id: "test".to_string(),
-            version: "2.0".to_string(),
-            expected_state_changes: vec![],
-            allowed_cpis: vec![],
-            trust_tier: TrustTier::Unknown,
-            evidence: BehaviorEvidence {
-                has_signed_manifest: true,
-                community_verified_count: 2,
-                battle_tested_tx_count: 0,
-                simulation_match_count: 0,
-            },
-            quarantined: false,
-            quarantine_reason: None,
-        }).unwrap();
-        
+
+        store
+            .append(Behavior {
+                program_id: "test".to_string(),
+                version: "1.0".to_string(),
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                trust_tier: TrustTier::Unknown,
+                evidence: BehaviorEvidence {
+                    has_signed_manifest: true,
+                    community_verified_count: 0,
+                    battle_tested_tx_count: 0,
+                    simulation_match_count: 0,
+                },
+                quarantined: false,
+                quarantine_reason: None,
+            })
+            .unwrap();
+
+        store
+            .append(Behavior {
+                program_id: "test".to_string(),
+                version: "2.0".to_string(),
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                trust_tier: TrustTier::Unknown,
+                evidence: BehaviorEvidence {
+                    has_signed_manifest: true,
+                    community_verified_count: 2,
+                    battle_tested_tx_count: 0,
+                    simulation_match_count: 0,
+                },
+                quarantined: false,
+                quarantine_reason: None,
+            })
+            .unwrap();
+
         let latest = store.get("test").unwrap();
         assert_eq!(latest.version, "2.0");
     }
@@ -354,7 +368,11 @@ mod tests {
             simulation_match_count: 50,
         };
         store
-            .append(sample_behavior("battle-tested-program", "1.0", strong_evidence))
+            .append(sample_behavior(
+                "battle-tested-program",
+                "1.0",
+                strong_evidence,
+            ))
             .unwrap();
 
         // Before quarantine: legitimately BattleTested.
@@ -364,7 +382,10 @@ mod tests {
         );
 
         store
-            .quarantine("battle-tested-program", "anomalous compute units, z=225.0".to_string())
+            .quarantine(
+                "battle-tested-program",
+                "anomalous compute units, z=225.0".to_string(),
+            )
             .unwrap();
 
         let quarantined = store.get("battle-tested-program").unwrap();
@@ -432,7 +453,11 @@ mod tests {
             simulation_match_count: 0,
         };
         store
-            .append(sample_behavior("recovering-program", "1.0", evidence.clone()))
+            .append(sample_behavior(
+                "recovering-program",
+                "1.0",
+                evidence.clone(),
+            ))
             .unwrap();
         store
             .quarantine("recovering-program", "incident".to_string())
@@ -446,4 +471,3 @@ mod tests {
         assert_eq!(latest.version, "2.0");
     }
 }
-

@@ -116,9 +116,10 @@ impl ManifestRegistry {
         program_id: &str,
         discriminator_hex: &str,
     ) -> Option<&'a InstructionDef> {
-        self.get(program_id)?.instructions.iter().find(|i| {
-            i.discriminator.to_lowercase() == discriminator_hex.to_lowercase()
-        })
+        self.get(program_id)?
+            .instructions
+            .iter()
+            .find(|i| i.discriminator.to_lowercase() == discriminator_hex.to_lowercase())
     }
 
     fn validate(&self, manifest: &ProtocolManifest) -> Result<(), ManifestError> {
@@ -139,10 +140,12 @@ impl ManifestRegistry {
             // with no instruction selector — the entire data field IS the instruction)
             if !ix.discriminator.is_empty() {
                 // Validate discriminator is valid hex
-                hex::decode(&ix.discriminator)
-                    .map_err(|e| ManifestError::Invalid(
-                        format!("instruction '{}' has invalid discriminator hex: {e}", ix.name),
-                    ))?;
+                hex::decode(&ix.discriminator).map_err(|e| {
+                    ManifestError::Invalid(format!(
+                        "instruction '{}' has invalid discriminator hex: {e}",
+                        ix.name
+                    ))
+                })?;
             }
         }
         Ok(())
@@ -182,9 +185,12 @@ mod tests {
     #[test]
     fn test_system_program_manifest_has_transfer() {
         let registry = load_seed_manifests();
-        let manifest = registry.get("11111111111111111111111111111111")
+        let manifest = registry
+            .get("11111111111111111111111111111111")
             .expect("System Program manifest should be loaded");
-        let transfer = manifest.instructions.iter()
+        let transfer = manifest
+            .instructions
+            .iter()
             .find(|i| i.name == "Transfer")
             .expect("Transfer instruction should exist");
         assert_eq!(transfer.discriminator, "02000000");
@@ -193,12 +199,18 @@ mod tests {
     #[test]
     fn test_spl_token_manifest_has_set_authority() {
         let registry = load_seed_manifests();
-        let manifest = registry.get("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        let manifest = registry
+            .get("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
             .expect("SPL Token manifest should be loaded");
-        let set_auth = manifest.instructions.iter()
+        let set_auth = manifest
+            .instructions
+            .iter()
             .find(|i| i.name == "SetAuthority")
             .expect("SetAuthority instruction should exist");
-        assert!(!set_auth.risk_rules.is_empty(), "SetAuthority should have risk rules");
+        assert!(
+            !set_auth.risk_rules.is_empty(),
+            "SetAuthority should have risk rules"
+        );
     }
 
     #[test]

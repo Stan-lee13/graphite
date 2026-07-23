@@ -2,7 +2,11 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "graphite", about = "Graphite — Transaction verification for Solana AI agents", version)]
+#[command(
+    name = "graphite",
+    about = "Graphite — Transaction verification for Solana AI agents",
+    version
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -35,25 +39,23 @@ enum Commands {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Verify { file: Some(path), stdin: false } => {
-            graphite_core::cli::verify_from_file(&path)
-        }
-        Commands::Verify { file: None, stdin: true } => {
-            graphite_core::cli::verify_from_stdin()
-        }
+        Commands::Verify {
+            file: Some(path),
+            stdin: false,
+        } => graphite_core::cli::verify_from_file(&path),
+        Commands::Verify {
+            file: None,
+            stdin: true,
+        } => graphite_core::cli::verify_from_stdin(),
         Commands::Verify { .. } => {
             eprintln!("Error: specify --file <path> or --stdin");
             std::process::exit(1);
         }
-        Commands::Manifests => {
-            graphite_core::cli::run(graphite_core::cli::CliCommand::Manifests)
-        }
+        Commands::Manifests => graphite_core::cli::run(graphite_core::cli::CliCommand::Manifests),
         #[cfg(feature = "server")]
         Commands::Server { port } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Server { port })
         }
-        Commands::Benchmark => {
-            graphite_core::cli::run(graphite_core::cli::CliCommand::Benchmark)
-        }
+        Commands::Benchmark => graphite_core::cli::run(graphite_core::cli::CliCommand::Benchmark),
     }
 }

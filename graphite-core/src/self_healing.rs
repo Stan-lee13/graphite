@@ -90,20 +90,22 @@ pub struct AnomalyDetectionResult {
 /// direct recurrence which can accumulate floating-point error at very large
 /// sample counts. Production should use Welford's numerically-stable online
 /// algorithm (tracked in memory/known-gaps-log.md).
-pub fn detect_anomaly(input: &AnomalyDetectionInput) -> Result<AnomalyDetectionResult, SelfHealingError> {
+pub fn detect_anomaly(
+    input: &AnomalyDetectionInput,
+) -> Result<AnomalyDetectionResult, SelfHealingError> {
     if input.baseline.sample_count < 10 {
         return Err(SelfHealingError::InsufficientHistory);
     }
-    
+
     if input.baseline.std_dev == 0.0 {
         return Err(SelfHealingError::InvalidParameters);
     }
-    
+
     let mut anomalies = Vec::new();
-    
+
     for (dimension, observed_value) in &input.observed {
         let z_score = (observed_value - input.baseline.mean) / input.baseline.std_dev;
-        
+
         if z_score.abs() > input.z_threshold {
             anomalies.push(Anomaly {
                 dimension: *dimension,
@@ -113,11 +115,11 @@ pub fn detect_anomaly(input: &AnomalyDetectionInput) -> Result<AnomalyDetectionR
             });
         }
     }
-    
+
     // Short-circuit: return first anomaly found (simplification)
     // Production might want to check all dimensions and return complete picture
     let should_quarantine = !anomalies.is_empty();
-    
+
     Ok(AnomalyDetectionResult {
         anomalies,
         should_quarantine,
@@ -131,14 +133,15 @@ pub fn detect_anomaly(input: &AnomalyDetectionInput) -> Result<AnomalyDetectionR
 pub fn update_baseline(baseline: &mut Baseline, new_value: f64) {
     let n = baseline.sample_count as f64;
     let new_n = n + 1.0;
-    
+
     // Update mean
     let new_mean = (baseline.mean * n + new_value) / new_n;
-    
+
     // Update variance (simplified recurrence)
     let variance = baseline.std_dev * baseline.std_dev;
-    let new_variance = (variance * n + (new_value - baseline.mean) * (new_value - new_mean)) / new_n;
-    
+    let new_variance =
+        (variance * n + (new_value - baseline.mean) * (new_value - new_mean)) / new_n;
+
     baseline.mean = new_mean;
     baseline.std_dev = new_variance.sqrt();
     baseline.sample_count += 1;
@@ -172,7 +175,12 @@ pub fn to_quarantine_status(result: &AnomalyDetectionResult) -> QuarantineStatus
     let reason = result
         .anomalies
         .iter()
-        .map(|a| format!("{:?}: observed {:.1} vs expected {:.1} (z={:.1})", a.dimension, a.observed_value, a.expected_value, a.z_score))
+        .map(|a| {
+            format!(
+                "{:?}: observed {:.1} vs expected {:.1} (z={:.1})",
+                a.dimension, a.observed_value, a.expected_value, a.z_score
+            )
+        })
         .collect::<Vec<_>>()
         .join("; ");
 
@@ -194,7 +202,7 @@ mod tests {
             observed: vec![(AnomalyDimension::ComputeUnits, 1050.0)], // 0.5 z-score
             z_threshold: 3.0,
         };
-        
+
         let result = detect_anomaly(&input).unwrap();
         assert!(!result.should_quarantine);
         assert!(result.anomalies.is_empty());
@@ -211,7 +219,7 @@ mod tests {
             observed: vec![(AnomalyDimension::ComputeUnits, 1500.0)], // 5.0 z-score
             z_threshold: 3.0,
         };
-        
+
         let result = detect_anomaly(&input).unwrap();
         assert!(result.should_quarantine);
         assert_eq!(result.anomalies.len(), 1);
@@ -228,7 +236,7 @@ mod tests {
             observed: vec![(AnomalyDimension::ComputeUnits, 1500.0)],
             z_threshold: 3.0,
         };
-        
+
         let result = detect_anomaly(&input);
         assert!(matches!(result, Err(SelfHealingError::InsufficientHistory)));
     }
@@ -244,10 +252,10 @@ mod tests {
             observed: vec![(AnomalyDimension::ComputeUnits, 1050.0)],
             z_threshold: 3.0,
         };
-        
+
         let result1 = detect_anomaly(&input).unwrap();
         let result2 = detect_anomaly(&input).unwrap();
-        
+
         assert_eq!(result1.should_quarantine, result2.should_quarantine);
     }
 
@@ -258,10 +266,10 @@ mod tests {
             std_dev: 100.0,
             sample_count: 100,
         };
-        
+
         let old_mean = baseline.mean;
         update_baseline(&mut baseline, 1050.0);
-        
+
         // Mean should shift toward new value
         assert_ne!(baseline.mean, old_mean);
         assert_eq!(baseline.sample_count, 101);
@@ -273,7 +281,10 @@ mod tests {
             anomalies: vec![],
             should_quarantine: false,
         };
-        assert_eq!(to_quarantine_status(&result), QuarantineStatus::NotQuarantined);
+        assert_eq!(
+            to_quarantine_status(&result),
+            QuarantineStatus::NotQuarantined
+        );
     }
 
     #[test]

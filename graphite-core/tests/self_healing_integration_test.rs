@@ -61,7 +61,9 @@ fn seeded_battle_tested_behavior(program_id: &str) -> Behavior {
 fn anomaly_detection_triggers_quarantine_which_the_store_correctly_reflects() {
     let program_id = "battle-tested-but-now-suspicious";
     let mut store = SemanticGraphStore::new();
-    store.append(seeded_battle_tested_behavior(program_id)).unwrap();
+    store
+        .append(seeded_battle_tested_behavior(program_id))
+        .unwrap();
 
     // Before any anomaly: this protocol legitimately reaches BattleTested.
     let pre_quarantine = store.get(program_id).unwrap();
@@ -74,13 +76,16 @@ fn anomaly_detection_triggers_quarantine_which_the_store_correctly_reflects() {
         observed: vec![(AnomalyDimension::ComputeUnits, 500_000.0)], // ~225 stddevs from the mean
         z_threshold: 3.0,
     };
-    let detection = detect_anomaly(&input).expect("detection should succeed with sufficient history");
+    let detection =
+        detect_anomaly(&input).expect("detection should succeed with sufficient history");
     assert!(detection.should_quarantine);
 
     let status = to_quarantine_status(&detection);
     let reason = match status {
         QuarantineStatus::Quarantined { reason } => reason,
-        QuarantineStatus::NotQuarantined => panic!("expected Quarantined given the anomalous observation"),
+        QuarantineStatus::NotQuarantined => {
+            panic!("expected Quarantined given the anomalous observation")
+        }
     };
     assert!(reason.contains("ComputeUnits"));
 
@@ -98,7 +103,11 @@ fn anomaly_detection_triggers_quarantine_which_the_store_correctly_reflects() {
     let post_quarantine = store.get(program_id).unwrap();
     assert!(post_quarantine.quarantined);
     assert_eq!(post_quarantine.trust_tier, TrustTier::Unknown);
-    assert!(post_quarantine.quarantine_reason.as_ref().unwrap().contains("ComputeUnits"));
+    assert!(post_quarantine
+        .quarantine_reason
+        .as_ref()
+        .unwrap()
+        .contains("ComputeUnits"));
 
     // And per P4, the PRE-quarantine version stays queryable and still
     // correctly reports its original tier — quarantine is a new append,
@@ -117,7 +126,9 @@ fn anomaly_detection_triggers_quarantine_which_the_store_correctly_reflects() {
 fn normal_observation_never_triggers_quarantine() {
     let program_id = "stable-protocol";
     let mut store = SemanticGraphStore::new();
-    store.append(seeded_battle_tested_behavior(program_id)).unwrap();
+    store
+        .append(seeded_battle_tested_behavior(program_id))
+        .unwrap();
 
     let input = AnomalyDetectionInput {
         baseline: stable_baseline(),
@@ -126,7 +137,10 @@ fn normal_observation_never_triggers_quarantine() {
     };
     let detection = detect_anomaly(&input).unwrap();
     assert!(!detection.should_quarantine);
-    assert_eq!(to_quarantine_status(&detection), QuarantineStatus::NotQuarantined);
+    assert_eq!(
+        to_quarantine_status(&detection),
+        QuarantineStatus::NotQuarantined
+    );
 
     // No `quarantine()` call should ever be made for a `NotQuarantined`
     // status — confirmed here by simply never calling it and checking the
@@ -145,7 +159,9 @@ fn normal_observation_never_triggers_quarantine() {
 fn multi_dimension_anomaly_quarantines_with_combined_reason() {
     let program_id = "multi-signal-anomaly-protocol";
     let mut store = SemanticGraphStore::new();
-    store.append(seeded_battle_tested_behavior(program_id)).unwrap();
+    store
+        .append(seeded_battle_tested_behavior(program_id))
+        .unwrap();
 
     let input = AnomalyDetectionInput {
         baseline: stable_baseline(),
@@ -156,7 +172,11 @@ fn multi_dimension_anomaly_quarantines_with_combined_reason() {
         z_threshold: 3.0,
     };
     let detection = detect_anomaly(&input).unwrap();
-    assert_eq!(detection.anomalies.len(), 2, "both dimensions should be flagged, not just the first");
+    assert_eq!(
+        detection.anomalies.len(),
+        2,
+        "both dimensions should be flagged, not just the first"
+    );
 
     let reason = match to_quarantine_status(&detection) {
         QuarantineStatus::Quarantined { reason } => reason,

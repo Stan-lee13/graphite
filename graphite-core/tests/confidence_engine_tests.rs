@@ -34,7 +34,7 @@ fn test_ceiling_constants() {
     assert!(ceilings::UNKNOWN_OR_HEURISTIC_MAX < ceilings::OFFICIAL_MANIFEST_MAX);
     assert!(ceilings::OFFICIAL_MANIFEST_MAX < ceilings::SIMULATION_VALIDATED_MAX);
     assert!(ceilings::SIMULATION_VALIDATED_MAX <= ceilings::COMMUNITY_OR_BATTLE_TESTED_MAX);
-    
+
     // Unknown/heuristic ceiling must be <= 0.55 (P6)
     assert!(ceilings::UNKNOWN_OR_HEURISTIC_MAX <= 0.55);
 }
@@ -47,36 +47,38 @@ fn test_ceiling_constants() {
 fn test_compute_confidence_no_signals_fails() {
     let signals: Vec<WeightedSignal> = vec![];
     let result = compute_confidence(&signals, TrustTier::OfficialManifest);
-    
+
     assert!(matches!(result, Err(ConfidenceError::NoSignalsProvided)));
 }
 
 #[test]
 fn test_compute_confidence_weights_must_sum_to_one() {
-    let signals = vec![
-        WeightedSignal {
-            kind: SignalKind::ManifestMatch,
-            value: 1.0,
-            weight: 0.5, // Only 0.5, not 1.0
-        },
-    ];
-    
+    let signals = vec![WeightedSignal {
+        kind: SignalKind::ManifestMatch,
+        value: 1.0,
+        weight: 0.5, // Only 0.5, not 1.0
+    }];
+
     let result = compute_confidence(&signals, TrustTier::OfficialManifest);
-    assert!(matches!(result, Err(ConfidenceError::WeightsDoNotSumToOne { .. })));
+    assert!(matches!(
+        result,
+        Err(ConfidenceError::WeightsDoNotSumToOne { .. })
+    ));
 }
 
 #[test]
 fn test_compute_confidence_signal_out_of_range_fails() {
-    let signals = vec![
-        WeightedSignal {
-            kind: SignalKind::ManifestMatch,
-            value: 1.5, // Out of range [0, 1]
-            weight: 1.0,
-        },
-    ];
-    
+    let signals = vec![WeightedSignal {
+        kind: SignalKind::ManifestMatch,
+        value: 1.5, // Out of range [0, 1]
+        weight: 1.0,
+    }];
+
     let result = compute_confidence(&signals, TrustTier::OfficialManifest);
-    assert!(matches!(result, Err(ConfidenceError::SignalOutOfRange { .. })));
+    assert!(matches!(
+        result,
+        Err(ConfidenceError::SignalOutOfRange { .. })
+    ));
 }
 
 #[test]
@@ -93,10 +95,10 @@ fn test_compute_confidence_basic_computation() {
             weight: 0.5,
         },
     ];
-    
+
     let result = compute_confidence(&signals, TrustTier::BattleTested)
         .expect("Valid computation should succeed");
-    
+
     // Expected: (1.0 * 0.5) + (0.9 * 0.5) = 0.5 + 0.45 = 0.95
     assert!((result.confidence - 0.95).abs() < 0.0001);
     assert_eq!(result.breakdown.len(), 2);
@@ -110,18 +112,16 @@ fn test_compute_confidence_basic_computation() {
 
 #[test]
 fn test_unknown_tier_ceiling_enforced() {
-    let signals = vec![
-        WeightedSignal {
-            kind: SignalKind::ManifestMatch,
-            value: 1.0, // Perfect signal
-            weight: 1.0,
-        },
-    ];
-    
+    let signals = vec![WeightedSignal {
+        kind: SignalKind::ManifestMatch,
+        value: 1.0, // Perfect signal
+        weight: 1.0,
+    }];
+
     // Even with perfect signals, Unknown tier caps at 0.55
-    let result = compute_confidence(&signals, TrustTier::Unknown)
-        .expect("Computation should succeed");
-    
+    let result =
+        compute_confidence(&signals, TrustTier::Unknown).expect("Computation should succeed");
+
     assert_eq!(result.confidence, ceilings::UNKNOWN_OR_HEURISTIC_MAX);
     assert!(result.ceiling_triggered);
     assert_eq!(result.ceiling_applied, ceilings::UNKNOWN_OR_HEURISTIC_MAX);
@@ -129,73 +129,65 @@ fn test_unknown_tier_ceiling_enforced() {
 
 #[test]
 fn test_heuristic_tier_ceiling_enforced() {
-    let signals = vec![
-        WeightedSignal {
-            kind: SignalKind::ManifestMatch,
-            value: 1.0,
-            weight: 1.0,
-        },
-    ];
-    
+    let signals = vec![WeightedSignal {
+        kind: SignalKind::ManifestMatch,
+        value: 1.0,
+        weight: 1.0,
+    }];
+
     let result = compute_confidence(&signals, TrustTier::HeuristicInferred)
         .expect("Computation should succeed");
-    
+
     assert_eq!(result.confidence, ceilings::UNKNOWN_OR_HEURISTIC_MAX);
     assert!(result.ceiling_triggered);
 }
 
 #[test]
 fn test_official_manifest_ceiling_enforced() {
-    let signals = vec![
-        WeightedSignal {
-            kind: SignalKind::ManifestMatch,
-            value: 1.0,
-            weight: 1.0,
-        },
-    ];
-    
+    let signals = vec![WeightedSignal {
+        kind: SignalKind::ManifestMatch,
+        value: 1.0,
+        weight: 1.0,
+    }];
+
     let result = compute_confidence(&signals, TrustTier::OfficialManifest)
         .expect("Computation should succeed");
-    
+
     assert_eq!(result.confidence, ceilings::OFFICIAL_MANIFEST_MAX);
     assert!(result.ceiling_triggered);
 }
 
 #[test]
 fn test_simulation_validated_ceiling_enforced() {
-    let signals = vec![
-        WeightedSignal {
-            kind: SignalKind::ManifestMatch,
-            value: 1.0,
-            weight: 1.0,
-        },
-    ];
-    
+    let signals = vec![WeightedSignal {
+        kind: SignalKind::ManifestMatch,
+        value: 1.0,
+        weight: 1.0,
+    }];
+
     let result = compute_confidence(&signals, TrustTier::SimulationValidated)
         .expect("Computation should succeed");
-    
+
     assert_eq!(result.confidence, ceilings::SIMULATION_VALIDATED_MAX);
     assert!(result.ceiling_triggered);
 }
 
 #[test]
 fn test_community_and_battle_tested_no_ceiling() {
-    let signals = vec![
-        WeightedSignal {
-            kind: SignalKind::ManifestMatch,
-            value: 1.0,
-            weight: 1.0,
-        },
-    ];
-    
+    let signals = vec![WeightedSignal {
+        kind: SignalKind::ManifestMatch,
+        value: 1.0,
+        weight: 1.0,
+    }];
+
     // CommunityVerified and BattleTested have no ceiling
     let result_community = compute_confidence(&signals, TrustTier::CommunityVerified)
         .expect("Computation should succeed");
     assert!(!result_community.ceiling_triggered);
     assert_eq!(result_community.confidence, 1.0);
-    
-    let result_battle = compute_confidence(&signals, TrustTier::BattleTested)
-        .expect("Computation should succeed");
+
+    let result_battle =
+        compute_confidence(&signals, TrustTier::BattleTested).expect("Computation should succeed");
     assert!(!result_battle.ceiling_triggered);
     assert_eq!(result_battle.confidence, 1.0);
 }
@@ -213,17 +205,14 @@ mod property_tests {
     fn confidence_always_in_range() {
         // This is a simplified property test
         // In production, use proptest for exhaustive coverage
-        let signals = vec![
-            WeightedSignal {
-                kind: SignalKind::ManifestMatch,
-                value: 0.5,
-                weight: 1.0,
-            },
-        ];
-        
-        let result = compute_confidence(&signals, TrustTier::BattleTested)
-            .expect("Should succeed");
-        
+        let signals = vec![WeightedSignal {
+            kind: SignalKind::ManifestMatch,
+            value: 0.5,
+            weight: 1.0,
+        }];
+
+        let result = compute_confidence(&signals, TrustTier::BattleTested).expect("Should succeed");
+
         assert!(result.confidence >= 0.0 && result.confidence <= 1.0);
     }
 

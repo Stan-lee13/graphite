@@ -113,14 +113,19 @@ pub fn resolve_accounts(
                     let program_pk = Pubkey::from_base58(&input.program_id)
                         .map_err(|e| AccountResolutionError::InvalidAddress(e.to_string()))?;
                     // Seeds may contain template vars like {program_id}
-                    let resolved_seeds: Vec<Vec<u8>> = r.pda_seeds.iter().map(|s| {
-                        if s == "{program_id}" {
-                            program_pk.as_bytes().to_vec()
-                        } else {
-                            s.as_bytes().to_vec()
-                        }
-                    }).collect();
-                    let seed_refs: Vec<&[u8]> = resolved_seeds.iter().map(|s| s.as_slice()).collect();
+                    let resolved_seeds: Vec<Vec<u8>> = r
+                        .pda_seeds
+                        .iter()
+                        .map(|s| {
+                            if s == "{program_id}" {
+                                program_pk.as_bytes().to_vec()
+                            } else {
+                                s.as_bytes().to_vec()
+                            }
+                        })
+                        .collect();
+                    let seed_refs: Vec<&[u8]> =
+                        resolved_seeds.iter().map(|s| s.as_slice()).collect();
                     match solana_types::find_program_address(&seed_refs, &program_pk) {
                         Ok((derived_pk, _bump)) => {
                             if derived_pk != *pk {
@@ -199,7 +204,10 @@ fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionRe
 }
 
 /// Derive a PDA from seeds (public API for external use).
-pub fn derive_pda(seeds: &[&[u8]], program_id: &Pubkey) -> Result<(Pubkey, u8), AccountResolutionError> {
+pub fn derive_pda(
+    seeds: &[&[u8]],
+    program_id: &Pubkey,
+) -> Result<(Pubkey, u8), AccountResolutionError> {
     solana_types::find_program_address(seeds, program_id).map_err(|e| {
         AccountResolutionError::PdaDerivationFailed {
             account: "derivation".to_string(),
@@ -228,7 +236,10 @@ mod tests {
         let input = make_input(
             "11111111111111111111111111111111",
             "02000000",
-            &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            ],
         );
         let result = resolve_accounts(&input, &registry).unwrap();
         assert!(result.manifest_found);

@@ -30,10 +30,10 @@ use thiserror::Error;
 pub enum ConfidenceError {
     #[error("no signals provided to compute confidence")]
     NoSignalsProvided,
-    
+
     #[error("signal weights must sum to 1.0, got {sum}")]
     WeightsDoNotSumToOne { sum: f64 },
-    
+
     #[error("signal value {value} out of range [0, 1]")]
     SignalOutOfRange { value: f64 },
 }
@@ -42,7 +42,9 @@ pub enum ConfidenceError {
 ///
 /// Ordered from least to most trusted. Used to apply confidence ceilings per
 /// Constitution P6 (unknown protocols never receive maximum confidence).
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub enum TrustTier {
     /// Tier 0: Completely unknown program, no evidence
     Unknown,
@@ -65,13 +67,13 @@ pub enum TrustTier {
 pub mod ceilings {
     /// Maximum confidence for Unknown or HeuristicInferred tiers
     pub const UNKNOWN_OR_HEURISTIC_MAX: f64 = 0.55;
-    
+
     /// Maximum confidence for OfficialManifest tier
     pub const OFFICIAL_MANIFEST_MAX: f64 = 0.75;
-    
+
     /// Maximum confidence for SimulationValidated tier
     pub const SIMULATION_VALIDATED_MAX: f64 = 0.85;
-    
+
     /// Maximum confidence for CommunityVerified or BattleTested tiers
     pub const COMMUNITY_OR_BATTLE_TESTED_MAX: f64 = 1.0;
 }
@@ -93,7 +95,7 @@ pub enum SignalKind {
 #[derive(Debug, Clone)]
 pub struct WeightedSignal {
     pub kind: SignalKind,
-    pub value: f64, // Must be in [0, 1]
+    pub value: f64,  // Must be in [0, 1]
     pub weight: f64, // Must sum to 1.0 across all signals
 }
 
@@ -124,7 +126,7 @@ pub fn compute_confidence(
     if signals.is_empty() {
         return Err(ConfidenceError::NoSignalsProvided);
     }
-    
+
     let weight_sum: f64 = signals.iter().map(|s| s.weight).sum();
     // Reject NaN weight sums (Constitution P3)
     if weight_sum.is_nan() || weight_sum.is_infinite() {
@@ -133,30 +135,34 @@ pub fn compute_confidence(
     if (weight_sum - 1.0).abs() > 0.0001 {
         return Err(ConfidenceError::WeightsDoNotSumToOne { sum: weight_sum });
     }
-    
+
     for signal in signals {
         // Must reject NaN and Infinity in addition to range check.
         // NaN < 0.0 is false AND NaN > 1.0 is false → NaN passes naive range check.
         // f64::INFINITY > 1.0 is true → Infinity IS caught, but NaN is NOT.
         // Fix: explicit NaN check before range comparison (Constitution P3).
         if signal.value.is_nan() || signal.value.is_infinite() {
-            return Err(ConfidenceError::SignalOutOfRange { value: signal.value });
+            return Err(ConfidenceError::SignalOutOfRange {
+                value: signal.value,
+            });
         }
         if signal.value < 0.0 || signal.value > 1.0 {
-            return Err(ConfidenceError::SignalOutOfRange { value: signal.value });
+            return Err(ConfidenceError::SignalOutOfRange {
+                value: signal.value,
+            });
         }
     }
-    
+
     // Compute weighted sum
     let mut confidence = 0.0;
     let mut breakdown = Vec::new();
-    
+
     for signal in signals {
         let contribution = signal.value * signal.weight;
         confidence += contribution;
         breakdown.push((signal.kind, contribution));
     }
-    
+
     // Sanity check: confidence must not be NaN (Constitution P3)
     // This catches any NaN that might slip through edge cases
     if confidence.is_nan() || confidence.is_infinite() {
@@ -190,7 +196,11 @@ pub fn compute_confidence(
     };
 
     let ceiling_triggered = confidence > ceiling;
-    let final_confidence = if ceiling_triggered { ceiling } else { confidence };
+    let final_confidence = if ceiling_triggered {
+        ceiling
+    } else {
+        confidence
+    };
 
     Ok(ConfidenceResult {
         confidence: final_confidence,
@@ -222,10 +232,10 @@ mod tests {
             value: 1.0,
             weight: 1.0,
         }];
-        
-        let result = compute_confidence(&signals, TrustTier::Unknown)
-            .expect("Computation should succeed");
-        
+
+        let result =
+            compute_confidence(&signals, TrustTier::Unknown).expect("Computation should succeed");
+
         assert_eq!(result.confidence, ceilings::UNKNOWN_OR_HEURISTIC_MAX);
         assert!(result.ceiling_triggered);
     }
@@ -244,10 +254,10 @@ mod tests {
                 weight: 0.5,
             },
         ];
-        
+
         let result1 = compute_confidence(&signals, TrustTier::BattleTested).unwrap();
         let result2 = compute_confidence(&signals, TrustTier::BattleTested).unwrap();
-        
+
         assert_eq!(result1.confidence, result2.confidence);
     }
 
@@ -258,9 +268,9 @@ mod tests {
             value: 1.0,
             weight: 1.0,
         }];
-        
+
         let result = compute_confidence(&signals, TrustTier::Unknown).unwrap();
-        
+
         // The breakdown should show the signal contribution
         assert!(!result.breakdown.is_empty());
         // And ceiling should be marked as triggered
@@ -284,7 +294,7 @@ mod tests {
                 weight: 0.5,
             },
         ];
-        
+
         let result = compute_confidence(&signals, TrustTier::BattleTested);
         assert!(result.is_ok());
     }

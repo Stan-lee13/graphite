@@ -239,7 +239,7 @@ async function verifyWithGraphite(
   });
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({ error: "unknown" }));
+    const errorBody = (await response.json().catch(() => ({ error: "unknown" }))) as { error?: string };
     console.log(`│  ❌ ERROR: ${errorBody.error || response.statusText}`);
     console.log("└───────────────────────────────────────────────────────────────");
     throw new Error(`Graphite Core error: ${errorBody.error || response.status}`);

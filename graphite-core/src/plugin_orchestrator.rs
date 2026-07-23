@@ -117,12 +117,12 @@ impl PluginOrchestrator {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Register a plugin for a specific layer.
     pub fn register_plugin(&mut self, layer_id: LayerId, plugin: Box<dyn VerifierPlugin>) {
         self.plugins.insert(layer_id, plugin);
     }
-    
+
     /// Run the verification pipeline through all layers in fixed order.
     ///
     /// Plugins cannot reorder or skip layers — the order is enforced by
@@ -133,21 +133,23 @@ impl PluginOrchestrator {
             layer_id: PIPELINE_ORDER[0],
             transaction_data,
         };
-        
+
         for layer_id in PIPELINE_ORDER.iter() {
-            let plugin = self.plugins.get(layer_id)
-                .ok_or_else(|| PluginError::PluginNotRegistered {
-                    layer: format!("{:?}", layer_id),
-                })?;
-            
+            let plugin =
+                self.plugins
+                    .get(layer_id)
+                    .ok_or_else(|| PluginError::PluginNotRegistered {
+                        layer: format!("{:?}", layer_id),
+                    })?;
+
             let output = plugin.run(&current_input)?;
-            
+
             // If a layer fails, halt the pipeline (later layers don't run)
             if !output.passed {
                 results.push(output);
                 break;
             }
-            
+
             // Prepare input for the next layer BEFORE moving `output` into
             // `results` below. The original ordering here (push first, then
             // read `output.output_data` afterward) was a real borrow-checker
@@ -161,10 +163,10 @@ impl PluginOrchestrator {
                 layer_id: *layer_id,
                 transaction_data: output.output_data.clone(),
             };
-            
+
             results.push(output);
         }
-        
+
         Ok(results)
     }
 }
@@ -177,7 +179,7 @@ mod tests {
     struct MockPlugin {
         should_pass: bool,
     }
-    
+
     impl VerifierPlugin for MockPlugin {
         fn run(&self, input: &LayerInput) -> Result<LayerOutput, PluginError> {
             Ok(LayerOutput {
@@ -193,7 +195,7 @@ mod tests {
         // Load-bearing security test: plugin trait signature prevents P8 violations
         // The trait has no audit_log field, no way to invoke other layers,
         // and no way to modify PIPELINE_ORDER
-        
+
         // This is enforced at compile time by the trait signature
         // No runtime test needed — the type system guarantees it
     }
@@ -201,14 +203,23 @@ mod tests {
     #[test]
     fn test_layer_rejection_halts_pipeline_before_later_layers_run() {
         let mut orchestrator = PluginOrchestrator::new();
-        
+
         // Register plugins: first layer fails, others would pass
-        orchestrator.register_plugin(LayerId::AccountResolution, Box::new(MockPlugin { should_pass: false }));
-        orchestrator.register_plugin(LayerId::TransactionConstruction, Box::new(MockPlugin { should_pass: true }));
-        orchestrator.register_plugin(LayerId::Simulation, Box::new(MockPlugin { should_pass: true }));
-        
+        orchestrator.register_plugin(
+            LayerId::AccountResolution,
+            Box::new(MockPlugin { should_pass: false }),
+        );
+        orchestrator.register_plugin(
+            LayerId::TransactionConstruction,
+            Box::new(MockPlugin { should_pass: true }),
+        );
+        orchestrator.register_plugin(
+            LayerId::Simulation,
+            Box::new(MockPlugin { should_pass: true }),
+        );
+
         let results = orchestrator.run_pipeline(vec![1, 2, 3]).unwrap();
-        
+
         // Only first layer ran (failed), pipeline halted
         assert_eq!(results.len(), 1);
         assert!(!results[0].passed);
@@ -241,10 +252,10 @@ mod tests {
         for layer_id in PIPELINE_ORDER.iter() {
             orchestrator.register_plugin(*layer_id, Box::new(MockPlugin { should_pass: true }));
         }
-        
+
         let results1 = orchestrator.run_pipeline(vec![1, 2, 3]).unwrap();
         let results2 = orchestrator.run_pipeline(vec![1, 2, 3]).unwrap();
-        
+
         assert_eq!(results1.len(), PIPELINE_ORDER.len());
         assert_eq!(results1.len(), results2.len());
         for (a, b) in results1.iter().zip(results2.iter()) {

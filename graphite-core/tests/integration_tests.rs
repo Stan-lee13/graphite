@@ -3,9 +3,11 @@
 //! Tests the full verification pipeline: manifest loading → account resolution
 //! → transaction building → risk assessment → confidence computation → policy.
 
-use graphite_core::verification::{GraphiteCore, VerificationInput, ProposedIntent, ExtractedParameters};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
+use graphite_core::verification::{
+    ExtractedParameters, GraphiteCore, ProposedIntent, VerificationInput,
+};
 
 fn make_input(
     program: &str,
@@ -52,18 +54,30 @@ fn test_e2e_system_transfer_approved() {
     let input = make_input(
         "11111111111111111111111111111111",
         "02000000",
-        &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        ],
         &[],
         WalletProfile::Standard,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
-    assert!(result.manifest_found, "System Program manifest should be found");
+    assert!(
+        result.manifest_found,
+        "System Program manifest should be found"
+    );
     assert_eq!(result.protocol_name, "System Program");
     assert_eq!(result.instruction_name, "Transfer");
-    assert!(result.confidence > 0.0, "confidence should be positive with good evidence");
+    assert!(
+        result.confidence > 0.0,
+        "confidence should be positive with good evidence"
+    );
     assert!(!result.unknown_protocol);
-    println!("System Transfer: confidence={:.3}, approved={}", result.confidence, result.approved);
+    println!(
+        "System Transfer: confidence={:.3}, approved={}",
+        result.confidence, result.approved
+    );
 }
 
 #[test]
@@ -72,7 +86,11 @@ fn test_e2e_spl_token_transfer() {
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "03",
-        &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
+        ],
         &[],
         WalletProfile::Standard,
         good_evidence(),
@@ -102,7 +120,10 @@ fn test_e2e_unknown_protocol_capped() {
     let result = core.verify(&input).unwrap();
     assert!(result.unknown_protocol);
     assert!(!result.manifest_found);
-    assert!(result.confidence <= 0.55, "unknown protocol confidence must be capped (P6/P12)");
+    assert!(
+        result.confidence <= 0.55,
+        "unknown protocol confidence must be capped (P6/P12)"
+    );
 }
 
 #[test]
@@ -111,13 +132,20 @@ fn test_e2e_risk_engine_blocks_unverified_cpi() {
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "03",
-        &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx"],
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
+        ],
         &["unverified_malicious_target"],
         WalletProfile::Standard,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
-    assert_eq!(result.risk_verdict.status, "Blocked", "unverified CPI should be blocked");
+    assert_eq!(
+        result.risk_verdict.status, "Blocked",
+        "unverified CPI should be blocked"
+    );
     assert!(!result.approved);
 }
 
@@ -127,7 +155,10 @@ fn test_e2e_audit_trail_id_is_deterministic() {
     let input = make_input(
         "11111111111111111111111111111111",
         "02000000",
-        &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        ],
         &[],
         WalletProfile::Standard,
         good_evidence(),
@@ -137,15 +168,24 @@ fn test_e2e_audit_trail_id_is_deterministic() {
     // Audit trail IDs are unique per call (sequence counter), but hash prefix is deterministic (P2)
     let prefix1 = r1.audit_trail_id.split('-').nth(1).unwrap();
     let prefix2 = r2.audit_trail_id.split('-').nth(1).unwrap();
-    assert_eq!(prefix1, prefix2, "same input must produce same hash prefix (P2 determinism)");
-    assert_ne!(r1.audit_trail_id, r2.audit_trail_id, "full audit ID must be unique per call");
+    assert_eq!(
+        prefix1, prefix2,
+        "same input must produce same hash prefix (P2 determinism)"
+    );
+    assert_ne!(
+        r1.audit_trail_id, r2.audit_trail_id,
+        "full audit ID must be unique per call"
+    );
 }
 
 #[test]
 fn test_e2e_manifests_listed() {
     let core = GraphiteCore::new();
     let manifests = core.list_manifests();
-    assert!(manifests.len() >= 2, "should have at least System Program and SPL Token");
+    assert!(
+        manifests.len() >= 2,
+        "should have at least System Program and SPL Token"
+    );
     let names: Vec<_> = manifests.iter().map(|m| m.protocol.name.as_str()).collect();
     assert!(names.contains(&"System Program"));
     assert!(names.contains(&"SPL Token Program"));
@@ -193,7 +233,10 @@ fn test_e2e_result_serializes_to_json() {
     let input = make_input(
         "11111111111111111111111111111111",
         "02000000",
-        &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        ],
         &[],
         WalletProfile::Standard,
         good_evidence(),
@@ -224,7 +267,10 @@ fn test_e2e_conservative_profile_rejects_unknown() {
         },
     );
     let result = core.verify(&input).unwrap();
-    assert!(!result.approved, "conservative profile should reject unknown protocol");
+    assert!(
+        !result.approved,
+        "conservative profile should reject unknown protocol"
+    );
     assert!(result.confidence <= 0.55);
 }
 
@@ -234,8 +280,8 @@ fn test_e2e_conservative_profile_rejects_unknown() {
 
 #[test]
 fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
-    use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
     use graphite_core::account_resolution::ResolvedAccount;
+    use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
 
     let bad_account = ResolvedAccount {
         address: "NOT_A_VALID_BASE58_ADDRESS!!!".to_string(),
@@ -259,15 +305,22 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
     };
 
     let result = build_transaction(&plan);
-    assert!(result.is_err(), "Invalid pubkey must be a hard error, not silently defaulted");
+    assert!(
+        result.is_err(),
+        "Invalid pubkey must be a hard error, not silently defaulted"
+    );
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("invalid account address"), "Error should mention invalid address, got: {}", err);
+    assert!(
+        err.contains("invalid account address"),
+        "Error should mention invalid address, got: {}",
+        err
+    );
 }
 
 #[test]
 fn test_fix4_invalid_program_id_is_hard_error() {
-    use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
     use graphite_core::account_resolution::ResolvedAccount;
+    use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
 
     let good_account = ResolvedAccount {
         address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
@@ -293,7 +346,11 @@ fn test_fix4_invalid_program_id_is_hard_error() {
     let result = build_transaction(&plan);
     assert!(result.is_err(), "Invalid program_id must be a hard error");
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("invalid program_id"), "Error should mention invalid program_id, got: {}", err);
+    assert!(
+        err.contains("invalid program_id"),
+        "Error should mention invalid program_id, got: {}",
+        err
+    );
 }
 
 #[test]
@@ -367,7 +424,10 @@ fn test_fix3_pda_mismatch_field_exists() {
     let result = resolve_accounts(&input, &registry).unwrap();
     // Non-PDA accounts should have pda_mismatch = false
     for acc in &result.resolved_accounts {
-        assert!(!acc.pda_mismatch, "Non-PDA account should not have pda_mismatch");
+        assert!(
+            !acc.pda_mismatch,
+            "Non-PDA account should not have pda_mismatch"
+        );
     }
 }
 
@@ -408,8 +468,10 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
     };
     let result = core.verify(&input).unwrap();
     // With a baseline and compute_units=150 (close to mean=150), simulation should not be flagged
-    assert!(result.simulation_flagged == Some(false) || result.simulation_flagged == None,
-        "Simulation should not be flagged for normal compute usage");
+    assert!(
+        result.simulation_flagged == Some(false) || result.simulation_flagged == None,
+        "Simulation should not be flagged for normal compute usage"
+    );
 }
 
 // =========================================================================
@@ -446,7 +508,11 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
     let input_correct = AccountResolutionInput {
         program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
         instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
-        account_addresses: vec![multisig.to_string(), member.to_string(), correct_pda.to_string()],
+        account_addresses: vec![
+            multisig.to_string(),
+            member.to_string(),
+            correct_pda.to_string(),
+        ],
         instruction_data: None,
     };
 
@@ -461,7 +527,11 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
     let input_spoofed = AccountResolutionInput {
         program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
         instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
-        account_addresses: vec![multisig.to_string(), member.to_string(), spoofed_pda.to_string()],
+        account_addresses: vec![
+            multisig.to_string(),
+            member.to_string(),
+            spoofed_pda.to_string(),
+        ],
         instruction_data: None,
     };
 
@@ -484,7 +554,11 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
         protocol_version: "4.0.0".to_string(),
         instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
-        account_addresses: vec![multisig.to_string(), member.to_string(), spoofed_pda.to_string()],
+        account_addresses: vec![
+            multisig.to_string(),
+            member.to_string(),
+            spoofed_pda.to_string(),
+        ],
         instruction_data: None,
         cpi_targets: vec![],
         wallet_profile: WalletProfile::Standard,
@@ -503,12 +577,20 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
     );
 
     // Verify the risk finding mentions PDA mismatch
-    let has_pda_finding = verdict.risk_verdict.findings.iter()
+    let has_pda_finding = verdict
+        .risk_verdict
+        .findings
+        .iter()
         .any(|f| f.pattern == "PdaMismatch" || f.reason.contains("PDA mismatch"));
     assert!(
         has_pda_finding,
         "Risk findings must include PdaMismatch — got: {:?}",
-        verdict.risk_verdict.findings.iter().map(|f| &f.pattern).collect::<Vec<_>>()
+        verdict
+            .risk_verdict
+            .findings
+            .iter()
+            .map(|f| &f.pattern)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -526,7 +608,11 @@ fn test_pda_mismatch_correct_pda_passes() {
     let input = AccountResolutionInput {
         program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
         instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
-        account_addresses: vec![multisig.to_string(), member.to_string(), correct_pda.to_string()],
+        account_addresses: vec![
+            multisig.to_string(),
+            member.to_string(),
+            correct_pda.to_string(),
+        ],
         instruction_data: None,
     };
 
@@ -548,7 +634,11 @@ fn test_pda_mismatch_correct_pda_passes() {
         program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
         protocol_version: "4.0.0".to_string(),
         instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
-        account_addresses: vec![multisig.to_string(), member.to_string(), correct_pda.to_string()],
+        account_addresses: vec![
+            multisig.to_string(),
+            member.to_string(),
+            correct_pda.to_string(),
+        ],
         instruction_data: None,
         cpi_targets: vec![],
         wallet_profile: WalletProfile::Standard,
@@ -560,7 +650,10 @@ fn test_pda_mismatch_correct_pda_passes() {
     };
 
     let verdict = core.verify(&full_input).unwrap();
-    let has_pda_finding = verdict.risk_verdict.findings.iter()
+    let has_pda_finding = verdict
+        .risk_verdict
+        .findings
+        .iter()
         .any(|f| f.pattern == "PdaMismatch");
     assert!(
         !has_pda_finding,

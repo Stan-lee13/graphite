@@ -9,7 +9,9 @@ pub fn unknown_protocol_confidence_ceiling(tier: TrustTier) -> f64 {
         TrustTier::Unknown | TrustTier::HeuristicInferred => ceilings::UNKNOWN_OR_HEURISTIC_MAX,
         TrustTier::OfficialManifest => ceilings::OFFICIAL_MANIFEST_MAX,
         TrustTier::SimulationValidated => ceilings::SIMULATION_VALIDATED_MAX,
-        TrustTier::CommunityVerified | TrustTier::BattleTested => ceilings::COMMUNITY_OR_BATTLE_TESTED_MAX,
+        TrustTier::CommunityVerified | TrustTier::BattleTested => {
+            ceilings::COMMUNITY_OR_BATTLE_TESTED_MAX
+        }
     }
 }
 

@@ -59,7 +59,9 @@ pub struct BuiltAccountMeta {
     pub is_writable: bool,
 }
 
-pub fn build_transaction(plan: &TransactionPlan) -> Result<BuiltTransaction, TransactionBuilderError> {
+pub fn build_transaction(
+    plan: &TransactionPlan,
+) -> Result<BuiltTransaction, TransactionBuilderError> {
     if plan.program_id.is_empty() {
         return Err(TransactionBuilderError::EmptyProgramId);
     }
@@ -76,24 +78,22 @@ pub fn build_transaction(plan: &TransactionPlan) -> Result<BuiltTransaction, Tra
         .resolved_accounts
         .iter()
         .map(|ra| {
-            let pk = Pubkey::from_base58(&ra.address)
-                .map_err(|e| TransactionBuilderError::InvalidPubkey(format!("{}: {}", ra.address, e)))?;
+            let pk = Pubkey::from_base58(&ra.address).map_err(|e| {
+                TransactionBuilderError::InvalidPubkey(format!("{}: {}", ra.address, e))
+            })?;
             Ok(AccountMeta::new(pk, ra.is_signer, ra.is_writable))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
     // Build the actual Solana instruction (for downstream consumers)
-    let program_pk = Pubkey::from_base58(&plan.program_id)
-        .map_err(|e| TransactionBuilderError::InvalidProgramId(format!("{}: {}", plan.program_id, e)))?;
-    let _instruction = Instruction::new(
-        program_pk,
-        account_metas.clone(),
-        {
-            let mut data = disc_bytes.clone();
-            data.extend_from_slice(&plan.instruction_data);
-            data
-        },
-    );
+    let program_pk = Pubkey::from_base58(&plan.program_id).map_err(|e| {
+        TransactionBuilderError::InvalidProgramId(format!("{}: {}", plan.program_id, e))
+    })?;
+    let _instruction = Instruction::new(program_pk, account_metas.clone(), {
+        let mut data = disc_bytes.clone();
+        data.extend_from_slice(&plan.instruction_data);
+        data
+    });
 
     let signer_count = account_metas.iter().filter(|a| a.is_signer).count();
     let writable_count = account_metas.iter().filter(|a| a.is_writable).count();
@@ -178,7 +178,11 @@ mod tests {
             protocol_version: "1.0".to_string(),
             instruction_discriminator: "02000000".to_string(),
             instruction_name: "Transfer".to_string(),
-            resolved_accounts: vec![make_account("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", true, true)],
+            resolved_accounts: vec![make_account(
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                true,
+                true,
+            )],
             expected_state_changes: vec![],
             allowed_cpis: vec![],
             instruction_data: vec![],
@@ -193,7 +197,11 @@ mod tests {
             protocol_version: "1.0".to_string(),
             instruction_discriminator: "not-hex!".to_string(),
             instruction_name: "Transfer".to_string(),
-            resolved_accounts: vec![make_account("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", true, true)],
+            resolved_accounts: vec![make_account(
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                true,
+                true,
+            )],
             expected_state_changes: vec![],
             allowed_cpis: vec![],
             instruction_data: vec![],

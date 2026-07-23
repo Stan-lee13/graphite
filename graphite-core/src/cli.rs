@@ -4,9 +4,13 @@ use crate::verification::{GraphiteCore, VerificationInput};
 use std::path::PathBuf;
 
 pub enum CliCommand {
-    Verify { input: Box<VerificationInput> },
+    Verify {
+        input: Box<VerificationInput>,
+    },
     #[cfg(feature = "server")]
-    Server { port: u16 },
+    Server {
+        port: u16,
+    },
     Manifests,
     Benchmark,
 }
@@ -22,7 +26,8 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
         CliCommand::Manifests => {
             let core = GraphiteCore::new();
             for m in core.list_manifests() {
-                println!("  {} ({}) — {} instructions",
+                println!(
+                    "  {} ({}) — {} instructions",
                     m.protocol.name,
                     m.protocol.program_id,
                     m.instructions.len()
@@ -46,7 +51,9 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
 pub fn verify_from_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(path)?;
     let input: VerificationInput = serde_json::from_str(&content)?;
-    run(CliCommand::Verify { input: Box::new(input) })
+    run(CliCommand::Verify {
+        input: Box::new(input),
+    })
 }
 
 pub fn verify_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,5 +61,7 @@ pub fn verify_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
     let mut content = String::new();
     std::io::stdin().read_to_string(&mut content)?;
     let input: VerificationInput = serde_json::from_str(&content)?;
-    run(CliCommand::Verify { input: Box::new(input) })
+    run(CliCommand::Verify {
+        input: Box::new(input),
+    })
 }

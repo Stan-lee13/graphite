@@ -29,8 +29,7 @@ pub enum PolicyError {
 /// running `cargo test` during the 2026-07-06 production-readiness sweep —
 /// deriving `Eq` on an enum containing a float field doesn't compile at
 /// all, so this bug could never have shipped a working build.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 pub enum WalletProfile {
     /// Conservative profile: high confidence, high trust tier required
     Conservative,
@@ -42,7 +41,10 @@ pub enum WalletProfile {
     /// Enterprise profile: 99%+ confidence, Tier 5 required
     Enterprise,
     /// Custom profile with explicit thresholds
-    Custom { min_confidence: f64, min_trust_tier: TrustTier },
+    Custom {
+        min_confidence: f64,
+        min_trust_tier: TrustTier,
+    },
 }
 
 /// Verdict from policy evaluation.
@@ -57,7 +59,10 @@ pub enum PolicyVerdict {
     /// Rejected due to confidence below threshold
     RejectedBelowThreshold { required: f64, actual: f64 },
     /// Rejected due to trust tier below minimum
-    RejectedBelowTrustTier { required: TrustTier, actual: TrustTier },
+    RejectedBelowTrustTier {
+        required: TrustTier,
+        actual: TrustTier,
+    },
     /// Rejected due to Risk Engine block (hard gate, cannot be overridden)
     RejectedRiskEngineBlock,
 }
@@ -84,18 +89,19 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
     if input.risk_verdict != RiskVerdict::Passed {
         return Ok(PolicyVerdict::RejectedRiskEngineBlock);
     }
-    
+
     // STEP 2: Get profile thresholds
     let (min_confidence, min_trust_tier) = match input.profile {
         WalletProfile::Conservative => (0.85, TrustTier::SimulationValidated),
         WalletProfile::Standard => (0.70, TrustTier::OfficialManifest),
         WalletProfile::Permissive => (0.50, TrustTier::HeuristicInferred),
         WalletProfile::Enterprise => (0.99, TrustTier::BattleTested),
-        WalletProfile::Custom { min_confidence, min_trust_tier } => {
-            (min_confidence, min_trust_tier)
-        }
+        WalletProfile::Custom {
+            min_confidence,
+            min_trust_tier,
+        } => (min_confidence, min_trust_tier),
     };
-    
+
     // STEP 3: Check confidence threshold
     let actual_confidence = input.confidence_result.confidence;
     if actual_confidence < min_confidence {
@@ -104,7 +110,7 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
             actual: actual_confidence,
         });
     }
-    
+
     // STEP 4: Check trust tier minimum
     let actual_tier = input.confidence_result.trust_tier_applied;
     if actual_tier < min_trust_tier {
@@ -113,7 +119,7 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
             actual: actual_tier,
         });
     }
-    
+
     // All checks passed
     Ok(PolicyVerdict::Approved)
 }
@@ -132,7 +138,7 @@ mod tests {
             ceiling_triggered: false,
             ceiling_applied: 1.0,
         };
-        
+
         let input = PolicyInput {
             confidence_result,
             risk_verdict: RiskVerdict::Blocked {
@@ -141,7 +147,7 @@ mod tests {
             },
             profile: WalletProfile::Permissive, // Most permissive profile
         };
-        
+
         let result = evaluate_policy(&input).unwrap();
         assert_eq!(result, PolicyVerdict::RejectedRiskEngineBlock);
     }
@@ -155,15 +161,18 @@ mod tests {
             ceiling_triggered: false,
             ceiling_applied: 1.0,
         };
-        
+
         let input = PolicyInput {
             confidence_result,
             risk_verdict: RiskVerdict::Passed,
             profile: WalletProfile::Conservative,
         };
-        
+
         let result = evaluate_policy(&input).unwrap();
-        assert!(matches!(result, PolicyVerdict::RejectedBelowThreshold { .. }));
+        assert!(matches!(
+            result,
+            PolicyVerdict::RejectedBelowThreshold { .. }
+        ));
     }
 
     #[test]
@@ -185,15 +194,18 @@ mod tests {
             ceiling_triggered: false,
             ceiling_applied: 1.0,
         };
-        
+
         let input = PolicyInput {
             confidence_result,
             risk_verdict: RiskVerdict::Passed,
             profile: WalletProfile::Enterprise,
         };
-        
+
         let result = evaluate_policy(&input).unwrap();
-        assert!(matches!(result, PolicyVerdict::RejectedBelowTrustTier { .. }));
+        assert!(matches!(
+            result,
+            PolicyVerdict::RejectedBelowTrustTier { .. }
+        ));
     }
 
     #[test]
@@ -205,16 +217,16 @@ mod tests {
             ceiling_triggered: false,
             ceiling_applied: 1.0,
         };
-        
+
         let input = PolicyInput {
             confidence_result: confidence_result.clone(),
             risk_verdict: RiskVerdict::Passed,
             profile: WalletProfile::Standard,
         };
-        
+
         let result1 = evaluate_policy(&input).unwrap();
         let result2 = evaluate_policy(&input).unwrap();
-        
+
         assert_eq!(result1, result2);
     }
 
@@ -227,7 +239,7 @@ mod tests {
             ceiling_triggered: false,
             ceiling_applied: 1.0,
         };
-        
+
         let input = PolicyInput {
             confidence_result,
             risk_verdict: RiskVerdict::Passed,
@@ -236,9 +248,11 @@ mod tests {
                 min_trust_tier: TrustTier::SimulationValidated,
             },
         };
-        
+
         let result = evaluate_policy(&input).unwrap();
-        assert!(matches!(result, PolicyVerdict::RejectedBelowThreshold { .. }));
+        assert!(matches!(
+            result,
+            PolicyVerdict::RejectedBelowThreshold { .. }
+        ));
     }
 }
-

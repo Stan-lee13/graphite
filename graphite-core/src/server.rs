@@ -1,7 +1,7 @@
 //! HTTP server for Graphite Core — exposes the verification API over HTTP.
 
 use crate::verification::{GraphiteCore, VerificationInput, VerificationResult};
-use axum::{routing::post, routing::get, Router, Json, extract::State};
+use axum::{extract::State, routing::get, routing::post, Json, Router};
 use std::net::SocketAddr;
 
 pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {

@@ -73,23 +73,24 @@ pub fn check_cpi_chain(input: &CpiChainCheckInput) -> Result<CpiChainVerdict, Cp
             depth_reached: input.max_depth,
         });
     }
-    
+
     // Walk the chain and check each hop
     for (index, hop) in input.observed_trace.iter().enumerate() {
         // Check if target is in expected_cpis
         if !input.expected_cpis.contains(&hop.target_program) {
             return Ok(CpiChainVerdict::UnexpectedTarget { hop_index: index });
         }
-        
+
         // Check compute divergence against Simulation Integrity Layer
         if index < input.compute_divergence.len() {
             let divergence = input.compute_divergence[index];
-            if divergence > 2.0 { // Threshold: 2x historical baseline
+            if divergence > 2.0 {
+                // Threshold: 2x historical baseline
                 return Ok(CpiChainVerdict::DivergenceFlagged { hop_index: index });
             }
         }
     }
-    
+
     Ok(CpiChainVerdict::Clean)
 }
 
@@ -114,7 +115,7 @@ mod tests {
             compute_divergence: vec![0.1, 0.1], // Low divergence
             max_depth: 4,
         };
-        
+
         let result = check_cpi_chain(&input).unwrap();
         assert_eq!(result, CpiChainVerdict::Clean);
     }
@@ -148,9 +149,12 @@ mod tests {
             compute_divergence: vec![0.1, 0.1, 0.1, 0.1, 0.1],
             max_depth: 4,
         };
-        
+
         let result = check_cpi_chain(&input).unwrap();
-        assert!(matches!(result, CpiChainVerdict::UnresolvedBeyondDepth { .. }));
+        assert!(matches!(
+            result,
+            CpiChainVerdict::UnresolvedBeyondDepth { .. }
+        ));
     }
 
     #[test]
@@ -170,9 +174,12 @@ mod tests {
             compute_divergence: vec![0.1, 0.1],
             max_depth: 4,
         };
-        
+
         let result = check_cpi_chain(&input).unwrap();
-        assert!(matches!(result, CpiChainVerdict::UnexpectedTarget { hop_index: 1 }));
+        assert!(matches!(
+            result,
+            CpiChainVerdict::UnexpectedTarget { hop_index: 1 }
+        ));
     }
 
     #[test]
@@ -181,16 +188,14 @@ mod tests {
         // This guards against Simulation Spoofing (SECURITY.md addendum)
         let input = CpiChainCheckInput {
             expected_cpis: vec!["program_a".to_string()],
-            observed_trace: vec![
-                CpiHop {
-                    target_program: "program_a".to_string(),
-                    compute_units: 1000,
-                },
-            ],
+            observed_trace: vec![CpiHop {
+                target_program: "program_a".to_string(),
+                compute_units: 1000,
+            }],
             compute_divergence: vec![3.0], // High divergence (> 2.0 threshold)
             max_depth: 4,
         };
-        
+
         let result = check_cpi_chain(&input).unwrap();
         assert!(matches!(result, CpiChainVerdict::DivergenceFlagged { .. }));
     }
@@ -206,10 +211,10 @@ mod tests {
             compute_divergence: vec![0.1],
             max_depth: 4,
         };
-        
+
         let result1 = check_cpi_chain(&input).unwrap();
         let result2 = check_cpi_chain(&input).unwrap();
-        
+
         assert_eq!(result1, result2);
     }
 
@@ -225,7 +230,7 @@ mod tests {
             compute_divergence: vec![0.1],
             max_depth: 4,
         };
-        
+
         let clean_result = check_cpi_chain(&clean_input).unwrap();
         assert_eq!(format!("{:?}", clean_result), "Clean");
     }

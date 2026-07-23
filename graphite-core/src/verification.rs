@@ -8,8 +8,10 @@
 //! assessment, and policy decision.
 
 use crate::account_resolution::{resolve_accounts, AccountResolutionInput, ResolvedAccount};
-use crate::confidence_engine::{compute_confidence, ConfidenceResult, SignalKind, TrustTier, WeightedSignal};
-use crate::manifest::{ManifestRegistry, load_seed_manifests};
+use crate::confidence_engine::{
+    compute_confidence, ConfidenceResult, SignalKind, TrustTier, WeightedSignal,
+};
+use crate::manifest::{load_seed_manifests, ManifestRegistry};
 use crate::policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict, WalletProfile};
 use crate::risk_engine::{assess, RiskAssessmentInput, RiskVerdict};
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
@@ -157,7 +159,8 @@ impl GraphiteCore {
 
     /// Load an additional protocol manifest at runtime.
     pub fn load_manifest(&mut self, json: &str) -> Result<(), VerificationError> {
-        self.registry.load_from_json(json)
+        self.registry
+            .load_from_json(json)
             .map(|_| ())
             .map_err(|e| VerificationError::TransactionBuild(e.to_string()))
     }
@@ -179,7 +182,10 @@ impl GraphiteCore {
     }
 
     /// Run the full verification pipeline on a transaction.
-    pub fn verify(&self, input: &VerificationInput) -> Result<VerificationResult, VerificationError> {
+    pub fn verify(
+        &self,
+        input: &VerificationInput,
+    ) -> Result<VerificationResult, VerificationError> {
         // Step 1: Account Resolution
         let resolution = resolve_accounts(
             &AccountResolutionInput {
@@ -205,8 +211,9 @@ impl GraphiteCore {
         // Get expected state changes and allowed CPIs from manifest
         let (expected_state_changes, allowed_cpis) = match manifest {
             Some(m) => {
-                let ix = m.instructions.iter()
-                    .find(|i| i.discriminator.to_lowercase() == input.instruction_discriminator.to_lowercase());
+                let ix = m.instructions.iter().find(|i| {
+                    i.discriminator.to_lowercase() == input.instruction_discriminator.to_lowercase()
+                });
                 match ix {
                     Some(ix) => (ix.expected_state_changes.clone(), ix.allowed_cpis.clone()),
                     None => (vec![], vec![]),
@@ -225,7 +232,8 @@ impl GraphiteCore {
             expected_state_changes: expected_state_changes.clone(),
             allowed_cpis: allowed_cpis.clone(),
             instruction_data: input.instruction_data.clone().unwrap_or_default(),
-        }).map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
+        })
+        .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
 
         // Step 3: Risk Assessment
         let risk_verdict = assess(&RiskAssessmentInput {
@@ -244,7 +252,7 @@ impl GraphiteCore {
         );
         let risk_verdict = if let Some(pattern) = mismatch_risk {
             match risk_verdict {
-                crate::risk_engine::RiskVerdict::Passed => 
+                crate::risk_engine::RiskVerdict::Passed =>
                     crate::risk_engine::RiskVerdict::Blocked {
                         pattern,
                         reason: format!(
@@ -267,19 +275,23 @@ impl GraphiteCore {
             &input.account_addresses,
             &expected_state_changes,
             &input.proposed_intent.intent_type,
-            input.proposed_intent.extracted_parameters
+            input
+                .proposed_intent
+                .extracted_parameters
                 .as_ref()
                 .and_then(|p| p.output_token.as_deref()),
         );
         let risk_verdict = if let Some(pattern) = fake_swap {
             match risk_verdict {
-                crate::risk_engine::RiskVerdict::Passed =>
+                crate::risk_engine::RiskVerdict::Passed => {
                     crate::risk_engine::RiskVerdict::Blocked {
                         pattern,
                         reason: "FakeSwap: swap intent detected but expected state changes "
-                            .to_string() + "do not include output/credit — output may be routed "
+                            .to_string()
+                            + "do not include output/credit — output may be routed "
                             + "to the wrong token account",
-                    },
+                    }
+                }
                 other => other,
             }
         } else {
@@ -290,7 +302,8 @@ impl GraphiteCore {
         // If account resolution found PDA mismatches, surface them as risk findings.
         // A PDA mismatch means the transaction provides an account that doesn't match
         // the protocol manifest's expected PDA derivation — a potential spoofing attack.
-        let pda_mismatches: Vec<&ResolvedAccount> = resolution.resolved_accounts
+        let pda_mismatches: Vec<&ResolvedAccount> = resolution
+            .resolved_accounts
             .iter()
             .filter(|a| a.pda_mismatch)
             .collect();
@@ -298,17 +311,19 @@ impl GraphiteCore {
             let mismatch_reason = format!(
                 "PDA mismatch: {} account(s) do not match manifest-derived addresses: {}",
                 pda_mismatches.len(),
-                pda_mismatches.iter()
+                pda_mismatches
+                    .iter()
                     .map(|a| format!("{} (role={})", &a.address[..8], a.role))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
             match risk_verdict {
-                crate::risk_engine::RiskVerdict::Passed =>
+                crate::risk_engine::RiskVerdict::Passed => {
                     crate::risk_engine::RiskVerdict::Blocked {
                         pattern: crate::risk_engine::RiskPattern::MaliciousAccountChange,
                         reason: mismatch_reason,
-                    },
+                    }
+                }
                 crate::risk_engine::RiskVerdict::Blocked { ref pattern, .. } => {
                     // Already blocked — add PDA mismatch to findings via summarize_risk downstream
                     crate::risk_engine::RiskVerdict::Blocked {
@@ -388,7 +403,8 @@ impl GraphiteCore {
                     let mut f = risk_summary.findings.clone();
                     f.push(RiskFinding {
                         pattern: "SimulationSpoofing".to_string(),
-                        reason: "Compute usage diverges from baseline (flagged at >2.0σ)".to_string(),
+                        reason: "Compute usage diverges from baseline (flagged at >2.0σ)"
+                            .to_string(),
                     });
                     f
                 },
@@ -408,7 +424,11 @@ impl GraphiteCore {
             TrustTier::Unknown
         };
 
-        let signals = build_signals(&input.behavior_evidence, manifest_found, &input.proposed_intent);
+        let signals = build_signals(
+            &input.behavior_evidence,
+            manifest_found,
+            &input.proposed_intent,
+        );
         let confidence_result = compute_confidence(&signals, trust_tier)
             .map_err(|e| VerificationError::Confidence(e.to_string()))?;
 
@@ -434,7 +454,6 @@ impl GraphiteCore {
             PolicyVerdict::RejectedBelowThreshold { .. } => "Rejected",
             PolicyVerdict::RejectedBelowTrustTier { .. } => "Rejected",
             PolicyVerdict::RejectedRiskEngineBlock => "Rejected",
-            
         };
 
         // Build audit trail ID (deterministic hash of key fields)
@@ -446,8 +465,8 @@ impl GraphiteCore {
         );
 
         // Determine if approved
-        let approved = matches!(policy_verdict, PolicyVerdict::Approved)
-            && risk_summary.status == "Clear";
+        let approved =
+            matches!(policy_verdict, PolicyVerdict::Approved) && risk_summary.status == "Clear";
 
         // Generate summary
         let summary = generate_summary(
@@ -465,14 +484,16 @@ impl GraphiteCore {
             .iter()
             .map(|(kind, contribution)| {
                 let kind_str = format!("{:?}", kind);
-                let raw_value = signals.iter()
+                let raw_value = signals
+                    .iter()
                     .find(|s| format!("{:?}", s.kind) == kind_str)
                     .map(|s| s.value)
                     .unwrap_or(0.0);
                 VerificationBreakdownItem {
                     kind: kind_str.clone(),
                     raw_value,
-                    weight: signals.iter()
+                    weight: signals
+                        .iter()
                         .find(|s| format!("{:?}", s.kind) == kind_str)
                         .map(|s| s.weight)
                         .unwrap_or(0.0),
@@ -565,7 +586,7 @@ fn generate_audit_id(
     use sha2::{Digest, Sha256};
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    
+
     let seq = COUNTER.fetch_add(1, Ordering::SeqCst);
     let mut hasher = Sha256::new();
     hasher.update(program_id.as_bytes());
@@ -590,13 +611,21 @@ fn generate_summary(
     unknown: bool,
 ) -> String {
     let parts: Vec<String> = vec![
-        if approved { "APPROVED".into() } else { "BLOCKED".into() },
+        if approved {
+            "APPROVED".into()
+        } else {
+            "BLOCKED".into()
+        },
         format!("confidence={:.2}", confidence),
         format!("risk={}", risk.status),
         format!("policy={}", policy),
         format!("protocol={}", protocol),
         format!("instruction={}", instruction),
-        if unknown { "unknown_protocol=true".into() } else { "unknown_protocol=false".into() },
+        if unknown {
+            "unknown_protocol=true".into()
+        } else {
+            "unknown_protocol=false".into()
+        },
     ];
     parts.join(" | ")
 }
@@ -639,7 +668,10 @@ mod tests {
         let input = make_input(
             "11111111111111111111111111111111",
             "02000000",
-            &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            ],
         );
         let result = core.verify(&input).unwrap();
         assert!(result.manifest_found);
@@ -676,7 +708,10 @@ mod tests {
             program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
             protocol_version: "1.0.0".to_string(),
             instruction_discriminator: "0b".to_string(), // SetAuthority
-            account_addresses: vec!["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(), "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string()],
+            account_addresses: vec![
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+            ],
             instruction_data: None,
             cpi_targets: vec!["unverified_target".to_string()],
             wallet_profile: WalletProfile::Standard,
@@ -703,7 +738,10 @@ mod tests {
         let input = make_input(
             "11111111111111111111111111111111",
             "02000000",
-            &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            ],
         );
         let result = core.verify(&input).unwrap();
         assert!(result.audit_trail_id.starts_with("gr-"));
@@ -715,7 +753,10 @@ mod tests {
         let input = make_input(
             "11111111111111111111111111111111",
             "02000000",
-            &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"],
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            ],
         );
         let result = core.verify(&input).unwrap();
         assert!(result.summary.contains("confidence="));

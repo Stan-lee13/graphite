@@ -23,8 +23,9 @@ pub enum SolanaTypeError {
 }
 
 /// A Solana public key — 32 bytes, base58-encoded onchain.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize, Default,
+)]
 pub struct Pubkey(#[serde(with = "pubkey_serde")] pub [u8; 32]);
 
 mod pubkey_serde {
@@ -40,7 +41,10 @@ mod pubkey_serde {
             .into_vec()
             .map_err(|e| serde::de::Error::custom(e.to_string()))?;
         if decoded.len() != 32 {
-            return Err(serde::de::Error::custom(format!("expected 32 bytes, got {}", decoded.len())));
+            return Err(serde::de::Error::custom(format!(
+                "expected 32 bytes, got {}",
+                decoded.len()
+            )));
         }
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&decoded);
@@ -54,20 +58,24 @@ impl Pubkey {
 
     /// SPL Token Program: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
     pub fn spl_token() -> Pubkey {
-        Pubkey(bs58::decode("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-            .into_vec()
-            .unwrap()
-            .try_into()
-            .unwrap())
+        Pubkey(
+            bs58::decode("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+                .into_vec()
+                .unwrap()
+                .try_into()
+                .unwrap(),
+        )
     }
 
     /// Token-2022 Program: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
     pub fn token_2022() -> Pubkey {
-        Pubkey(bs58::decode("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
-            .into_vec()
-            .unwrap()
-            .try_into()
-            .unwrap())
+        Pubkey(
+            bs58::decode("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+                .into_vec()
+                .unwrap()
+                .try_into()
+                .unwrap(),
+        )
     }
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -106,14 +114,16 @@ impl std::fmt::Display for Pubkey {
     }
 }
 
-
 /// Derive a Program Derived Address (PDA) from seeds and a program ID.
 ///
 /// Mirrors Solana's `Pubkey::find_program_address`: iterates nonce from 255
 /// down to 0, hashing seeds || program_id || nonce with SHA-256, and returns
 /// the first hash that does NOT decompress to a valid ed25519 curve point
 /// (i.e., is "off-curve").
-pub fn find_program_address(seeds: &[&[u8]], program_id: &Pubkey) -> Result<(Pubkey, u8), SolanaTypeError> {
+pub fn find_program_address(
+    seeds: &[&[u8]],
+    program_id: &Pubkey,
+) -> Result<(Pubkey, u8), SolanaTypeError> {
     for nonce in (0u8..=255).rev() {
         let mut hasher = Sha256::new();
         for seed in seeds {
@@ -136,7 +146,8 @@ pub fn find_program_address(seeds: &[&[u8]], program_id: &Pubkey) -> Result<(Pub
 /// Check if a pubkey is on the ed25519 curve (i.e., could be a keypair pubkey,
 /// NOT a PDA). PDAs are off-curve by construction.
 pub fn is_on_curve(pubkey: &Pubkey) -> bool {
-    let compressed = CompressedEdwardsY::from_slice(pubkey.as_bytes()).expect("pubkey is always 32 bytes");
+    let compressed =
+        CompressedEdwardsY::from_slice(pubkey.as_bytes()).expect("pubkey is always 32 bytes");
     compressed.decompress().is_some()
 }
 
@@ -150,19 +161,35 @@ pub struct AccountMeta {
 
 impl AccountMeta {
     pub fn new(pubkey: Pubkey, is_signer: bool, is_writable: bool) -> Self {
-        Self { pubkey, is_signer, is_writable }
+        Self {
+            pubkey,
+            is_signer,
+            is_writable,
+        }
     }
 
     pub fn new_signer(pubkey: Pubkey) -> Self {
-        Self { pubkey, is_signer: true, is_writable: true }
+        Self {
+            pubkey,
+            is_signer: true,
+            is_writable: true,
+        }
     }
 
     pub fn new_writable(pubkey: Pubkey) -> Self {
-        Self { pubkey, is_signer: false, is_writable: true }
+        Self {
+            pubkey,
+            is_signer: false,
+            is_writable: true,
+        }
     }
 
     pub fn new_readonly(pubkey: Pubkey) -> Self {
-        Self { pubkey, is_signer: false, is_writable: false }
+        Self {
+            pubkey,
+            is_signer: false,
+            is_writable: false,
+        }
     }
 }
 
@@ -176,7 +203,11 @@ pub struct Instruction {
 
 impl Instruction {
     pub fn new(program_id: Pubkey, accounts: Vec<AccountMeta>, data: Vec<u8>) -> Self {
-        Self { program_id, accounts, data }
+        Self {
+            program_id,
+            accounts,
+            data,
+        }
     }
 }
 
@@ -186,13 +217,19 @@ mod tests {
 
     #[test]
     fn test_system_program_is_all_zeros() {
-        assert_eq!(Pubkey::SYSTEM_PROGRAM.to_base58(), "11111111111111111111111111111111");
+        assert_eq!(
+            Pubkey::SYSTEM_PROGRAM.to_base58(),
+            "11111111111111111111111111111111"
+        );
     }
 
     #[test]
     fn test_spl_token_roundtrip() {
         let token = Pubkey::spl_token();
-        assert_eq!(token.to_base58(), "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+        assert_eq!(
+            token.to_base58(),
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        );
     }
 
     #[test]
@@ -225,7 +262,8 @@ mod tests {
         // The all-zeros key is technically a valid compressed point on the curve
         // (identity point), but that's fine — System Program isn't a PDA.
         // Real keypairs are on-curve; PDAs are off-curve.
-        let real_keypair = Pubkey::from_base58("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").unwrap();
+        let real_keypair =
+            Pubkey::from_base58("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").unwrap();
         assert!(is_on_curve(&real_keypair));
     }
 }

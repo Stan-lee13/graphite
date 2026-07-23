@@ -49,12 +49,14 @@ pub enum RiskVerdict {
     /// Transaction passes risk checks
     Passed,
     /// Transaction blocked due to detected risk pattern
-    Blocked { pattern: RiskPattern, reason: String },
+    Blocked {
+        pattern: RiskPattern,
+        reason: String,
+    },
 }
 
 /// Input for risk assessment — now manifest-aware.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RiskAssessmentInput {
     /// Program ID being called (base58)
     pub program_id: String,
@@ -71,7 +73,6 @@ pub struct RiskAssessmentInput {
     /// Instruction discriminator (hex) — used for known-risky-pattern matching
     pub instruction_discriminator: String,
 }
-
 
 /// Known risky instruction discriminators by program ID.
 /// These are the P0 risk patterns the roadmap requires detecting at MVP scope.
@@ -129,7 +130,11 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         if !input.allowed_cpis.is_empty() {
             // Manifest-aware mode: check CPI targets against allowed list
             for cpi_target in &input.cpi_targets {
-                if !input.allowed_cpis.iter().any(|allowed| allowed == cpi_target) {
+                if !input
+                    .allowed_cpis
+                    .iter()
+                    .any(|allowed| allowed == cpi_target)
+                {
                     return Ok(RiskVerdict::Blocked {
                         pattern: RiskPattern::UnexpectedCpi,
                         reason: format!(
@@ -167,7 +172,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         if input.program_id == pattern.program_id {
             // If we have the discriminator, check it directly
             if !input.instruction_discriminator.is_empty()
-                && input.instruction_discriminator.to_lowercase() == pattern.discriminator.to_lowercase()
+                && input.instruction_discriminator.to_lowercase()
+                    == pattern.discriminator.to_lowercase()
             {
                 return Ok(RiskVerdict::Blocked {
                     pattern: pattern.pattern,
@@ -217,7 +223,9 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // P0 Check 5: Hidden transfer detection
     // If the manifest declares specific state changes but the transaction
     // touches accounts not mentioned in those changes, flag it
-    if !input.expected_state_changes.is_empty() && detect_hidden_transfer(&input.accounts, &input.expected_state_changes) {
+    if !input.expected_state_changes.is_empty()
+        && detect_hidden_transfer(&input.accounts, &input.expected_state_changes)
+    {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::HiddenTransfer,
             reason: "Transaction touches accounts not declared in expected state changes — possible hidden transfer".to_string(),
@@ -245,32 +253,33 @@ fn detect_drainer_pattern(accounts: &[String], expected_changes: &[String]) -> b
     // it's suspicious — a legitimate program with 6+ accounts should declare
     // what it's doing with them.
     // Check both empty vec AND vec with only empty/whitespace strings
-    let has_meaningful_changes = !expected_changes.is_empty()
-        && expected_changes.iter().any(|c| !c.trim().is_empty());
-    
+    let has_meaningful_changes =
+        !expected_changes.is_empty() && expected_changes.iter().any(|c| !c.trim().is_empty());
+
     // Red Team fix L12: Deduplicate accounts before counting.
     // 6 copies of the same account is only 1 unique account.
     let unique_accounts: std::collections::HashSet<&String> = accounts.iter().collect();
     let unique_count = unique_accounts.len();
-    
+
     // Case 1: Many UNIQUE accounts, NO meaningful changes → drainer
     if unique_count >= 5 && !has_meaningful_changes {
         return true;
     }
-    
+
     // Case 2 (Red Team fix L18): Many unique accounts, but very few state changes relative
     // to account count. If there are 20+ unique accounts but only 1-2 declared changes,
     // that's a drainer hiding behind a minimal declaration.
     // Threshold: unique_count / meaningful_change_count >= 10 AND unique_count >= 20
     if unique_count >= 20 && has_meaningful_changes {
-        let meaningful_count = expected_changes.iter()
+        let meaningful_count = expected_changes
+            .iter()
             .filter(|c| !c.trim().is_empty())
             .count();
         if meaningful_count > 0 && unique_count / meaningful_count >= 10 {
             return true;
         }
     }
-    
+
     false
 }
 
@@ -298,9 +307,7 @@ fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> b
     //
     // This is a known limitation — real hidden transfer detection requires
     // Simulation Integrity (Phase 1.5) to compare pre/post account state.
-    let uses_accounts_notation = expected_changes
-        .iter()
-        .any(|c| c.contains("accounts."));
+    let uses_accounts_notation = expected_changes.iter().any(|c| c.contains("accounts."));
 
     if !uses_accounts_notation {
         return false;
@@ -362,7 +369,13 @@ mod tests {
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
-        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::AuthorityHijack, .. }));
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::AuthorityHijack,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -376,7 +389,13 @@ mod tests {
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
-        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::AuthorityHijack, .. }));
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::AuthorityHijack,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -415,7 +434,13 @@ mod tests {
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
-        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::CompositionalDrainPattern, .. }));
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -457,8 +482,16 @@ mod tests {
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
-        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::UnexpectedCpi, .. }),
-            "Empty allowed_cpis must fail CLOSED — block all CPI targets");
+        assert!(
+            matches!(
+                result,
+                RiskVerdict::Blocked {
+                    pattern: RiskPattern::UnexpectedCpi,
+                    ..
+                }
+            ),
+            "Empty allowed_cpis must fail CLOSED — block all CPI targets"
+        );
     }
 
     #[test]
@@ -466,8 +499,12 @@ mod tests {
         let input = RiskAssessmentInput {
             program_id: "some_program".to_string(),
             accounts: vec![
-                "a1".to_string(), "a2".to_string(), "a3".to_string(),
-                "a4".to_string(), "a5".to_string(), "a6".to_string(),
+                "a1".to_string(),
+                "a2".to_string(),
+                "a3".to_string(),
+                "a4".to_string(),
+                "a5".to_string(),
+                "a6".to_string(),
             ],
             cpi_targets: vec![],
             expected_state_changes: vec![],
@@ -475,7 +512,13 @@ mod tests {
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
-        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::Drainer, .. }));
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Drainer,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -485,23 +528,33 @@ mod tests {
         let input = RiskAssessmentInput {
             program_id: "some_program".to_string(),
             accounts: vec![
-                "a1".to_string(), "a2".to_string(),
-                "a3".to_string(), "a4".to_string(),
-                "a5".to_string(), "a6".to_string(),
-                "a7".to_string(), "a8".to_string(),
-                "a9".to_string(), "a10".to_string(),
-                "a11".to_string(), "a12".to_string(),
+                "a1".to_string(),
+                "a2".to_string(),
+                "a3".to_string(),
+                "a4".to_string(),
+                "a5".to_string(),
+                "a6".to_string(),
+                "a7".to_string(),
+                "a8".to_string(),
+                "a9".to_string(),
+                "a10".to_string(),
+                "a11".to_string(),
+                "a12".to_string(),
                 "a13".to_string(),
             ],
             cpi_targets: vec![],
-            expected_state_changes: vec![
-                "debits accounts.from by amount".to_string(),
-            ],
+            expected_state_changes: vec!["debits accounts.from by amount".to_string()],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
-        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::HiddenTransfer, .. }));
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::HiddenTransfer,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -515,7 +568,13 @@ mod tests {
             instruction_discriminator: String::new(),
         };
         let result = assess(&input).unwrap();
-        assert!(matches!(result, RiskVerdict::Blocked { pattern: RiskPattern::UnexpectedCpi, .. }));
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::UnexpectedCpi,
+                ..
+            }
+        ));
     }
 }
 
@@ -577,7 +636,6 @@ impl RiskPattern {
     }
 }
 
-
 /// Programs that are known to support specific intent types.
 /// If a swap intent is sent to a non-swap program, that's suspicious.
 fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
@@ -591,23 +649,18 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
             ];
             SWAP_PROGRAMS.contains(&program_id)
         }
-        "stake" => {
-            program_id == "Stake11111111111111111111111111111111111111"
-        }
+        "stake" => program_id == "Stake11111111111111111111111111111111111111",
         "close" => {
             program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" // SPL Token
                 || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" // Token-2022
         }
         "transfer" => true, // Transfers can go through many programs
-        _ => true, // Unknown intent types — don't block (P12: degrade gracefully)
+        _ => true,          // Unknown intent types — don't block (P12: degrade gracefully)
     }
 }
 
 /// Detect intent-program mismatch: declared intent doesn't match program capabilities.
-pub fn detect_intent_program_mismatch(
-    program_id: &str,
-    intent_type: &str,
-) -> Option<RiskPattern> {
+pub fn detect_intent_program_mismatch(program_id: &str, intent_type: &str) -> Option<RiskPattern> {
     if !program_supports_intent(program_id, intent_type) {
         return Some(RiskPattern::PermissionEscalation);
     }

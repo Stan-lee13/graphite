@@ -79,40 +79,43 @@ pub fn check_simulation_integrity(
             program_id: input.program_id.clone(),
         });
     }
-    
+
     if input.baseline.std_compute_units == 0.0 {
         return Err(SimulationIntegrityError::InvalidData {
             reason: "baseline std_dev is zero".to_string(),
         });
     }
-    
+
     // Red Team fix L6/L6b: Reject NaN and Infinity in baseline values.
     // NaN mean → NaN z-score → NaN.abs() > threshold is false → bypasses detection.
     // Infinity std → z-score = 0.0 → bypasses detection.
-    if input.baseline.mean_compute_units.is_nan() 
+    if input.baseline.mean_compute_units.is_nan()
         || input.baseline.mean_compute_units.is_infinite()
         || input.baseline.std_compute_units.is_nan()
-        || input.baseline.std_compute_units.is_infinite() {
+        || input.baseline.std_compute_units.is_infinite()
+    {
         return Err(SimulationIntegrityError::InvalidData {
             reason: "baseline contains NaN or Infinity values".to_string(),
         });
     }
-    
+
     // Compute z-score for compute units
     let z_score = (input.simulation_usage.compute_units as f64 - input.baseline.mean_compute_units)
         / input.baseline.std_compute_units;
-    
+
     // Sanity check: z-score must not be NaN (Constitution P3)
     if z_score.is_nan() || z_score.is_infinite() {
         return Ok(SimulationIntegrityResult {
             flagged: true, // Fail-safe: flag as suspicious (P12)
             divergence_score: f64::INFINITY,
-            reason: Some("Z-score computation produced NaN/Infinity — baseline may be corrupted".to_string()),
+            reason: Some(
+                "Z-score computation produced NaN/Infinity — baseline may be corrupted".to_string(),
+            ),
         });
     }
-    
+
     let flagged = z_score.abs() > input.divergence_threshold;
-    
+
     let reason = if flagged {
         Some(format!(
             "Compute usage divergence: {:.2}σ from baseline (threshold: {:.2}σ)",
@@ -121,7 +124,7 @@ pub fn check_simulation_integrity(
     } else {
         None
     };
-    
+
     Ok(SimulationIntegrityResult {
         flagged,
         divergence_score: z_score,
@@ -133,16 +136,17 @@ pub fn check_simulation_integrity(
 pub fn update_baseline(baseline: &mut ComputeBaseline, new_compute_units: u64) {
     let n = baseline.sample_count as f64;
     let new_n = n + 1.0;
-    
+
     // Update mean
     let new_mean = (baseline.mean_compute_units * n + new_compute_units as f64) / new_n;
-    
+
     // Update variance (simplified recurrence)
     let variance = baseline.std_compute_units * baseline.std_compute_units;
     let new_variance = (variance * n
-        + (new_compute_units as f64 - baseline.mean_compute_units) * (new_compute_units as f64 - new_mean))
+        + (new_compute_units as f64 - baseline.mean_compute_units)
+            * (new_compute_units as f64 - new_mean))
         / new_n;
-    
+
     baseline.mean_compute_units = new_mean;
     baseline.std_compute_units = new_variance.sqrt();
     baseline.sample_count += 1;
@@ -169,7 +173,7 @@ mod tests {
             },
             divergence_threshold: 2.0,
         };
-        
+
         let result = check_simulation_integrity(&input).unwrap();
         assert!(result.flagged);
         assert!(result.divergence_score > 2.0);
@@ -191,7 +195,7 @@ mod tests {
             },
             divergence_threshold: 2.0,
         };
-        
+
         let result = check_simulation_integrity(&input).unwrap();
         assert!(!result.flagged);
         assert!(result.divergence_score < 2.0);
@@ -213,9 +217,12 @@ mod tests {
             },
             divergence_threshold: 2.0,
         };
-        
+
         let result = check_simulation_integrity(&input);
-        assert!(matches!(result, Err(SimulationIntegrityError::NoBaseline { .. })));
+        assert!(matches!(
+            result,
+            Err(SimulationIntegrityError::NoBaseline { .. })
+        ));
     }
 
     #[test]
@@ -234,10 +241,10 @@ mod tests {
             },
             divergence_threshold: 2.0,
         };
-        
+
         let result1 = check_simulation_integrity(&input).unwrap();
         let result2 = check_simulation_integrity(&input).unwrap();
-        
+
         assert_eq!(result1.flagged, result2.flagged);
         assert_eq!(result1.divergence_score, result2.divergence_score);
     }
@@ -249,10 +256,10 @@ mod tests {
             std_compute_units: 100.0,
             sample_count: 100,
         };
-        
+
         let old_mean = baseline.mean_compute_units;
         update_baseline(&mut baseline, 1100);
-        
+
         // Mean should shift toward new value
         assert_ne!(baseline.mean_compute_units, old_mean);
         assert_eq!(baseline.sample_count, 101);

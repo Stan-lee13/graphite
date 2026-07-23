@@ -19,7 +19,7 @@ export class GraphiteClient {
     });
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
+      const errorBody = (await response.json().catch(() => ({}))) as { error?: string };
       throw new Error(
         `Graphite verification failed: ${response.status} ${response.statusText} — ${errorBody.error ?? ""}`
       );
@@ -31,12 +31,12 @@ export class GraphiteClient {
   async health(): Promise<{ status: string; service: string; version: string }> {
     const response = await fetch(`${this.baseUrl}/health`);
     if (!response.ok) throw new Error(`Health check failed: ${response.status}`);
-    return await response.json();
+    return (await response.json()) as { status: string; service: string; version: string };
   }
 
   async listManifests(): Promise<ProtocolManifest[]> {
     const response = await fetch(`${this.baseUrl}/manifests`);
     if (!response.ok) throw new Error(`Failed to list manifests: ${response.status}`);
-    return await response.json();
+    return (await response.json()) as ProtocolManifest[];
   }
 }
