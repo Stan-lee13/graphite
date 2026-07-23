@@ -236,6 +236,16 @@ impl GraphiteCore {
         .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
 
         // Step 3: Risk Assessment
+        let expected_account_count = match manifest {
+            Some(m) => {
+                let ix = m.instructions.iter().find(|i| {
+                    i.discriminator.to_lowercase() == input.instruction_discriminator.to_lowercase()
+                });
+                ix.map(|i| i.accounts.len())
+            }
+            None => None,
+        };
+
         let risk_verdict = assess(&RiskAssessmentInput {
             program_id: input.program_id.clone(),
             accounts: input.account_addresses.clone(),
@@ -243,6 +253,7 @@ impl GraphiteCore {
             expected_state_changes: expected_state_changes.clone(),
             allowed_cpis: allowed_cpis.clone(),
             instruction_discriminator: input.instruction_discriminator.clone(),
+            expected_account_count,
         })?;
 
         // Step 3b: Intent-Program mismatch (Phase 1.5)

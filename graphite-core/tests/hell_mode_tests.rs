@@ -100,6 +100,7 @@ fn risk_input(
         expected_state_changes: state_changes.iter().map(|s| s.to_string()).collect(),
         allowed_cpis: allowed_cpis.iter().map(|s| s.to_string()).collect(),
         instruction_discriminator: disc.to_string(),
+            expected_account_count: None,
     }
 }
 
@@ -576,6 +577,7 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
         ],
         allowed_cpis: vec![],
         instruction_discriminator: "0b".to_string(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -596,6 +598,7 @@ fn h10_state_changes_dont_mask_closeaccount() {
         ],
         allowed_cpis: vec![],
         instruction_discriminator: "09".to_string(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -622,6 +625,7 @@ fn h11_empty_string_state_change_bypasses_drainer() {
         expected_state_changes: vec!["".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     // If this passes (not blocked), we found a drainer bypass
@@ -644,6 +648,7 @@ fn h11_whitespace_state_change_bypasses_drainer() {
         expected_state_changes: vec!["   ".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
