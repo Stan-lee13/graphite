@@ -637,8 +637,8 @@ pub fn detect_fake_swap(
     // For Jupiter/Orca/Meteora — check if state changes mention output token
     let swap_programs = [
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
-        "ORCAwbVNbXk3oXN4LDp9zKq9q6q2p7U5o5mU5o5mU5o", // Orca (placeholder)
-        "MeteoraB2x9i5Xk3oXN4LDp9zKq9q6q2p7U5o5mU5o",  // Meteora (placeholder)
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", 
     ];
 
     if !swap_programs.contains(&program_id) {
@@ -680,8 +680,8 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
             // Only DEX/aggregator programs support swaps
             const SWAP_PROGRAMS: &[&str] = &[
                 "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
-                "ORCAwbVNbXk3oXN4LDp9zKq9q6q2p7U5o5mU5o5mU5o", // Orca (placeholder)
-                "MeteoraB2x9i5Xk3oXN4LDp9zKq9q6q2p7U5o5mU5o",  // Meteora (placeholder)
+                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", 
             ];
             SWAP_PROGRAMS.contains(&program_id)
         }

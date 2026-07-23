@@ -1,6 +1,7 @@
 //! HTTP server for Graphite Core — exposes the verification API over HTTP.
 
 use crate::verification::{GraphiteCore, VerificationInput, VerificationResult};
+use axum::http::StatusCode;
 use axum::{extract::State, routing::get, routing::post, Json, Router};
 use std::net::SocketAddr;
 
@@ -21,16 +22,24 @@ fn build_app(core: GraphiteCore) -> Router {
         .with_state(core)
 }
 
+/// Verify handler — returns 200 on success, 400 on bad input, 500 on internal error.
 async fn verify_handler(
     State(core): State<GraphiteCore>,
     Json(input): Json<VerificationInput>,
-) -> Result<Json<VerificationResult>, Json<serde_json::Value>> {
+) -> Result<Json<VerificationResult>, (StatusCode, Json<serde_json::Value>)> {
     match core.verify(&input) {
         Ok(result) => Ok(Json(result)),
-        Err(e) => Err(Json(serde_json::json!({
-            "error": e.to_string(),
-            "error_type": format!("{:?}", e),
-        }))),
+        Err(e) => {
+            let error_type = format!("{:?}", e);
+            // Input validation errors (bad addresses, invalid discriminator, etc.) = 400
+            // All current VerificationError variants are input-related
+            let status = StatusCode::BAD_REQUEST;
+            Err((status, Json(serde_json::json!({
+                "error": e.to_string(),
+                "error_type": error_type,
+                "status": status.as_u16(),
+            }))))
+        }
     }
 }
 

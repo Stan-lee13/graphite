@@ -47,7 +47,7 @@ PROGRAM_IDS = {
     "transfer": "11111111111111111111111111111111",  # System Program
     "swap": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",  # Jupiter V6
     "stake": "Stake11111111111111111111111111111111111111",  # Stake Program
-    "close": "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA",  # SPL Token
+    "close": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",  # SPL Token
 }
 
 # Instruction discriminators for known programs
@@ -55,7 +55,7 @@ DISCRIMINATORS = {
     ("transfer", "11111111111111111111111111111111"): "02000000",
     ("swap", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"): "e517cb977ae3ad2a",
     ("stake", "Stake11111111111111111111111111111111111111"): "02000000",
-    ("close", "TokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"): "09",
+    ("close", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"): "09",
 }
 
 
