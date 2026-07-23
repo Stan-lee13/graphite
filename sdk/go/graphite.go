@@ -41,7 +41,7 @@ func NewClient(baseURL string) *Client {
 type ProposedIntent struct {
 	IntentType          string               `json:"intent_type"`
 	RawNaturalLanguage  string               `json:"raw_natural_language"`
-	ConfidenceOfParse   float64              `json:"confidence_of_parse"`
+	ConfidenceOfParse  float64              `json:"confidence_of_parse"`
 	ExtractedParameters *ExtractedParameters `json:"extracted_parameters,omitempty"`
 }
 
@@ -54,16 +54,14 @@ type ExtractedParameters struct {
 }
 
 // BehaviorEvidence is the on-chain behavioral evidence for the program.
-// All fields are required by the Rust server contract (serde default = zero value).
 type BehaviorEvidence struct {
-	HasSignedManifest       bool `json:"has_signed_manifest"`
-	CommunityVerifiedCount  int  `json:"community_verified_count"`
-	BattleTestedTxCount     int  `json:"battle_tested_tx_count"`
-	SimulationMatchCount    int  `json:"simulation_match_count"`
+	HasSignedManifest      bool `json:"has_signed_manifest"`
+	CommunityVerifiedCount int  `json:"community_verified_count"`
+	BattleTestedTxCount    int  `json:"battle_tested_tx_count"`
+	SimulationMatchCount   int  `json:"simulation_match_count"`
 }
 
 // SimulationBaseline is the historical compute usage baseline for a program.
-// Optional — if nil, the simulation integrity check is skipped.
 type SimulationBaseline struct {
 	MeanComputeUnits float64 `json:"mean_compute_units"`
 	StdComputeUnits  float64 `json:"std_compute_units"`
@@ -75,7 +73,6 @@ type SimulationBaseline struct {
 type ByteArray []byte
 
 // MarshalJSON encodes the byte slice as a JSON array of unsigned 8-bit integers.
-// This matches Rust's serde deserialization of Vec<u8>.
 func (b ByteArray) MarshalJSON() ([]byte, error) {
 	if len(b) == 0 {
 		return []byte("[]"), nil
@@ -126,36 +123,83 @@ const (
 // VerificationInput is the full input to the verification pipeline.
 // This struct MUST match the Rust server's VerificationInput exactly.
 type VerificationInput struct {
-	ProposedIntent          ProposedIntent      `json:"proposed_intent"`
-	ProgramID               string              `json:"program_id"`
-	ProtocolVersion         string              `json:"protocol_version"`
-	InstructionDiscriminator string              `json:"instruction_discriminator"`
-	AccountAddresses        []string            `json:"account_addresses"`
-	InstructionData         ByteArray           `json:"instruction_data,omitempty"`
-	CPITargets              []string            `json:"cpi_targets,omitempty"`
-	WalletProfile           WalletProfile       `json:"wallet_profile"`
-	BehaviorEvidence        BehaviorEvidence    `json:"behavior_evidence"`
-	ComputeUnits            uint64              `json:"compute_units"`
-	AccountWrites           uint32              `json:"account_writes"`
+	ProposedIntent          ProposedIntent       `json:"proposed_intent"`
+	ProgramID                string               `json:"program_id"`
+	ProtocolVersion          string               `json:"protocol_version"`
+	InstructionDiscriminator string               `json:"instruction_discriminator"`
+	AccountAddresses        []string             `json:"account_addresses"`
+	InstructionData         ByteArray             `json:"instruction_data,omitempty"`
+	CPITargets              []string             `json:"cpi_targets,omitempty"`
+	WalletProfile           WalletProfile        `json:"wallet_profile"`
+	BehaviorEvidence        BehaviorEvidence     `json:"behavior_evidence"`
+	ComputeUnits            uint64               `json:"compute_units"`
+	AccountWrites           uint32               `json:"account_writes"`
 	CPIHops                 uint32               `json:"cpi_hops"`
-	SimulationBaseline      *SimulationBaseline `json:"simulation_baseline,omitempty"`
+	SimulationBaseline      *SimulationBaseline  `json:"simulation_baseline,omitempty"`
 }
+
+// ─── Result types (must match Rust VerificationResult exactly) ───
 
 // VerificationResult is the output of the verification pipeline.
 type VerificationResult struct {
-	Approved             bool               `json:"approved"`
-	Confidence           float64            `json:"confidence"`
-	TrustTier            string             `json:"trust_tier"`
-	RiskVerdict          RiskVerdictSummary `json:"risk_verdict"`
-	PolicyVerdict        string             `json:"policy_verdict"`
-	AuditTrailID         string             `json:"audit_trail_id"`
-	ProtocolName         string             `json:"protocol_name"`
-	InstructionName      string             `json:"instruction_name"`
-	ManifestFound        bool               `json:"manifest_found"`
-	UnknownProtocol      bool               `json:"unknown_protocol"`
-	SimulationFlagged    *bool              `json:"simulation_flagged,omitempty"`
-	SimulationDivergence *float64           `json:"simulation_divergence,omitempty"`
-	Summary              string             `json:"summary"`
+	Approved             bool                       `json:"approved"`
+	Confidence           float64                    `json:"confidence"`
+	Breakdown            []VerificationBreakdownItem `json:"breakdown"`
+	TrustTier            string                     `json:"trust_tier"`
+	RiskVerdict          RiskVerdictSummary         `json:"risk_verdict"`
+	PolicyVerdict        string                     `json:"policy_verdict"`
+	AuditTrailID         string                     `json:"audit_trail_id"`
+	Transaction          BuiltTransaction           `json:"transaction"`
+	ResolvedAccounts     []ResolvedAccount          `json:"resolved_accounts"`
+	ProtocolName         string                     `json:"protocol_name"`
+	InstructionName      string                     `json:"instruction_name"`
+	ManifestFound        bool                       `json:"manifest_found"`
+	UnknownProtocol      bool                       `json:"unknown_protocol"`
+	SimulationFlagged    *bool                      `json:"simulation_flagged,omitempty"`
+	SimulationDivergence *float64                   `json:"simulation_divergence,omitempty"`
+	Summary              string                     `json:"summary"`
+}
+
+// VerificationBreakdownItem is a single confidence signal contribution.
+type VerificationBreakdownItem struct {
+	Kind        string  `json:"kind"`
+	RawValue    float64 `json:"raw_value"`
+	Weight      float64 `json:"weight"`
+	Contribution float64 `json:"contribution"`
+}
+
+// BuiltTransaction is the decoded transaction structure.
+type BuiltTransaction struct {
+	ProgramID             string             `json:"program_id"`
+	ProtocolVersion       string             `json:"protocol_version"`
+	InstructionName       string             `json:"instruction_name"`
+	InstructionDiscriminator string          `json:"instruction_discriminator"`
+	InstructionCount      int               `json:"instruction_count"`
+	AccountCount          int               `json:"account_count"`
+	SignerCount           int               `json:"signer_count"`
+	WritableCount         int               `json:"writable_count"`
+	ComputeBudgetUnits    uint64            `json:"compute_budget_units"`
+	Accounts              []BuiltAccountMeta `json:"accounts"`
+	DataHex               string            `json:"data_hex"`
+	DataLen               int               `json:"data_len"`
+}
+
+// BuiltAccountMeta is a single account in a built transaction.
+type BuiltAccountMeta struct {
+	Address    string `json:"address"`
+	IsSigner   bool   `json:"is_signer"`
+	IsWritable bool   `json:"is_writable"`
+}
+
+// ResolvedAccount is a resolved account with PDA verification status.
+type ResolvedAccount struct {
+	Address     string   `json:"address"`
+	Role        string   `json:"role"`
+	IsPDA       bool     `json:"is_pda"`
+	IsSigner    bool     `json:"is_signer"`
+	IsWritable  bool     `json:"is_writable"`
+	PDASeeds    []string `json:"pda_seeds"`
+	PDAMismatch bool     `json:"pda_mismatch"`
 }
 
 // RiskVerdictSummary is the risk assessment result.
@@ -169,6 +213,8 @@ type RiskFinding struct {
 	Pattern string `json:"pattern"`
 	Reason  string `json:"reason"`
 }
+
+// ─── Client methods ───
 
 // Verify sends a verification request to the Graphite Core server.
 func (c *Client) Verify(input *VerificationInput) (*VerificationResult, error) {
