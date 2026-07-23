@@ -411,3 +411,159 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
     assert!(result.simulation_flagged == Some(false) || result.simulation_flagged == None,
         "Simulation should not be flagged for normal compute usage");
 }
+
+// =========================================================================
+// PDA MISMATCH — POSITIVE SECURITY TEST (v0.1.0-alpha freeze)
+// Tests the actual security property: a spoofed PDA must be blocked.
+// This closes the gap identified in external code review where only the
+// negative case (non-PDA accounts have pda_mismatch=false) was tested.
+// =========================================================================
+
+#[test]
+fn test_pda_mismatch_blocks_spoofed_pda() {
+    use graphite_core::account_resolution::{resolve_accounts, AccountResolutionInput};
+    use graphite_core::manifest::load_seed_manifests;
+
+    let registry = load_seed_manifests();
+
+    // Squads V4 proposalApprove instruction
+    // Program ID: SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf
+    // Discriminator: 0a96d0fcd2fb4f30
+    // Accounts: [multisig (readonly), member (signer), proposal (writable, pda_seeds: ["proposal"])]
+
+    // The CORRECT PDA derived from seed ["proposal"] + Squads program ID:
+    //   4fbg44AUKAPdnKuhSUaq9HDvhC1rdph4u7mSVEKhZzLx
+    // We use a WRONG address (derived from different seed) as the proposal account.
+
+    let correct_pda = "4fbg44AUKAPdnKuhSUaq9HDvhC1rdph4u7mSVEKhZzLx";
+    let spoofed_pda = "BvU5BGmtvjS2yYRdU5nMJwowZa6nmi3oYrfViBhmweMk"; // wrong seed derivation
+
+    // Valid multisig and member addresses (any valid 32-byte base58)
+    let multisig = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    let member = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+
+    // --- CASE 1: Correct PDA → no mismatch ---
+    let input_correct = AccountResolutionInput {
+        program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
+        instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
+        account_addresses: vec![multisig.to_string(), member.to_string(), correct_pda.to_string()],
+        instruction_data: None,
+    };
+
+    let result_correct = resolve_accounts(&input_correct, &registry).unwrap();
+    let proposal_account_correct = &result_correct.resolved_accounts[2];
+    assert!(
+        !proposal_account_correct.pda_mismatch,
+        "Correct PDA should NOT have pda_mismatch=true"
+    );
+
+    // --- CASE 2: Spoofed PDA → mismatch detected, transaction blocked ---
+    let input_spoofed = AccountResolutionInput {
+        program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
+        instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
+        account_addresses: vec![multisig.to_string(), member.to_string(), spoofed_pda.to_string()],
+        instruction_data: None,
+    };
+
+    let result_spoofed = resolve_accounts(&input_spoofed, &registry).unwrap();
+    let proposal_account_spoofed = &result_spoofed.resolved_accounts[2];
+    assert!(
+        proposal_account_spoofed.pda_mismatch,
+        "Spoofed PDA MUST have pda_mismatch=true — this is the core security property"
+    );
+
+    // --- CASE 3: Full pipeline — spoofed PDA must produce Blocked verdict ---
+    let core = GraphiteCore::new();
+    let full_input = VerificationInput {
+        proposed_intent: ProposedIntent {
+            intent_type: "approve".to_string(),
+            raw_natural_language: "Approve multisig proposal".to_string(),
+            confidence_of_parse: 0.9,
+            extracted_parameters: None,
+        },
+        program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
+        protocol_version: "4.0.0".to_string(),
+        instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
+        account_addresses: vec![multisig.to_string(), member.to_string(), spoofed_pda.to_string()],
+        instruction_data: None,
+        cpi_targets: vec![],
+        wallet_profile: WalletProfile::Standard,
+        behavior_evidence: good_evidence(),
+        compute_units: 500,
+        account_writes: 1,
+        cpi_hops: 0,
+        simulation_baseline: None,
+    };
+
+    let verdict = core.verify(&full_input).unwrap();
+    assert!(
+        !verdict.approved,
+        "Spoofed PDA transaction MUST be blocked — got approved={}",
+        verdict.approved
+    );
+
+    // Verify the risk finding mentions PDA mismatch
+    let has_pda_finding = verdict.risk_verdict.findings.iter()
+        .any(|f| f.pattern == "PdaMismatch" || f.reason.contains("PDA mismatch"));
+    assert!(
+        has_pda_finding,
+        "Risk findings must include PdaMismatch — got: {:?}",
+        verdict.risk_verdict.findings.iter().map(|f| &f.pattern).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_pda_mismatch_correct_pda_passes() {
+    // Companion test: correct PDA should NOT trigger a block in the full pipeline.
+    use graphite_core::account_resolution::{resolve_accounts, AccountResolutionInput};
+    use graphite_core::manifest::load_seed_manifests;
+
+    let registry = load_seed_manifests();
+    let correct_pda = "4fbg44AUKAPdnKuhSUaq9HDvhC1rdph4u7mSVEKhZzLx";
+    let multisig = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    let member = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+
+    let input = AccountResolutionInput {
+        program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
+        instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
+        account_addresses: vec![multisig.to_string(), member.to_string(), correct_pda.to_string()],
+        instruction_data: None,
+    };
+
+    let result = resolve_accounts(&input, &registry).unwrap();
+    assert!(
+        !result.resolved_accounts[2].pda_mismatch,
+        "Correct PDA must not trigger mismatch"
+    );
+
+    // Full pipeline should not block specifically due to PDA
+    let core = GraphiteCore::new();
+    let full_input = VerificationInput {
+        proposed_intent: ProposedIntent {
+            intent_type: "approve".to_string(),
+            raw_natural_language: "Approve multisig proposal".to_string(),
+            confidence_of_parse: 0.9,
+            extracted_parameters: None,
+        },
+        program_id: "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf".to_string(),
+        protocol_version: "4.0.0".to_string(),
+        instruction_discriminator: "0a96d0fcd2fb4f30".to_string(),
+        account_addresses: vec![multisig.to_string(), member.to_string(), correct_pda.to_string()],
+        instruction_data: None,
+        cpi_targets: vec![],
+        wallet_profile: WalletProfile::Standard,
+        behavior_evidence: good_evidence(),
+        compute_units: 500,
+        account_writes: 1,
+        cpi_hops: 0,
+        simulation_baseline: None,
+    };
+
+    let verdict = core.verify(&full_input).unwrap();
+    let has_pda_finding = verdict.risk_verdict.findings.iter()
+        .any(|f| f.pattern == "PdaMismatch");
+    assert!(
+        !has_pda_finding,
+        "Correct PDA must not produce PdaMismatch finding"
+    );
+}

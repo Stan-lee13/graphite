@@ -71,6 +71,7 @@ pub struct Behavior {
 
 /// Evidence contributing to trust tier computation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub struct BehaviorEvidence {
     /// Whether manifest is signed
     pub has_signed_manifest: bool,
@@ -446,13 +447,3 @@ mod tests {
     }
 }
 
-impl Default for BehaviorEvidence {
-    fn default() -> Self {
-        Self {
-            has_signed_manifest: false,
-            community_verified_count: 0,
-            battle_tested_tx_count: 0,
-            simulation_match_count: 0,
-        }
-    }
-}

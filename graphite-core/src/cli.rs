@@ -4,7 +4,8 @@ use crate::verification::{GraphiteCore, VerificationInput};
 use std::path::PathBuf;
 
 pub enum CliCommand {
-    Verify { input: VerificationInput },
+    Verify { input: Box<VerificationInput> },
+    #[cfg(feature = "server")]
     Server { port: u16 },
     Manifests,
     Benchmark,
@@ -33,6 +34,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             crate::benchmark::run_benchmark();
             Ok(())
         }
+        #[cfg(feature = "server")]
         CliCommand::Server { port } => {
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(crate::server::run_server(([0, 0, 0, 0], port).into()))?;
@@ -44,7 +46,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
 pub fn verify_from_file(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(path)?;
     let input: VerificationInput = serde_json::from_str(&content)?;
-    run(CliCommand::Verify { input })
+    run(CliCommand::Verify { input: Box::new(input) })
 }
 
 pub fn verify_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
@@ -52,5 +54,5 @@ pub fn verify_from_stdin() -> Result<(), Box<dyn std::error::Error>> {
     let mut content = String::new();
     std::io::stdin().read_to_string(&mut content)?;
     let input: VerificationInput = serde_json::from_str(&content)?;
-    run(CliCommand::Verify { input })
+    run(CliCommand::Verify { input: Box::new(input) })
 }

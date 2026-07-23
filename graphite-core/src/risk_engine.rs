@@ -54,6 +54,7 @@ pub enum RiskVerdict {
 
 /// Input for risk assessment — now manifest-aware.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct RiskAssessmentInput {
     /// Program ID being called (base58)
     pub program_id: String,
@@ -71,18 +72,6 @@ pub struct RiskAssessmentInput {
     pub instruction_discriminator: String,
 }
 
-impl Default for RiskAssessmentInput {
-    fn default() -> Self {
-        Self {
-            program_id: String::new(),
-            accounts: vec![],
-            cpi_targets: vec![],
-            expected_state_changes: vec![],
-            allowed_cpis: vec![],
-            instruction_discriminator: String::new(),
-        }
-    }
-}
 
 /// Known risky instruction discriminators by program ID.
 /// These are the P0 risk patterns the roadmap requires detecting at MVP scope.
@@ -238,6 +227,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     Ok(RiskVerdict::Passed)
 }
 
+#[allow(dead_code)]
 /// Check if a CPI target looks unverified (heuristic, no manifest available).
 fn is_heuristic_unverified(target: &str) -> bool {
     // Empty or test-like targets are unverified
@@ -539,10 +529,10 @@ mod tests {
 /// the wrong token account.
 pub fn detect_fake_swap(
     program_id: &str,
-    accounts: &[String],
+    _accounts: &[String],
     expected_state_changes: &[String],
     proposed_intent_type: &str,
-    extracted_output_token: Option<&str>,
+    _extracted_output_token: Option<&str>,
 ) -> Option<RiskPattern> {
     // Only check swap intents
     if proposed_intent_type != "swap" {
@@ -606,7 +596,7 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
         }
         "close" => {
             program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" // SPL Token
-                || program_id == "TokenzQdBNbLqP5VEhMpASvAH1Q7AJZ7pK9wqAF3Q7M2" // Token-2022
+                || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" // Token-2022
         }
         "transfer" => true, // Transfers can go through many programs
         _ => true, // Unknown intent types — don't block (P12: degrade gracefully)

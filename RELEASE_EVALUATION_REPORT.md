@@ -1,9 +1,9 @@
 # Graphite Phase 1 + 1.5 — Release Evaluation Report
 
-**Release:** Phase 1 + 1.5 (Hardened, not final production)
-**Maturity:** Security-verification starter with adversarial hardening. Production-ready for integration testing. Not yet deployed against real on-chain exploit corpus.  
-**Date:** 2026-07-22  
-**Repository:** github.com/Stan-lee13/graphite (main @ latest)  
+**Release:** v0.1.0-alpha (Phase 1 + 1.5, hardened)
+**Maturity:** Security-verification starter with adversarial hardening. Production-ready for integration testing. Not yet deployed against real on-chain exploit corpus.
+**Date:** 2026-07-23
+**Repository:** github.com/Stan-lee13/graphite (main @ v0.1.0-alpha)
 **Constitution P16 Compliance:** All metrics below are reproducible via `cargo test` and `cargo run --bin graphite benchmark`
 
 ---
@@ -19,50 +19,52 @@
 | Omega Red Team | ✅ Pass | 15 | `cargo test --test omega_red_team` |
 | Omega Red Team Regression | ✅ Pass | 11 | `cargo test --test omega_red_team_regression` |
 | Confidence Engine | ✅ Pass | 13 | `cargo test --test confidence_engine_tests` |
-| Integration Tests | ✅ Pass | 14 | `cargo test --test integration_tests` |
+| Integration Tests | ✅ Pass | 16 | `cargo test --test integration_tests` |
 | Self-Healing Tests | ✅ Pass | 3 | `cargo test --test self_healing_integration_test` |
 | Go SDK | ✅ Pass | 7 | `go test ./...` |
-| Python AI Layer | ✅ Pass | 6 | `python3 test_intent_parser.py` |
+| Python AI Layer | ✅ Pass | 6 | `python3 -m pytest test_intent_parser.py` |
 | TypeScript SDK | ✅ Built | — | `npx tsc --noEmit` (type-check only, no runtime tests) |
-| **Total** | | **277 tests** | **0 failures** |
+| **Total** | | **279 tests** | **0 failures** |
 
 ---
 
 ## 2. Benchmark Results
 
-**Command:** `cargo run --bin graphite benchmark`
+**Command:** `cargo run --release --bin graphite benchmark`
 
 ```
 Total cases:      13
 Scored cases:     11 (safe + malicious only)
 Correct:          11/11
 Accuracy:         100.0%
-Precision:        100.0%  (of all blocked, how many were actually malicious)
-Recall:           100.0%  (of all malicious, how many we caught)
-True Positives:   7  (malicious → blocked)
-True Negatives:   4  (safe → approved)
-False Positives:  0  (safe → blocked)
-False Negatives:  0  (malicious → approved)
-Avg Latency:      ~20μs (release build, in-process)
+Precision:        100.0%
+Recall:           100.0%
+True Positives:   7
+True Negatives:   4
+False Positives:  0
+False Negatives:  0
+Avg Latency:      ~25-66μs (release build, in-process, shared environment)
 ```
+
+Note: Latency varies with system load (25μs idle → 66μs under contention). All measurements are in-process — no RPC round-trip latency is included. Production deployment will add network latency.
 
 ### Benchmark Categories
 
-| # | Case | Category | Expected | Got | Latency |
-|---|------|----------|----------|-----|---------|
-| 1 | System Transfer (legitimate) | safe | Approved | Approved | ✓ |
-| 2 | SPL Token Transfer (legitimate) | safe | Approved | Approved | ✓ |
-| 3 | SPL Token Burn (legitimate) | safe | Approved | Approved | ✓ |
-| 4 | Unverified CPI (potential exploit) | malicious | Blocked | Blocked | ✓ |
-| 5 | Deep CPI chain (compositional drain) | malicious | Blocked | Blocked | ✓ |
-| 6 | Authority hijack (SetAuthority) | malicious | Blocked | Blocked | ✓ |
-| 7 | Account drain (CloseAccount) | malicious | Blocked | Blocked | ✓ |
-| 8 | Unknown protocol (no manifest) | unknown | Blocked | Blocked | ✓ |
-| 9 | Unknown protocol with no evidence | unknown | Blocked | Blocked | ✓ |
-| 10 | FakeSwap — swap intent on System Program | malicious | Blocked | Blocked | ✓ |
-| 11 | Simulation spoofing — compute divergence | malicious | Blocked | Blocked | ✓ |
-| 12 | Normal compute with baseline — not flagged | safe | Approved | Approved | ✓ |
-| 13 | SPL Token SetAuthority hijack | malicious | Blocked | Blocked | ✓ |
+| # | Case | Category | Expected | Got |
+|---|------|----------|----------|-----|
+| 1 | System Transfer (legitimate) | safe | Approved | ✓ |
+| 2 | SPL Token Transfer (legitimate) | safe | Approved | ✓ |
+| 3 | SPL Token Burn (legitimate) | safe | Approved | ✓ |
+| 4 | Unverified CPI (potential exploit) | malicious | Blocked | ✓ |
+| 5 | Deep CPI chain (compositional drain) | malicious | Blocked | ✓ |
+| 6 | Authority hijack (SetAuthority) | malicious | Blocked | ✓ |
+| 7 | Account drain (CloseAccount) | malicious | Blocked | ✓ |
+| 8 | Unknown protocol (no manifest) | unknown | Blocked | ✓ |
+| 9 | Unknown protocol with no evidence | unknown | Blocked | ✓ |
+| 10 | FakeSwap — swap intent on System Program | malicious | Blocked | ✓ |
+| 11 | Simulation spoofing — compute divergence | malicious | Blocked | ✓ |
+| 12 | Normal compute with baseline — not flagged | safe | Approved | ✓ |
+| 13 | SPL Token SetAuthority hijack | malicious | Blocked | ✓ |
 
 ---
 
@@ -72,14 +74,14 @@ Avg Latency:      ~20μs (release build, in-process)
 |---|---------|------------|-------------------|----------------------|
 | 1 | System Program | 1111...1111 | ✅ | Drainer, HiddenTransfer |
 | 2 | SPL Token | TokenkegQ...VQ5DA | ✅ | Drainer, AuthorityHijack, HiddenTransfer |
-| 3 | Token-2022 | TokenzQd...3Q7M2 | ✅ | Drainer, AuthorityHijack, CloseAccount |
+| 3 | Token-2022 | TokenzQd...PxuEb | ✅ | Drainer, AuthorityHijack, CloseAccount |
 | 4 | Stake Program | Stake111...111 | ✅ | PermissionEscalation |
 | 5 | Raydium AMM V4 | 675kPX...1Mp8 | ✅ | FakeSwap, HiddenTransfer |
 | 6 | Squads V4 Multisig | 6XBGfP... | ✅ | AuthorityHijack |
 | 7 | Jupiter V6 | JUP6Lk...TaV4 | ✅ | FakeSwap, UnexpectedCpi |
 | 8 | Orca | (placeholder) | ✅ | FakeSwap |
 | 9 | Meteora | (placeholder) | ✅ | FakeSwap |
-| 10 | Memo | Memo1...Memo | ✅ | (benign — no risk patterns) |
+| 10 | Memo | Memo1...Memo | ✅ | (benign) |
 
 ---
 
@@ -124,51 +126,63 @@ Avg Latency:      ~20μs (release build, in-process)
 - Full type definitions matching Core's VerificationInput/VerificationResult
 - HTTP client with 30s timeout
 - Methods: Verify, Health, ListManifests
-- 7/7 tests pass (client creation, serialization round-trip, result deserialization, risk findings, health check)
+- 7/7 tests pass
 
 ---
 
-## 6. Bugs Found and Fixed During Phase 1.5
+## 6. Bugs Found and Fixed
 
 ### Bug 1: Intent-Program Mismatch (False Negative)
-- **Severity:** P1 — false negative on malicious transaction
-- **Description:** A "swap" intent sent to the System Program (which only does transfers) was approved as safe. An attacker could declare a swap intent but actually perform a simple transfer to a wrong account, bypassing FakeSwap detection.
-- **Root Cause:** No validation that the declared intent type matches the target program's capabilities.
-- **Fix:** Added `detect_intent_program_mismatch()` to risk engine, wired into Step 3b of verification pipeline.
-- **Regression test:** Benchmark case #10 (FakeSwap — swap intent on System Program).
+- **Severity:** P1
+- **Description:** Swap intent sent to System Program was approved as safe.
+- **Fix:** Added `detect_intent_program_mismatch()` to risk engine.
 
 ### Bug 2: Audit Trail ID Duplication (from Hell Mode)
-- **Severity:** P2 — non-unique audit trail IDs
-- **Description:** All 500 verification calls produced the same audit trail ID.
-- **Fix:** Added atomic sequence counter to ensure uniqueness.
-- **Hash prefix remains deterministic (P2).**
+- **Severity:** P2
+- **Fix:** Added atomic sequence counter.
 
 ### Bug 3: Drainer Bypass via Empty-String State Changes (from Hell Mode)
-- **Severity:** P1 — drainer detection bypass
-- **Description:** `vec![""]` is not `is_empty()`, so 6+ accounts with empty-string state changes bypassed the drainer pattern.
-- **Fix:** Check if ALL state changes are empty/whitespace, not just if the vec is empty.
+- **Severity:** P1
+- **Fix:** Check if ALL state changes are empty/whitespace, not just if vec is empty.
 
 ### Bug 4: HiddenTransfer False Positive on Multi-Account Protocols (from Hell Mode)
-- **Severity:** P2 — false positive on legitimate transactions
-- **Description:** Orca (11 accounts) and Meteora (15 accounts) triggered hidden transfer detection.
-- **Fix:** Raised threshold from 4x+8 min to 6x+12 min.
+- **Severity:** P2
+- **Fix:** Raised threshold from 4x+8 to 6x+12.
 
 ### Bug 5: Empty allowed_cpis Failed Open (from Adversarial Hardening)
 - **Severity:** P0 — CPI check bypass
-- **Description:** When allowed_cpis was empty, CPI check fell back to heuristic that only flagged targets containing keywords. Any arbitrary program ID could bypass.
-- **Fix:** Fail-closed per P12 — when allowed_cpis is empty and CPI targets exist, block ALL targets.
+- **Fix:** Fail-closed per P12 — block ALL targets when allowed_cpis empty and CPI targets exist.
+
+### Bug 6: Invalid Token-2022 Program ID (found during v0.1.0-alpha freeze)
+- **Severity:** P1 — dead code in program identity check
+- **Description:** `risk_engine.rs` used a 33-byte address that could never match.
+- **Fix:** Replaced with valid 32-byte address. Added `token_2022()` constructor to `solana_types.rs`.
+
+### Bug 7: Clippy Warnings (found during v0.1.0-alpha freeze)
+- **Severity:** P3 — code quality
+- **Fix:** All 11 warnings fixed. `cargo clippy --all` now produces 0 warnings.
+
+### Bug 8: PDA Mismatch Positive Case Unverified (found by external code review)
+- **Severity:** P1 — security property untested
+- **Description:** The PDA mismatch test (`test_fix3_pda_mismatch_field_exists`) only verified that non-PDA accounts have `pda_mismatch = false`. No test constructed an actual mismatched PDA and confirmed it gets blocked — the positive security property was unverified. Across all 10 manifests, only Squads V4's `proposalApprove` instruction has a non-empty `pda_seeds` entry.
+- **Fix:** Added `test_pda_mismatch_blocks_spoofed_pda` (constructs spoofed PDA, verifies `pda_mismatch = true`, verifies full pipeline blocks with `PdaMismatch` finding) and `test_pda_mismatch_correct_pda_passes` (verifies correct PDA does not trigger false positive).
+
+### Bug 9: CLI Server Arm Not Feature-Gated (found by external code review)
+- **Severity:** P3 — build-only issue
+- **Description:** `cli.rs`'s `Server` arm and `bin/graphite.rs`'s `Server` subcommand unconditionally referenced `axum`/`tokio`, which are gated behind the `server` feature. Building with `--no-default-features --features cli` would fail.
+- **Fix:** Added `#[cfg(feature = "server")]` gates to both the enum variant and the match arm. Verified `cargo build --no-default-features --features cli` compiles cleanly.
 
 ---
 
 ## 7. Known Limitations
 
 1. **Synthetic corpus only** — no real on-chain exploit transactions (Phase 2)
-2. **Token-2022 address** — current address may be invalid (decodes to 33 bytes). Need verified address from spl_token_2022_interface crate before production use.
-3. **FakeSwap detection is heuristic** — real FakeSwap detection requires simulation integrity with pre/post balance comparison (Phase 2)
-4. **No real CPI validation against Semantic Graph** — manifests specify allowed_cpis manually, not verified against on-chain CPI relationships
-5. **Latency is in-process only** — no RPC round-trip latency included
-6. **Orca and Meteora program IDs are placeholders** — need verified IDs from official sources
-7. **Python AI Layer is pattern-based** — no ML model, just regex heuristics. Real NLP parsing requires an LLM (by design — P1: AI assists)
+2. **FakeSwap detection is heuristic** — real detection requires simulation integrity with pre/post balance comparison (Phase 2)
+3. **No real CPI validation against Semantic Graph** — manifests specify allowed_cpis manually
+4. **Latency is in-process only** — no RPC round-trip latency included
+5. **Orca and Meteora program IDs are placeholders** — need verified IDs from official sources
+6. **Python AI Layer is pattern-based** — no ML model, just regex heuristics (by design — P1)
+7. **No Solana Agent Kit integration** — explicitly Phase 1.5 scope, not yet implemented
 
 ---
 
@@ -176,18 +190,20 @@ Avg Latency:      ~20μs (release build, in-process)
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| All tests pass | ✅ | 277 tests total (264 Rust + 7 Go + 6 Python), 0 failures |
+| All tests pass | ✅ | 279 tests (266 Rust + 7 Go + 6 Python), 0 failures |
 | Benchmark 100% precision/recall | ✅ | 11/11 scored cases correct |
-| Clippy clean (0 errors) | ✅ | 3 minor warnings (unused vars) |
-| Constitution P16 compliance | ✅ | All metrics reproducible via cargo commands |
-| Go SDK tests pass | ✅ | 7/7 tests (client creation, serialization, ByteArray, simulation baseline, risk findings, health check) |
-| Python AI Layer functional | ✅ | 6/6 tests pass (advisory-only, P1 compliant) |
+| Clippy clean | ✅ | 0 warnings |
+| Constitution P16 compliance | ✅ | All metrics reproducible |
+| Go SDK tests pass | ✅ | 7/7 |
+| Python AI Layer functional | ✅ | 6/6 (advisory-only, P1 compliant) |
 | Simulation Integrity wired in | ✅ | Step 3.5 in pipeline |
 | Intent-Program mismatch detection | ✅ | Benchmark case #10 passes |
-| Release build compiles | ✅ | 3.1MB binary |
-| Phase 1.5 scope complete | ✅ | See section 5 |
+| Release build compiles | ✅ | ~3.1MB binary |
+| Token-2022 program ID valid | ✅ | 32-byte address (fixed during freeze) |
+| Phase 1 scope complete | ✅ | See sections 1-4 |
+| Phase 1.5 scope complete | ✅ | See section 5 (except Solana Agent Kit) |
 
-**Verdict: Phase 1 + 1.5 PRODUCTION READY**
+**Verdict: Phase 1 + 1.5 FROZEN as v0.1.0-alpha**
 
 ---
 
@@ -195,28 +211,21 @@ Avg Latency:      ~20μs (release build, in-process)
 
 ```bash
 # Full test suite
-cd graphite-core && cargo test
+cd graphite-core && cargo test --all
 
-# Benchmark
-cargo run --bin graphite benchmark
+# Benchmark (release build)
+cargo build --release && ./target/release/graphite benchmark
 
 # Clippy
 cargo clippy --all
-
-# Release build
-cargo build --release
 
 # Go SDK tests
 cd sdk/go && go test -v ./...
 
 # Python AI Layer test
-python3 python-ai-layer/intent_parser.py "Swap 1 SOL for USDC"
-
-# Start HTTP server
-cargo run --bin graphite server  # Core on :8080
-python3 python-ai-layer/intent_parser.py --serve  # AI Layer on :8081
+cd python-ai-layer && python3 -m pytest test_intent_parser.py
 ```
 
 ---
 
-*Report generated 2026-07-22. All numbers are from actual test runs, not estimates.*
+*Report generated 2026-07-23. All numbers are from actual test runs on this commit, not estimates.*

@@ -22,6 +22,7 @@ enum Commands {
     /// List loaded protocol manifests
     Manifests,
     /// Start the HTTP verification server
+    #[cfg(feature = "server")]
     Server {
         /// Port to listen on (default: 7331)
         #[arg(short, long, default_value = "7331")]
@@ -47,6 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Manifests => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Manifests)
         }
+        #[cfg(feature = "server")]
         Commands::Server { port } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Server { port })
         }

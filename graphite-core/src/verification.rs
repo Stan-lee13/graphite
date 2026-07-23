@@ -388,7 +388,7 @@ impl GraphiteCore {
                     let mut f = risk_summary.findings.clone();
                     f.push(RiskFinding {
                         pattern: "SimulationSpoofing".to_string(),
-                        reason: format!("Compute usage diverges from baseline (flagged at >2.0σ)"),
+                        reason: "Compute usage diverges from baseline (flagged at >2.0σ)".to_string(),
                     });
                     f
                 },

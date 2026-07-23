@@ -30,10 +30,12 @@ pub enum PolicyError {
 /// deriving `Eq` on an enum containing a float field doesn't compile at
 /// all, so this bug could never have shipped a working build.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Default)]
 pub enum WalletProfile {
     /// Conservative profile: high confidence, high trust tier required
     Conservative,
     /// Standard profile: moderate requirements
+    #[default]
     Standard,
     /// Permissive profile: lower requirements for testing/dev
     Permissive,
@@ -240,8 +242,3 @@ mod tests {
     }
 }
 
-impl Default for WalletProfile {
-    fn default() -> Self {
-        WalletProfile::Standard
-    }
-}

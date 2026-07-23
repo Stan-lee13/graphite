@@ -17,7 +17,7 @@ Nothing reaches the wallet before Graphite understands it.
 ```bash
 cd graphite-core
 
-# Run tests (277 tests: 264 Rust + 7 Go + 6 Python)
+# Run tests (279 tests: 266 Rust + 7 Go + 6 Python)
 cargo test
 
 # Run the benchmark

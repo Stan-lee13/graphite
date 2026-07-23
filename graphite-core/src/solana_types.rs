@@ -24,6 +24,7 @@ pub enum SolanaTypeError {
 
 /// A Solana public key — 32 bytes, base58-encoded onchain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Pubkey(#[serde(with = "pubkey_serde")] pub [u8; 32]);
 
 mod pubkey_serde {
@@ -60,7 +61,14 @@ impl Pubkey {
             .unwrap())
     }
 
-    /// Token-2022 Program
+    /// Token-2022 Program: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
+    pub fn token_2022() -> Pubkey {
+        Pubkey(bs58::decode("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+            .into_vec()
+            .unwrap()
+            .try_into()
+            .unwrap())
+    }
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
@@ -98,11 +106,6 @@ impl std::fmt::Display for Pubkey {
     }
 }
 
-impl Default for Pubkey {
-    fn default() -> Self {
-        Self([0u8; 32])
-    }
-}
 
 /// Derive a Program Derived Address (PDA) from seeds and a program ID.
 ///
@@ -117,7 +120,7 @@ pub fn find_program_address(seeds: &[&[u8]], program_id: &Pubkey) -> Result<(Pub
             hasher.update(seed);
         }
         hasher.update(program_id.as_bytes());
-        hasher.update(&[nonce]);
+        hasher.update([nonce]);
         let hash = hasher.finalize();
 
         let compressed = CompressedEdwardsY::from_slice(&hash).expect("hash is always 32 bytes");
