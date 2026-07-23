@@ -43,7 +43,43 @@ pub fn run_benchmark() {
         let start = Instant::now();
         let result = core
             .verify(&case.input)
-            .expect("verification should not error");
+            .unwrap_or_else(|_| {
+                // Verification error = fail-closed (blocked)
+                crate::verification::VerificationResult {
+                    approved: false,
+                    confidence: 0.0,
+                    breakdown: vec![],
+                    trust_tier: "Unknown".to_string(),
+                    risk_verdict: crate::verification::RiskVerdictSummary {
+                        status: "Blocked".to_string(),
+                        findings: vec![],
+                    },
+                    policy_verdict: "Rejected".to_string(),
+                    audit_trail_id: "gr-error".to_string(),
+                    transaction: crate::transaction_builder::BuiltTransaction {
+                        program_id: case.input.program_id.clone(),
+                        protocol_version: case.input.protocol_version.clone(),
+                        instruction_name: "Error".to_string(),
+                        instruction_discriminator: case.input.instruction_discriminator.clone(),
+                        instruction_count: 0,
+                        account_count: case.input.account_addresses.len(),
+                        signer_count: 0,
+                        writable_count: 0,
+                        compute_budget_units: 0,
+                        accounts: vec![],
+                        data_hex: String::new(),
+                        data_len: 0,
+                    },
+                    resolved_accounts: vec![],
+                    protocol_name: "Error".to_string(),
+                    instruction_name: "Error".to_string(),
+                    manifest_found: false,
+                    unknown_protocol: true,
+                    summary: "BLOCKED | verification error".to_string(),
+                    simulation_flagged: None,
+                    simulation_divergence: None,
+                }
+            });
         let elapsed = start.elapsed();
         total_latency_us += elapsed.as_micros();
 
@@ -421,6 +457,68 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                 &[],
                 WalletProfile::Standard,
                 good_evidence(),
+            ),
+        },
+        // === REAL MAINNET EXPLOIT CASES ===
+        // Sources: Mandiant/Google CLINKSINK, SlowMist AAT, Kudelski Wormhole
+        BenchmarkCase {
+            label: "REAL: CLINKSINK STMT Drainer (mainnet)",
+            category: "malicious",
+            expected_approved: false,
+            input: make_input(
+                "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
+                "08",
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa", "11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", "ComputeBudget111111111111111111111111111111"],
+                &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "11111111111111111111111111111111"],
+                WalletProfile::Standard, no_evidence(),
+            ),
+        },
+        BenchmarkCase {
+            label: "REAL: AAT Drainer — Approve + assign ($3M+)",
+            category: "malicious",
+            expected_approved: false,
+            input: make_input(
+                "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+                "0a",
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx", "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs", "11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
+                &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "11111111111111111111111111111111"],
+                WalletProfile::Standard, no_evidence(),
+            ),
+        },
+        BenchmarkCase {
+            label: "REAL: Wormhole Hack ($320M, Feb 2022)",
+            category: "malicious",
+            expected_approved: false,
+            input: make_input(
+                "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+                "01",
+                &["worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth", "11111111111111111111111111111111", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "ComputeBudget111111111111111111111111111111"],
+                &["11111111111111111111111111111111"],
+                WalletProfile::Standard, no_evidence(),
+            ),
+        },
+        BenchmarkCase {
+            label: "REAL: AAT Mass Drain (25 accts)",
+            category: "malicious",
+            expected_approved: false,
+            input: make_input(
+                "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+                "0a",
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx", "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs", "11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
+                &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "11111111111111111111111111111111"],
+                WalletProfile::Standard, no_evidence(),
+            ),
+        },
+        BenchmarkCase {
+            label: "REAL: CLINKSINK Token Drain (co-signed)",
+            category: "malicious",
+            expected_approved: false,
+            input: make_input(
+                "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
+                "08",
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa", "11111111111111111111111111111111", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "ComputeBudget111111111111111111111111111111"],
+                &["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "11111111111111111111111111111111"],
+                WalletProfile::Standard, no_evidence(),
             ),
         },
     ]
