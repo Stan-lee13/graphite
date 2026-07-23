@@ -72,6 +72,10 @@ pub struct RiskAssessmentInput {
     pub allowed_cpis: Vec<String>,
     /// Instruction discriminator (hex) — used for known-risky-pattern matching
     pub instruction_discriminator: String,
+    // Expected account count from manifest (if available).
+    // Used to detect STMT drainers: if unique account count significantly
+    // exceeds manifest's expected count, flag as drainer.
+    pub expected_account_count: Option<usize>,
 }
 
 /// Known risky instruction discriminators by program ID.
@@ -210,6 +214,27 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         });
     }
 
+    // P0 Check 3b: Account count mismatch (STMT drainer detection)
+    // Real-world STMT attacks (SolPhishHunter arxiv 2505.04094) use legitimate
+    // instructions (e.g., SPL Token transfer) but touch far more accounts than
+    // the manifest expects — they bundle multiple transfers into one tx.
+    // If manifest says 3 accounts but tx has 7+, it's a drainer.
+    if let Some(expected_count) = input.expected_account_count {
+        let unique_accounts: std::collections::HashSet<&String> = input.accounts.iter().collect();
+        let unique_count = unique_accounts.len();
+        // Allow 2 extra accounts for legitimate flexibility (e.g., ATAs, multisig signers)
+        // but flag when unique count exceeds expected + 2
+        if unique_count > expected_count + 2 {
+            return Ok(RiskVerdict::Blocked {
+                pattern: RiskPattern::Drainer,
+                reason: format!(
+                    "STMT drainer: transaction has {} unique accounts but manifest expects {} — possible multi-transfer drain",
+                    unique_count, expected_count
+                ),
+            });
+        }
+    }
+
     // P0 Check 4: Compositional drain (deep CPI chains with revisits)
     // Red Team fix L3: Lowered from >4 to >=3 for repeated targets.
     // 3+ repeated CPI calls to the same program is suspicious even in a short chain.
@@ -337,6 +362,7 @@ mod tests {
             expected_state_changes: vec![],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(result, RiskVerdict::Blocked { .. }));
@@ -351,6 +377,7 @@ mod tests {
             expected_state_changes: vec!["transfer".to_string()],
             allowed_cpis: vec!["verified_target".to_string()],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -367,6 +394,7 @@ mod tests {
             expected_state_changes: vec!["changes authority".to_string()],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -387,6 +415,7 @@ mod tests {
             expected_state_changes: vec!["sets owner".to_string()],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -407,6 +436,7 @@ mod tests {
             expected_state_changes: vec!["change".to_string()],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result1 = assess(&input).unwrap();
         let result2 = assess(&input).unwrap();
@@ -432,6 +462,7 @@ mod tests {
                 "program_c".to_string(),
             ],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -464,6 +495,7 @@ mod tests {
                 "program_e".to_string(),
             ],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -480,6 +512,7 @@ mod tests {
             expected_state_changes: vec!["change".to_string()],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(
@@ -510,6 +543,7 @@ mod tests {
             expected_state_changes: vec![],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -546,6 +580,7 @@ mod tests {
             expected_state_changes: vec!["debits accounts.from by amount".to_string()],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -566,6 +601,7 @@ mod tests {
             expected_state_changes: vec![],
             allowed_cpis: vec![],
             instruction_discriminator: String::new(),
+            expected_account_count: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(

@@ -26,6 +26,7 @@ fn regression_l1_drainer_5_accounts_now_blocked() {
         expected_state_changes: vec![],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -51,6 +52,7 @@ fn regression_l2_hidden_transfer_12_accounts_now_blocked() {
         expected_state_changes: vec!["accounts.0.transfer".into()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -81,6 +83,7 @@ fn regression_l3_compositional_drain_4_targets_now_blocked() {
         expected_state_changes: vec![],
         allowed_cpis: vec![drainer.into()],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -106,6 +109,7 @@ fn regression_l4_token2022_setauthority_now_blocked() {
         expected_state_changes: vec!["changes authority".into()],
         allowed_cpis: vec![],
         instruction_discriminator: "0b".to_string(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -132,6 +136,7 @@ fn regression_l4b_spl_token_setauthority_now_blocked() {
         expected_state_changes: vec!["changes authority".into()],
         allowed_cpis: vec![],
         instruction_discriminator: "0b".to_string(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -202,6 +207,7 @@ fn regression_l8_empty_discriminator_spl_token_now_blocked() {
         expected_state_changes: vec!["transfer".into()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -252,6 +258,7 @@ fn regression_l12_dedup_prevents_false_positive() {
         expected_state_changes: vec![],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     // After dedup, only 1 unique account → should NOT be flagged as drainer
@@ -273,6 +280,7 @@ fn regression_l18_100_accounts_1_change_now_blocked() {
         expected_state_changes: vec!["transfer".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
+            expected_account_count: None,
     };
     let result = assess(&input).unwrap();
     assert!(
