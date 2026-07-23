@@ -37,13 +37,15 @@ main (stable, releasable)
 
 ## Backlog (non-blocking items from Phase 1.5 certification)
 
-### Go SDK Parity (feature/go-sdk-parity)
-The Go SDK is missing 3 types that the TypeScript SDK has:
-- `ResolvedAccount` (with `pda_mismatch` field)
-- `BuiltTransaction`
-- `VerificationBreakdownItem`
+### Go SDK Parity (feature/go-sdk-parity) ✅ COMPLETE (commit 86a13f3)
+Added 3 missing Go types that the TypeScript SDK already had:
+- `ResolvedAccount` (with `pda_mismatch` field — SECURITY SIGNAL)
+- `BuiltTransaction` (with nested `BuiltAccountMeta`)
+- `VerificationBreakdownItem` (confidence breakdown per signal)
 
-**Impact:** Go consumers can't access resolved account details, transaction metadata, or confidence breakdown. JSON deserialization doesn't fail — data is silently dropped. Not blocking, but should be fixed early in Phase 2 for full SDK parity.
+**Result:** All 16 fields in Rust `VerificationResult` now have matching Go types.
+JSON deserialization no longer silently drops data. 9 tests (up from 7),
+including roundtrip fidelity test proving no data loss.
 
 ### FakeSwap Detection Scope (minor)
 `detect_fake_swap()` only covers 3 hardcoded swap program IDs (Jupiter, Orca, Meteora). Custom/untracked swap programs bypass this heuristic. Downstream Unknown Protocol Mode and UnexpectedCPI blocks act as fallback. Expand in Phase 2 with the Manifest Registry.
