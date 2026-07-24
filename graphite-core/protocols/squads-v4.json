@@ -144,9 +144,7 @@
           "role": "writable",
           "is_writable": true,
           "is_signer": false,
-          "pda_seeds": [
-            "proposal"
-          ]
+          "pda_seeds": []
         }
       ],
       "expected_state_changes": [

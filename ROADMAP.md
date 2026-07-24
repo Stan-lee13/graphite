@@ -22,7 +22,13 @@ The benchmark is 18 unit test cases with hardcoded expected outcomes — NOT a
 statistical evaluation on unseen data. "100% pass rate on handcrafted tests" is
 the honest claim. The 5 real exploit classes (CLINKSINK, AAT, Wormhole) use real
 program IDs but fabricated account structures and no instruction data bytes.
-Benchmark latency: 34μs avg (release build) with 8-layer pipeline active.
+### TOCTOU Mitigation (Phase 1 Partial)
+
+The `audit_trail_id` is a SHA-256 hash bound to the specific transaction configuration — program ID, instruction discriminator, account addresses, instruction data, and CPI targets. This means each verification result is cryptographically tied to the exact transaction it verified.
+
+**Phase 1 limitation:** Graphite verifies the transaction structure but does not sign or bind the result to the execution payload. Full TOCTOU prevention requires the executor (SAK integration, Phase 2) to verify that the executed transaction matches the verified one using the audit_trail_id.
+
+Benchmark latency: ~35μs avg (release build) with 8-layer pipeline active.
 
 ## Phase 1.5 (COMPLETE — merged to main)
 
@@ -51,6 +57,7 @@ implementations never wired into the verification pipeline.
 - [ ] Add 15-20 more protocol manifests
 - [ ] Build regression engine corpus collection pipeline
 - [ ] Replace synthetic exploit tests with real on-chain data
+- [ ] **Dynamic PDA seed resolution**: Parse instruction data at runtime to resolve PDA seeds that depend on instruction arguments (e.g., Squads V4 proposal PDAs derived from `[multisig, proposal_index]`). Phase 1 manifests have `pda_seeds: []` because static templates like `["proposal"]` produce false-positive mismatches on every legitimate transaction. Only `{program_id}` and `{account_index:N}` templates work without instruction data parsing.
 
 ### Month 2: Manifest Registry + Plugin Framework
 - [ ] Manifest Registry with signature verification

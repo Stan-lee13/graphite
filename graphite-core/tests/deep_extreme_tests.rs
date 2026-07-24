@@ -213,6 +213,7 @@ fn risk_input(
         instruction_discriminator: disc.to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     }
 }
 
@@ -415,7 +416,7 @@ fn test_verify_unknown_program_blocked() {
         "02000000",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         no_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -442,7 +443,7 @@ fn test_verify_safe_system_transfer_approved() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -465,7 +466,7 @@ fn test_verify_set_authority_blocked() {
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -487,7 +488,7 @@ fn test_verify_jupiter_swap_with_allowed_cpi_passes_risk() {
             "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J",
         ],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -512,7 +513,7 @@ fn test_verify_jupiter_swap_with_unlisted_cpi_blocked() {
             "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J",
         ],
         &["MaliciousDrainerProgram1111111111111111111111"],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -538,7 +539,7 @@ fn test_verify_squads_multisig_create() {
             "4Nd1mYbz1NQ8Tk6eX5N6g5eM6eX5N6g5eM6eX5N6g5eM",
         ],
         &["11111111111111111111111111111111"],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -569,7 +570,7 @@ fn test_verify_orca_swap_passes_risk() {
             "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         ],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -601,7 +602,7 @@ fn test_verify_meteora_swap_passes_risk() {
         "f8c69e91e17587c8",
         &accounts_15,
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -623,7 +624,7 @@ fn test_verify_stake_delegate_passes_risk() {
             "11111111111111111111111111111111",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -642,7 +643,7 @@ fn test_verify_token_2022_transfer_passes_risk() {
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -660,7 +661,7 @@ fn test_verify_token_2022_set_authority_blocked() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -677,34 +678,36 @@ fn test_verify_token_2022_set_authority_blocked() {
 // ============================================================
 
 #[test]
-fn test_conservative_profile_requires_high_confidence() {
-    // Conservative should require higher confidence than Standard
+fn test_treasury_profile_requires_high_confidence() {
+    // Treasury requires 95% confidence, Tier 4+ (CommunityVerified)
+    // 0.60 confidence should be rejected
     let low_conf = make_confidence_result(0.6, TrustTier::SimulationValidated);
     let policy_input = PolicyInput {
         confidence_result: low_conf,
         risk_verdict: RiskVerdict::Passed,
-        profile: WalletProfile::Conservative,
+        profile: WalletProfile::Treasury,
     };
     let result = evaluate_policy(&policy_input).unwrap();
     assert!(
         matches!(result, PolicyVerdict::RejectedBelowThreshold { .. }),
-        "Conservative should reject at 0.6 confidence, got {:?}",
+        "Treasury should reject at 0.6 confidence (requires 95%), got {:?}",
         result
     );
 }
 
 #[test]
-fn test_standard_profile_approves_moderate_confidence() {
-    let med_conf = make_confidence_result(0.75, TrustTier::SimulationValidated);
+fn test_tradingbot_profile_approves_moderate_confidence() {
+    // TradingBot requires 80% confidence, Tier 3+ (SimulationValidated)
+    let med_conf = make_confidence_result(0.85, TrustTier::SimulationValidated);
     let policy_input = PolicyInput {
         confidence_result: med_conf,
         risk_verdict: RiskVerdict::Passed,
-        profile: WalletProfile::Standard,
+        profile: WalletProfile::TradingBot,
     };
     let result = evaluate_policy(&policy_input).unwrap();
     assert!(
         matches!(result, PolicyVerdict::Approved),
-        "Standard should approve at 0.75 confidence, got {:?}",
+        "TradingBot should approve at 0.85 confidence with Tier 3+, got {:?}",
         result
     );
 }
@@ -712,9 +715,9 @@ fn test_standard_profile_approves_moderate_confidence() {
 #[test]
 fn test_all_profiles_block_when_risk_detected() {
     for profile in &[
-        WalletProfile::Conservative,
-        WalletProfile::Standard,
-        WalletProfile::Permissive,
+        WalletProfile::Treasury,
+        WalletProfile::TradingBot,
+        WalletProfile::Gaming,
     ] {
         let high_conf = make_confidence_result(0.99, TrustTier::BattleTested);
         let policy_input = PolicyInput {
@@ -760,7 +763,7 @@ fn test_verification_deterministic_100_runs() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let first = core.verify(&input).unwrap();
@@ -789,7 +792,7 @@ fn test_audit_trail_id_is_content_addressed() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result1 = core.verify(&input).unwrap();
@@ -885,7 +888,7 @@ fn test_all_protocols_verifiable() {
             &ix.discriminator,
             accounts,
             &[],
-            WalletProfile::Standard,
+            WalletProfile::TradingBot,
             good_evidence(),
         );
         let result = core.verify(&input);

@@ -157,16 +157,40 @@ impl ManifestRegistry {
 pub fn load_seed_manifests() -> ManifestRegistry {
     let mut registry = ManifestRegistry::new();
 
-    let _ = registry.load_from_json(include_str!("../protocols/system-program.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/spl-token.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/token-2022.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/stake-program.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/squads-v4.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/jupiter-v6.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"));
-    let _ = registry.load_from_json(include_str!("../protocols/memo-program.json"));
+    // Fail-closed: seed manifests are compile-time-baked via include_str!.
+    // If one fails to parse, it indicates corruption or a bug — we panic
+    // rather than silently running without the protocol (which would weaken
+    // security by treating that protocol as "unknown" and capping at 0.55).
+    registry
+        .load_from_json(include_str!("../protocols/system-program.json"))
+        .expect("FATAL: system-program.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/spl-token.json"))
+        .expect("FATAL: spl-token.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/token-2022.json"))
+        .expect("FATAL: token-2022.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/stake-program.json"))
+        .expect("FATAL: stake-program.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
+        .expect("FATAL: raydium-amm-v4.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/squads-v4.json"))
+        .expect("FATAL: squads-v4.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/jupiter-v6.json"))
+        .expect("FATAL: jupiter-v6.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/orca-whirlpools.json"))
+        .expect("FATAL: orca-whirlpools.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/meteora-dlmm.json"))
+        .expect("FATAL: meteora-dlmm.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/memo-program.json"))
+        .expect("FATAL: memo-program.json manifest failed to load");
 
     registry
 }

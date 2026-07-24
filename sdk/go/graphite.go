@@ -62,10 +62,15 @@ type BehaviorEvidence struct {
 }
 
 // SimulationBaseline is the historical compute usage baseline for a program.
+// All three signal baselines (compute, writes, hops) are checked for divergence.
 type SimulationBaseline struct {
-	MeanComputeUnits float64 `json:"mean_compute_units"`
-	StdComputeUnits  float64 `json:"std_compute_units"`
-	SampleCount      uint64  `json:"sample_count"`
+	MeanComputeUnits  float64 `json:"mean_compute_units"`
+	StdComputeUnits   float64 `json:"std_compute_units"`
+	SampleCount       uint64  `json:"sample_count"`
+	MeanAccountWrites float64 `json:"mean_account_writes"`
+	StdAccountWrites  float64 `json:"std_account_writes"`
+	MeanCPIHops       float64 `json:"mean_cpi_hops"`
+	StdCPIHops        float64 `json:"std_cpi_hops"`
 }
 
 // ByteArray is a []byte that marshals as a JSON array of integers, NOT base64.
@@ -114,9 +119,9 @@ func (b *ByteArray) UnmarshalJSON(data []byte) error {
 type WalletProfile string
 
 const (
-	WalletProfileConservative WalletProfile = "Conservative"
-	WalletProfileStandard      WalletProfile = "Standard"
-	WalletProfilePermissive    WalletProfile = "Permissive"
+	WalletProfileTreasury     WalletProfile = "Treasury"
+	WalletProfileTradingBot    WalletProfile = "TradingBot"
+	WalletProfileGaming        WalletProfile = "Gaming"
 	WalletProfileEnterprise    WalletProfile = "Enterprise"
 )
 
@@ -158,6 +163,14 @@ type VerificationResult struct {
 	SimulationFlagged    *bool                      `json:"simulation_flagged,omitempty"`
 	SimulationDivergence *float64                   `json:"simulation_divergence,omitempty"`
 	Summary              string                     `json:"summary"`
+	Layers               []PipelineLayerResult     `json:"layers,omitempty"`
+}
+
+// PipelineLayerResult tracks the pass/fail status of each layer in the 8-layer pipeline.
+type PipelineLayerResult struct {
+	Layer  string `json:"layer"`
+	Passed bool   `json:"passed"`
+	Reason string `json:"reason"`
 }
 
 // VerificationBreakdownItem is a single confidence signal contribution.

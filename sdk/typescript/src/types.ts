@@ -16,7 +16,11 @@ export interface ProposedIntent {
   extracted_parameters?: ExtractedParameters;
 }
 
-export type WalletProfile = "Conservative" | "Standard" | "Permissive" | "Enterprise";
+export type WalletProfile = "Treasury" | "TradingBot" | "Gaming" | "Enterprise" | "Custom";
+export interface CustomProfile {
+  min_confidence: number;
+  min_trust_tier: TrustTier;
+}
 
 export interface BehaviorEvidence {
   has_signed_manifest: boolean;
@@ -34,6 +38,10 @@ export interface SimulationBaseline {
   mean_compute_units: number;
   std_compute_units: number;
   sample_count: number;
+  mean_account_writes: number;
+  std_account_writes: number;
+  mean_cpi_hops: number;
+  std_cpi_hops: number;
 }
 
 export interface VerificationInput {
@@ -131,6 +139,14 @@ export interface VerificationResult {
   /** Phase 1.5: Simulation integrity result (null if not checked) */
   simulation_flagged?: boolean | null;
   simulation_divergence?: number | null;
+  /** 8-layer pipeline results (L1-L8) */
+  layers?: PipelineLayerResult[];
+}
+
+export interface PipelineLayerResult {
+  layer: string;
+  passed: boolean;
+  reason: string;
 }
 
 export interface ProtocolManifest {

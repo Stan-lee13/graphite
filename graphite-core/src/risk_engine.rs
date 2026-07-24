@@ -38,7 +38,7 @@ pub enum RiskVerdict {
 }
 
 /// Input for risk assessment — manifest-aware.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct RiskAssessmentInput {
     pub program_id: String,
     pub accounts: Vec<String>,
@@ -49,6 +49,9 @@ pub struct RiskAssessmentInput {
     pub expected_account_count: Option<usize>,
     /// Proposed intent type from the AI layer (e.g. "swap", "transfer", "close")
     pub proposed_intent_type: String,
+    /// Extracted output token from intent parameters (for FakeSwap detection)
+    #[serde(default)]
+    pub extracted_output_token: Option<String>,
 }
 
 /// Known risky instruction discriminators by program ID.
@@ -251,7 +254,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         });
     }
 
-    // P0 Check 6: MaliciousAccountChange - CloseAccount or Allocate when intent does not match
+    // P0 Check 6a: MaliciousAccountChange - CloseAccount when intent is not "close"
     if !input.proposed_intent_type.is_empty() && input.proposed_intent_type != "close" {
         let close_discriminators = ["09", "0x09"];
         for close_disc in &close_discriminators {
@@ -271,23 +274,25 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                 }
             }
         }
+    }
 
-        // Check for System Allocate (0x03000000) or CreateAccount (0x00000000)
-        // when intent is not "create" - suspicious account creation
-        if input.program_id == "11111111111111111111111111111111" {
-            let alloc_disc = "03000000";
-            let create_disc = "00000000";
-            if input.instruction_discriminator.to_lowercase() == alloc_disc
-                || input.instruction_discriminator.to_lowercase() == create_disc
-            {
-                return Ok(RiskVerdict::Blocked {
-                    pattern: RiskPattern::MaliciousAccountChange,
-                    reason: format!(
-                        "Account allocation/creation detected but declared intent is {} - unexpected account creation",
-                        input.proposed_intent_type
-                    ),
-                });
-            }
+    // P0 Check 6b: MaliciousAccountChange - Allocate/CreateAccount when intent is not "create"
+    if !input.proposed_intent_type.is_empty()
+        && input.proposed_intent_type != "create"
+        && input.program_id == "11111111111111111111111111111111"
+    {
+        let alloc_disc = "03000000";
+        let create_disc = "00000000";
+        if input.instruction_discriminator.to_lowercase() == alloc_disc
+            || input.instruction_discriminator.to_lowercase() == create_disc
+        {
+            return Ok(RiskVerdict::Blocked {
+                pattern: RiskPattern::MaliciousAccountChange,
+                reason: format!(
+                    "Account allocation/creation detected but declared intent is {} - unexpected account creation",
+                    input.proposed_intent_type
+                ),
+            });
         }
     }
 
@@ -316,6 +321,31 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                 }
             }
         }
+    }
+
+    // P0 Check 8: FakeSwap — swap intent on known DEX but no output/credit in state changes
+    if let Some(_pattern) = detect_fake_swap(
+        &input.program_id,
+        &input.accounts,
+        &input.expected_state_changes,
+        &input.proposed_intent_type,
+        input.extracted_output_token.as_deref(),
+    ) {
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::FakeSwap,
+            reason: "FakeSwap: swap intent detected but expected state changes do not include output/credit — output may be routed to the wrong token account".to_string(),
+        });
+    }
+
+    // P0 Check 9: Intent-Program mismatch — intent type not supported by the program
+    if let Some(_pattern) = detect_intent_program_mismatch(&input.program_id, &input.proposed_intent_type) {
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::PermissionEscalation,
+            reason: format!(
+                "Intent-Program mismatch: '{}' intent on program {} which does not support this intent type",
+                input.proposed_intent_type, input.program_id
+            ),
+        });
     }
 
     Ok(RiskVerdict::Passed)
@@ -478,6 +508,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(result, RiskVerdict::Blocked { .. }));
@@ -494,6 +525,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -510,6 +542,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -532,6 +565,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -554,6 +588,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result1 = assess(&input).unwrap();
         let result2 = assess(&input).unwrap();
@@ -581,6 +616,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -615,6 +651,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -631,6 +668,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(
@@ -659,6 +697,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -681,6 +720,7 @@ mod tests {
             instruction_discriminator: "01".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -712,6 +752,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -731,6 +772,7 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -753,6 +795,7 @@ mod tests {
             instruction_discriminator: "01".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -773,6 +816,7 @@ mod tests {
             instruction_discriminator: "e517cb97".to_string(),
             expected_account_count: Some(5),
             proposed_intent_type: "swap".to_string(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -790,6 +834,7 @@ mod tests {
             instruction_discriminator: "03".to_string(), // Transfer
             expected_account_count: Some(3),
             proposed_intent_type: "transfer".to_string(),
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);

@@ -42,6 +42,7 @@ fn exploit_l1_drainer_threshold_bypass_5_accounts() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -63,6 +64,7 @@ fn exploit_l2_hidden_transfer_threshold_bypass_12_accounts() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -89,6 +91,7 @@ fn exploit_l3_compositional_drain_bypass_4_targets() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -110,6 +113,7 @@ fn exploit_l4_token2022_setauthority_bypass() {
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -186,6 +190,7 @@ fn exploit_l8_empty_discriminator_bypasses_setauthority() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -240,6 +245,7 @@ fn exploit_l12_account_duplication_false_positive() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -261,6 +267,7 @@ fn exploit_l14_unknown_system_instruction_passes() {
         instruction_discriminator: "ff00ff".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -316,6 +323,7 @@ fn exploit_l18_drainer_with_single_meaningful_change_bypass() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -330,7 +338,7 @@ fn exploit_l18_drainer_with_single_meaningful_change_bypass() {
     );
 }
 
-// L19: Full pipeline test — unknown protocol with Permissive profile
+// L19: Full pipeline test — unknown protocol with Gaming profile
 #[test]
 fn exploit_l19_unknown_protocol_permissive_bypass() {
     let core = GraphiteCore::new();
@@ -347,7 +355,7 @@ fn exploit_l19_unknown_protocol_permissive_bypass() {
         account_addresses: vec!["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string()],
         instruction_data: None,
         cpi_targets: vec![],
-        wallet_profile: WalletProfile::Permissive,
+        wallet_profile: WalletProfile::Gaming,
         behavior_evidence: max_evidence(),
         compute_units: 150,
         account_writes: 2,
@@ -355,8 +363,8 @@ fn exploit_l19_unknown_protocol_permissive_bypass() {
         simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
-    // Unknown tier capped at 0.55. Permissive threshold is 0.50.
-    // But Permissive requires TrustTier::HeuristicInferred minimum.
+    // Unknown tier capped at 0.55. Gaming threshold is 0.50.
+    // But Gaming requires TrustTier::HeuristicInferred minimum.
     // Unknown < HeuristicInferred → should be rejected.
     assert!(
         !result.approved,
@@ -377,6 +385,7 @@ fn exploit_l20_cpi_self_allowing() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -414,7 +423,7 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
         ],
         instruction_data: None,
         cpi_targets: vec![],
-        wallet_profile: WalletProfile::Standard,
+        wallet_profile: WalletProfile::TradingBot,
         behavior_evidence: max_evidence(),
         compute_units: 999999, // Massive compute — should be flagged
         account_writes: 2,

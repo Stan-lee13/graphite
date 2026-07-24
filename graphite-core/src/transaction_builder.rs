@@ -5,7 +5,7 @@
 //! that the verification pipeline can check against expected behavior.
 
 use crate::account_resolution::ResolvedAccount;
-use crate::solana_types::{AccountMeta, Instruction, Pubkey};
+use crate::solana_types::{AccountMeta, Pubkey};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -85,15 +85,17 @@ pub fn build_transaction(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Build the actual Solana instruction (for downstream consumers)
-    let program_pk = Pubkey::from_base58(&plan.program_id).map_err(|e| {
+    // Validate program_id is a valid pubkey (fail-fast on malformed input)
+    let _program_pk = Pubkey::from_base58(&plan.program_id).map_err(|e| {
         TransactionBuilderError::InvalidProgramId(format!("{}: {}", plan.program_id, e))
     })?;
-    let _instruction = Instruction::new(program_pk, account_metas.clone(), {
+
+    // Validate instruction data can be constructed (fail-fast on malformed data)
+    let _instruction_data = {
         let mut data = disc_bytes.clone();
         data.extend_from_slice(&plan.instruction_data);
         data
-    });
+    };
 
     let signer_count = account_metas.iter().filter(|a| a.is_signer).count();
     let writable_count = account_metas.iter().filter(|a| a.is_writable).count();

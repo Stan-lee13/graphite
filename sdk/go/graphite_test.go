@@ -30,7 +30,7 @@ func TestVerificationInputSerialization(t *testing.T) {
 		InstructionDiscriminator: "02000000",
 		AccountAddresses:         []string{"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"},
 		InstructionData:          ByteArray{0x02, 0x00, 0x00, 0x00},
-		WalletProfile:            WalletProfileStandard,
+		WalletProfile:            WalletProfileTradingBot,
 		BehaviorEvidence: BehaviorEvidence{
 			HasSignedManifest:      false,
 			CommunityVerifiedCount: 5,
@@ -100,7 +100,7 @@ func TestVerificationInputWithSimulationBaseline(t *testing.T) {
 		ProgramID:                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRTaV4",
 		InstructionDiscriminator: "e517cb977ae3ad2a",
 		AccountAddresses:         []string{"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"},
-		WalletProfile:            WalletProfileStandard,
+		WalletProfile:            WalletProfileTradingBot,
 		BehaviorEvidence: BehaviorEvidence{
 			HasSignedManifest:      true,
 			CommunityVerifiedCount: 10,

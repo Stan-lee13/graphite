@@ -512,60 +512,15 @@ impl GraphiteCore {
             instruction_discriminator: input.instruction_discriminator.clone(),
             expected_account_count,
             proposed_intent_type: input.proposed_intent.intent_type.clone(),
-        })?;
-
-        // Step 3b: Intent-Program mismatch (Phase 1.5)
-        let mismatch_risk = crate::risk_engine::detect_intent_program_mismatch(
-            &input.program_id,
-            &input.proposed_intent.intent_type,
-        );
-        let risk_verdict = if let Some(pattern) = mismatch_risk {
-            match risk_verdict {
-                crate::risk_engine::RiskVerdict::Passed =>
-                    crate::risk_engine::RiskVerdict::Blocked {
-                        pattern,
-                        reason: format!(
-                            "Intent-Program mismatch: '{}' intent on program {} which does not support swaps",
-                            input.proposed_intent.intent_type, input.program_id
-                        ),
-                    },
-                other => other,
-            }
-        } else {
-            risk_verdict
-        };
-
-        // Step 3b.5: FakeSwap Detection
-        // Detect when a swap intent is routed to a known swap program but the
-        // expected state changes don't include output/credit — suggesting the
-        // swap routes output to the wrong token account.
-        let fake_swap = crate::risk_engine::detect_fake_swap(
-            &input.program_id,
-            &input.account_addresses,
-            &expected_state_changes,
-            &input.proposed_intent.intent_type,
-            input
+            extracted_output_token: input
                 .proposed_intent
                 .extracted_parameters
                 .as_ref()
-                .and_then(|p| p.output_token.as_deref()),
-        );
-        let risk_verdict = if let Some(pattern) = fake_swap {
-            match risk_verdict {
-                crate::risk_engine::RiskVerdict::Passed => {
-                    crate::risk_engine::RiskVerdict::Blocked {
-                        pattern,
-                        reason: "FakeSwap: swap intent detected but expected state changes "
-                            .to_string()
-                            + "do not include output/credit — output may be routed "
-                            + "to the wrong token account",
-                    }
-                }
-                other => other,
-            }
-        } else {
-            risk_verdict
-        };
+                .and_then(|p| p.output_token.clone()),
+        })?;
+
+        // Note: Intent-Program mismatch and FakeSwap checks are now handled
+        // inside the risk engine's assess() function (P0 Checks 8 and 9).
 
         // Step 3c: PDA Mismatch Detection
         // If account resolution found PDA mismatches, surface them as risk findings.
@@ -655,7 +610,9 @@ impl GraphiteCore {
                     },
                 ) {
                     Ok(result) => (Some(result.flagged), Some(result.divergence_score)),
-                    Err(_) => (None, None),
+                    // Fail-closed (Constitution P12): on integrity check error,
+                    // flag the simulation rather than silently passing it.
+                    Err(_) => (Some(true), Some(f64::MAX)),
                 }
             } else {
                 (None, None)
@@ -720,7 +677,11 @@ impl GraphiteCore {
         let confidence_result = compute_confidence(&signals, trust_tier)
             .map_err(|e| VerificationError::Confidence(e.to_string()))?;
 
-        // Apply unknown protocol ceiling
+        // Defense-in-depth: apply the same tier-based ceiling a second time.
+        // compute_confidence() already caps at the tier ceiling (0.55 for Unknown),
+        // but this redundant cap ensures the invariant holds even if a future refactor
+        // accidentally removes the ceiling from compute_confidence(). The second cap
+        // is always a no-op given the first cap is in place — it exists as a safety net.
         let confidence = apply_unknown_protocol_ceiling(trust_tier, confidence_result.confidence);
         let confidence = (confidence - semantic_penalty - instruction_penalty - state_penalty).max(0.0);
 
@@ -749,6 +710,9 @@ impl GraphiteCore {
         let audit_id = generate_audit_id(
             &input.program_id,
             &input.instruction_discriminator,
+            &input.account_addresses,
+            &input.instruction_data,
+            &input.cpi_targets,
             confidence,
             &risk_summary,
         );
@@ -768,7 +732,7 @@ impl GraphiteCore {
             unknown_protocol,
         );
 
-        let breakdown: Vec<VerificationBreakdownItem> = confidence_result
+        let mut breakdown: Vec<VerificationBreakdownItem> = confidence_result
             .breakdown
             .iter()
             .map(|(kind, contribution)| {
@@ -791,6 +755,44 @@ impl GraphiteCore {
             })
             .collect();
 
+        // Add penalty items to breakdown (Constitution P3: breakdown must explain the final score)
+        if semantic_penalty > 0.0 {
+            breakdown.push(VerificationBreakdownItem {
+                kind: "SemanticPenalty".to_string(),
+                raw_value: semantic_penalty,
+                weight: -1.0,
+                contribution: -semantic_penalty,
+            });
+        }
+        if instruction_penalty > 0.0 {
+            breakdown.push(VerificationBreakdownItem {
+                kind: "InstructionPenalty".to_string(),
+                raw_value: instruction_penalty,
+                weight: -1.0,
+                contribution: -instruction_penalty,
+            });
+        }
+        if state_penalty > 0.0 {
+            breakdown.push(VerificationBreakdownItem {
+                kind: "StatePenalty".to_string(),
+                raw_value: state_penalty,
+                weight: -1.0,
+                contribution: -state_penalty,
+            });
+        }
+
+        // Add ceiling cap to breakdown if it was applied
+        let pre_ceiling = confidence_result.confidence;
+        let post_ceiling = apply_unknown_protocol_ceiling(trust_tier, pre_ceiling);
+        if post_ceiling < pre_ceiling {
+            breakdown.push(VerificationBreakdownItem {
+                kind: "TrustTierCeiling".to_string(),
+                raw_value: pre_ceiling - post_ceiling,
+                weight: 0.0,
+                contribution: -(pre_ceiling - post_ceiling),
+            });
+        }
+
         let summary_for_layers = summary.clone();
 
         Ok(VerificationResult {
@@ -811,7 +813,7 @@ impl GraphiteCore {
             simulation_flagged: sim_flagged,
             simulation_divergence: sim_divergence,
             layers: vec![
-                // L1: Account Resolution
+                // L1: Account Resolution — resolve all required accounts/PDAs
                 PipelineLayerResult {
                     layer: "L1_AccountResolution".to_string(),
                     passed: true,
@@ -821,75 +823,51 @@ impl GraphiteCore {
                         if manifest_found { "found" } else { "not found" }
                     ),
                 },
-                // L2: Transaction Construction
+                // L2: Instruction Verification — confirm discriminator + args match known shape
                 PipelineLayerResult {
-                    layer: l2_result.layer.clone(),
+                    layer: "L2_InstructionVerification".to_string(),
                     passed: l2_result.passed,
                     reason: l2_result.reason.clone(),
                 },
-                // L3: Risk Engine
+                // L3: Risk Engine — pattern-match against 8 known attack patterns (hard gate)
                 PipelineLayerResult {
                     layer: "L3_RiskEngine".to_string(),
                     passed: risk_summary.status == "Clear",
                     reason: if risk_summary.status == "Clear" {
                         "No risk patterns detected".to_string()
                     } else {
-                        format!("Blocked: {} finding(s)", risk_summary.findings.len())
+                        format!("Blocked: {} finding(s) — {:?}", risk_summary.findings.len(), risk_summary.findings.iter().map(|f| &f.pattern).collect::<Vec<_>>())
                     },
                 },
-                // L4: Confidence Engine
+                // L4: State Verification — diff pre/post account state against manifest
                 PipelineLayerResult {
-                    layer: "L4_ConfidenceEngine".to_string(),
-                    passed: confidence >= 0.5,
-                    reason: format!(
-                        "Confidence: {:.4} (tier: {:?}, ceiling: {})",
-                        confidence,
-                        trust_tier,
-                        if confidence_result.ceiling_triggered { "applied" } else { "not triggered" }
-                    ),
+                    layer: "L4_StateVerification".to_string(),
+                    passed: l4_result.passed,
+                    reason: l4_result.reason.clone(),
                 },
-                // L5: Protocol Intelligence (includes state + semantic checks)
+                // L5: Semantic Verification — compare intent against Semantic Graph expected behavior
                 PipelineLayerResult {
-                    layer: "L5_ProtocolIntelligence".to_string(),
-                    passed: l4_result.passed && l5_result.passed,
-                    reason: {
-                        let mut reasons = vec![];
-                        if !l4_result.passed {
-                            reasons.push(format!("State: {}", l4_result.reason));
-                        }
-                        if !l5_result.passed {
-                            reasons.push(format!("Semantic: {}", l5_result.reason));
-                        }
-                        if reasons.is_empty() {
-                            "State and semantic checks passed".to_string()
-                        } else {
-                            reasons.join(" | ")
-                        }
-                    },
+                    layer: "L5_SemanticVerification".to_string(),
+                    passed: l5_result.passed,
+                    reason: l5_result.reason.clone(),
                 },
-                // L6: Simulation Integrity
+                // L6: Confidence Engine — compute 0.0–1.0 confidence from weighted signals + penalties
                 PipelineLayerResult {
-                    layer: "L6_SimulationIntegrity".to_string(),
-                    passed: sim_flagged != Some(true),
-                    reason: if sim_flagged == Some(true) {
-                        "Simulation flagged - compute usage divergence".to_string()
-                    } else if input.simulation_baseline.is_some() {
-                        "Simulation integrity check passed".to_string()
-                    } else {
-                        "No simulation baseline provided - L6 skipped".to_string()
-                    },
+                    layer: "L6_ConfidenceEngine".to_string(),
+                    passed: confidence > 0.0,
+                    reason: format!("Confidence: {:.4} (tier: {:?}, ceiling: {:.2})", confidence, trust_tier, post_ceiling),
                 },
-                // L7: Policy Engine
+                // L7: Policy Engine — apply wallet profile thresholds (confidence + tier gates)
                 PipelineLayerResult {
                     layer: "L7_PolicyEngine".to_string(),
                     passed: matches!(policy_verdict, PolicyVerdict::Approved),
-                    reason: format!("Policy verdict: {}", policy_str),
+                    reason: format!("Policy verdict: {} (confidence: {:.4}, tier: {:?})", policy_str, confidence, trust_tier),
                 },
-                // L8: Emit Verdict
+                // L8: Emit Verdict — return final Verified/Blocked/Unknown with full breakdown
                 PipelineLayerResult {
                     layer: "L8_EmitVerdict".to_string(),
                     passed: approved,
-                    reason: summary_for_layers,
+                    reason: format!("Verdict: {} — {}", if approved { "APPROVED" } else { "BLOCKED" }, summary_for_layers),
                 },
             ],
         })
@@ -953,6 +931,9 @@ fn build_signals(
 fn generate_audit_id(
     program_id: &str,
     discriminator: &str,
+    account_addresses: &[String],
+    instruction_data: &Option<Vec<u8>>,
+    cpi_targets: &[String],
     confidence: f64,
     risk: &RiskVerdictSummary,
 ) -> String {
@@ -964,6 +945,19 @@ fn generate_audit_id(
     let mut hasher = Sha256::new();
     hasher.update(program_id.as_bytes());
     hasher.update(discriminator.as_bytes());
+    // Bind audit trail to specific accounts — mitigates TOCTOU by making
+    // the audit ID unique per transaction configuration.
+    for addr in account_addresses {
+        hasher.update(addr.as_bytes());
+    }
+    // Include instruction data if present
+    if let Some(data) = instruction_data {
+        hasher.update(data);
+    }
+    // Include CPI targets
+    for target in cpi_targets {
+        hasher.update(target.as_bytes());
+    }
     hasher.update(format!("{:.6}", confidence).as_bytes());
     hasher.update(risk.status.as_bytes());
     for f in &risk.findings {
@@ -1021,7 +1015,7 @@ mod tests {
             account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
             instruction_data: None,
             cpi_targets: vec![],
-            wallet_profile: WalletProfile::Standard,
+            wallet_profile: WalletProfile::TradingBot,
             behavior_evidence: BehaviorEvidence {
                 has_signed_manifest: false,
                 community_verified_count: 5,
@@ -1087,7 +1081,7 @@ mod tests {
             ],
             instruction_data: None,
             cpi_targets: vec!["unverified_target".to_string()],
-            wallet_profile: WalletProfile::Standard,
+            wallet_profile: WalletProfile::TradingBot,
             behavior_evidence: BehaviorEvidence {
                 has_signed_manifest: false,
                 community_verified_count: 0,

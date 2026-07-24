@@ -6,7 +6,7 @@
 //! Attack vectors:
 //! H1: Trust tier gaming — max evidence to inflate confidence on dangerous tx
 //! H2: Discriminator confusion — valid disc on wrong program
-//! H3: Permissive profile + unknown protocol — can it slip through?
+//! H3: Gaming profile + unknown protocol — can it slip through?
 //! H4: Intent-discriminator mismatch — say "transfer", do "close"
 //! H5: Zero/degenerate account edge cases
 //! H6: Manifest spoofing — inject a manifest that declares dangerous ops as safe
@@ -104,6 +104,7 @@ fn risk_input(
         instruction_discriminator: disc.to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     }
 }
 
@@ -121,13 +122,13 @@ fn h1_max_evidence_cannot_override_risk_block() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         max_evidence(),
     );
     let result = core.verify(&input).unwrap();
     assert!(
         !result.approved,
-        "MAX evidence + Permissive must NOT override risk block on SetAuthority"
+        "MAX evidence + Gaming must NOT override risk block on SetAuthority"
     );
     assert_eq!(result.risk_verdict.status, "Blocked");
 }
@@ -142,13 +143,13 @@ fn h1_max_evidence_cannot_override_unknown_protocol_block() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         max_evidence(),
     );
     let result = core.verify(&input).unwrap();
     assert!(
         !result.approved,
-        "MAX evidence must NOT make unknown protocol pass Permissive profile"
+        "MAX evidence must NOT make unknown protocol pass Gaming profile"
     );
     assert!(
         result.confidence <= 0.551,
@@ -170,7 +171,7 @@ fn h2_system_transfer_disc_on_spl_token() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     // Unknown discriminator on known program → Err is acceptable (fail-closed)
@@ -194,7 +195,7 @@ fn h2_spl_closeaccount_disc_on_system_program() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input);
@@ -221,12 +222,12 @@ fn h3_permissive_profile_unknown_protocol_blocked() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         max_evidence(),
     );
     let result = core.verify(&input).unwrap();
     assert!(!result.approved,
-        "Unknown protocol must NOT pass even Permissive profile — trust tier Unknown < HeuristicInferred");
+        "Unknown protocol must NOT pass even Gaming profile — trust tier Unknown < HeuristicInferred");
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -253,7 +254,7 @@ fn h4_transfer_intent_with_closeaccount_disc() {
         ],
         instruction_data: None,
         cpi_targets: vec![],
-        wallet_profile: WalletProfile::Standard,
+        wallet_profile: WalletProfile::TradingBot,
         behavior_evidence: max_evidence(),
         compute_units: 150,
         account_writes: 2,
@@ -289,7 +290,7 @@ fn h4_swap_intent_with_setauthority_disc() {
         ],
         instruction_data: None,
         cpi_targets: vec![],
-        wallet_profile: WalletProfile::Standard,
+        wallet_profile: WalletProfile::TradingBot,
         behavior_evidence: max_evidence(),
         compute_units: 150,
         account_writes: 2,
@@ -314,7 +315,7 @@ fn h5_zero_accounts() {
         "11111111111111111111111111111111",
         "02000000",
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input);
@@ -331,7 +332,7 @@ fn h5_one_account() {
         "11111111111111111111111111111111",
         "02000000",
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input);
@@ -351,7 +352,7 @@ fn h5_empty_string_account_address() {
         "11111111111111111111111111111111",
         "02000000",
         &["", ""],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input);
@@ -393,7 +394,7 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         max_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -532,7 +533,7 @@ fn h9_unknown_protocol_confidence_never_exceeds_055() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -553,7 +554,7 @@ fn h9_unknown_protocol_confidence_zero_evidence() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         zero_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -582,6 +583,7 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -604,6 +606,7 @@ fn h10_state_changes_dont_mask_closeaccount() {
         instruction_discriminator: "09".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -632,6 +635,7 @@ fn h11_empty_string_state_change_bypasses_drainer() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     // If this passes (not blocked), we found a drainer bypass
@@ -656,6 +660,7 @@ fn h11_whitespace_state_change_bypasses_drainer() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -682,7 +687,7 @@ fn h12_stake_delegate_stake_not_blocked() {
             "7Np41oeYqPefeNQEHSv1DUhjy2v12k5q3r5r5r5r5r5r",
             "5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input);
@@ -710,7 +715,7 @@ fn h12_squads_execute_transaction_not_blocked() {
             "7Np41oeYqPefeNQEHSv1DUhjy2v12k5q3r5r5r5r5r5r",
             "5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input);
@@ -738,7 +743,7 @@ fn h14_unicode_in_program_id_rejected() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input);
@@ -771,7 +776,7 @@ fn h15_audit_trail_ids_unique_across_500_calls() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let mut ids = std::collections::HashSet::new();
@@ -801,7 +806,7 @@ fn h16_empty_and_zero_discriminators_dont_crash() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let input2 = make_input(
@@ -811,7 +816,7 @@ fn h16_empty_and_zero_discriminators_dont_crash() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let r1 = core.verify(&input1);
@@ -841,7 +846,7 @@ fn h17_u32_max_evidence_does_not_overflow_confidence() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -880,7 +885,7 @@ fn h19_large_instruction_data_does_not_crash() {
         ],
         instruction_data: Some(vec![0x42; 100000]),
         cpi_targets: vec![],
-        wallet_profile: WalletProfile::Standard,
+        wallet_profile: WalletProfile::TradingBot,
         behavior_evidence: max_evidence(),
         compute_units: 150,
         account_writes: 2,
@@ -911,7 +916,7 @@ fn h20_500x_full_pipeline_determinism() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         max_evidence(),
     );
     let first = core.verify(&input).unwrap();
@@ -990,13 +995,13 @@ fn h21_permissive_profile_still_blocks_risk() {
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         max_evidence(),
     );
     let result = core.verify(&input).unwrap();
     assert!(
         !result.approved,
-        "Permissive profile must NOT bypass risk engine block"
+        "Gaming profile must NOT bypass risk engine block"
     );
 }
 
@@ -1067,7 +1072,7 @@ fn h23_unknown_program_cpi_many_accounts_safe_intent_permissive() {
         ],
         instruction_data: None,
         cpi_targets: vec!["DrainerProgram1111111111111111111111111111111".to_string()],
-        wallet_profile: WalletProfile::Permissive,
+        wallet_profile: WalletProfile::Gaming,
         behavior_evidence: max_evidence(),
         compute_units: 150,
         account_writes: 7,
@@ -1077,7 +1082,7 @@ fn h23_unknown_program_cpi_many_accounts_safe_intent_permissive() {
     let result = core.verify(&input).unwrap();
     assert!(
         !result.approved,
-        "Unknown program + CPI + 7 accounts + max evidence + Permissive must NOT be approved"
+        "Unknown program + CPI + 7 accounts + max evidence + Gaming must NOT be approved"
     );
     assert_eq!(
         result.risk_verdict.status, "Blocked",
@@ -1109,7 +1114,7 @@ fn h23_known_program_wrong_disc_cpi_many_accounts() {
         ],
         instruction_data: None,
         cpi_targets: vec!["4Nd1mYbz1NQ8Tk6eX5N6w5eM6eX5N6w5eM6eX5N6w5eM".to_string()],
-        wallet_profile: WalletProfile::Permissive,
+        wallet_profile: WalletProfile::Gaming,
         behavior_evidence: max_evidence(),
         compute_units: 150,
         account_writes: 7,

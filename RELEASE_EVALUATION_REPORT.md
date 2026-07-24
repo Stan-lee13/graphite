@@ -174,7 +174,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 4. **Confidence Engine** — Combine intent match, protocol trust tier, evidence signals into explainable score
 5. **Protocol Intelligence** — Match against versioned manifests. Unknown protocols capped at 0.55
 6. **Simulation Integrity** — Cross-check simulation evidence against independent signals
-7. **Policy Engine** — Apply per-agent/per-org rules (Conservative/Standard/Permissive/Enterprise)
+7. **Policy Engine** — Apply per-agent/per-org rules (Treasury/TradingBot/Unrestricted/Enterprise)
 8. **Emit Verdict** — Return confidence-rich report with audit trail
 
 ---

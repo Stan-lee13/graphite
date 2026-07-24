@@ -24,7 +24,7 @@ fn verify_8_layers_tracked() {
             extracted_parameters: None,
         },
         behavior_evidence: BehaviorEvidence::default(),
-        wallet_profile: WalletProfile::Standard,
+        wallet_profile: WalletProfile::TradingBot,
         protocol_version: "".to_string(),
         simulation_baseline: None,
         compute_units: 0,
@@ -39,13 +39,13 @@ fn verify_8_layers_tracked() {
     }
     assert_eq!(result.layers.len(), 8, "Must have exactly 8 layers matching architecture spec");
     
-    // Verify layer names match architecture spec
+    // Verify layer names match the actual execution pipeline
     assert_eq!(result.layers[0].layer, "L1_AccountResolution");
     assert_eq!(result.layers[1].layer, "L2_InstructionVerification");
     assert_eq!(result.layers[2].layer, "L3_RiskEngine");
-    assert_eq!(result.layers[3].layer, "L4_ConfidenceEngine");
-    assert_eq!(result.layers[4].layer, "L5_ProtocolIntelligence");
-    assert_eq!(result.layers[5].layer, "L6_SimulationIntegrity");
+    assert_eq!(result.layers[3].layer, "L4_StateVerification");
+    assert_eq!(result.layers[4].layer, "L5_SemanticVerification");
+    assert_eq!(result.layers[5].layer, "L6_ConfidenceEngine");
     assert_eq!(result.layers[6].layer, "L7_PolicyEngine");
     assert_eq!(result.layers[7].layer, "L8_EmitVerdict");
 }

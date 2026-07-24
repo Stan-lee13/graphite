@@ -92,6 +92,7 @@ fn risk_input(
         instruction_discriminator: disc.to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
     }
 }
 
@@ -111,7 +112,7 @@ fn test_evasion_set_authority_with_safe_intent_description() {
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     input.proposed_intent.intent_type = "transfer".to_string();
@@ -133,7 +134,7 @@ fn test_evasion_set_authority_on_token_2022_with_safe_intent() {
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -158,7 +159,7 @@ fn test_evasion_drainer_with_safe_intent_and_few_accounts() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -171,7 +172,7 @@ fn test_evasion_drainer_with_safe_intent_and_few_accounts() {
 
 #[test]
 fn test_evasion_unknown_program_with_permissive_profile() {
-    // Attacker hopes Permissive profile will approve unknown program
+    // Attacker hopes Gaming profile will approve unknown program
     let core = GraphiteCore::default();
     let input = make_input(
         "4Nd1mYbz1NQ8Tk6eX5N6w5eM6eX5N6w5eM6eX5N6w5eM", // unknown program
@@ -181,13 +182,13 @@ fn test_evasion_unknown_program_with_permissive_profile() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
     assert!(
         !result.approved,
-        "Unknown program must not be approved even with Permissive profile"
+        "Unknown program must not be approved even with Gaming profile"
     );
     assert!(
         result.unknown_protocol,
@@ -218,7 +219,7 @@ fn test_evasion_unknown_program_with_high_evidence() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         max_evidence,
     );
     let result = core.verify(&input).unwrap();
@@ -242,7 +243,7 @@ fn test_spoofing_system_transfer_with_authority_hijack_discriminator() {
         "01000000", // Assign, not Transfer
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -265,7 +266,7 @@ fn test_spoofing_spl_token_transfer_discriminator_on_wrong_program() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -285,7 +286,7 @@ fn test_spoofing_empty_discriminator_on_known_program() {
         "", // empty discriminator
         &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     // Should not crash — should handle gracefully (either Ok with unknown or Err)
@@ -385,7 +386,7 @@ fn test_boundary_confidence_exactly_0_55_unknown_protocol() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Permissive,
+        WalletProfile::Gaming,
         max_evidence,
     );
     let result = core.verify(&input).unwrap();
@@ -594,7 +595,7 @@ fn test_replay_verification_1000x_deterministic() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let first = core.verify(&input).unwrap();
@@ -630,7 +631,7 @@ fn test_confusion_almost_system_program() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -656,7 +657,7 @@ fn test_confusion_almost_spl_token() {
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -680,7 +681,7 @@ fn test_confusion_capital_vs_lowercase_program_id() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -808,9 +809,9 @@ fn test_policy_no_profile_overrides_risk_block() {
         ceiling_applied: 0.0,
     };
     for profile in &[
-        WalletProfile::Conservative,
-        WalletProfile::Standard,
-        WalletProfile::Permissive,
+        WalletProfile::Treasury,
+        WalletProfile::TradingBot,
+        WalletProfile::Gaming,
     ] {
         let input = PolicyInput {
             confidence_result: conf.clone(),
@@ -925,7 +926,7 @@ fn test_adversarial_jupiter_with_malicious_cpi_not_allowed() {
             "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J",
         ],
         &["4Nd1mYbz1NQ8Tk6eX5N6w5eM6eX5N6w5eM6eX5N6w5eM"], // malicious CPI not in allowed list
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -951,7 +952,7 @@ fn test_adversarial_squads_with_non_system_cpi_blocked() {
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         ],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], // SPL Token not in Squads allowed_cpis
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -981,7 +982,7 @@ fn test_adversarial_orca_swap_with_wrong_cpi_blocked() {
             "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         ],
         &["SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf"], // Squads not in Orca allowed_cpis
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -1006,7 +1007,7 @@ fn test_full_pipeline_safe_transfer_approved_with_audit_trail() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Standard,
+        WalletProfile::TradingBot,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -1033,7 +1034,7 @@ fn test_full_pipeline_blocked_transaction_has_audit_trail() {
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
@@ -1055,7 +1056,7 @@ fn test_full_pipeline_unknown_protocol_has_audit_trail() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::Conservative,
+        WalletProfile::Treasury,
         no_evidence(),
     );
     let result = core.verify(&input).unwrap();

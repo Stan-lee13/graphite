@@ -31,13 +31,13 @@ pub enum PolicyError {
 /// all, so this bug could never have shipped a working build.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 pub enum WalletProfile {
-    /// Conservative profile: high confidence, high trust tier required
-    Conservative,
-    /// Standard profile: moderate requirements
+    /// Treasury profile: high confidence, high trust tier required
+    Treasury,
+    /// TradingBot profile: moderate requirements
     #[default]
-    Standard,
-    /// Permissive profile: lower requirements for testing/dev
-    Permissive,
+    TradingBot,
+    /// Gaming profile: lower requirements for testing/dev
+    Gaming,
     /// Enterprise profile: 99%+ confidence, Tier 5 required
     Enterprise,
     /// Custom profile with explicit thresholds
@@ -92,9 +92,9 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
 
     // STEP 2: Get profile thresholds
     let (min_confidence, min_trust_tier) = match input.profile {
-        WalletProfile::Conservative => (0.85, TrustTier::SimulationValidated),
-        WalletProfile::Standard => (0.70, TrustTier::OfficialManifest),
-        WalletProfile::Permissive => (0.50, TrustTier::HeuristicInferred),
+        WalletProfile::Treasury => (0.95, TrustTier::CommunityVerified),
+        WalletProfile::TradingBot => (0.80, TrustTier::SimulationValidated),
+        WalletProfile::Gaming => (0.60, TrustTier::HeuristicInferred),
         WalletProfile::Enterprise => (0.99, TrustTier::BattleTested),
         WalletProfile::Custom {
             min_confidence,
@@ -145,7 +145,7 @@ mod tests {
                 pattern: crate::risk_engine::RiskPattern::Drainer,
                 reason: "test".to_string(),
             },
-            profile: WalletProfile::Permissive, // Most permissive profile
+            profile: WalletProfile::Gaming, // Most permissive profile
         };
 
         let result = evaluate_policy(&input).unwrap();
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn test_confidence_threshold_enforced() {
         let confidence_result = ConfidenceResult {
-            confidence: 0.60, // Below Conservative threshold
+            confidence: 0.60, // Below Treasury threshold
             breakdown: vec![],
             trust_tier_applied: TrustTier::BattleTested,
             ceiling_triggered: false,
@@ -165,7 +165,7 @@ mod tests {
         let input = PolicyInput {
             confidence_result,
             risk_verdict: RiskVerdict::Passed,
-            profile: WalletProfile::Conservative,
+            profile: WalletProfile::Treasury,
         };
 
         let result = evaluate_policy(&input).unwrap();
@@ -221,7 +221,7 @@ mod tests {
         let input = PolicyInput {
             confidence_result: confidence_result.clone(),
             risk_verdict: RiskVerdict::Passed,
-            profile: WalletProfile::Standard,
+            profile: WalletProfile::TradingBot,
         };
 
         let result1 = evaluate_policy(&input).unwrap();

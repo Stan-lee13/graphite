@@ -172,9 +172,10 @@ If $\text{abs(z\_score)} > \text{divergence\_threshold}$, it flags the transacti
 ### 6.1. Risk Profile Differences
 Yes, the 4 risk profiles (and the Custom option) defined in the `WalletProfile` enum (lines 32–48) are **actually different**. They enforce distinct minimum thresholds in `evaluate_policy` (lines 94–103):
 
-1. **`Conservative`**: `min_confidence` = `0.85`, `min_trust_tier` = `TrustTier::SimulationValidated`
-2. **`Standard`**: `min_confidence` = `0.70`, `min_trust_tier` = `TrustTier::OfficialManifest`
-3. **`Permissive`**: `min_confidence` = `0.50`, `min_trust_tier` = `TrustTier::HeuristicInferred`
+1. **`Treasury`**: `min_confidence` = `0.95`, `min_trust_tier` = `TrustTier::CommunityVerified`
+2. **`TradingBot`**: `min_confidence` = `0.80`, `min_trust_tier` = `TrustTier::SimulationValidated`
+3. **`Unrestricted`**: `min_confidence` = `0.0`, `min_trust_tier` = `TrustTier::HeuristicInferred`
+4. **`Enterprise`**: `min_confidence` = `1.0`, `min_trust_tier` = `TrustTier::BattleTested`
 4. **`Enterprise`**: `min_confidence` = `0.99`, `min_trust_tier` = `TrustTier::BattleTested`
 
 ### 6.2. Risk Override (G4 Mitigation)
