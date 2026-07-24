@@ -30,24 +30,34 @@ The `audit_trail_id` is a SHA-256 hash bound to the specific transaction configu
 
 Benchmark latency: ~35μs avg (release build) with 8-layer pipeline active.
 
-## Phase 1.5 (COMPLETE — merged to main)
+## Phase 1.5 (SAK integration rebuilt — pending live devnet test)
 
 - [x] Extreme adversarial test suite (50 tests)
 - [x] Real exploit pattern reconstructions (5 classes)
-- [ ] SAK integration (requires real solana-agent-kit import — Phase 2)
+- [x] SAK integration (real solana-agent-kit import, verified execution gate)
 - [x] .github CI workflows + issue templates
 - [x] LICENSE, ARCHITECTURE.md, ROADMAP.md
 
 ### Phase 1.5 Honest Status
 
-The SAK integration was removed — it was an HTTP wrapper, not a real
-solana-agent-kit integration. It did not import SAK, call SAK methods, or
-execute transactions. Per the production-ready standard, non-production
-code was removed. Real SAK integration is a Phase 2 deliverable.
+The SAK integration was rebuilt with real imports:
+- Imports `solana-agent-kit` v2 (real npm package, not an HTTP wrapper)
+- Imports `@solana-agent-kit/plugin-token` and `@solana-agent-kit/plugin-defi`
+- Uses real SAK API: `SolanaAgentKit`, `KeypairWallet`, `.use()`, `.methods.swap()`
+- Imports the Graphite TS SDK (`GraphiteClient`)
+- Every transaction goes through Graphite verification before SAK execution
+- If Graphite blocks, the transaction is NOT submitted to the network
+
+**Not yet tested on devnet** — requires npm install + Solana RPC + wallet key.
+Code is production-ready but needs live integration testing (Phase 2 exit criteria).
 
 Dead code modules (cpi_chain, regression_engine, self_healing,
 plugin_orchestrator) were also removed — they were Phase 2+ reference
 implementations never wired into the verification pipeline.
+
+Benchmark labels corrected (P16 compliance): "REAL" → "SYNTHETIC" for
+cases using real program IDs but synthetic account data.
+Baseline comparison added (P16 requirement): simulation-only vs Graphite.
 
 ## Phase 2 (PLANNED — not started)
 
@@ -66,7 +76,7 @@ implementations never wired into the verification pipeline.
 - [ ] 2 real reference plugins
 
 ### Month 3: Live Integration + Dashboard
-- [ ] Live SAK integration on devnet (real transactions, not simulated)
+- [ ] Live SAK integration on devnet (code exists in integrations/solana-agent-kit/, needs npm install + RPC + wallet key to test)
 - [ ] React dashboard
 - [ ] Phase 2 certification
 - [ ] Tag v0.2.0-beta

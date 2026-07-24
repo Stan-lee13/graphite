@@ -172,6 +172,73 @@ pub fn run_benchmark() {
     );
     println!("  Avg Latency:      {}μs", avg_latency);
     println!();
+
+    // ─── Baseline Comparison (Constitution P16 requirement) ───
+    // BENCHMARK.md requires a comparison row against at least one honest baseline.
+    // "Simulation only" baseline: approve if compute_units > 0 (simulation "succeeded"),
+    // block if compute_units == 0 (simulation "failed"). No verification logic at all.
+    // This is the weakest possible defense — it catches nothing that simulation doesn't.
+    let mut baseline_tp = 0; // malicious correctly blocked
+    let mut baseline_tn = 0; // safe correctly approved
+    let mut baseline_fp = 0; // safe incorrectly blocked
+    let mut baseline_fn = 0; // malicious incorrectly approved
+    let mut baseline_total_latency_us: u128 = 0;
+
+    for case in &cases {
+        let start = Instant::now();
+        // Baseline: "simulation only" — approve if compute_units > 0, block otherwise
+        let baseline_approved = case.input.compute_units > 0;
+        let elapsed = start.elapsed();
+        baseline_total_latency_us += elapsed.as_micros();
+
+        match (case.category, baseline_approved, case.expected_approved) {
+            ("safe", false, true) => baseline_fp += 1,
+            ("safe", true, true) => baseline_tn += 1,
+            ("malicious", true, false) => baseline_fn += 1,
+            ("malicious", false, false) => baseline_tp += 1,
+            ("unknown", _, _) => {}
+            _ => {}
+        }
+    }
+
+    let baseline_scored = cases.iter().filter(|c| c.category != "unknown").count();
+    let baseline_correct = baseline_tp + baseline_tn;
+    let baseline_precision = if (baseline_tp + baseline_fp) > 0 {
+        baseline_tp as f64 / (baseline_tp + baseline_fp) as f64 * 100.0
+    } else {
+        0.0
+    };
+    let baseline_recall = if (baseline_tp + baseline_fn) > 0 {
+        baseline_tp as f64 / (baseline_tp + baseline_fn) as f64 * 100.0
+    } else {
+        0.0
+    };
+    let baseline_avg_latency = if total > 0 {
+        baseline_total_latency_us / total as u128
+    } else {
+        0
+    };
+
+    println!("┌────────────────────────────────────────────────────────────────┐");
+    println!("│  Baseline Comparison (Constitution P16)                       │");
+    println!("├──────────────────────┬───────────────┬──────────┬───────────────┤");
+    println!("│ Tool                 │ Precision     │ Recall   │ Avg Latency  │");
+    println!("├──────────────────────┼───────────────┼──────────┼──────────────┤");
+    println!(
+        "│ Simulation only      │ {:>8.1}%     │ {:>6.1}%  │ {:>6}μs       │",
+        baseline_precision, baseline_recall, baseline_avg_latency
+    );
+    println!(
+        "│ Graphite v0.1.0      │ {:>8.1}%     │ {:>6.1}%  │ {:>6}μs       │",
+        precision, recall, avg_latency
+    );
+    println!("└──────────────────────┴───────────────┴──────────┴───────────────┘");
+    println!();
+    println!("  Baseline: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
+        baseline_correct, baseline_scored, baseline_tp, baseline_tn, baseline_fp, baseline_fn);
+    println!("  Graphite: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
+        correct, scored, true_positives, true_negatives, false_positives, false_negatives);
+    println!();
 }
 
 fn make_input(
@@ -182,9 +249,21 @@ fn make_input(
     profile: WalletProfile,
     evidence: BehaviorEvidence,
 ) -> VerificationInput {
+    make_input_with_intent(program, disc, accounts, cpi_targets, profile, evidence, "transfer")
+}
+
+fn make_input_with_intent(
+    program: &str,
+    disc: &str,
+    accounts: &[&str],
+    cpi_targets: &[&str],
+    profile: WalletProfile,
+    evidence: BehaviorEvidence,
+    intent_type: &str,
+) -> VerificationInput {
     VerificationInput {
         proposed_intent: ProposedIntent {
-            intent_type: "transfer".to_string(),
+            intent_type: intent_type.to_string(),
             raw_natural_language: "test".to_string(),
             confidence_of_parse: 0.9,
             extracted_parameters: None,
@@ -468,10 +547,11 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                 good_evidence(),
             ),
         },
-        // === REAL MAINNET EXPLOIT CASES ===
-        // Sources: Mandiant/Google CLINKSINK, SlowMist AAT, Kudelski Wormhole
+        // === SYNTHETIC RECONSTRUCTION CASES (real program IDs, synthetic account data) ===
+        // Based on security research: Mandiant/Google CLINKSINK, SlowMist AAT, Kudelski Wormhole
+    // NOTE: Uses real program IDs but synthetic account addresses (not raw mainnet transaction data)
         BenchmarkCase {
-            label: "REAL: CLINKSINK STMT Drainer (mainnet)",
+            label: "SYNTHETIC: CLINKSINK-style STMT drainer (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
             input: make_input(
@@ -483,7 +563,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             ),
         },
         BenchmarkCase {
-            label: "REAL: AAT Drainer — Approve + assign ($3M+)",
+            label: "SYNTHETIC: AAT-style drainer — Approve + assign (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
             input: make_input(
@@ -495,7 +575,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             ),
         },
         BenchmarkCase {
-            label: "REAL: Wormhole Hack ($320M, Feb 2022)",
+            label: "SYNTHETIC: Wormhole-style exploit (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
             input: make_input(
@@ -507,7 +587,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             ),
         },
         BenchmarkCase {
-            label: "REAL: AAT Mass Drain (25 accts)",
+            label: "SYNTHETIC: AAT-style mass drain (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
             input: make_input(
@@ -519,7 +599,7 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             ),
         },
         BenchmarkCase {
-            label: "REAL: CLINKSINK Token Drain (co-signed)",
+            label: "SYNTHETIC: CLINKSINK-style token drain (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
             input: make_input(

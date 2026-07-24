@@ -1,0 +1,22 @@
+{
+  "name": "@graphite/sak-integration",
+  "version": "0.1.0",
+  "description": "Graphite-verified Solana Agent Kit integration — every SAK transaction is verified by Graphite Core before execution.",
+  "type": "module",
+  "scripts": {
+    "demo": "tsx demo.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "solana-agent-kit": "^2.0.10",
+    "@solana-agent-kit/plugin-token": "^2.0.10",
+    "@solana-agent-kit/plugin-defi": "^2.0.10",
+    "@solana/web3.js": "^1.95.0",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0"
+  }
+}
