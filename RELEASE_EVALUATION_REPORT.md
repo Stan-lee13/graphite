@@ -12,7 +12,7 @@
 Graphite v0.1.0-alpha is the first frozen release of a transaction intent verification engine for Solana AI agents. It verifies that constructed transactions actually do what was declared, produces a falsifiable confidence score, and fails closed on unknown protocols.
 
 **Key results:**
-- **646 Rust tests** (83 unit + 563 integration/adversarial), **0 failures**
+- **626 Rust tests** (83 unit + 563 integration/adversarial), **0 failures**
 - **6 Python AI layer tests**, 0 failures
 - **7 Go SDK tests**, 0 failures
 - **TypeScript SDK**: clean compile (tsc --noEmit)
@@ -44,7 +44,7 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 | **Handcrafted Adversarial** | `tests/adversarial_handcrafted.rs` | 100 | ✅ Pass |
 | **Real Exploit Tests** | `tests/real_exploit_tests.rs` | 15 | ✅ Pass |
 | **Real On-Chain Exploits** | `tests/real_onchain_exploits.rs` | 15 | ✅ Pass |
-| **Total** | | **646** | **0 failures** |
+| **Total** | | **626** | **0 failures** |
 
 ### 2.2 Adversarial Test Categories
 
@@ -199,7 +199,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 
 | Check | Result |
 |---|---|
-| `cargo test` | 646 passed, 0 failed |
+| `cargo test` | 626 passed, 0 failed |
 | `cargo clippy` | 0 warnings |
 | `cargo fmt` | Clean |
 | `cargo build --release` | ~3.1MB binary |
