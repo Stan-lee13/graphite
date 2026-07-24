@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Graphite — Transaction verification for Solana AI agents"
 license = "MIT"
-publish = false
+# # publish = false  # Removed for public release  # Removed for public release
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
