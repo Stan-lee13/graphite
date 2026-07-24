@@ -120,7 +120,8 @@ const RISKY_CPI_PROGRAMS: &[&str] = &[
 const TRUSTED_CPI_ROOTS: &[&str] = &[
     "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6", // Jupiter V6
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo", // Orca Whirlpools
-    "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P", // Meteora
+    "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P", // Meteora DLMM
+    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads (multisig, CPIs to System)
 ];
 
@@ -434,6 +435,7 @@ pub fn detect_fake_swap(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
         "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",
         "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
     ];
 
     if !swap_programs.contains(&program_id) {
@@ -470,9 +472,10 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
     match intent_type {
         "swap" => {
             const SWAP_PROGRAMS: &[&str] = &[
-                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
-                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",
-                "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P",
+                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",      // Jupiter V6
+                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",     // Orca Whirlpools
+                "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P",     // Meteora DLMM
+                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",    // Raydium AMM V4
             ];
             SWAP_PROGRAMS.contains(&program_id)
         }
