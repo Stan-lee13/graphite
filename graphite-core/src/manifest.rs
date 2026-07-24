@@ -92,7 +92,7 @@ impl ManifestRegistry {
         self.validate(&manifest)?;
         let key = manifest.protocol.program_id.clone();
         self.manifests.insert(key.clone(), manifest);
-        Ok(self.manifests.get(&key).unwrap())
+        Ok(self.manifests.get(&key).expect("manifest was just inserted — key must exist"))
     }
 
     /// Get a manifest by program ID (base58 string).

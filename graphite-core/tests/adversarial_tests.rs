@@ -88,6 +88,7 @@ fn risk_input(
         allowed_cpis: allowed.iter().map(|s| s.to_string()).collect(),
         instruction_discriminator: disc.to_string(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     }
 }
 

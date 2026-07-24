@@ -27,6 +27,7 @@ fn regression_l1_drainer_5_accounts_now_blocked() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -44,15 +45,23 @@ fn regression_l1_drainer_5_accounts_now_blocked() {
 // R-L2: Hidden transfer with 12 accounts should now be BLOCKED (>=12, not >12)
 #[test]
 fn regression_l2_hidden_transfer_12_accounts_now_blocked() {
+    // 12 accounts with 3 "accounts." references (ratio 4:1 < 6:1 drainer threshold)
+    // This stays below the drainer check so hidden transfer is the blocking pattern.
+    // Threshold: 3*4=12, max(12, 12) = 12. 12 >= 12 → flagged.
     let accounts: Vec<String> = (0..12).map(|i| format!("account_{}", i)).collect();
     let input = RiskAssessmentInput {
         program_id: "SomeProgram111111111111111111111111111".to_string(),
         accounts,
         cpi_targets: vec![],
-        expected_state_changes: vec!["accounts.0.transfer".into()],
+        expected_state_changes: vec![
+            "accounts.0.transfer".into(),
+            "accounts.1.debit".into(),
+            "accounts.2.credit".into(),
+        ],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -84,6 +93,7 @@ fn regression_l3_compositional_drain_4_targets_now_blocked() {
         allowed_cpis: vec![drainer.into()],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -110,6 +120,7 @@ fn regression_l4_token2022_setauthority_now_blocked() {
         allowed_cpis: vec![],
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -137,6 +148,7 @@ fn regression_l4b_spl_token_setauthority_now_blocked() {
         allowed_cpis: vec![],
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -166,6 +178,10 @@ fn regression_l6_nan_baseline_now_rejected() {
             mean_compute_units: f64::NAN,
             std_compute_units: 100.0,
             sample_count: 100,
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
         },
         divergence_threshold: 2.0,
     };
@@ -190,6 +206,10 @@ fn regression_l6b_infinity_std_now_rejected() {
             mean_compute_units: 100.0,
             std_compute_units: f64::INFINITY,
             sample_count: 100,
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
         },
         divergence_threshold: 2.0,
     };
@@ -208,6 +228,7 @@ fn regression_l8_empty_discriminator_spl_token_now_blocked() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -259,6 +280,7 @@ fn regression_l12_dedup_prevents_false_positive() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     // After dedup, only 1 unique account → should NOT be flagged as drainer
@@ -281,6 +303,7 @@ fn regression_l18_100_accounts_1_change_now_blocked() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(

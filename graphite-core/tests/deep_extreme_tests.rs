@@ -209,6 +209,7 @@ fn risk_input(
         allowed_cpis: allowed.iter().map(|s| s.to_string()).collect(),
         instruction_discriminator: disc.to_string(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     }
 }
 
@@ -287,12 +288,14 @@ fn test_cpi_allowed_list_blocks_unlisted_target() {
 
 #[test]
 fn test_cpi_allowed_list_accepts_listed_target() {
+    // Use a non-risky CPI target to test the allowed_cpis logic
+    // (SPL Token as CPI target from untrusted root is blocked by Check 1b)
     let input = risk_input(
         "program",
         &["a1"],
-        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        &["some_verified_program"],
         &["change"],
-        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        &["some_verified_program"],
         "",
     );
     assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);

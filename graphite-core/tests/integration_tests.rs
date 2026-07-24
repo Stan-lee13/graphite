@@ -464,6 +464,10 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
             mean_compute_units: 150.0,
             std_compute_units: 10.0,
             sample_count: 100,
+                    mean_account_writes: 0.0,
+                    std_account_writes: 0.0,
+                    mean_cpi_hops: 0.0,
+                    std_cpi_hops: 0.0,
         }),
     };
     let result = core.verify(&input).unwrap();

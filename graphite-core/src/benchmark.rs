@@ -413,6 +413,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     mean_compute_units: 150.0,
                     std_compute_units: 20.0,
                     sample_count: 100,
+                    mean_account_writes: 0.0,
+                    std_account_writes: 0.0,
+                    mean_cpi_hops: 0.0,
+                    std_cpi_hops: 0.0,
                 });
                 inp
             },
@@ -438,6 +442,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     mean_compute_units: 150.0,
                     std_compute_units: 20.0,
                     sample_count: 100,
+                    mean_account_writes: 0.0,
+                    std_account_writes: 0.0,
+                    mean_cpi_hops: 0.0,
+                    std_cpi_hops: 0.0,
                 });
                 inp
             },

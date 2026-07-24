@@ -374,6 +374,10 @@ fn t23_trust_tier_manipulation_signed_manifest_drainer() {
 fn t24_simulation_baseline_manipulation() {
     let baseline = ComputeBaseline {
         mean_compute_units: 100000.0, std_compute_units: 1000.0, sample_count: 10000,
+        mean_account_writes: 0.0,
+        std_account_writes: 0.0,
+        mean_cpi_hops: 0.0,
+        std_cpi_hops: 0.0,
     };
     let accounts = &[VICTIM, DRAINER_CLINKSINK, TOKEN_2022, SYSTEM];
     let input = make_input(DRAINER_CLINKSINK, "8", accounts, &[TOKEN_2022, SYSTEM],

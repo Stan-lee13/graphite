@@ -39,6 +39,7 @@ fn exploit_l1_drainer_threshold_bypass_5_accounts() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -59,6 +60,7 @@ fn exploit_l2_hidden_transfer_threshold_bypass_12_accounts() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -84,6 +86,7 @@ fn exploit_l3_compositional_drain_bypass_4_targets() {
         allowed_cpis: vec![drainer.into()],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -104,6 +107,7 @@ fn exploit_l4_token2022_setauthority_bypass() {
         allowed_cpis: vec![],
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -132,6 +136,10 @@ fn exploit_l6_nan_baseline_bypasses_simulation_check() {
             mean_compute_units: f64::NAN,
             std_compute_units: 100.0,
             sample_count: 100,
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
         },
         divergence_threshold: 2.0,
     };
@@ -153,6 +161,10 @@ fn exploit_l6b_infinity_std_bypasses_simulation_check() {
             mean_compute_units: 100.0,
             std_compute_units: f64::INFINITY,
             sample_count: 100,
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
         },
         divergence_threshold: 2.0,
     };
@@ -171,6 +183,7 @@ fn exploit_l8_empty_discriminator_bypasses_setauthority() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -224,6 +237,7 @@ fn exploit_l12_account_duplication_false_positive() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -244,6 +258,7 @@ fn exploit_l14_unknown_system_instruction_passes() {
         allowed_cpis: vec![],
         instruction_discriminator: "ff00ff".to_string(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -298,6 +313,7 @@ fn exploit_l18_drainer_with_single_meaningful_change_bypass() {
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -358,6 +374,7 @@ fn exploit_l20_cpi_self_allowing() {
         allowed_cpis: vec![malicious.into()],
         instruction_discriminator: String::new(),
             expected_account_count: None,
+            proposed_intent_type: String::new(),
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -404,6 +421,10 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
             mean_compute_units: 150.0,
             std_compute_units: 20.0,
             sample_count: 9, // Below threshold — check skipped!
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
         }),
     };
     let result = core.verify(&input).unwrap();

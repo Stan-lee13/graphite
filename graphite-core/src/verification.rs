@@ -254,6 +254,7 @@ impl GraphiteCore {
             allowed_cpis: allowed_cpis.clone(),
             instruction_discriminator: input.instruction_discriminator.clone(),
             expected_account_count,
+            proposed_intent_type: input.proposed_intent.intent_type.clone(),
         })?;
 
         // Step 3b: Intent-Program mismatch (Phase 1.5)
