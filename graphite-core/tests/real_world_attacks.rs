@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(clippy::all)]
 use graphite_core::verification::{GraphiteCore, VerificationInput, ProposedIntent};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -95,6 +98,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
             summary: format!("BLOCKED | error: {:?}", e),
             simulation_flagged: None,
             simulation_divergence: None,
+            layers: vec![],
         }
     })
 }
@@ -105,8 +109,9 @@ fn test_real_stmt_001() {
     let input = make(SPL_TOKEN, "03", &[A1, A2, A3, A4], &[], WalletProfile::Standard);
     let result = run(input);
     println!("STMT 001 (4 accounts) — approved: {}, confidence: {}, risk: {}", result.approved, result.confidence, result.risk_verdict.status);
-    // 4 accounts — may be legitimate
-    let _ = result;
+    // 4 accounts with SPL Token Transfer - should not be approved (unknown protocol, low confidence)
+    assert!(!result.approved, "STMT 001: 4 accounts on unknown protocol should not be approved");
+    assert!(result.confidence < 0.2, "STMT 001: unknown protocol should have low confidence");
 }
 
 #[test]
@@ -114,8 +119,9 @@ fn test_real_stmt_002() {
     let input = make(SPL_TOKEN, "03", &[A1, A2, A3, A4, A5], &[], WalletProfile::Standard);
     let result = run(input);
     println!("STMT 002 (5 accounts) — approved: {}, confidence: {}, risk: {}", result.approved, result.confidence, result.risk_verdict.status);
-    // 5 accounts — may be legitimate
-    let _ = result;
+    // 5 accounts with SPL Token Transfer - should not be approved (unknown protocol, low confidence)
+    assert!(!result.approved, "STMT 002: 5 accounts on unknown protocol should not be approved");
+    assert!(result.confidence < 0.2, "STMT 002: unknown protocol should have low confidence");
 }
 
 #[test]

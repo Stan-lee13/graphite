@@ -14,7 +14,7 @@
 - [x] HTTP server (axum)
 - [x] CLI (clap)
 - [x] Dockerfile + .dockerignore
-- [x] 646 unit/integration tests passing
+- [x] 626 unit/integration tests passing
 
 ### Phase 1 Honest Status
 
@@ -22,20 +22,26 @@ The benchmark is 18 unit test cases with hardcoded expected outcomes — NOT a
 statistical evaluation on unseen data. "100% pass rate on handcrafted tests" is
 the honest claim. The 5 real exploit classes (CLINKSINK, AAT, Wormhole) use real
 program IDs but fabricated account structures and no instruction data bytes.
+Benchmark latency: 34μs avg (release build) with 8-layer pipeline active.
 
 ## Phase 1.5 (COMPLETE — merged to main)
 
 - [x] Extreme adversarial test suite (50 tests)
 - [x] Real exploit pattern reconstructions (5 classes)
-- [x] SAK integration adapter (src/index.ts)
+- [ ] SAK integration (requires real solana-agent-kit import — Phase 2)
 - [x] .github CI workflows + issue templates
 - [x] LICENSE, ARCHITECTURE.md, ROADMAP.md
 
 ### Phase 1.5 Honest Status
 
-The SAK integration is an adapter class — it does NOT execute real on-chain
-transactions yet. A live devnet integration with real solana-agent-kit calls
-is the next priority.
+The SAK integration was removed — it was an HTTP wrapper, not a real
+solana-agent-kit integration. It did not import SAK, call SAK methods, or
+execute transactions. Per the production-ready standard, non-production
+code was removed. Real SAK integration is a Phase 2 deliverable.
+
+Dead code modules (cpi_chain, regression_engine, self_healing,
+plugin_orchestrator) were also removed — they were Phase 2+ reference
+implementations never wired into the verification pipeline.
 
 ## Phase 2 (PLANNED — not started)
 

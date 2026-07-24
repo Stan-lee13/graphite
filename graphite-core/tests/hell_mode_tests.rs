@@ -29,13 +29,15 @@
 //! H23: Composable attack chains — multiple vectors combined
 //! H24: Policy engine isolation — risk overrides perfect confidence
 
+#![allow(dead_code)]
+#![allow(clippy::all)]
 use graphite_core::confidence_engine::ConfidenceResult;
 use graphite_core::{
     confidence_engine::TrustTier,
     policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict},
     risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict},
     semantic_graph_store::BehaviorEvidence,
-    GraphiteCore, ProposedIntent, VerificationInput, WalletProfile,
+    GraphiteCore, ProposedIntent, VerificationInput, WalletProfile
 };
 
 fn max_evidence() -> BehaviorEvidence {

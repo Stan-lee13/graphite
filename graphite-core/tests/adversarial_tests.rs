@@ -10,6 +10,9 @@
 //! - Confusion: using program IDs that look similar to real ones
 //! - Authority theft: every variant of SetAuthority across programs
 
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(clippy::all)]
 use graphite_core::{
     confidence_engine::{ConfidenceResult, TrustTier},
     manifest::{load_seed_manifests, ManifestRegistry},

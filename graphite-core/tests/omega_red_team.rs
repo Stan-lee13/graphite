@@ -4,12 +4,14 @@
 //! Every exploit in this file was written to trigger a real failure.
 //! If it compiles and the test panics/fails, the vulnerability is real.
 
+#![allow(dead_code)]
+#![allow(clippy::all)]
 use graphite_core::confidence_engine::{compute_confidence, SignalKind, TrustTier, WeightedSignal};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::simulation_integrity::{
-    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput,
+    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput
 };
 use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
 

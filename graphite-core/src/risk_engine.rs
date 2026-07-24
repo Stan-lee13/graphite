@@ -90,6 +90,18 @@ const RISKY_PATTERNS: &[KnownRiskPattern] = &[
         pattern: RiskPattern::AuthorityHijack,
         description: "System Assign — reassigns account ownership to a different program",
     },
+    KnownRiskPattern {
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        discriminator: "04",
+        pattern: RiskPattern::PermissionEscalation,
+        description: "SPL Token Approve - grants delegate authority to spend tokens from account",
+    },
+    KnownRiskPattern {
+        program_id: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        discriminator: "04",
+        pattern: RiskPattern::PermissionEscalation,
+        description: "Token-2022 Approve - grants delegate authority to spend tokens from account",
+    },
 ];
 
 /// Programs whose presence in a CPI chain is inherently risky.
@@ -237,6 +249,73 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
             pattern: RiskPattern::HiddenTransfer,
             reason: "Transaction touches accounts not declared in expected state changes — possible hidden transfer".to_string(),
         });
+    }
+
+    // P0 Check 6: MaliciousAccountChange - CloseAccount or Allocate when intent does not match
+    if !input.proposed_intent_type.is_empty() && input.proposed_intent_type != "close" {
+        let close_discriminators = ["09", "0x09"];
+        for close_disc in &close_discriminators {
+            if input.instruction_discriminator.to_lowercase() == close_disc.to_lowercase() {
+                let token_programs = [
+                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                ];
+                if token_programs.contains(&input.program_id.as_str()) {
+                    return Ok(RiskVerdict::Blocked {
+                        pattern: RiskPattern::MaliciousAccountChange,
+                        reason: format!(
+                            "CloseAccount instruction detected but declared intent is {} - account closure not declared in intent",
+                            input.proposed_intent_type
+                        ),
+                    });
+                }
+            }
+        }
+
+        // Check for System Allocate (0x03000000) or CreateAccount (0x00000000)
+        // when intent is not "create" - suspicious account creation
+        if input.program_id == "11111111111111111111111111111111" {
+            let alloc_disc = "03000000";
+            let create_disc = "00000000";
+            if input.instruction_discriminator.to_lowercase() == alloc_disc
+                || input.instruction_discriminator.to_lowercase() == create_disc
+            {
+                return Ok(RiskVerdict::Blocked {
+                    pattern: RiskPattern::MaliciousAccountChange,
+                    reason: format!(
+                        "Account allocation/creation detected but declared intent is {} - unexpected account creation",
+                        input.proposed_intent_type
+                    ),
+                });
+            }
+        }
+    }
+
+    // P0 Check 7: PermissionEscalation - intent mismatch for Approve
+    // If the instruction is Approve (0x04) but the declared intent is NOT approve/revoke,
+    // someone is granting delegate authority without declaring it.
+    if !input.proposed_intent_type.is_empty()
+        && input.proposed_intent_type != "approve"
+        && input.proposed_intent_type != "revoke"
+    {
+        let approve_discriminators = ["04", "0x04"];
+        for approve_disc in &approve_discriminators {
+            if input.instruction_discriminator.to_lowercase() == approve_disc.to_lowercase() {
+                let token_programs = [
+                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                ];
+                if token_programs.contains(&input.program_id.as_str()) {
+                    return Ok(RiskVerdict::Blocked {
+                        pattern: RiskPattern::PermissionEscalation,
+                        reason: format!(
+                            "Approve instruction detected but declared intent is {} - delegate authority grant not declared in intent",
+                            input.proposed_intent_type
+                        ),
+                    });
+                }
+            }
+        }
     }
 
     Ok(RiskVerdict::Passed)

@@ -4,10 +4,12 @@
 //! have been fixed. Each test asserts that the previous exploit
 //! no longer works.
 
+#![allow(dead_code)]
+#![allow(clippy::all)]
 use graphite_core::confidence_engine::{compute_confidence, SignalKind, TrustTier, WeightedSignal};
 use graphite_core::risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
 use graphite_core::simulation_integrity::{
-    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput,
+    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput
 };
 
 // R-L1: Drainer with 5 accounts should now be BLOCKED (>=5, not >5)

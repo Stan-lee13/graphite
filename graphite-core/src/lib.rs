@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 //! Graphite Core — Transaction verification for Solana AI agents.
 //!
 //! Phase 1 MVP: Account Resolution + Transaction Construction + Verification Engine
@@ -8,13 +9,9 @@
 
 pub mod account_resolution;
 pub mod confidence_engine;
-pub mod cpi_chain;
 pub mod manifest;
-pub mod plugin_orchestrator;
 pub mod policy_engine;
-pub mod regression_engine;
 pub mod risk_engine;
-pub mod self_healing;
 pub mod semantic_graph_store;
 pub mod simulation_integrity;
 pub mod solana_types;

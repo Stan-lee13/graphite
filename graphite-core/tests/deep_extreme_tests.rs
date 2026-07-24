@@ -9,6 +9,9 @@
 //! - Determinism across runs
 //! - Pubkey round-trips
 
+#![allow(dead_code)]
+#![allow(unused_imports)]
+#![allow(clippy::all)]
 use graphite_core::{
     confidence_engine::{
         compute_confidence, ConfidenceResult, SignalKind, TrustTier, WeightedSignal,

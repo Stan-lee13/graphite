@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(clippy::all)]
 use graphite_core::verification::{GraphiteCore, VerificationInput, ProposedIntent};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -79,6 +81,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
             summary: format!("BLOCKED | error: {:?}", e),
             simulation_flagged: None,
             simulation_divergence: None,
+            layers: vec![],
         }
     })
 }
@@ -297,21 +300,21 @@ fn test_adv_legit_look_030() {
 fn test_adv_account_gaming_031() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Account gaming 031 (3 accts) — risk: {}", result.risk_verdict.status);
-    let _ = result;
+    assert!(result.risk_verdict.status == "Clear", "3 accounts with Transfer should be clear");
 }
 
 #[test]
 fn test_adv_account_gaming_032() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3, A4], &[], WalletProfile::Standard));
     println!("Account gaming 032 (4 accts) — risk: {}", result.risk_verdict.status);
-    let _ = result;
+    assert!(result.risk_verdict.status == "Clear", "4 accounts with Transfer should be clear");
 }
 
 #[test]
 fn test_adv_account_gaming_033() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3, A4, A5], &[], WalletProfile::Standard));
     println!("Account gaming 033 (5 accts) — risk: {}", result.risk_verdict.status);
-    let _ = result;
+    assert!(result.risk_verdict.status == "Clear", "5 accounts with Transfer should be clear");
 }
 
 #[test]
@@ -577,49 +580,49 @@ fn test_adv_prog_confusion_070() {
 fn test_adv_empty_071() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Empty 071 — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "Empty 071: should not approve");
 }
 
 #[test]
 fn test_adv_empty_072() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Empty 072 — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "Empty 072: should not approve");
 }
 
 #[test]
 fn test_adv_empty_073() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Empty 073 — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "Empty 073: should not approve");
 }
 
 #[test]
 fn test_adv_empty_074() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Empty 074 — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "Empty 074: should not approve");
 }
 
 #[test]
 fn test_adv_empty_075() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Empty 075 — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "Empty 075: should not approve");
 }
 
 #[test]
 fn test_adv_empty_076() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Empty 076 — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "Empty 076: should not approve");
 }
 
 #[test]
 fn test_adv_empty_077() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Empty 077 — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "Empty 077: should not approve");
 }
 
 #[test]
@@ -647,7 +650,7 @@ fn test_adv_empty_080() {
 fn test_adv_mixed_signal_081() {
     let result = run(make_ev(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 081 — approved: {}, conf: {}", result.approved, result.confidence);
-    let _ = result;
+    assert!(result.approved, "Mixed 081: SPL Transfer with good evidence should be approved");
 }
 
 #[test]
@@ -661,7 +664,7 @@ fn test_adv_mixed_signal_082() {
 fn test_adv_mixed_signal_083() {
     let result = run(make_ev(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 083 — approved: {}, conf: {}", result.approved, result.confidence);
-    let _ = result;
+    assert!(result.approved, "Mixed 083: SPL Transfer with good evidence should be approved");
 }
 
 #[test]
@@ -675,7 +678,7 @@ fn test_adv_mixed_signal_084() {
 fn test_adv_mixed_signal_085() {
     let result = run(make_ev(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 085 — approved: {}, conf: {}", result.approved, result.confidence);
-    let _ = result;
+    assert!(result.approved, "Mixed 085: SPL Transfer with good evidence should be approved");
 }
 
 #[test]
@@ -689,7 +692,7 @@ fn test_adv_mixed_signal_086() {
 fn test_adv_mixed_signal_087() {
     let result = run(make_ev(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 087 — approved: {}, conf: {}", result.approved, result.confidence);
-    let _ = result;
+    assert!(result.approved, "Mixed 087: SPL Transfer with good evidence should be approved");
 }
 
 #[test]
@@ -703,7 +706,7 @@ fn test_adv_mixed_signal_088() {
 fn test_adv_mixed_signal_089() {
     let result = run(make_ev(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 089 — approved: {}, conf: {}", result.approved, result.confidence);
-    let _ = result;
+    assert!(result.approved, "Mixed 089: SPL Transfer with good evidence should be approved");
 }
 
 #[test]

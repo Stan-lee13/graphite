@@ -32,7 +32,7 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 | **Unit** | `src/*.rs` (lib tests) | 83 | ✅ Pass |
 | **Integration** | `tests/integration_tests.rs` | 16 | ✅ Pass |
 | **Confidence** | `tests/confidence_engine_tests.rs` | 13 | ✅ Pass |
-| **Self-Healing** | `tests/self_healing_integration_test.rs` | 3 | ✅ Pass |
+| **Self-Healing** | Removed (Phase 2+ reference code, not wired into pipeline) | — | — |
 | **Adversarial** | `tests/adversarial_tests.rs` | 45 | ✅ Pass |
 | **Deep Extreme** | `tests/deep_extreme_tests.rs` | 43 | ✅ Pass |
 | **Extreme Adversarial** | `tests/extreme_adversarial.rs` | 50 | ✅ Pass |

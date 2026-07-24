@@ -109,6 +109,8 @@ pub struct VerificationResult {
     pub simulation_flagged: Option<bool>,
     #[serde(default)]
     pub simulation_divergence: Option<f64>,
+    #[serde(default)]
+    pub layers: Vec<PipelineLayerResult>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -125,6 +127,14 @@ pub enum VerificationError {
     SemanticGraph(#[from] crate::semantic_graph_store::SemanticGraphError),
     #[error("confidence computation failed: {0}")]
     Confidence(String),
+}
+
+/// Result of a single pipeline layer verification.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PipelineLayerResult {
+    pub layer: String,
+    pub passed: bool,
+    pub reason: String,
 }
 
 /// The main Graphite verification engine.
@@ -181,6 +191,249 @@ impl GraphiteCore {
         Ok(())
     }
 
+    // L2: Instruction Verification
+    fn verify_instruction(
+        &self,
+        input: &VerificationInput,
+        manifest: Option<&crate::manifest::ProtocolManifest>,
+        resolution: &crate::account_resolution::AccountResolutionResult,
+    ) -> PipelineLayerResult {
+        let layer_name = "L2_InstructionVerification";
+
+        let manifest = match manifest {
+            Some(m) => m,
+            None => {
+                return PipelineLayerResult {
+                    layer: layer_name.to_string(),
+                    passed: true,
+                    reason: "No manifest - unknown protocol, instruction check skipped".to_string(),
+                };
+            }
+        };
+
+        let matching_ix = manifest.instructions.iter().find(|ix| {
+            ix.discriminator.to_lowercase() == input.instruction_discriminator.to_lowercase()
+        });
+
+        let ix = match matching_ix {
+            Some(ix) => ix,
+            None => {
+                return PipelineLayerResult {
+                    layer: layer_name.to_string(),
+                    passed: false,
+                    reason: format!(
+                        "Instruction discriminator {} not found in manifest for {} - unknown instruction on known program",
+                        input.instruction_discriminator,
+                        manifest.protocol.name
+                    ),
+                };
+            }
+        };
+
+        // Verify instruction data (if provided) starts with the discriminator
+        if let Some(ref data) = input.instruction_data {
+            if !data.is_empty() {
+                let disc_hex = input.instruction_discriminator.trim_start_matches("0x");
+                if let Ok(disc_bytes) = hex::decode(disc_hex) {
+                    if data.len() >= disc_bytes.len()
+                        && &data[..disc_bytes.len()] != disc_bytes.as_slice() {
+                            return PipelineLayerResult {
+                                layer: layer_name.to_string(),
+                                passed: false,
+                                reason: "Instruction data does not start with expected discriminator".to_string(),
+                            };
+                        }
+                }
+            }
+        }
+
+        // Verify account count matches manifest expectations
+        let expected_accounts = ix.accounts.len();
+        let actual_accounts = resolution.resolved_accounts.len();
+        if actual_accounts != expected_accounts {
+            return PipelineLayerResult {
+                layer: layer_name.to_string(),
+                passed: false,
+                reason: format!(
+                    "Account count mismatch: manifest expects {}, got {}",
+                    expected_accounts, actual_accounts
+                ),
+            };
+        }
+
+        PipelineLayerResult {
+            layer: layer_name.to_string(),
+            passed: true,
+            reason: format!("Instruction {} verified against manifest", ix.name),
+        }
+    }
+
+    // L4: State Verification
+    fn verify_state(
+        &self,
+        expected_state_changes: &[String],
+        resolved_accounts: &[ResolvedAccount],
+        manifest_found: bool,
+    ) -> PipelineLayerResult {
+        let layer_name = "L4_StateVerification";
+
+        if !manifest_found || expected_state_changes.is_empty() {
+            return PipelineLayerResult {
+                layer: layer_name.to_string(),
+                passed: true,
+                reason: "No manifest or no expected state changes - state check skipped".to_string(),
+            };
+        }
+
+        let changes_lower: Vec<String> = expected_state_changes
+            .iter()
+            .map(|c| c.to_lowercase())
+            .collect();
+
+        // If state changes mention debit/credit/transfer/swap/stake,
+        // there should be at least 2 writable accounts
+        let needs_writable = changes_lower.iter().any(|c| {
+            c.contains("debit") || c.contains("credit") || c.contains("transfer")
+                || c.contains("swap") || c.contains("stake")
+        });
+
+        let writable_count = resolved_accounts.iter().filter(|a| a.is_writable).count();
+
+        if needs_writable && writable_count < 2 {
+            return PipelineLayerResult {
+                layer: layer_name.to_string(),
+                passed: false,
+                reason: format!(
+                    "Expected state changes require writable accounts but only {} writable account(s) found",
+                    writable_count
+                ),
+            };
+        }
+
+        // If state changes mention signer/authority/delegate/approve,
+        // there should be at least 1 signer account
+        let needs_signer = changes_lower.iter().any(|c| {
+            c.contains("signer") || c.contains("authority") || c.contains("delegate")
+                || c.contains("approve")
+        });
+
+        let signer_count = resolved_accounts.iter().filter(|a| a.is_signer).count();
+
+        if needs_signer && signer_count == 0 {
+            return PipelineLayerResult {
+                layer: layer_name.to_string(),
+                passed: false,
+                reason: "Expected state changes require a signer but no signer account found".to_string(),
+            };
+        }
+
+        // If state changes mention close/closure,
+        // verify there is a writable account (the one being closed)
+        let needs_close = changes_lower.iter().any(|c| c.contains("close") || c.contains("closure"));
+        if needs_close && writable_count == 0 {
+            return PipelineLayerResult {
+                layer: layer_name.to_string(),
+                passed: false,
+                reason: "Expected state changes mention close/closure but no writable account found".to_string(),
+            };
+        }
+
+        PipelineLayerResult {
+            layer: layer_name.to_string(),
+            passed: true,
+            reason: format!(
+                "State verification passed: {} state change(s) consistent with {} account(s)",
+                expected_state_changes.len(),
+                resolved_accounts.len()
+            ),
+        }
+    }
+
+    // L5: Semantic Verification
+    fn verify_semantic(
+        &self,
+        proposed_intent: &ProposedIntent,
+        instruction_name: &str,
+        expected_state_changes: &[String],
+        manifest_found: bool,
+    ) -> PipelineLayerResult {
+        let layer_name = "L5_SemanticVerification";
+
+        if !manifest_found {
+            return PipelineLayerResult {
+                layer: layer_name.to_string(),
+                passed: true,
+                reason: "No manifest - unknown protocol, semantic check skipped".to_string(),
+            };
+        }
+
+        let intent = proposed_intent.intent_type.to_lowercase();
+        let ix_name = instruction_name.to_lowercase();
+        let changes_lower: Vec<String> = expected_state_changes
+            .iter()
+            .map(|c| c.to_lowercase())
+            .collect();
+
+        let (intent_keywords, mismatch_msg) = match intent.as_str() {
+            "swap" | "trade" | "exchange" => (
+                vec!["swap", "route", "trade", "token", "credit", "debit"],
+                "swap intent but instruction does not appear to be a swap",
+            ),
+            "transfer" | "send" => (
+                vec!["transfer", "send", "debit", "credit", "move"],
+                "transfer intent but instruction does not appear to be a transfer",
+            ),
+            "stake" | "delegate" => (
+                vec!["stake", "delegate", "withdraw", "deactivate", "reward"],
+                "stake intent but instruction does not appear to be a stake operation",
+            ),
+            "close" | "close_account" => (
+                vec!["close", "closure", "shutdown"],
+                "close intent but instruction does not appear to close an account",
+            ),
+            "create" | "create_account" => (
+                vec!["create", "allocate", "assign", "initialize"],
+                "create intent but instruction does not appear to create an account",
+            ),
+            "approve" | "revoke" => (
+                vec!["approve", "revoke", "delegate"],
+                "approve/revoke intent but instruction does not match",
+            ),
+            _ => {
+                return PipelineLayerResult {
+                    layer: layer_name.to_string(),
+                    passed: true,
+                    reason: format!("Unknown intent type {} - semantic check skipped", intent),
+                };
+            }
+        };
+
+        let ix_matches = intent_keywords.iter().any(|kw| ix_name.contains(kw));
+        let changes_match = changes_lower.iter().any(|c| {
+            intent_keywords.iter().any(|kw| c.contains(kw))
+        });
+
+        if !ix_matches && !changes_match {
+            return PipelineLayerResult {
+                layer: layer_name.to_string(),
+                passed: false,
+                reason: format!(
+                    "{}: intent={}, instruction={}, state_changes={:?}",
+                    mismatch_msg, intent, instruction_name, expected_state_changes
+                ),
+            };
+        }
+
+        PipelineLayerResult {
+            layer: layer_name.to_string(),
+            passed: true,
+            reason: format!(
+                "Semantic verification passed: intent {} consistent with instruction {}",
+                intent, instruction_name
+            ),
+        }
+    }
+
     /// Run the full verification pipeline on a transaction.
     pub fn verify(
         &self,
@@ -202,6 +455,10 @@ impl GraphiteCore {
 
         // Get manifest for protocol info (if found)
         let manifest = self.registry.get(&input.program_id);
+
+        // L2: Instruction Verification
+        let l2_result = self.verify_instruction(input, manifest, &resolution);
+
         let protocol_name = manifest
             .map(|m| m.protocol.name.clone())
             .unwrap_or_else(|| "Unknown Protocol".to_string());
@@ -425,6 +682,25 @@ impl GraphiteCore {
             risk_summary
         };
 
+        // L4: State Verification
+        let l4_result = self.verify_state(
+            &expected_state_changes,
+            &resolution.resolved_accounts,
+            manifest_found,
+        );
+
+        // L5: Semantic Verification
+        let l5_result = self.verify_semantic(
+            &input.proposed_intent,
+            &instruction_name,
+            &expected_state_changes,
+            manifest_found,
+        );
+
+        let semantic_penalty = if !l5_result.passed { 0.3 } else { 0.0 };
+        let instruction_penalty = if !l2_result.passed { 0.2 } else { 0.0 };
+        let state_penalty = if !l4_result.passed { 0.15 } else { 0.0 };
+
         // Step 4: Confidence Computation
         let trust_tier = if manifest_found {
             // Check semantic graph for this program
@@ -446,6 +722,7 @@ impl GraphiteCore {
 
         // Apply unknown protocol ceiling
         let confidence = apply_unknown_protocol_ceiling(trust_tier, confidence_result.confidence);
+        let confidence = (confidence - semantic_penalty - instruction_penalty - state_penalty).max(0.0);
 
         // Step 5: Policy Evaluation
         let policy_input = PolicyInput {
@@ -514,16 +791,18 @@ impl GraphiteCore {
             })
             .collect();
 
+        let summary_for_layers = summary.clone();
+
         Ok(VerificationResult {
             approved,
             confidence,
             breakdown,
             trust_tier: format!("{:?}", trust_tier),
-            risk_verdict: risk_summary,
+            risk_verdict: risk_summary.clone(),
             policy_verdict: policy_str.to_string(),
             audit_trail_id: audit_id,
             transaction,
-            resolved_accounts: resolution.resolved_accounts,
+            resolved_accounts: resolution.resolved_accounts.clone(),
             protocol_name,
             instruction_name,
             manifest_found,
@@ -531,6 +810,88 @@ impl GraphiteCore {
             summary,
             simulation_flagged: sim_flagged,
             simulation_divergence: sim_divergence,
+            layers: vec![
+                // L1: Account Resolution
+                PipelineLayerResult {
+                    layer: "L1_AccountResolution".to_string(),
+                    passed: true,
+                    reason: format!(
+                        "Resolved {} account(s), manifest {}",
+                        resolution.resolved_accounts.len(),
+                        if manifest_found { "found" } else { "not found" }
+                    ),
+                },
+                // L2: Transaction Construction
+                PipelineLayerResult {
+                    layer: l2_result.layer.clone(),
+                    passed: l2_result.passed,
+                    reason: l2_result.reason.clone(),
+                },
+                // L3: Risk Engine
+                PipelineLayerResult {
+                    layer: "L3_RiskEngine".to_string(),
+                    passed: risk_summary.status == "Clear",
+                    reason: if risk_summary.status == "Clear" {
+                        "No risk patterns detected".to_string()
+                    } else {
+                        format!("Blocked: {} finding(s)", risk_summary.findings.len())
+                    },
+                },
+                // L4: Confidence Engine
+                PipelineLayerResult {
+                    layer: "L4_ConfidenceEngine".to_string(),
+                    passed: confidence >= 0.5,
+                    reason: format!(
+                        "Confidence: {:.4} (tier: {:?}, ceiling: {})",
+                        confidence,
+                        trust_tier,
+                        if confidence_result.ceiling_triggered { "applied" } else { "not triggered" }
+                    ),
+                },
+                // L5: Protocol Intelligence (includes state + semantic checks)
+                PipelineLayerResult {
+                    layer: "L5_ProtocolIntelligence".to_string(),
+                    passed: l4_result.passed && l5_result.passed,
+                    reason: {
+                        let mut reasons = vec![];
+                        if !l4_result.passed {
+                            reasons.push(format!("State: {}", l4_result.reason));
+                        }
+                        if !l5_result.passed {
+                            reasons.push(format!("Semantic: {}", l5_result.reason));
+                        }
+                        if reasons.is_empty() {
+                            "State and semantic checks passed".to_string()
+                        } else {
+                            reasons.join(" | ")
+                        }
+                    },
+                },
+                // L6: Simulation Integrity
+                PipelineLayerResult {
+                    layer: "L6_SimulationIntegrity".to_string(),
+                    passed: sim_flagged != Some(true),
+                    reason: if sim_flagged == Some(true) {
+                        "Simulation flagged - compute usage divergence".to_string()
+                    } else if input.simulation_baseline.is_some() {
+                        "Simulation integrity check passed".to_string()
+                    } else {
+                        "No simulation baseline provided - L6 skipped".to_string()
+                    },
+                },
+                // L7: Policy Engine
+                PipelineLayerResult {
+                    layer: "L7_PolicyEngine".to_string(),
+                    passed: matches!(policy_verdict, PolicyVerdict::Approved),
+                    reason: format!("Policy verdict: {}", policy_str),
+                },
+                // L8: Emit Verdict
+                PipelineLayerResult {
+                    layer: "L8_EmitVerdict".to_string(),
+                    passed: approved,
+                    reason: summary_for_layers,
+                },
+            ],
         })
     }
 }

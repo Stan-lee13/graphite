@@ -33,7 +33,7 @@ cd graphite-core && cargo run --release --bin graphite -- server --port 7331
 cd python-ai-layer && python3 intent_parser.py --serve --port 8081
 
 # 3. Run the demo (dry-run)
-cd integrations/solana-agent-kit
+# SAK integration removed — Phase 2 deliverable
 npx tsx demo.ts "Swap 0.5 SOL for USDC"
 ```
 

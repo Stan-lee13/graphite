@@ -5,12 +5,12 @@
 //! evidence, never asserted (Constitution P7/P11).
 //!
 //! Also implements quarantine (ARCHITECTURE.md 3.8, Self-Healing Semantic
-//! Graph): `self_healing::detect_anomaly` decides WHETHER a record looks
+//! Graph): anomaly detection decides WHETHER a record looks
 //! anomalous; this module owns the durable, append-only consequence of that
 //! decision — `quarantine()` appends a new record with `quarantined: true`
 //! and a forced `TrustTier::Unknown`, never mutating the pre-quarantine
 //! history (P4) and never letting a caller assign a trust tier directly (P7)
-//! even in the quarantine path. See `reference/tests/self_healing_integration_test.rs`
+//! even in the quarantine path.
 //! for the full detect → quarantine → tier-reflects-it flow.
 //!
 //! This reference implementation demonstrates the append-only storage SHAPE and
@@ -355,7 +355,7 @@ mod tests {
 
     /// Restored 2026-07-06 (production-readiness sweep): quarantine was
     /// dropped from this module during the Cargo-crate restructuring, which
-    /// silently broke the self_healing → quarantine → trust-tier flow this
+    /// anomaly detection → quarantine → trust-tier flow
     /// module's own doc comment describes. This test is the basic contract:
     /// quarantine forces Unknown regardless of how strong the evidence was.
     #[test]

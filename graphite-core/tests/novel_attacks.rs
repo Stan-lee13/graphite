@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(clippy::all)]
 use graphite_core::verification::{GraphiteCore, VerificationInput, ProposedIntent};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -79,6 +81,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
             summary: format!("BLOCKED | error: {:?}", e),
             simulation_flagged: None,
             simulation_divergence: None,
+            layers: vec![],
         }
     })
 }
@@ -577,14 +580,14 @@ fn test_novel_manifest_confusion_070() {
 fn test_novel_instruction_data_071() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 071 (disc=03) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc 03 on unknown program should not be approved");
 }
 
 #[test]
 fn test_novel_instruction_data_072() {
     let result = run(make(SPL_TOKEN, "0c", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 072 (disc=0c) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc 0c should not be approved");
 }
 
 #[test]
@@ -605,70 +608,70 @@ fn test_novel_instruction_data_074() {
 fn test_novel_instruction_data_075() {
     let result = run(make(SPL_TOKEN, "07", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 075 (disc=07) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc 07 should not be approved");
 }
 
 #[test]
 fn test_novel_instruction_data_076() {
     let result = run(make(SYSTEM, "08", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 076 (disc=08) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc 08 should not be approved");
 }
 
 #[test]
 fn test_novel_instruction_data_077() {
     let result = run(make(SYSTEM, "04", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 077 (disc=04) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc 04 should not be approved");
 }
 
 #[test]
 fn test_novel_instruction_data_078() {
     let result = run(make(SYSTEM, "02", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 078 (disc=02) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc 02 should not be approved");
 }
 
 #[test]
 fn test_novel_instruction_data_079() {
     let result = run(make(SYSTEM, "02000000", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 079 (disc=02000000) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc 02000000 should not be approved");
 }
 
 #[test]
 fn test_novel_instruction_data_080() {
     let result = run(make(SYSTEM, "a1b2c3d4", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Instruction data 080 (disc=a1b2c3d4) — approved: {}", result.approved);
-    let _ = result;
+    assert!(!result.approved, "novel disc a1b2c3d4 should not be approved");
 }
 
 #[test]
 fn test_novel_boundary_081() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Boundary 081 (2 accts) — risk: {}", result.risk_verdict.status);
-    let _ = result;
+    assert!(result.risk_verdict.status == "Clear", "Boundary 081: 2 accounts with Transfer should be clear");
 }
 
 #[test]
 fn test_novel_boundary_082() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3], &[], WalletProfile::Standard));
     println!("Boundary 082 (3 accts) — risk: {}", result.risk_verdict.status);
-    let _ = result;
+    assert!(result.risk_verdict.status == "Clear", "Boundary 082: 3 accounts with Transfer should be clear");
 }
 
 #[test]
 fn test_novel_boundary_083() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3, A4], &[], WalletProfile::Standard));
     println!("Boundary 083 (4 accts) — risk: {}", result.risk_verdict.status);
-    let _ = result;
+    assert!(result.risk_verdict.status == "Clear", "Boundary 083: 4 accounts with Transfer should be clear");
 }
 
 #[test]
 fn test_novel_boundary_084() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3, A4, A5], &[], WalletProfile::Standard));
     println!("Boundary 084 (5 accts) — risk: {}", result.risk_verdict.status);
-    let _ = result;
+    assert!(result.risk_verdict.status == "Clear", "Boundary 084: 5 accounts with Transfer should be clear");
 }
 
 #[test]
@@ -724,14 +727,14 @@ fn test_novel_comp_evasion_091() {
 fn test_novel_comp_evasion_092() {
     let result = run(make(JUPITER_V6, "02000000", &[A1, A2, A3, A4, A5, A6], &[A1], WalletProfile::Standard));
     println!("Comp evasion 092 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
-    let _ = result;
+    assert!(!result.approved, "Comp evasion 092: should be blocked");
 }
 
 #[test]
 fn test_novel_comp_evasion_093() {
     let result = run(make(SYSTEM, "03", &[A1, A2, A3, A4, A5, A6], &[], WalletProfile::Standard));
     println!("Comp evasion 093 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
-    let _ = result;
+    assert!(!result.approved, "Comp evasion 093: should be blocked");
 }
 
 #[test]
@@ -745,14 +748,14 @@ fn test_novel_comp_evasion_094() {
 fn test_novel_comp_evasion_095() {
     let result = run(make(SQUADS, "02000000", &[A1, A2, A3, A4, A5, A6], &[], WalletProfile::Standard));
     println!("Comp evasion 095 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
-    let _ = result;
+    assert!(!result.approved, "Comp evasion 095: should be blocked");
 }
 
 #[test]
 fn test_novel_comp_evasion_096() {
     let result = run(make(SPL_TOKEN, "03", &[A1, A2, A3, A4, A5, A6], &[A1], WalletProfile::Standard));
     println!("Comp evasion 096 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
-    let _ = result;
+    assert!(!result.approved, "Comp evasion 096: should be blocked");
 }
 
 #[test]
@@ -766,14 +769,14 @@ fn test_novel_comp_evasion_097() {
 fn test_novel_comp_evasion_098() {
     let result = run(make(SYSTEM, "02000000", &[A1, A2, A3, A4, A5, A6], &[A1], WalletProfile::Standard));
     println!("Comp evasion 098 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
-    let _ = result;
+    assert!(!result.approved, "Comp evasion 098: should be blocked");
 }
 
 #[test]
 fn test_novel_comp_evasion_099() {
     let result = run(make(RAYDIUM, "03", &[A1, A2, A3, A4, A5, A6], &[], WalletProfile::Standard));
     println!("Comp evasion 099 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
-    let _ = result;
+    assert!(!result.approved, "Comp evasion 099: should be blocked");
 }
 
 #[test]

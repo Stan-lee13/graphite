@@ -78,6 +78,7 @@ pub fn run_benchmark() {
                     summary: "BLOCKED | verification error".to_string(),
                     simulation_flagged: None,
                     simulation_divergence: None,
+                    layers: vec![],
                 }
             });
         let elapsed = start.elapsed();

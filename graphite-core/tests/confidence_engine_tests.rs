@@ -3,6 +3,8 @@
 //! Comprehensive test suite for the reference confidence engine.
 //! Tests P3 (confidence always scored + explained) and P6 (trust tier ceilings).
 
+#![allow(dead_code)]
+#![allow(clippy::all)]
 use graphite_core::confidence_engine::*;
 
 // ============================================

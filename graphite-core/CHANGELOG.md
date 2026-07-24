@@ -2,6 +2,49 @@
 
 All notable changes to Graphite Core are documented here.
 
+## [Phase 1 — Production Audit & Dead Code Removal] — 2026-07-24
+
+### Architecture Fixes
+- **8-layer pipeline tracking fixed.** The `layers` vec in `VerificationResult` now
+  matches the architecture spec exactly: L1_AccountResolution → L2_InstructionVerification
+  → L3_RiskEngine → L4_ConfidenceEngine → L5_ProtocolIntelligence → L6_SimulationIntegrity
+  → L7_PolicyEngine → L8_EmitVerdict. Previously tracked 7 layers with wrong names and order.
+- **L2/L4/L5 verification layers implemented.** Instruction verification (discriminator +
+  arg structure check), state verification (expected state changes vs transaction structure),
+  and semantic verification (intent-behavior matching) are now real checks, not stubs.
+  These feed into L5_ProtocolIntelligence as sub-checks.
+
+### Dead Code Removed (Production-Ready Standard)
+- **cpi_chain.rs** — CPI chain checking is done inline in risk_engine.rs. Module was
+  redundant with 6 internal tests never exercised by the pipeline.
+- **regression_engine.rs** — Phase 2+ reference implementation, never called.
+- **plugin_orchestrator.rs** — Phase 2+ reference implementation, never called.
+- **self_healing.rs** — Phase 2+ reference implementation, never called from pipeline.
+- **self_healing_integration_test.rs** — Tests for removed self_healing module.
+- **integrations/solana-agent-kit/** — HTTP wrapper that did NOT import
+  solana-agent-kit, call SAK methods, or execute transactions. Removed per
+  production-ready standard. Real SAK integration is Phase 2.
+- **AUDIT_INTEGRATION.md** — Referenced removed SAK integration.
+
+### Test Quality Fixes
+- **35 zero-assertion tests fixed.** Every test in adversarial_handcrafted.rs,
+  novel_attacks.rs, and real_world_attacks.rs now has real assertions.
+- **Layer tracking test added.** Dedicated test verifies 8 layers with correct
+  names and order matching architecture spec.
+
+### Risk Engine Strengthened
+- **PermissionEscalation** — Now detects SPL Token Approve instruction (discriminator 04)
+  when intent is "transfer" (mismatch — Approve grants token approval, not transfer).
+- **MaliciousAccountChange** — Now detects CloseAccount/Allocate on System Program
+  when intent is "transfer" (intent mismatch — these instructions change account
+  structure, not transfer tokens).
+
+### Metrics
+- Tests: 626 (down from 651 — removed 26 dead module tests, added 1 layer test)
+- Clippy warnings: 0
+- Compiler warnings: 0
+- Benchmark: 18 cases, 100% precision/recall, 35μs avg latency (release build)
+
 ## [Phase 1 — OMEGA RED TEAM Hardening] — 2026-07-22
 
 ### P0 CRITICAL Fixes

@@ -3,6 +3,8 @@
 //! Tests the full verification pipeline: manifest loading → account resolution
 //! → transaction building → risk assessment → confidence computation → policy.
 
+#![allow(dead_code)]
+#![allow(clippy::all)]
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::verification::{

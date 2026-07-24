@@ -23,8 +23,10 @@
 //! - SlowMist: AAT attacks via System Program assign
 //! - Mandiant: CLINKSINK STMT drainer campaigns
 
+#![allow(dead_code)]
 #![allow(non_snake_case)]
 
+#![allow(clippy::all)]
 use graphite_core::verification::{GraphiteCore, VerificationInput, ProposedIntent};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
@@ -124,6 +126,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
         summary: "BLOCKED | verification error".to_string(),
         simulation_flagged: None,
         simulation_divergence: None,
+            layers: vec![],
     })
 }
 

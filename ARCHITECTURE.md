@@ -61,7 +61,6 @@ graphite/
 │   └── go/                 # Go SDK
 ├── python-ai-layer/        # Advisory intent parser (separate process)
 ├── integrations/
-│   └── solana-agent-kit/   # SAK integration adapter
 ├── schemas/                # JSON schemas (proposed-intent, verification-result)
 ├── examples/               # Usage examples
 ├── Dockerfile              # Multi-stage container build
