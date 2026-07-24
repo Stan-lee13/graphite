@@ -1,12 +1,14 @@
 {
   "name": "@graphite/solana-agent-kit-integration",
   "version": "0.1.0",
-  "description": "Graphite + Solana Agent Kit integration — verified agent transactions on Solana",
+  "description": "Graphite + Solana Agent Kit integration \u2014 verified agent transactions on Solana",
   "type": "module",
   "scripts": {
     "demo": "tsx demo.ts",
     "demo:dry": "tsx demo.ts --dry-run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.0",
@@ -16,5 +18,15 @@
     "@types/node": "^22.20.1",
     "tsx": "^4.23.1",
     "typescript": "^5.9.3"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./demo": "./demo.ts"
   }
 }
