@@ -60,6 +60,27 @@ pub enum TrustTier {
     BattleTested,
 }
 
+
+impl TrustTier {
+    /// Parse a trust tier from a manifest's `trust_tier` string field.
+    ///
+    /// Manifests declare trust tiers as strings (e.g., "BattleTested", "OfficialManifest").
+    /// This converts them to the enum. Unknown strings default to HeuristicInferred
+    /// (safer to under-trust than over-trust — Constitution P6/P7).
+    pub fn from_manifest_str(s: &str) -> Self {
+        match s.trim() {
+            "BattleTested" => TrustTier::BattleTested,
+            "CommunityVerified" => TrustTier::CommunityVerified,
+            "SimulationValidated" => TrustTier::SimulationValidated,
+            "OfficialManifest" => TrustTier::OfficialManifest,
+            "HeuristicInferred" => TrustTier::HeuristicInferred,
+            "Unknown" => TrustTier::Unknown,
+            "" => TrustTier::HeuristicInferred, // No tier declared — under-trust
+            _ => TrustTier::HeuristicInferred,  // Unrecognized — under-trust (P6)
+        }
+    }
+}
+
 /// Confidence ceiling constants per trust tier.
 ///
 /// Per Constitution P6, unknown protocols must never receive maximum confidence.
@@ -89,6 +110,8 @@ pub enum SignalKind {
     HistoricalVolume,
     /// Independent community verification
     CommunityVerification,
+    /// Trust tier of the protocol (from manifest declaration or accumulated evidence)
+    TrustTierLevel,
 }
 
 /// A weighted signal input to confidence computation.

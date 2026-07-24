@@ -109,9 +109,12 @@ fn test_real_stmt_001() {
     let input = make(SPL_TOKEN, "03", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("STMT 001 (4 accounts) — approved: {}, confidence: {}, risk: {}", result.approved, result.confidence, result.risk_verdict.status);
-    // 4 accounts with SPL Token Transfer - should not be approved (unknown protocol, low confidence)
-    assert!(!result.approved, "STMT 001: 4 accounts on unknown protocol should not be approved");
-    assert!(result.confidence < 0.2, "STMT 001: unknown protocol should have low confidence");
+    // 4 accounts with SPL Token Transfer (manifest expects 3) — account count mismatch
+    // causes L2 Instruction Verification to fail, applying a 0.20 confidence penalty.
+    // Even though SPL Token has a BattleTested manifest, the transaction should not be
+    // approved because confidence falls below TradingBot's 0.80 threshold.
+    assert!(!result.approved, "STMT 001: account count mismatch should not be approved");
+    assert!(result.confidence < 0.80, "STMT 001: account mismatch should keep confidence below TradingBot threshold");
 }
 
 #[test]
@@ -119,9 +122,11 @@ fn test_real_stmt_002() {
     let input = make(SPL_TOKEN, "03", &[A1, A2, A3, A4, A5], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("STMT 002 (5 accounts) — approved: {}, confidence: {}, risk: {}", result.approved, result.confidence, result.risk_verdict.status);
-    // 5 accounts with SPL Token Transfer - should not be approved (unknown protocol, low confidence)
-    assert!(!result.approved, "STMT 002: 5 accounts on unknown protocol should not be approved");
-    assert!(result.confidence < 0.2, "STMT 002: unknown protocol should have low confidence");
+    // 5 accounts with SPL Token Transfer (manifest expects 3) — account count mismatch
+    // causes L2 Instruction Verification to fail, applying a 0.20 confidence penalty.
+    // Should not be approved (confidence below TradingBot's 0.80 threshold).
+    assert!(!result.approved, "STMT 002: account count mismatch should not be approved");
+    assert!(result.confidence < 0.80, "STMT 002: account mismatch should keep confidence below TradingBot threshold");
 }
 
 #[test]
