@@ -112,6 +112,8 @@ pub enum SignalKind {
     CommunityVerification,
     /// Trust tier of the protocol (from manifest declaration or accumulated evidence)
     TrustTierLevel,
+    /// Intent-manifest alignment: proposed intent type matches a known instruction
+    IntentAlignment,
 }
 
 /// A weighted signal input to confidence computation.

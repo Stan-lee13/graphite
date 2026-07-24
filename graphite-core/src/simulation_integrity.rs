@@ -162,19 +162,42 @@ pub fn check_simulation_integrity(
 }
 
 /// Update baseline with new execution data.
-pub fn update_baseline(baseline: &mut ComputeBaseline, new_compute_units: u64) {
+///
+/// Updates all three tracked signals: compute units, account writes, and CPI hops.
+/// Uses Welford's online algorithm for numerically stable mean/variance updates.
+pub fn update_baseline(
+    baseline: &mut ComputeBaseline,
+    new_compute_units: u64,
+    new_account_writes: u32,
+    new_cpi_hops: u32,
+) {
     let n = baseline.sample_count as f64;
     let new_n = n + 1.0;
 
-    let new_mean = (baseline.mean_compute_units * n + new_compute_units as f64) / new_n;
-    let variance = baseline.std_compute_units * baseline.std_compute_units;
-    let new_variance = (variance * n
-        + (new_compute_units as f64 - baseline.mean_compute_units)
-            * (new_compute_units as f64 - new_mean))
-        / new_n;
+    // Signal 1: Compute units (Welford's algorithm)
+    let delta_cu = new_compute_units as f64 - baseline.mean_compute_units;
+    let new_mean_cu = baseline.mean_compute_units + delta_cu / new_n;
+    let new_var_cu = (baseline.std_compute_units * baseline.std_compute_units * n
+        + delta_cu * (new_compute_units as f64 - new_mean_cu)) / new_n;
+    baseline.mean_compute_units = new_mean_cu;
+    baseline.std_compute_units = new_var_cu.sqrt();
 
-    baseline.mean_compute_units = new_mean;
-    baseline.std_compute_units = new_variance.sqrt();
+    // Signal 2: Account writes (Welford's algorithm)
+    let delta_aw = new_account_writes as f64 - baseline.mean_account_writes;
+    let new_mean_aw = baseline.mean_account_writes + delta_aw / new_n;
+    let new_var_aw = (baseline.std_account_writes * baseline.std_account_writes * n
+        + delta_aw * (new_account_writes as f64 - new_mean_aw)) / new_n;
+    baseline.mean_account_writes = new_mean_aw;
+    baseline.std_account_writes = new_var_aw.sqrt();
+
+    // Signal 3: CPI hops (Welford's algorithm)
+    let delta_ch = new_cpi_hops as f64 - baseline.mean_cpi_hops;
+    let new_mean_ch = baseline.mean_cpi_hops + delta_ch / new_n;
+    let new_var_ch = (baseline.std_cpi_hops * baseline.std_cpi_hops * n
+        + delta_ch * (new_cpi_hops as f64 - new_mean_ch)) / new_n;
+    baseline.mean_cpi_hops = new_mean_ch;
+    baseline.std_cpi_hops = new_var_ch.sqrt();
+
     baseline.sample_count += 1;
 }
 
@@ -343,7 +366,7 @@ mod tests {
             std_cpi_hops: 1.0,
         };
         let old_mean = baseline.mean_compute_units;
-        update_baseline(&mut baseline, 1100);
+        update_baseline(&mut baseline, 1100, 10, 2);
         assert_ne!(baseline.mean_compute_units, old_mean);
         assert_eq!(baseline.sample_count, 101);
     }

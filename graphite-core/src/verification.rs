@@ -1144,7 +1144,7 @@ fn build_signals(
             weight: 0.15,
         },
         WeightedSignal {
-            kind: SignalKind::ManifestMatch,
+            kind: SignalKind::IntentAlignment,
             value: intent_alignment,
             weight: 0.10,
         },
