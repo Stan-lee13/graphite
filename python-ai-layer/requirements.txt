@@ -1,0 +1,14 @@
+# Graphite AI Layer — Advisory Intent Parser
+#
+# The intent parser uses only Python stdlib (json, re, argparse, http.server).
+# No external runtime dependencies are required for basic operation.
+#
+# These dependencies are for testing and optional enhanced parsing:
+
+# Testing
+pytest>=7.0.0
+
+# Optional: If you integrate LLM-based intent parsing (Constitution P1 still applies —
+# the AI layer only PARSES, the Rust Core makes all security decisions):
+# openai>=1.0.0
+# pydantic>=2.0.0

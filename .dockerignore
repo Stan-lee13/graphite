@@ -1,0 +1,17 @@
+# Don't send these to the Docker builder
+.git
+.github
+docs
+*.md
+!graphite-core/README.md
+sdk/
+integrations/
+python-ai-layer/
+schemas/
+target/
+node_modules/
+dist/
+__pycache__/
+*.log
+.env*
+.DS_Store
