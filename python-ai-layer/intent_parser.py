@@ -39,13 +39,14 @@ INTENT_PATTERNS = {
     "close": [
         r"close\s+(\w+)\s+account",
         r"close\s+account",
+        r"close\s+.*account",
     ],
 }
 
 # Known program IDs for intent→program mapping
 PROGRAM_IDS = {
     "transfer": "11111111111111111111111111111111",  # System Program
-    "swap": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",  # Jupiter V6
+    "swap": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",  # Jupiter V6
     "stake": "Stake11111111111111111111111111111111111111",  # Stake Program
     "close": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",  # SPL Token
 }
@@ -53,7 +54,7 @@ PROGRAM_IDS = {
 # Instruction discriminators for known programs
 DISCRIMINATORS = {
     ("transfer", "11111111111111111111111111111111"): "02000000",
-    ("swap", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"): "e517cb977ae3ad2a",
+    ("swap", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6"): "e517cb977ae3ad2a",
     ("stake", "Stake11111111111111111111111111111111111111"): "02000000",
     ("close", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"): "09",
 }

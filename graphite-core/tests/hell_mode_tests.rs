@@ -409,7 +409,7 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
 #[test]
 fn h7_cpi_target_substring_of_allowed() {
     let input = risk_input(
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
         &[],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5D"],
         &[],
@@ -426,7 +426,7 @@ fn h7_cpi_target_substring_of_allowed() {
 #[test]
 fn h7_cpi_target_prefix_of_allowed() {
     let input = risk_input(
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
         &[],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DAxTRA"],
         &[],
@@ -443,7 +443,7 @@ fn h7_cpi_target_prefix_of_allowed() {
 #[test]
 fn h7_cpi_target_case_mismatch() {
     let input = risk_input(
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
         &[],
         &["tokenkegQfeZyiNwAJbNbGKPfxCWuBvf9Ss623VQ5DA"],
         &[],

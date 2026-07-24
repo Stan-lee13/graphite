@@ -59,3 +59,36 @@ if __name__ == "__main__":
     test_garbage_input()
     test_confidence_of_parse_not_verification()
     print("\n✅ All AI layer tests passed.")
+
+
+def test_program_ids_match_manifests():
+    """Ensure the AI layer suggests program IDs that match the manifest files."""
+    import json
+    
+    # Load manifests
+    manifest_dir = os.path.join(os.path.dirname(__file__), "..", "graphite-core", "protocols")
+    
+    # Check Jupiter V6
+    jup_manifest = json.load(open(os.path.join(manifest_dir, "jupiter-v6.json")))
+    swap_result = parse_intent("Swap 1 SOL for USDC")
+    assert swap_result["suggested_program_id"] == jup_manifest["protocol"]["program_id"], \
+        f"Jupiter V6 mismatch: AI layer={swap_result['suggested_program_id']}, manifest={jup_manifest['protocol']['program_id']}"
+    
+    # Check SPL Token (close)
+    spl_manifest = json.load(open(os.path.join(manifest_dir, "spl-token.json")))
+    close_result = parse_intent("close my token account")
+    assert close_result["suggested_program_id"] == spl_manifest["protocol"]["program_id"], \
+        f"SPL Token mismatch: AI layer={close_result['suggested_program_id']}, manifest={spl_manifest['protocol']['program_id']}"
+    
+    print("✓ test_program_ids_match_manifests passed")
+
+
+if __name__ == "__main__":
+    test_transfer_intent()
+    test_swap_intent()
+    test_stake_intent()
+    test_unknown_intent()
+    test_garbage_input()
+    test_confidence_of_parse_not_verification()
+    test_program_ids_match_manifests()
+    print("\n✅ All AI layer tests passed.")

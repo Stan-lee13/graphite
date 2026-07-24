@@ -79,6 +79,15 @@ fn build_app(core: GraphiteCore) -> Router {
 }
 
 /// Verify handler — returns 200 on success, 400 on bad input, 500 on internal error.
+///
+/// Error classification:
+///   400 BAD_REQUEST: client provided invalid input (bad address, wrong account count,
+///     unknown discriminator, invalid program ID). These are caller-fixable.
+///   500 INTERNAL_SERVER_ERROR: internal failures (risk engine, policy engine,
+///     confidence computation, PDA derivation, semantic graph). These indicate
+///     bugs in Graphite, not caller errors. Per Constitution P12 (fail-closed),
+///     the response body explains the error but the HTTP status tells the client
+///     this is a server-side issue, not a transaction rejection.
 async fn verify_handler(
     State(core): State<GraphiteCore>,
     Json(input): Json<VerificationInput>,
@@ -96,15 +105,42 @@ async fn verify_handler(
         }
         Err(e) => {
             let error_type = format!("{:?}", e);
-            let status = StatusCode::BAD_REQUEST;
+            // Classify error: client input errors → 400, internal failures → 500.
+            // Transaction rejections (approved=false) are NOT errors — they return 200
+            // with the verdict. Only actual computation failures reach here.
+            let is_client_error = matches!(
+                e,
+                crate::verification::VerificationError::AccountResolution(
+                    crate::account_resolution::AccountResolutionError::InvalidAddress(_)
+                )
+                | crate::verification::VerificationError::AccountResolution(
+                    crate::account_resolution::AccountResolutionError::AccountCountMismatch { .. }
+                )
+                | crate::verification::VerificationError::AccountResolution(
+                    crate::account_resolution::AccountResolutionError::InstructionNotFound(_, _)
+                )
+                | crate::verification::VerificationError::TransactionBuild(_)
+            );
+            let status = if is_client_error {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
             tracing_log(&format!(
-                "verify: {} | ERROR | {} | {:?}",
-                input.program_id, e, error_type
+                "verify: {} | ERROR [{}] | {} | {:?}",
+                input.program_id,
+                if is_client_error { "CLIENT" } else { "SERVER" },
+                e, error_type
             ));
             Err((status, Json(serde_json::json!({
                 "error": e.to_string(),
                 "error_type": error_type,
                 "status": status.as_u16(),
+                "hint": if is_client_error {
+                    "Fix the request input and retry"
+                } else {
+                    "Internal Graphite error — this is a bug, not a transaction rejection. Report it."
+                },
             }))))
         }
     }

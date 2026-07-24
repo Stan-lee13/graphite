@@ -1,11 +1,18 @@
+# Rust build artifacts
 /target/
 **/target/
 **/*.rs.bk
+
+# Node
 node_modules/
 dist/
 *.tsbuildinfo
-.DS_Store
-*.log
+
+# Python
 *.pyc
 __pycache__/
-graphite-core/Cargo.lock
+
+# Misc
+.DS_Store
+*.log
+.env*

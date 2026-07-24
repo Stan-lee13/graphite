@@ -440,7 +440,11 @@ impl GraphiteCore {
         input: &VerificationInput,
     ) -> Result<VerificationResult, VerificationError> {
         // Step 1: Account Resolution
-        let resolution = resolve_accounts(
+        // Fail-closed (P12): If the manifest is found but the instruction discriminator
+        // is not in the manifest, BLOCK the transaction instead of returning an error.
+        // An unknown instruction on a known protocol is suspicious — it could be
+        // an impersonation attack or an unverified new instruction.
+        let resolution = match resolve_accounts(
             &AccountResolutionInput {
                 program_id: input.program_id.clone(),
                 instruction_discriminator: input.instruction_discriminator.clone(),
@@ -448,7 +452,80 @@ impl GraphiteCore {
                 instruction_data: input.instruction_data.clone(),
             },
             &self.registry,
-        )?;
+        ) {
+            Ok(r) => r,
+            Err(crate::account_resolution::AccountResolutionError::InstructionNotFound(disc, prog)) => {
+                // Known protocol, unknown instruction — fail-closed BLOCK (P12)
+                let manifest = self.registry.get(&input.program_id);
+                let protocol_name = manifest
+                    .map(|m| m.protocol.name.clone())
+                    .unwrap_or_else(|| "Unknown Protocol".to_string());
+                let risk_verdict = RiskVerdictSummary {
+                    status: "Blocked".to_string(),
+                    findings: vec![RiskFinding {
+                        pattern: "UnknownInstruction".to_string(),
+                        reason: format!("Instruction discriminator {} not found in manifest for {} — possible impersonation", disc, protocol_name),
+                    }],
+                };
+                let audit_id = generate_audit_id(
+                    &input.program_id, &disc, &input.account_addresses,
+                    &input.instruction_data, &input.cpi_targets, 0.0, &risk_verdict,
+                );
+                let pn = protocol_name.clone();
+                return Ok(VerificationResult {
+                    approved: false,
+                    confidence: 0.0,
+                    breakdown: vec![],
+                    trust_tier: "Unknown".to_string(),
+                    risk_verdict,
+                    policy_verdict: "Denied — unknown instruction on known protocol (P12 fail-closed)".to_string(),
+                    audit_trail_id: audit_id,
+                    transaction: BuiltTransaction {
+                        program_id: input.program_id.clone(),
+                        protocol_version: input.protocol_version.clone(),
+                        instruction_name: "unknown".to_string(),
+                        instruction_discriminator: disc.clone(),
+                        instruction_count: 1,
+                        account_count: input.account_addresses.len(),
+                        signer_count: 0,
+                        writable_count: 0,
+                        compute_budget_units: 0,
+                        accounts: vec![],
+                        data_hex: String::new(),
+                        data_len: 0,
+                    },
+                    resolved_accounts: vec![],
+                    protocol_name: pn,
+                    instruction_name: "unknown".to_string(),
+                    manifest_found: true,
+                    unknown_protocol: false,
+                    simulation_flagged: None,
+                    simulation_divergence: None,
+                    summary: format!("Blocked: unknown instruction '{}' on known protocol {} — possible impersonation", disc, protocol_name),
+                    layers: vec![PipelineLayerResult {
+                        layer: "L1_AccountResolution".to_string(),
+                        passed: false,
+                        reason: format!("Instruction discriminator {} not found in manifest for known protocol {}", disc, prog),
+                    }],
+                });
+            }
+            Err(crate::account_resolution::AccountResolutionError::InvalidAddress(addr)) => {
+                // Client provided an invalid address — return error (caller-fixable)
+                return Err(VerificationError::AccountResolution(
+                    crate::account_resolution::AccountResolutionError::InvalidAddress(addr),
+                ));
+            }
+            Err(crate::account_resolution::AccountResolutionError::AccountCountMismatch { expected, actual }) => {
+                // Client provided wrong number of accounts — return error (caller-fixable)
+                return Err(VerificationError::AccountResolution(
+                    crate::account_resolution::AccountResolutionError::AccountCountMismatch { expected, actual },
+                ));
+            }
+            Err(e) => {
+                // Other errors (PdaDerivationFailed, NoManifest) — propagate
+                return Err(VerificationError::AccountResolution(e));
+            }
+        };
 
         let manifest_found = resolution.manifest_found;
         let unknown_protocol = !manifest_found;
