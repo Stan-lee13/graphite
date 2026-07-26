@@ -226,7 +226,7 @@ export class VerifiedSakAgent {
 
     // Step 3: Verify through Graphite
     // The Jupiter V6 program ID and swap discriminator
-    const JUPITER_V6_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6";
+    const JUPITER_V6_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
     const JUPITER_SWAP_DISCRIMINATOR = "e517cb977ae3ad2a";
 
     const verification = await this.verifyTransaction({

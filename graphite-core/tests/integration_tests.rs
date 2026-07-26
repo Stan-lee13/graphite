@@ -370,7 +370,7 @@ fn test_fix5_fake_swap_wired_into_pipeline() {
                 slippage_bps: None,
             }),
         },
-        program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6".to_string(),
+        program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "e517cb977ae3ad2a".to_string(),
         account_addresses: vec![

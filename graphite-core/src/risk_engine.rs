@@ -118,9 +118,9 @@ const RISKY_CPI_PROGRAMS: &[&str] = &[
 /// These are trusted to only call safe instructions (Transfer) on token programs.
 /// Unknown programs that CPI to SPL Token are blocked (P12: fail-closed).
 const TRUSTED_CPI_ROOTS: &[&str] = &[
-    "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6", // Jupiter V6
-    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo", // Orca Whirlpools
-    "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P", // Meteora DLMM
+    "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
+    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
     "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads (multisig, CPIs to System)
 ];
@@ -432,9 +432,9 @@ pub fn detect_fake_swap(
     }
 
     let swap_programs = [
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",
-        "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
         "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
     ];
 
@@ -472,9 +472,9 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
     match intent_type {
         "swap" => {
             const SWAP_PROGRAMS: &[&str] = &[
-                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",      // Jupiter V6
-                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",     // Orca Whirlpools
-                "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P",     // Meteora DLMM
+                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",      // Jupiter V6
+                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",     // Orca Whirlpools
+                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",     // Meteora DLMM
                 "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",    // Raydium AMM V4
             ];
             SWAP_PROGRAMS.contains(&program_id)
@@ -811,7 +811,7 @@ mod tests {
     fn test_trusted_dex_cpi_to_spl_token_allowed() {
         // Jupiter (trusted DEX) CPIs to SPL Token for transfer — should pass
         let input = RiskAssessmentInput {
-            program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6".to_string(),
+            program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
             accounts: vec!["a1".to_string(), "a2".to_string(), "a3".to_string()],
             cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
             expected_state_changes: vec!["credits accounts.destination".to_string()],

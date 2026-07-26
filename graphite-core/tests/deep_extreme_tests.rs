@@ -478,7 +478,7 @@ fn test_verify_set_authority_blocked() {
 fn test_verify_jupiter_swap_with_allowed_cpi_passes_risk() {
     let core = GraphiteCore::default();
     let input = make_input(
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         "e517cb977ae3ad2a",
         &[
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -503,7 +503,7 @@ fn test_verify_jupiter_swap_with_allowed_cpi_passes_risk() {
 fn test_verify_jupiter_swap_with_unlisted_cpi_blocked() {
     let core = GraphiteCore::default();
     let input = make_input(
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         "e517cb977ae3ad2a",
         &[
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -554,7 +554,7 @@ fn test_verify_squads_multisig_create() {
 fn test_verify_orca_swap_passes_risk() {
     let core = GraphiteCore::default();
     let input = make_input(
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
         "f8c69e91e17587c8",
         &[
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -567,7 +567,7 @@ fn test_verify_orca_swap_passes_risk() {
             "Stake11111111111111111111111111111111111111",
             "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
             "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         ],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
         WalletProfile::TradingBot,
@@ -591,14 +591,14 @@ fn test_verify_meteora_swap_passes_risk() {
         "Stake11111111111111111111111111111111111111",
         "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
         "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",
-        "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
     ];
     let input = make_input(
-        "LBUZKhRxPF3XUpvWkxJjm4Vg3Y2n2h1Nz4HVna9L48P",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
         "f8c69e91e17587c8",
         &accounts_15,
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],

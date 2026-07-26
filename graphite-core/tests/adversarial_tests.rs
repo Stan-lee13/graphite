@@ -916,7 +916,7 @@ fn test_manifest_trust_tier_does_not_affect_risk_engine() {
 fn test_adversarial_jupiter_with_malicious_cpi_not_allowed() {
     let core = GraphiteCore::default();
     let input = make_input(
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         "e517cb977ae3ad2a",
         &[
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -966,7 +966,7 @@ fn test_adversarial_squads_with_non_system_cpi_blocked() {
 fn test_adversarial_orca_swap_with_wrong_cpi_blocked() {
     let core = GraphiteCore::default();
     let input = make_input(
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYz2UwP2J5oHo",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
         "f8c69e91e17587c8",
         &[
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -979,7 +979,7 @@ fn test_adversarial_orca_swap_with_wrong_cpi_blocked() {
             "Stake11111111111111111111111111111111111111",
             "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
             "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V6",
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         ],
         &["SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf"], // Squads not in Orca allowed_cpis
         WalletProfile::Treasury,
