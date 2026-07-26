@@ -17,7 +17,7 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 - **7 Go SDK tests**, 0 failures
 - **TypeScript SDK**: clean compile (tsc --noEmit)
 - **18 benchmark cases** (13 synthetic + 5 real mainnet exploits), **100% precision, 100% recall**
-- **~20μs average latency** (release build, in-process)
+- **~62μs average latency** (release build, in-process)
 - **0 clippy warnings**
 - **11 seed protocol manifests (10 original + legacy Memo)**, all program IDs verified from official sources
 
@@ -101,7 +101,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 | True Negatives | 4 (safe → approved) |
 | False Positives | 0 |
 | False Negatives | 0 |
-| Avg Latency | ~20μs (release build, in-process) |
+| Avg Latency | ~62μs (release build, in-process) |
 
 ### 3.2 Benchmark Cases
 
@@ -139,7 +139,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 | Token-2022 | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | spl-token-2022 crate |
 | Stake Program | `Stake11111111111111111111111111111111111111` | Solana docs |
 | Jupiter V6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | Jupiter docs |
-| Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1WHuAHzXzLksf6SLAsjW2sw6x` | docs.raydium.io |
+| Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8` | docs.raydium.io |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | Orca SDK |
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Meteora docs |
 | Squads V4 | `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` | Squads-Protocol/v4 GitHub |
@@ -174,7 +174,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 4. **Confidence Engine** — Combine intent match, protocol trust tier, evidence signals into explainable score
 5. **Protocol Intelligence** — Match against versioned manifests. Unknown protocols capped at 0.55
 6. **Simulation Integrity** — Cross-check simulation evidence against independent signals
-7. **Policy Engine** — Apply per-agent/per-org rules (Treasury/TradingBot/Unrestricted/Enterprise)
+7. **Policy Engine** — Apply per-agent/per-org rules (Treasury/TradingBot/Gaming/Enterprise)
 8. **Emit Verdict** — Return confidence-rich report with audit trail
 
 ---

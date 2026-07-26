@@ -17,9 +17,9 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 - TypeScript SDK + Go SDK (full VerificationResult round-trip)
 - CLI (Rust, feature-gated)
 - Python AI Layer (advisory-only, separate process — P1 compliance)
-- **Solana Agent Kit integration** — end-to-end demo: NL → AI Layer → Graphite Core → SAK execution
+- **Solana Agent Kit integration** — code complete with real SAK v2 imports (pending live devnet testing)
 
-**646 tests passing** (630 Rust + 9 Go + 7 Python), 0 clippy warnings.
+**630 Rust tests passing** (630 Rust + 9 Go + 7 Python), 0 clippy warnings.
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ cd graphite-core && cargo run --release --bin graphite -- server --port 7331
 cd python-ai-layer && python3 intent_parser.py --serve --port 8081
 
 # 3. Run the demo (dry-run)
-# SAK integration removed — Phase 2 deliverable
+# SAK integration rebuilt with real solana-agent-kit v2 (pending live devnet test — Phase 2)
 npx tsx demo.ts "Swap 0.5 SOL for USDC"
 ```
 

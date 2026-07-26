@@ -104,6 +104,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
         },
         policy_verdict: "Rejected".to_string(),
         audit_trail_id: "gr-error".to_string(),
+        content_hash: "error".to_string(),
         transaction: graphite_core::transaction_builder::BuiltTransaction {
             program_id: input.program_id.clone(),
             protocol_version: input.protocol_version.clone(),

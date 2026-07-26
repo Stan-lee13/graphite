@@ -97,6 +97,10 @@ pub struct VerificationResult {
     pub risk_verdict: RiskVerdictSummary,
     pub policy_verdict: String,
     pub audit_trail_id: String,
+    /// Deterministic SHA-256 hash of the transaction configuration (same input → same hash).
+    /// Unlike audit_trail_id (which includes a per-call sequence counter), content_hash is
+    /// fully reproducible and satisfies Constitution P2 (deterministic/reproducible).
+    pub content_hash: String,
     pub transaction: BuiltTransaction,
     pub resolved_accounts: Vec<ResolvedAccount>,
     pub protocol_name: String,
@@ -467,7 +471,7 @@ impl GraphiteCore {
                         reason: format!("Instruction discriminator {} not found in manifest for {} — possible impersonation", disc, protocol_name),
                     }],
                 };
-                let audit_id = generate_audit_id(
+                let (audit_id, content_hash) = generate_audit_id(
                     &input.program_id, &disc, &input.account_addresses,
                     &input.instruction_data, &input.cpi_targets, 0.0, &risk_verdict,
                 );
@@ -480,6 +484,7 @@ impl GraphiteCore {
                     risk_verdict,
                     policy_verdict: "Denied — unknown instruction on known protocol (P12 fail-closed)".to_string(),
                     audit_trail_id: audit_id,
+                    content_hash,
                     transaction: BuiltTransaction {
                         program_id: input.program_id.clone(),
                         protocol_version: input.protocol_version.clone(),
@@ -817,7 +822,7 @@ impl GraphiteCore {
         };
 
         // Build audit trail ID (deterministic hash of key fields)
-        let audit_id = generate_audit_id(
+        let (audit_id, content_hash) = generate_audit_id(
             &input.program_id,
             &input.instruction_discriminator,
             &input.account_addresses,
@@ -923,6 +928,7 @@ impl GraphiteCore {
             risk_verdict: risk_summary.clone(),
             policy_verdict: policy_str.to_string(),
             audit_trail_id: audit_id,
+            content_hash,
             transaction,
             resolved_accounts: resolution.resolved_accounts.clone(),
             protocol_name,
@@ -1169,7 +1175,7 @@ fn generate_audit_id(
     cpi_targets: &[String],
     confidence: f64,
     risk: &RiskVerdictSummary,
-) -> String {
+) -> (String, String) {
     use sha2::{Digest, Sha256};
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -1198,7 +1204,9 @@ fn generate_audit_id(
         hasher.update(f.reason.as_bytes());
     }
     let hash = hasher.finalize();
-    format!("gr-{}-{:08x}", hex::encode(&hash[..8]), seq)
+    let content_hash = hex::encode(&hash[..8]);
+    let audit_trail_id = format!("gr-{}-{:08x}", content_hash, seq);
+    (audit_trail_id, content_hash)
 }
 
 fn generate_summary(

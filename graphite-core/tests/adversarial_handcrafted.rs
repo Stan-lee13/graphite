@@ -8,8 +8,8 @@ const SYSTEM: &str = "11111111111111111111111111111111";
 const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const JUPITER_V6: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
-const RAYDIUM: &str = "675kPX9MHTjS2zt1qfr1WHuAHzXzLksf6SLAsjW2sw6x";
-const SQUADS: &str = "6XBGfP8oWqpdVQ8bH6j6peKK2v8x5A2vd5mR6Z7jN4nM";
+const RAYDIUM: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+const SQUADS: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 const ORCA: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
 const METEORA: &str = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
 const MEMO: &str = "9vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
@@ -19,8 +19,8 @@ const A2: &str = "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
 const A3: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const A4: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const A5: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
-const A6: &str = "675kPX9MHTjS2zt1qfr1WHuAHzXzLksf6SLAsjW2sw6x";
-const A7: &str = "6XBGfP8oWqpdVQ8bH6j6peKK2v8x5A2vd5mR6Z7jN4nM";
+const A6: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+const A7: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 const A8: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
 const A9: &str = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
 const A10: &str = "9vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
@@ -59,6 +59,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
             },
             policy_verdict: "Rejected".to_string(),
             audit_trail_id: "gr-error".to_string(),
+        content_hash: "error".to_string(),
             transaction: graphite_core::transaction_builder::BuiltTransaction {
                 program_id: input.program_id.clone(),
                 protocol_version: input.protocol_version.clone(),

@@ -178,6 +178,12 @@ fn test_e2e_audit_trail_id_is_deterministic() {
         r1.audit_trail_id, r2.audit_trail_id,
         "full audit ID must be unique per call"
     );
+    // content_hash is fully deterministic (same input → same hash), satisfying P2
+    assert_eq!(
+        r1.content_hash, r2.content_hash,
+        "content_hash must be identical for same input (P2 determinism)"
+    );
+    assert!(!r1.content_hash.is_empty(), "content_hash must not be empty");
 }
 
 #[test]

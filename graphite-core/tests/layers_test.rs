@@ -39,7 +39,7 @@ fn verify_8_layers_tracked() {
     }
     assert_eq!(result.layers.len(), 8, "Must have exactly 8 layers matching ARCHITECTURE.md 3.12 spec");
 
-    // Layer names must match ARCHITECTURE.md section 3.12 exactly:
+    // Layer names must match the Engineering Skill's ARCHITECTURE.md section 3.12 exactly:
     // L1 — Account Resolution
     // L2 — Instruction Verification
     // L3 — Simulation Verification

@@ -5,7 +5,7 @@
 //! - Request body size limit (1 MB max — prevents DoS via large payloads)
 //! - Request timeout (10s max — prevents slow-loris attacks)
 //! - Graceful shutdown on SIGTERM/SIGINT (container-friendly)
-//! - Structured logging (stderr, JSON-parseable)
+//! - Plain-text logging to stderr (structured logging is Phase 2)
 
 use crate::verification::{GraphiteCore, VerificationInput, VerificationResult};
 use axum::http::StatusCode;

@@ -28,7 +28,7 @@ The `audit_trail_id` is a SHA-256 hash bound to the specific transaction configu
 
 **Phase 1 limitation:** Graphite verifies the transaction structure but does not sign or bind the result to the execution payload. Full TOCTOU prevention requires the executor (SAK integration, Phase 2) to verify that the executed transaction matches the verified one using the audit_trail_id.
 
-Benchmark latency: ~35μs avg (release build) with 8-layer pipeline active.
+Benchmark latency: ~62μs avg (release build) with 8-layer pipeline active.
 
 ## Phase 1.5 (SAK integration rebuilt — pending live devnet test)
 

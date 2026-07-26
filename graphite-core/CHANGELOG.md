@@ -7,8 +7,8 @@ All notable changes to Graphite Core are documented here.
 ### Architecture Fixes
 - **8-layer pipeline tracking fixed.** The `layers` vec in `VerificationResult` now
   matches the architecture spec exactly: L1_AccountResolution → L2_InstructionVerification
-  → L3_RiskEngine → L4_ConfidenceEngine → L5_ProtocolIntelligence → L6_SimulationIntegrity
-  → L7_PolicyEngine → L8_EmitVerdict. Previously tracked 7 layers with wrong names and order.
+  → L3_SimulationVerification → L4_StateVerification → L5_SemanticVerification
+  → L6_PolicyVerification → L7_RiskVerification → L8_ExecutionVerification. Previously tracked 7 layers with wrong names and order.
 - **L2/L4/L5 verification layers implemented.** Instruction verification (discriminator +
   arg structure check), state verification (expected state changes vs transaction structure),
   and semantic verification (intent-behavior matching) are now real checks, not stubs.

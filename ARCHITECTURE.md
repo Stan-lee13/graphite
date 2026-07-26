@@ -26,19 +26,18 @@ The pipeline executes in order. Each layer is tracked in the verification result
 
 1. **L1 Account Resolution** — Resolves all accounts, verifies PDAs against protocol manifests
 2. **L2 Instruction Verification** — Confirms the instruction discriminator and account count match the manifest's declared shape
-3. **L3 Risk Engine** — Pattern-matches against 8 known attack patterns (hard gate, independent of confidence)
+3. **L3 Simulation Verification** — Runs `simulateTransaction` and checks compute/account-write/CPI divergence (Phase 1: skipped — no RPC; simulation integrity module active when caller provides data)
 4. **L4 State Verification** — Diffs pre/post account state against the manifest's expected state changes
 5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program
-6. **L6 Confidence Engine** — Computes 0.0–1.0 confidence from weighted signals (manifest match, simulation, historical volume, community verification) plus penalties for failed layers
-7. **L7 Policy Engine** — Applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Enterprise 100%, Unrestricted 0%) and trust tier requirements
-8. **L8 Emit Verdict** — Returns Approved/Blocked with full breakdown, audit ID, and summary
+6. **L6 Policy Verification** — Computes confidence (0.0–1.0 from weighted signals + tier ceilings) and applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Gaming 60%, Enterprise 99%) and trust tier requirements
+7. **L7 Risk Verification** — Pattern-matches against 8 known attack patterns (hard gate, independent of confidence). Runs early for fail-fast but is reported at L7 per architecture spec.
+8. **L8 Execution Verification** — Post-submission: confirm finalized on-chain result matches prediction (Phase 1: skipped — Phase 2+ feature)
 
 ### Key Properties
-- **L3 Risk Engine is a hard gate** — it blocks independently of confidence score. A malicious pattern blocks the transaction even if confidence is high.
-- **L6 Confidence Engine applies tier ceilings** — Unknown/Heuristic protocols are capped at 0.55 (hard-coded, not overridable per P12).
-- **L7 Policy Engine is the final gate** — it checks both confidence threshold and minimum trust tier for the wallet's profile.
-- **L3 runs before L4/L5** — risk patterns are checked before expensive state/semantic verification.
-- **Simulation (L3 in original spec) is deferred to Phase 2** — the current pipeline does not include RPC simulation.
+- **L7 Risk Verification is a hard gate** — it blocks independently of confidence score. A malicious pattern blocks the transaction even if confidence is high. The Risk Engine executes early in the pipeline (before L4/L5) for fail-fast performance, but is reported at L7 per this spec.
+- **L6 Policy Verification applies tier ceilings** — Unknown/Heuristic protocols are capped at 0.55 (hard-coded, not overridable per P12). Confidence computation is included in L6.
+- **L6 Policy Verification is the final gate** — it checks both confidence threshold and minimum trust tier for the wallet's profile.
+- **L3 Simulation Verification is deferred to Phase 2** — the current pipeline does not include RPC simulation. The simulation_integrity module IS wired in and checks for compute-unit divergence when simulation data is provided by the caller.
 
 ## Security Boundaries (Constitution)
 

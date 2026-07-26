@@ -72,8 +72,8 @@ export class VerifiedSakAgent {
    *   - SOLANA_PRIVATE_KEY: Base58-encoded private key
    *   - SOLANA_RPC_URL: RPC endpoint URL
    *   - OPENAI_API_KEY: OpenAI API key for SAK's LLM processing
-   *   - GRAPHITE_CORE_URL: Graphite Core HTTP server URL (default: http://localhost:8080)
-   *   - GRAPHITE_AI_LAYER_URL: Python AI Layer URL (default: http://localhost:8081)
+   *   - GRAPHITE_CORE_URL: Graphite Core HTTP server URL (default: http://localhost:7331)
+   *   - GRAPHITE_AI_LAYER_URL: Python AI Layer URL (default: http://localhost:7332)
    *   - GRAPHITE_WALLET_PROFILE: Wallet profile (default: TradingBot)
    */
   static async create(config?: {
@@ -87,8 +87,8 @@ export class VerifiedSakAgent {
     const privateKey = config?.privateKey ?? process.env.SOLANA_PRIVATE_KEY;
     const rpcUrl = config?.rpcUrl ?? process.env.SOLANA_RPC_URL;
     const openAiApiKey = config?.openAiApiKey ?? process.env.OPENAI_API_KEY;
-    const graphiteCoreUrl = config?.graphiteCoreUrl ?? process.env.GRAPHITE_CORE_URL ?? "http://localhost:8080";
-    const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://localhost:8081";
+    const graphiteCoreUrl = config?.graphiteCoreUrl ?? process.env.GRAPHITE_CORE_URL ?? "http://localhost:7331";
+    const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://localhost:7332";
     const walletProfile = config?.walletProfile ?? (process.env.GRAPHITE_WALLET_PROFILE as WalletProfile) ?? "TradingBot";
 
     if (!privateKey) throw new Error("SOLANA_PRIVATE_KEY is required");

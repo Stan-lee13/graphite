@@ -154,6 +154,7 @@ type VerificationResult struct {
 	RiskVerdict          RiskVerdictSummary         `json:"risk_verdict"`
 	PolicyVerdict        string                     `json:"policy_verdict"`
 	AuditTrailID         string                     `json:"audit_trail_id"`
+	ContentHash          string                     `json:"content_hash"`
 	Transaction          BuiltTransaction           `json:"transaction"`
 	ResolvedAccounts     []ResolvedAccount          `json:"resolved_accounts"`
 	ProtocolName         string                     `json:"protocol_name"`

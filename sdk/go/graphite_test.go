@@ -438,6 +438,7 @@ func TestVerificationResultNoDataLoss(t *testing.T) {
 		RiskVerdict:   RiskVerdictSummary{Status: "Clear", Findings: []RiskFinding{}},
 		PolicyVerdict: "Approved",
 		AuditTrailID:  "gr-test-001",
+		ContentHash:   "aabbccdd",
 		Transaction: BuiltTransaction{
 			ProgramID:        "11111111111111111111111111111111",
 			InstructionName:  "Transfer",
