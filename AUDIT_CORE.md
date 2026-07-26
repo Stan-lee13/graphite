@@ -1,3 +1,14 @@
+<!-- 
+DEPRECATED: This audit was performed on an earlier version of the codebase (pre-Phase 1.5 audit).
+The following findings have been RESOLVED:
+- detect_fake_swap IS wired into assess() (P0 Check 8) — test_cpi_level_authority_hijack_blocked passes
+- detect_intent_program_mismatch IS wired into assess() (P0 Check 9)
+- All 8 risk patterns are real detection logic, not toys
+- Confidence engine uses real weighted arithmetic with tier ceilings
+- Simulation integrity uses 3-signal z-score comparison with Welford's algorithm
+This document is retained for historical reference only.
+-->
+
 # Audit Report: Graphite Core Verification Engine Security Modules
 **Target Directory:** `/app/.cert/graphite/graphite-core/src/`  
 **Date:** July 24, 2026  

@@ -23,7 +23,13 @@
 
 import { VerifiedSakAgent } from "./graphite-sak-bridge.js";
 
-async function main() {
+interface ExecutionResult {
+  executed: boolean;
+  result?: unknown;
+  verification: import("./graphite-sak-bridge.js").VerificationResult;
+}
+
+async function main(): Promise<void> {
   const command = process.argv[2];
 
   console.log("\n╔══════════════════════════════════════════════════════════════╗");
@@ -33,7 +39,7 @@ async function main() {
 
   // Initialize the verified agent
   console.log("[1/4] Initializing verified SAK agent...");
-  let agent: VerifiedSakAgent;
+  let agent: VerifiedSakAgent | undefined;
   try {
     agent = await VerifiedSakAgent.create();
   } catch (e) {
@@ -44,6 +50,10 @@ async function main() {
     console.error("  3. SOLANA_PRIVATE_KEY, SOLANA_RPC_URL, and OPENAI_API_KEY are set");
     process.exit(1);
   }
+
+  // After successful init, agent is guaranteed defined
+  const verifiedAgent: VerifiedSakAgent = agent!;
+
   console.log("[1/4] ✅ Agent initialized\n");
 
   // Determine what to do
@@ -52,28 +62,31 @@ async function main() {
   console.log(`[2/4] Parsing intent: "${intent}"`);
 
   // Parse intent through AI Layer (advisory only — P1)
-  const proposedIntent = await agent.parseIntent(intent);
+  const proposedIntent = await verifiedAgent.parseIntent(intent);
   console.log(`[2/4] ✅ Parsed: ${proposedIntent.intent_type} (parse confidence: ${proposedIntent.confidence_of_parse})`);
   console.log(`       Parameters: ${JSON.stringify(proposedIntent.extracted_parameters ?? {})}\n`);
 
   // Execute based on intent type
+  // IntentType is "swap" | "transfer" | "stake" | "lend" | "unknown"
+  // The Python layer may return synonyms; normalize here
   console.log(`[3/4] Verifying and executing...\n`);
 
-  let result;
-  switch (proposedIntent.intent_type) {
-    case "swap":
-    case "trade":
-    case "exchange":
-      result = await agent.executeSwap(intent);
-      break;
-    case "transfer":
-    case "send":
-      result = await agent.executeTransfer(intent);
-      break;
-    default:
-      console.log(`[3/4] Intent type "${proposedIntent.intent_type}" not supported for execution demo.`);
-      console.log("       Supported: swap, transfer");
-      process.exit(0);
+  const intentType: string = proposedIntent.intent_type;
+  let result: ExecutionResult | undefined;
+
+  if (intentType === "swap" || intentType === "trade" || intentType === "exchange") {
+    result = await verifiedAgent.executeSwap(intent) as ExecutionResult;
+  } else if (intentType === "transfer" || intentType === "send") {
+    result = await verifiedAgent.executeTransfer(intent) as ExecutionResult;
+  } else {
+    console.log(`[3/4] Intent type "${intentType}" not supported for execution demo.`);
+    console.log("       Supported: swap, transfer");
+    process.exit(0);
+  }
+
+  if (!result) {
+    console.log(`[4/4] No result returned.`);
+    process.exit(1);
   }
 
   // Report results

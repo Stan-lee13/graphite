@@ -12,8 +12,8 @@
 Graphite v0.1.0-alpha is the first frozen release of a transaction intent verification engine for Solana AI agents. It verifies that constructed transactions actually do what was declared, produces a falsifiable confidence score, and fails closed on unknown protocols.
 
 **Key results:**
-- **626 Rust tests** (83 unit + 563 integration/adversarial), **0 failures**
-- **6 Python AI layer tests**, 0 failures
+- **630 Rust tests** (83 unit + 563 integration/adversarial), **0 failures**
+- **7 Python AI layer tests**, 0 failures
 - **7 Go SDK tests**, 0 failures
 - **TypeScript SDK**: clean compile (tsc --noEmit)
 - **18 benchmark cases** (13 synthetic + 5 real mainnet exploits), **100% precision, 100% recall**
@@ -44,7 +44,7 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 | **Handcrafted Adversarial** | `tests/adversarial_handcrafted.rs` | 100 | ✅ Pass |
 | **Real Exploit Tests** | `tests/real_exploit_tests.rs` | 15 | ✅ Pass |
 | **Real On-Chain Exploits** | `tests/real_onchain_exploits.rs` | 15 | ✅ Pass |
-| **Total** | | **626** | **0 failures** |
+| **Total** | | **630** | **0 failures** |
 
 ### 2.2 Adversarial Test Categories
 
@@ -77,8 +77,8 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 
 | Surface | Tests | Status |
 |---|---|---|
-| Go SDK | 7 (`go test ./...`) | ✅ Pass |
-| Python AI Layer | 6 (`pytest test_intent_parser.py`) | ✅ Pass |
+| Go SDK | 9 (`go test ./...`) | ✅ Pass |
+| Python AI Layer | 7 (`pytest test_intent_parser.py`) | ✅ Pass |
 | TypeScript SDK | — | ✅ Clean compile (`tsc --noEmit`) |
 | Solana Agent Kit | — | ✅ TypeScript typecheck, end-to-end demo verified |
 
@@ -138,7 +138,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 | SPL Token | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` | Solana docs |
 | Token-2022 | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | spl-token-2022 crate |
 | Stake Program | `Stake11111111111111111111111111111111111111` | Solana docs |
-| Jupiter V6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V4` | Jupiter docs |
+| Jupiter V6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | Jupiter docs |
 | Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1WHuAHzXzLksf6SLAsjW2sw6x` | docs.raydium.io |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | Orca SDK |
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Meteora docs |
@@ -199,7 +199,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 
 | Check | Result |
 |---|---|
-| `cargo test` | 626 passed, 0 failed |
+| `cargo test` | 630 passed, 0 failed |
 | `cargo clippy` | 0 warnings |
 | `cargo fmt` | Clean |
 | `cargo build --release` | ~3.1MB binary |

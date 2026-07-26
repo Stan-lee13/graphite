@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "solana-agent-kit": "^2.0.10",
-    "@solana-agent-kit/plugin-token": "^2.0.10",
-    "@solana-agent-kit/plugin-defi": "^2.0.10",
+    "@solana-agent-kit/plugin-token": "^2.0.9",
+    "@solana-agent-kit/plugin-defi": "^2.0.8",
     "@solana/web3.js": "^1.95.0",
     "bs58": "^6.0.0"
   },
