@@ -66,7 +66,7 @@ All notable changes to Graphite Core are documented here.
 
 - 259 tests passing (83 unit + 45 adversarial + 43 deep extreme + 37 hell mode + 15 omega red team + 11 omega regression + 13 confidence + 9 integration + 3 self-healing)
 - Clippy: 0 errors, 11 warnings
-- Benchmark: 13 cases, 100% precision/recall, ~126μs avg latency
+- Benchmark: 18 cases, 100% precision/recall, ~33μs avg latency
 - All addresses corrected across src/, tests/, and protocols/
 
 ## [Phase 1.5 — Initial] — 2026-07-22

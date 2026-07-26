@@ -244,7 +244,7 @@ Week 4:  feature/dashboard (needs all data sources)
 
 ## Phase 2 Certification Checklist
 
-- [ ] All 279 existing tests pass (no regressions)
+- [ ] All 646 existing tests pass (no regressions)
 - [ ] New tests for each Phase 2 feature pass
 - [ ] cargo clippy — 0 warnings
 - [ ] cargo fmt --check — clean
