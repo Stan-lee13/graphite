@@ -11,7 +11,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 - 10 seed protocol manifests (System, SPL Token, Token-2022, Stake, Raydium AMM V4, Squads V4, Jupiter V6, Orca Whirlpools, Meteora DLMM, Memo)
 - Risk Engine: 5 P0 patterns (Drainer, AuthorityHijack, HiddenTransfer, UnexpectedCpi, FakeSwap)
 - Unknown Protocol Mode with hard confidence ceiling
-- Benchmark: 13 cases, 100% precision/recall, ~25-66μs avg latency
+- Benchmark: 18 cases, 100% precision/recall, ~25μs avg latency
 
 **Consumer surfaces:**
 - TypeScript SDK + Go SDK (full VerificationResult round-trip)
@@ -19,7 +19,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 - Python AI Layer (advisory-only, separate process — P1 compliance)
 - **Solana Agent Kit integration** — end-to-end demo: NL → AI Layer → Graphite Core → SAK execution
 
-**279 tests passing** (266 Rust + 7 Go + 6 Python), 0 clippy warnings.
+**646 tests passing** (630 Rust + 9 Go + 7 Python), 0 clippy warnings.
 
 ## Quick Start
 
