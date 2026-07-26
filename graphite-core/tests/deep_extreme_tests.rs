@@ -374,15 +374,36 @@ fn test_compositional_drain_4_with_repeat_flagged() {
 
 #[test]
 fn test_compositional_drain_5_distinct_not_flagged() {
+    // 4 distinct CPI targets from untrusted root — below the 5-target threshold
     let input = risk_input(
         "agg",
         &[],
-        &["a", "b", "c", "d", "e"],
+        &["a", "b", "c", "d"],
         &[],
-        &["a", "b", "c", "d", "e"],
+        &["a", "b", "c", "d"],
         "",
     );
     assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
+}
+
+#[test]
+fn test_compositional_drain_5_distinct_untrusted_blocked() {
+    // Vibe audit: 5+ all-unique program IDs from untrusted root = compositional drain
+    let input = risk_input(
+        "attacker_contract",
+        &[],
+        &["a", "b", "c", "d", "e"],
+        &["change"],
+        &["a", "b", "c", "d", "e"],
+        "",
+    );
+    assert!(matches!(
+        assess(&input).unwrap(),
+        RiskVerdict::Blocked {
+            pattern: RiskPattern::CompositionalDrainPattern,
+            ..
+        }
+    ));
 }
 
 #[test]

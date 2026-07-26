@@ -238,7 +238,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 4: Compositional drain (deep CPI chains with revisits)
-    if input.cpi_targets.len() >= 3 && detect_compositional_drain(&input.cpi_targets) {
+    if input.cpi_targets.len() >= 3 && detect_compositional_drain(&input.cpi_targets, &input.program_id) {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::CompositionalDrainPattern,
             reason: "Deep CPI chain with repeated program targets — matches compositional drain signature".to_string(),
@@ -387,9 +387,24 @@ fn detect_drainer_pattern(accounts: &[String], expected_changes: &[String]) -> b
     false
 }
 
-fn detect_compositional_drain(cpi_targets: &[String]) -> bool {
+fn detect_compositional_drain(cpi_targets: &[String], program_id: &str) -> bool {
+    // Pattern 1: Repeated program IDs in a deep chain (revisits to same program)
+    // A legitimate transaction rarely calls the same program 3+ times via CPI.
     let unique_programs: std::collections::HashSet<_> = cpi_targets.iter().collect();
-    unique_programs.len() < cpi_targets.len()
+    if unique_programs.len() < cpi_targets.len() {
+        return true;
+    }
+
+    // Pattern 2: Deep CPI chain (5+) from an untrusted root — all-unique programs
+    // An attacker can bypass duplicate detection by calling 5+ different programs
+    // in sequence, each draining a different account. Trusted DEXs (Jupiter, Orca,
+    // Meteora) legitimately route through multiple programs, so they're whitelisted.
+    // A 5+ deep chain from a custom/untrusted contract is a strong drain signal.
+    if cpi_targets.len() >= 5 && !TRUSTED_CPI_ROOTS.contains(&program_id) {
+        return true;
+    }
+
+    false
 }
 
 /// Detect hidden transfers: accounts touched but not in expected state changes.
@@ -633,6 +648,8 @@ mod tests {
 
     #[test]
     fn test_deep_cpi_chain_all_distinct_not_flagged() {
+        // 4 unique CPI targets from an untrusted root — below the 5-target
+        // threshold, so this should pass (not a compositional drain signal).
         let input = RiskAssessmentInput {
             program_id: "aggregator".to_string(),
             accounts: vec![],
@@ -641,9 +658,38 @@ mod tests {
                 "program_b".to_string(),
                 "program_c".to_string(),
                 "program_d".to_string(),
-                "program_e".to_string(),
             ],
             expected_state_changes: vec![],
+            allowed_cpis: vec![
+                "program_a".to_string(),
+                "program_b".to_string(),
+                "program_c".to_string(),
+                "program_d".to_string(),
+            ],
+            instruction_discriminator: String::new(),
+            expected_account_count: None,
+            proposed_intent_type: String::new(),
+            extracted_output_token: None,
+        };
+        let result = assess(&input).unwrap();
+        assert_eq!(result, RiskVerdict::Passed);
+    }
+
+    #[test]
+    fn test_deep_cpi_chain_5_unique_untrusted_blocked() {
+        // Vibe audit finding: attacker uses 5+ all-unique program IDs to
+        // bypass duplicate-only detection. Now blocked by Pattern 2.
+        let input = RiskAssessmentInput {
+            program_id: "attacker_contract".to_string(),
+            accounts: vec!["a1".to_string()],
+            cpi_targets: vec![
+                "program_a".to_string(),
+                "program_b".to_string(),
+                "program_c".to_string(),
+                "program_d".to_string(),
+                "program_e".to_string(),
+            ],
+            expected_state_changes: vec!["change".to_string()],
             allowed_cpis: vec![
                 "program_a".to_string(),
                 "program_b".to_string(),
@@ -654,6 +700,43 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            extracted_output_token: None,
+        };
+        let result = assess(&input).unwrap();
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_deep_cpi_chain_5_unique_trusted_root_allowed() {
+        // Jupiter (trusted DEX) routing through 5 programs — legitimate behavior.
+        // Should pass because Jupiter is in TRUSTED_CPI_ROOTS.
+        let input = RiskAssessmentInput {
+            program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
+            accounts: vec!["a1".to_string(), "a2".to_string()],
+            cpi_targets: vec![
+                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc".to_string(),
+                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo".to_string(),
+                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8".to_string(),
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+                "program_e".to_string(),
+            ],
+            expected_state_changes: vec!["credits accounts.destination".to_string()],
+            allowed_cpis: vec![
+                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc".to_string(),
+                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo".to_string(),
+                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8".to_string(),
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+                "program_e".to_string(),
+            ],
+            instruction_discriminator: "e517cb97".to_string(),
+            expected_account_count: Some(5),
+            proposed_intent_type: "swap".to_string(),
             extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
