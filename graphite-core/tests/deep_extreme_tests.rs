@@ -77,10 +77,10 @@ fn no_evidence() -> BehaviorEvidence {
 // ============================================================
 
 #[test]
-fn test_all_10_manifests_load_with_valid_pubkeys() {
+fn test_all_11_manifests_load_with_valid_pubkeys() {
     let registry = load_seed_manifests();
     let manifests = registry.list();
-    assert_eq!(manifests.len(), 10, "expected exactly 10 seed manifests");
+    assert_eq!(manifests.len(), 11, "expected exactly 11 seed manifests (10 original + legacy Memo)");
 
     for m in &manifests {
         let pubkey = Pubkey::from_base58(&m.protocol.program_id);

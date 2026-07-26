@@ -8,7 +8,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 
 **Core verification engine** (Rust):
 - 8-layer verification pipeline: Account Resolution → Transaction Construction → Risk → Confidence → Policy → Unknown Protocol Mode
-- 10 seed protocol manifests (System, SPL Token, Token-2022, Stake, Raydium AMM V4, Squads V4, Jupiter V6, Orca Whirlpools, Meteora DLMM, Memo)
+- 11 seed protocol manifests (10 + legacy Memo) (System, SPL Token, Token-2022, Stake, Raydium AMM V4, Squads V4, Jupiter V6, Orca Whirlpools, Meteora DLMM, Memo)
 - Risk Engine: 5 P0 patterns (Drainer, AuthorityHijack, HiddenTransfer, UnexpectedCpi, FakeSwap)
 - Unknown Protocol Mode with hard confidence ceiling
 - Benchmark: 18 cases, 100% precision/recall, ~25μs avg latency

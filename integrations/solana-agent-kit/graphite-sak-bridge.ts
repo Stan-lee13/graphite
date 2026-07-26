@@ -36,6 +36,9 @@ import type {
   WalletProfile,
 } from "../../sdk/typescript/src/types.js";
 
+// Re-export types so demo.ts and consumers can import them from this module
+export type { VerificationResult, VerificationInput, ProposedIntent, WalletProfile };
+
 /**
  * The verified SAK agent. Wraps SolanaAgentKit with a Graphite verification gate.
  *

@@ -30,6 +30,9 @@ declare module "@solana/web3.js" {
 }
 
 declare module "bs58" {
-  function decode(str: string): Uint8Array;
-  export default decode;
+  const bs58: {
+    decode(str: string): Uint8Array;
+    encode(bytes: Uint8Array): string;
+  };
+  export default bs58;
 }

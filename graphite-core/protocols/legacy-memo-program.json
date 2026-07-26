@@ -1,0 +1,38 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Legacy Memo Program (SPL)",
+    "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+    "website": "https://spl.solana.com/memo",
+    "github": "https://github.com/solana-labs/solana-program-library"
+  },
+  "version": {
+    "label": "1.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Memo",
+      "discriminator": "",
+      "accounts": [
+        {
+          "name": "signer",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "emits UTF-8 memo string to transaction log — no state changes"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "no state changes — pure logging instruction",
+        "safe by default"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest"
+}

@@ -22,11 +22,12 @@
  */
 
 import { VerifiedSakAgent } from "./graphite-sak-bridge.js";
+import type { VerificationResult } from "./graphite-sak-bridge.js";
 
 interface ExecutionResult {
   executed: boolean;
   result?: unknown;
-  verification: import("./graphite-sak-bridge.js").VerificationResult;
+  verification: VerificationResult;
 }
 
 async function main(): Promise<void> {

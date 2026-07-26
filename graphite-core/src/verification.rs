@@ -1467,10 +1467,10 @@ mod tests {
 
         // If the raw confidence exceeded 0.55, the ceiling item should be present
         // With these evidence values, the raw confidence should be high enough
-        if ceiling_item.is_some() {
-            assert!(ceiling_item.unwrap().contribution < 0.0,
+        if let Some(item) = ceiling_item {
+            assert!(item.contribution < 0.0,
                 "Ceiling contribution should be negative (reducing confidence), got: {}",
-                ceiling_item.unwrap().contribution);
+                item.contribution);
         }
         // If ceiling_item is None, it means the raw confidence was already <= 0.55
         // (the signals didn't produce a high enough raw score). This is also OK —

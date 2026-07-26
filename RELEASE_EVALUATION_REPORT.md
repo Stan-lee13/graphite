@@ -19,7 +19,7 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 - **18 benchmark cases** (13 synthetic + 5 real mainnet exploits), **100% precision, 100% recall**
 - **~20μs average latency** (release build, in-process)
 - **0 clippy warnings**
-- **10 seed protocol manifests**, all program IDs verified from official sources
+- **11 seed protocol manifests (10 original + legacy Memo)**, all program IDs verified from official sources
 
 ---
 
@@ -130,7 +130,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 
 ## 4. Protocol Coverage
 
-10 seed protocol manifests, all program IDs verified from official sources:
+11 seed protocol manifests (10 original + legacy Memo), all program IDs verified from official sources:
 
 | Protocol | Program ID | Source |
 |---|---|---|
@@ -142,8 +142,8 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 | Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1WHuAHzXzLksf6SLAsjW2sw6x` | docs.raydium.io |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | Orca SDK |
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Meteora docs |
-| Squads V4 | `6XBGfP8oWqpdVQ8bH6j6peKK2v8x5A2vd5mR6Z7jN4nM` | Squads-Protocol/v4 GitHub |
-| Memo Program | `MemoSq4gqVgk7KqN8b1h2G4b3NkZ2kqTx7vFn3o5bX9D` | Solana docs |
+| Squads V4 | `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` | Squads-Protocol/v4 GitHub |
+| Memo Program | `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` | Solana docs |
 
 ---
 

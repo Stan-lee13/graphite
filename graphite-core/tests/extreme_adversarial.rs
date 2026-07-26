@@ -36,12 +36,12 @@ use graphite_core::simulation_integrity::ComputeBaseline;
 const SYSTEM: &str = "11111111111111111111111111111111";
 const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-const JUPITER_V6: &str = "JUP6LkbZbjS1jKKwapdHNy74kcZp3o9vQfezcW5p5xQ";
-const ORCA_WHIRLPOOL: &str = "whirLbSiicvY2Q12Wr3Z5xX8eyrYmJJ3Pqk8rco1vFY";
-const RAYDIUM_AMM: &str = "675kPXic9UPd3KEpqbAn4Rs6ZZ6DMW6gq8oJe3muCmpb";
-const SQUADS_V4: &str = "6XBGfPq8XfDF7iQ7j3Lz5k2RwJ9mNx4q8YpV1dFe3wqZ";
+const JUPITER_V6: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const ORCA_WHIRLPOOL: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+const RAYDIUM_AMM: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+const SQUADS_V4: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 const STAKE: &str = "Stake11111111111111111111111111111111111111";
-const MEMO: &str = "MemoSq4gqABAXKb863qQ4Q9YqK4wZ6k8m3N2vH5r1bJ";
+const MEMO: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 const COMPUTE_BUDGET: &str = "ComputeBudget111111111111111111111111111111";
 const ASSOC_TOKEN: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 
@@ -211,7 +211,7 @@ fn t07_memo_with_hidden_cpi() {
 
 #[test]
 fn t08_pda_wrong_seeds_one_byte_off() {
-    let accounts = &[VICTIM, "6XBGfPq8XfDF7iQ7j3Lz5k2RwJ9mNx4q8YpV1dFe3wqY", SQUADS_V4, SYSTEM];
+    let accounts = &[VICTIM, "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", SQUADS_V4, SYSTEM];
     let input = make_input(SQUADS_V4, "proposalApprove", accounts, &[],
         WalletProfile::TradingBot, BehaviorEvidence::default(), "Approve multisig proposal", 0.9, None);
     let r = run(input);
@@ -220,7 +220,7 @@ fn t08_pda_wrong_seeds_one_byte_off() {
 
 #[test]
 fn t09_pda_correct_prefix_wrong_suffix() {
-    let accounts = &[VICTIM, "6XBGfPq8XfDF7iQ7j3Lz5k2RwJ9mNx4q8YpV1dFe3wqZ", SQUADS_V4, SYSTEM];
+    let accounts = &[VICTIM, "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", SQUADS_V4, SYSTEM];
     let input = make_input(SQUADS_V4, "proposalApprove", accounts, &[],
         WalletProfile::TradingBot, BehaviorEvidence::default(), "Approve proposal", 0.9, None);
     let r = run(input);
@@ -306,7 +306,7 @@ fn t17_cpi_deep_chain_drainer_at_bottom() {
 
 #[test]
 fn t18_lookalike_program_id_jupiter() {
-    let fake_jupiter = "JUP6LkbZbjS1jKKwapdHNy74kcZp3o9vQfezcW5p5xR";
+    let fake_jupiter = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV5";
     let accounts = &[VICTIM, ATTACKER, fake_jupiter, SPL_TOKEN, SYSTEM];
     let input = make_input(fake_jupiter, "5", accounts, &[SPL_TOKEN, SYSTEM],
         WalletProfile::TradingBot, BehaviorEvidence::default(), "Swap via Jupiter", 0.95, None);
@@ -340,7 +340,7 @@ fn t20_maxed_evidence_on_drainer() {
 
 #[test]
 fn t21_maxed_evidence_on_lookalike() {
-    let fake_jupiter = "JUP6LkbZbjS1jKKwapdHNy74kcZp3o9vQfezcW5p5xR";
+    let fake_jupiter = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV5";
     let accounts = &[VICTIM, ATTACKER, fake_jupiter, SPL_TOKEN, SYSTEM];
     let input = make_input(fake_jupiter, "5", accounts, &[SPL_TOKEN, SYSTEM],
         WalletProfile::Gaming, max_evidence(), "Swap 1 SOL for USDC", 1.0, None);

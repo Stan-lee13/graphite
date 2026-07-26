@@ -191,6 +191,9 @@ pub fn load_seed_manifests() -> ManifestRegistry {
     registry
         .load_from_json(include_str!("../protocols/memo-program.json"))
         .expect("FATAL: memo-program.json manifest failed to load");
+    registry
+        .load_from_json(include_str!("../protocols/legacy-memo-program.json"))
+        .expect("FATAL: legacy-memo-program.json manifest failed to load");
 
     registry
 }
