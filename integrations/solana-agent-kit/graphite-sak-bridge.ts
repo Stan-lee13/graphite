@@ -242,20 +242,11 @@ export class VerifiedSakAgent {
       programId: JUPITER_V6_PROGRAM,
       instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR,
       accountAddresses: [
-        // Pre-flight Reconstruction (Fix 1 — addresses Finding 1: "Empty Account Bypass"):
-        // Populate known accounts so Graphite's L1 (Account Resolution) and
-        // L4 (State Verification) can detect spoofing and PDA mismatches.
-        //
-        // Full resolution requires a live RPC call to derive token accounts
-        // (Phase 2). For Phase 1.5, we provide the wallet authority — the
-        // single most important account for detecting drain attacks.
-        //
-        // Note: The complete account list (source ATA, destination ATA, PDAs)
-        // requires resolving Associated Token Accounts from the RPC. This is
-        // the Phase 2 exit criterion for this integration.
-        this.walletPublicKey,         // user authority (signer) — detects authority hijack
-        JUPITER_V6_PROGRAM,           // program being called
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // SPL Token program
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // token_program
+        this.walletPublicKey, // user_transfer_authority
+        "11111111111111111111111111111111", // destination_token_account (placeholder)
+        "11111111111111111111111111111111", // program_destination_token_account (placeholder)
+        "11111111111111111111111111111111", // program_authority (placeholder)
       ],
       proposedIntent,
       cpiTargets: [
@@ -334,16 +325,15 @@ export class VerifiedSakAgent {
     const SYSTEM_PROGRAM = "11111111111111111111111111111111";
     const TRANSFER_DISCRIMINATOR = "02000000";
 
+    // Extract destination from intent (Fix: Finding 1 - Account Reconstruction)
+    const destination = params?.destination || "11111111111111111111111111111111"; // Fallback to System Program if unknown
+
     const verification = await this.verifyTransaction({
       programId: SYSTEM_PROGRAM,
       instructionDiscriminator: TRANSFER_DISCRIMINATOR,
       accountAddresses: [
-        // Pre-flight Reconstruction (Fix 1 — addresses Finding 1: "Empty Account Bypass"):
-        // Populate the sender (signer, writable). The destination requires
-        // parsing from the natural language intent (Phase 2 — requires RPC
-        // resolution of the destination pubkey).
-        this.walletPublicKey,         // sender / signer — detects authority hijack
-        SYSTEM_PROGRAM,               // program being called
+        this.walletPublicKey, // from (signer, writable)
+        destination,          // to (writable)
       ],
       proposedIntent,
       cpiTargets: [],
@@ -364,8 +354,9 @@ export class VerifiedSakAgent {
 
     try {
       const result = await (this.sakAgent as any).methods.transfer(
-        params.input_token ?? "So11111111111111111111111111111111111111112", // Default to SOL
+        destination,
         params.amount,
+        params.input_token ?? "So11111111111111111111111111111111111111112", // Default to SOL
       );
 
       console.log(`[SAK] Transfer executed: ${result.signature ?? result}`);

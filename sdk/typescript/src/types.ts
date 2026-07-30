@@ -129,6 +129,7 @@ export interface VerificationResult {
   risk_verdict: RiskVerdictSummary;
   policy_verdict: string;
   audit_trail_id: string;
+  content_hash: string;
   transaction: BuiltTransaction;
   resolved_accounts: ResolvedAccount[];
   protocol_name: string;
