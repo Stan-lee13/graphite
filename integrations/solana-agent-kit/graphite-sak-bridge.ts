@@ -52,17 +52,20 @@ export class VerifiedSakAgent {
   private graphite: GraphiteClient;
   private walletProfile: WalletProfile;
   private aiLayerUrl: string;
+  private walletPublicKey: string; // Pre-flight account reconstruction (Fix for empty accountAddresses gap)
 
   private constructor(
     sakAgent: SolanaAgentKit,
     graphite: GraphiteClient,
     walletProfile: WalletProfile,
     aiLayerUrl: string,
+    walletPublicKey: string,
   ) {
     this.sakAgent = sakAgent;
     this.graphite = graphite;
     this.walletProfile = walletProfile;
     this.aiLayerUrl = aiLayerUrl;
+    this.walletPublicKey = walletPublicKey;
   }
 
   /**
@@ -117,7 +120,10 @@ export class VerifiedSakAgent {
       );
     }
 
-    return new VerifiedSakAgent(sakAgent, graphite, walletProfile, aiLayerUrl);
+    // Store wallet public key for pre-flight account reconstruction (Finding 1 fix)
+    const walletPublicKey = keyPair.publicKey.toBase58();
+
+    return new VerifiedSakAgent(sakAgent, graphite, walletProfile, aiLayerUrl, walletPublicKey);
   }
 
   /**
@@ -236,13 +242,20 @@ export class VerifiedSakAgent {
       programId: JUPITER_V6_PROGRAM,
       instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR,
       accountAddresses: [
-        // SAK will resolve these from the wallet, but we provide what we know
-        // For a Jupiter swap, the key accounts are:
-        // - user source token account (writable)
-        // - user destination token account (writable)
-        // - user authority (signer)
-        // - Jupiter program (executable)
-        // - Token program (executable)
+        // Pre-flight Reconstruction (Fix 1 — addresses Finding 1: "Empty Account Bypass"):
+        // Populate known accounts so Graphite's L1 (Account Resolution) and
+        // L4 (State Verification) can detect spoofing and PDA mismatches.
+        //
+        // Full resolution requires a live RPC call to derive token accounts
+        // (Phase 2). For Phase 1.5, we provide the wallet authority — the
+        // single most important account for detecting drain attacks.
+        //
+        // Note: The complete account list (source ATA, destination ATA, PDAs)
+        // requires resolving Associated Token Accounts from the RPC. This is
+        // the Phase 2 exit criterion for this integration.
+        this.walletPublicKey,         // user authority (signer) — detects authority hijack
+        JUPITER_V6_PROGRAM,           // program being called
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // SPL Token program
       ],
       proposedIntent,
       cpiTargets: [
@@ -264,7 +277,23 @@ export class VerifiedSakAgent {
     }
 
     // Step 5: Execute via SAK
+    // TOCTOU NOTE (Finding 2 — documented Phase 1.5 limitation):
+    // The content_hash in the verification result is a SHA-256 of the VerificationInput
+    // (program_id, discriminator, accounts, instruction_data, cpi_targets). It binds
+    // Graphite's approval to the specific transaction structure it verified.
+    //
+    // Full TOCTOU prevention requires the executor to:
+    //   1. Receive the serialized VersionedTransaction from SAK BEFORE submission
+    //   2. Re-hash its key fields and compare against verification.content_hash
+    //   3. Only submit if hashes match
+    //
+    // This requires SAK to expose the pre-signed transaction object before
+    // submission — a Phase 2 requirement (AuditBind middleware).
+    //
+    // Phase 1.5 mitigation: the verification gate runs immediately before execution
+    // with no async gap that an attacker could exploit in this single-process context.
     console.log(`[Graphite] ✅ Transaction approved — executing via Solana Agent Kit...`);
+    console.log(`[Graphite] Audit trail: ${verification.audit_trail_id} | Content hash: ${verification.content_hash}`);
 
     try {
       // Call the real SAK swap method
@@ -309,8 +338,12 @@ export class VerifiedSakAgent {
       programId: SYSTEM_PROGRAM,
       instructionDiscriminator: TRANSFER_DISCRIMINATOR,
       accountAddresses: [
-        // From (signer, writable)
-        // To (writable)
+        // Pre-flight Reconstruction (Fix 1 — addresses Finding 1: "Empty Account Bypass"):
+        // Populate the sender (signer, writable). The destination requires
+        // parsing from the natural language intent (Phase 2 — requires RPC
+        // resolution of the destination pubkey).
+        this.walletPublicKey,         // sender / signer — detects authority hijack
+        SYSTEM_PROGRAM,               // program being called
       ],
       proposedIntent,
       cpiTargets: [],
