@@ -334,16 +334,21 @@ export class VerifiedSakAgent {
     const SYSTEM_PROGRAM = "11111111111111111111111111111111";
     const TRANSFER_DISCRIMINATOR = "02000000";
 
+    // Extract destination from parsed intent (Manus PR improvement)
+    const destination = params?.destination || "";
+    if (!destination) {
+      throw new Error("Transfer requires a destination address in the parsed intent");
+    }
+
     const verification = await this.verifyTransaction({
       programId: SYSTEM_PROGRAM,
       instructionDiscriminator: TRANSFER_DISCRIMINATOR,
       accountAddresses: [
-        // Pre-flight Reconstruction (Fix 1 — addresses Finding 1: "Empty Account Bypass"):
-        // Populate the sender (signer, writable). The destination requires
-        // parsing from the natural language intent (Phase 2 — requires RPC
-        // resolution of the destination pubkey).
-        this.walletPublicKey,         // sender / signer — detects authority hijack
-        SYSTEM_PROGRAM,               // program being called
+        // Pre-flight Reconstruction (Fix 1 + Manus PR destination extraction):
+        // Sender (signer) + destination (writable) — both are critical for
+        // drain detection (detecting transfers to unexpected accounts).
+        this.walletPublicKey, // from (signer, writable)
+        destination,          // to (writable)
       ],
       proposedIntent,
       cpiTargets: [],
@@ -364,8 +369,9 @@ export class VerifiedSakAgent {
 
     try {
       const result = await (this.sakAgent as any).methods.transfer(
-        params.input_token ?? "So11111111111111111111111111111111111111112", // Default to SOL
+        destination,
         params.amount,
+        params.input_token ?? "So11111111111111111111111111111111111111112", // Default to SOL
       );
 
       console.log(`[SAK] Transfer executed: ${result.signature ?? result}`);

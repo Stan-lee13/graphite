@@ -16,9 +16,10 @@ from intent_parser import parse_intent
 
 
 def test_transfer_intent():
-    result = parse_intent("Transfer 1 SOL to my friend")
+    result = parse_intent("Transfer 1 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU")
     assert result["intent_type"] == "transfer"
     assert result["confidence_of_parse"] > 0.0
+    assert result["extracted_parameters"]["destination"] == "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
     assert "raw_natural_language" in result
     print("✓ test_transfer_intent passed")
 

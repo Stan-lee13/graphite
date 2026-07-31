@@ -74,7 +74,7 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
     
     This is ADVISORY ONLY. The Core verification engine makes all decisions.
     """
-    text = natural_language.lower().strip()
+    text = natural_language.strip()
     
     for intent_type, patterns in INTENT_PATTERNS.items():
         for pattern in patterns:
@@ -88,6 +88,8 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
                         params["input_token"] = match.group(2)
                         if intent_type == "swap":
                             params["output_token"] = match.group(3)
+                        else:
+                            params["destination"] = match.group(3)
                 elif intent_type == "stake":
                     if len(match.groups()) >= 2:
                         params["amount"] = match.group(1)
