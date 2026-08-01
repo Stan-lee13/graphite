@@ -6,6 +6,7 @@ export interface ExtractedParameters {
   input_token?: string;
   output_token?: string;
   amount?: string;
+  destination?: string;
   slippage_bps?: number;
 }
 

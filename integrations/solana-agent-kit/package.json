@@ -1,11 +1,12 @@
 {
   "name": "@graphite/sak-integration",
   "version": "0.1.0",
-  "description": "Graphite-verified Solana Agent Kit integration — every SAK transaction is verified by Graphite Core before execution.",
+  "description": "Graphite-verified Solana Agent Kit integration \u2014 every SAK transaction is verified by Graphite Core before execution.",
   "type": "module",
   "scripts": {
     "demo": "tsx demo.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/patch-rpc-websockets.js"
   },
   "dependencies": {
     "solana-agent-kit": "^2.0.10",
