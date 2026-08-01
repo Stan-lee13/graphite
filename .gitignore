@@ -3,6 +3,10 @@
 **/target/
 **/*.rs.bk
 
+# Cargo lock is tracked for binary crates
+# (uncomment if this becomes a library crate)
+# Cargo.lock
+
 # Node
 node_modules/
 dist/
@@ -11,8 +15,10 @@ dist/
 # Python
 *.pyc
 __pycache__/
+.pytest_cache/
 
 # Misc
 .DS_Store
 *.log
 .env*
+!.env.example

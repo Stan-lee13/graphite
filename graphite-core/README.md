@@ -1,29 +1,46 @@
 # graphite-core
 
-Rust core starter for Graphite.
+The Rust verification engine — the heart of Graphite.
 
-## Modules (Phase 1 + 1.5 — active production modules)
+## Modules (Phase 1.5 — all active production modules)
 
-- `account_resolution` — PDA derivation and account role validation
-- `transaction_builder` — Canonical serialization and compute budget estimation
-- `risk_engine` — 5 P0 risk patterns (Drainer, AuthorityHijack, HiddenTransfer, UnexpectedCpi, FakeSwap)
-- `confidence_engine` — Weighted signal scoring with trust tier ceilings
-- `policy_engine` — Wallet profile enforcement (Risk → Confidence → TrustTier ordering)
-- `unknown_protocol_mode` — Hard 0.55 ceiling on unknown protocols (Constitution P12)
-- `semantic_graph_store` — Append-only behavior ledger with quarantine support (Constitution P4)
-- `simulation_integrity` — 3-signal z-score baseline comparison (Welford's algorithm)
-- `manifest` — Protocol manifest registry (10 seed protocols, baked at compile time)
-- `verification` — 8-layer pipeline coordinator (L1–L7 active, L8 deferred to Phase 2)
+| Module | Responsibility | Layer |
+|--------|---------------|-------|
+| `account_resolution` | PDA derivation, account role validation | L1 |
+| `transaction_builder` | Canonical serialization, compute budget estimate | — |
+| `risk_engine` | 8 attack pattern detectors (hard gate) | L7 |
+| `confidence_engine` | Weighted signal scoring + trust tier ceilings | L6 |
+| `policy_engine` | Per-wallet profile thresholds (Treasury, TradingBot, Gaming, Enterprise) | L6 |
+| `simulation_integrity` | 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm | L3 |
+| `semantic_graph_store` | Trust tier computation, append-only storage | L5 |
+| `unknown_protocol_mode` | 0.55 confidence ceiling for unknown protocols (P6/P12) | — |
+| `server` | HTTP API (axum) on port 7331 | — |
+| `benchmark` | P16-compliant benchmark suite (18 cases) | — |
+| `cli` | CLI interface (clap) | — |
 
-## Primary entry point
-
-Use `GraphiteVerifier::verify(...)` from `src/verification.rs`.
-
-## Quick start
+## Build
 
 ```bash
-cargo test --release          # 630 tests, 0 failures, 0 clippy warnings
-cargo run --release -- benchmark   # 18 cases, 100% precision/recall, ~25μs avg latency
-cargo run --release -- server      # HTTP server on :7331 (requires --features server)
-cargo run --release --no-default-features --features cli -- verify <tx.json>
+cargo build --release    # 3.1MB binary
+cargo test --release     # 635 tests
+cargo clippy --release -- -D warnings  # 0 warnings
 ```
+
+## Run
+
+```bash
+# HTTP server
+cargo run --release --bin graphite -- server --port 7331
+
+# CLI
+cargo run --release --bin graphite -- verify --input examples/verify-input.json
+
+# Benchmark
+cargo run --release --bin graphite -- benchmark
+```
+
+## Protocol Manifests
+
+11 JSON manifests in `protocols/`. Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets.
+
+All program IDs verified against official on-chain sources. See `CONTRIBUTING.md` for how to add a new manifest.

@@ -60,17 +60,24 @@ The pipeline executes in order. Each layer is tracked in the verification result
 ```
 graphite/
 ├── graphite-core/          # Rust verification engine
-│   ├── src/
-│   ├── protocols/          # Protocol manifests (JSON)
-│   ├── tests/              # Test suite
+│   ├── src/                # 16 source modules (all active, no dead code)
+│   ├── protocols/          # 11 JSON protocol manifests
+│   ├── tests/              # 635 tests (unit + adversarial + exploit)
 │   └── Cargo.toml
 ├── sdk/
-│   ├── typescript/         # TypeScript SDK
-│   └── go/                 # Go SDK
-├── python-ai-layer/        # Advisory intent parser (separate process)
+│   ├── typescript/         # TypeScript SDK (GraphiteClient)
+│   └── go/                 # Go SDK (16-field VerificationResult parity)
 ├── integrations/
+│   └── solana-agent-kit/   # SAK v2 integration (verified execution gate)
+├── python-ai-layer/        # Advisory intent parser (separate process, P1)
 ├── schemas/                # JSON schemas (proposed-intent, verification-result)
-├── examples/               # Usage examples
+├── examples/               # Sample verification inputs/outputs
+├── docs/                   # Audit reports, Phase 2 plans
+├── .github/                # CI workflow + issue templates
+├── ARCHITECTURE.md          # This file
+├── ROADMAP.md              # Phase 1 (done) → Phase 2 (planned) → Phase 3+
+├── SECURITY.md             # Security policy + known limitations
+├── CONTRIBUTING.md         # Development setup + PR checklist
 ├── Dockerfile              # Multi-stage container build
-└── .github/                # CI workflows + issue templates
+└── LICENSE                 # MIT
 ```
