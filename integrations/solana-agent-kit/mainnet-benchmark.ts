@@ -19,9 +19,16 @@
  */
 
 import { Connection, PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
 
-const GRAPHITE_URL = process.argv[3]?.split("--graphite ")[1] ?? "http://localhost:7331";
-const RPC_URL = process.argv[2]?.split("--rpc ")[1] ?? process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+// Robust arg parsing — handles --rpc <url> --graphite <url> in any order
+const args = process.argv.slice(2);
+function getArg(name: string, fallback: string): string {
+  const idx = args.indexOf(name);
+  return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : fallback;
+}
+const GRAPHITE_URL = getArg("--graphite", "http://localhost:7331");
+const RPC_URL = getArg("--rpc", process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com");
 
 // Known legitimate protocol addresses (for fetching real transactions)
 const LEGITIMATE_PROTOCOLS = [
@@ -68,11 +75,13 @@ async function fetchRealTransactions(connection: Connection, address: string, li
     const txs: any[] = [];
     for (const sig of signatures.slice(0, limit)) {
       try {
-        const tx = await connection.getTransaction(sig.signature, {
+        // Use getParsedTransaction for structured instruction data
+        const tx = await connection.getParsedTransaction(sig.signature, {
           maxSupportedTransactionVersion: 0,
         });
         if (tx) txs.push(tx);
       } catch (e) { /* skip failed fetch */ }
+      await new Promise(r => setTimeout(r, 200)); // rate limit courtesy
     }
     return txs;
   } catch (err) {
@@ -86,41 +95,94 @@ function extractFromTransaction(tx: any, protocolAddress: string): BenchmarkCase
     const message = tx.transaction?.message;
     if (!message) return null;
 
-    // Find the instruction for this program
-    const instructions = message.instructions || [];
+    // For parsed transactions, instructions are in message.instructions (decoded)
+    // For V0, they're in message.compiledInstructions (raw)
+    const instructions = message.instructions || message.compiledInstructions || [];
     const accountKeys = message.accountKeys || message.staticAccountKeys || [];
 
-    // Look for instructions that reference this program
+    // Helper to get address from account key (handles PublicKey, string, index)
+    function getAddr(key: any): string | null {
+      if (!key) return null;
+      if (typeof key === "string") return key;
+      if (typeof key.toBase58 === "function") return key.toBase58();
+      if (typeof key.toString === "function") return key.toString();
+      return null;
+    }
+
     for (const ix of instructions) {
-      const programIndex = ix.programIdIndex ?? ix.programId;
-      const programId = typeof programIndex === "number" ? accountKeys[programIndex]?.pubkey?.toBase58?.() ?? accountKeys[programIndex]?.toString?.() : programIndex;
-
-      if (!programId) continue;
-
-      // Extract discriminator (first 8 bytes of instruction data)
+      let programId = "";
       let discriminator = "";
-      if (ix.data) {
-        const data = typeof ix.data === "string" ? ix.data : "";
-        if (data.length >= 16) {
-          discriminator = data.slice(0, 16); // first 8 bytes as hex
-        }
-      }
-
-      // Extract accounts used by this instruction
       const accounts: string[] = [];
-      if (ix.accounts) {
-        for (const accIdx of ix.accounts) {
-          const key = typeof accIdx === "number" ? accountKeys[accIdx] : accIdx;
-          if (key) {
-            const addr = typeof key === "string" ? key : key?.pubkey?.toBase58?.() ?? key?.toString?.();
+
+      if (ix.programId) {
+        // Parsed instruction — programId is a PublicKey
+        programId = getAddr(ix.programId) ?? "";
+
+        // Parsed instructions: ix.data is base58-encoded raw bytes
+        // Graphite expects hex bytes (e.g., "02000000" for System Transfer)
+        if (ix.data) {
+          try {
+            const rawBytes = typeof ix.data === "string" ? bs58.decode(ix.data) : new Uint8Array(ix.data);
+            if (rawBytes.length >= 8) {
+              discriminator = Array.from(rawBytes.slice(0, 8) as unknown as any[])
+                .map((b) => (b as number).toString(16).padStart(2, "0"))
+                .join("");
+            } else if (rawBytes.length >= 4) {
+              // Fallback: 4-byte discriminator for non-Anchor programs
+              discriminator = Array.from(rawBytes.slice(0, 4) as unknown as any[])
+                .map((b) => (b as number).toString(16).padStart(2, "0"))
+                .join("");
+            }
+          } catch { /* base58 decode failed */ }
+        }
+
+        // Get accounts from parsed instruction
+        if (ix.accounts) {
+          for (const acc of ix.accounts) {
+            const addr = getAddr(acc);
+            if (addr) accounts.push(addr);
+          }
+        }
+      } else if (ix.programIdIndex !== undefined) {
+        // Compiled instruction (V0) — need to look up from account keys
+        const key = accountKeys[ix.programIdIndex];
+        programId = getAddr(key) ?? "";
+
+        // Compiled instructions have raw data as Uint8Array
+        if (ix.data && ix.data.length >= 4) {
+          discriminator = Array.from(ix.data.slice(0, 4) as any[])
+            .map((b) => (b as number).toString(16).padStart(2, "0"))
+            .join("");
+        }
+
+        // Get accounts from compiled instruction
+        if (ix.accountKeyIndexes) {
+          for (const idx of ix.accountKeyIndexes) {
+            const key = accountKeys[idx];
+            const addr = getAddr(key);
             if (addr) accounts.push(addr);
           }
         }
       }
 
+      if (!programId) continue;
+
+      // Only use the instruction that targets the protocol we're looking for
+      if (programId !== protocolAddress) continue;
+
+      // Extract CPI targets from inner instructions
+      const cpiTargets: string[] = [];
+      const innerIxs = tx.meta?.innerInstructions ?? [];
+      for (const group of innerIxs) {
+        for (const innerIx of (group.instructions || [])) {
+          const innerProgram = getAddr(innerIx.programId) ?? innerIx.programIdIndex;
+          if (innerProgram && typeof innerProgram === "string") cpiTargets.push(innerProgram);
+        }
+      }
+
       return {
-        name: `Real tx: ${tx.transaction?.signatures?.[0]?.slice(0, 8) ?? "unknown"}`,
-        programId: programId === protocolAddress ? protocolAddress : (typeof programId === "string" ? programId : ""),
+        name: `Real tx: ${(tx.transaction?.signatures?.[0] ?? "unknown").slice(0, 12)}`,
+        programId,
         instructionDiscriminator: discriminator || "unknown",
         accountAddresses: accounts.length > 0 ? accounts : [protocolAddress],
         expected: "approve" as const,
@@ -129,7 +191,7 @@ function extractFromTransaction(tx: any, protocolAddress: string): BenchmarkCase
       };
     }
     return null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }

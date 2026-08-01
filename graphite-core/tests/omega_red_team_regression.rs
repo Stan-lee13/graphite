@@ -30,6 +30,7 @@ fn regression_l1_drainer_5_accounts_now_blocked() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -65,6 +66,7 @@ fn regression_l2_hidden_transfer_12_accounts_now_blocked() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -98,6 +100,7 @@ fn regression_l3_compositional_drain_4_targets_now_blocked() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -126,6 +129,7 @@ fn regression_l4_token2022_setauthority_now_blocked() {
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -155,6 +159,7 @@ fn regression_l4b_spl_token_setauthority_now_blocked() {
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -236,6 +241,7 @@ fn regression_l8_empty_discriminator_spl_token_now_blocked() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -289,6 +295,7 @@ fn regression_l12_dedup_prevents_false_positive() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -313,6 +320,7 @@ fn regression_l18_100_accounts_1_change_now_blocked() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();

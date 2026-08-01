@@ -47,6 +47,9 @@ pub struct RiskAssessmentInput {
     pub allowed_cpis: Vec<String>,
     pub instruction_discriminator: String,
     pub expected_account_count: Option<usize>,
+    /// Whether this instruction has variable accounts (skips drainer heuristic)
+    #[serde(default)]
+    pub variable_accounts: bool,
     /// Proposed intent type from the AI layer (e.g. "swap", "transfer", "close")
     pub proposed_intent_type: String,
     /// Extracted output token from intent parameters (for FakeSwap detection)
@@ -125,32 +128,73 @@ const TRUSTED_CPI_ROOTS: &[&str] = &[
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads (multisig, CPIs to System)
 ];
 
+/// Known DEX/aggregator programs that naturally have high account counts.
+/// The drainer heuristic is skipped for these — high account-to-change ratio
+/// is normal behavior when routing through multiple pools.
+const DEX_PROGRAMS: &[&str] = &[
+    "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
+    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
+    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
+];
+
 /// Assess a transaction for adversarial risk patterns.
 ///
+/// Universal CPI whitelist: fundamental Solana programs that are ALWAYS safe to call.
+/// These are system-level programs that any protocol can legitimately invoke:
+///  - System Program: native SOL transfers, account creation
+///  - SPL Token: token transfers, approvals
+///  - Token-2022: extended token operations
+///  - Compute Budget: compute budget instructions (always safe)
+///  - ATLAS: (reserved)
+///
+/// No protocol should be blocked for calling these via CPI.
+const UNIVERSAL_CPI_WHITELIST: &[&str] = &[
+    "11111111111111111111111111111111", // System Program
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // SPL Token
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", // Token-2022
+    "ComputeBudget111111111111111111111111111111", // Compute Budget
+];
+
+/// Check if a CPI target is universally safe (System, Token, Compute Budget)
+fn is_universal_cpi(cpi_target: &str) -> bool {
+    UNIVERSAL_CPI_WHITELIST.contains(&cpi_target)
+}
+
 /// Pure, deterministic (Constitution P2). Based on transaction structure and
 /// known risk signatures, not runtime behavior.
 pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // P0 Check 1: Unexpected CPI targets (G6 mitigation)
+    // Universal CPI whitelist (System, Token, Compute Budget) is always allowed.
+    // For known protocols: unexpected CPI targets reduce confidence, NOT hard-block.
+    // Per Constitution P12 and 5-Response Framework:
+    //   - Unknown CPI is NOT active harm — it's "protocol/instruction genuinely unknown"
+    //   - Response 2 (fail open with explanation) applies
+    //   - Hard-block (Response 4) is reserved for ACTIVE HARM patterns only
+    //     (drainer, authority hijack, permission escalation, etc.)
+    // For unknown protocols: unexpected CPI is suspicious — still fail-closed.
+    let mut cpi_warnings: Vec<String> = Vec::new();
     if !input.cpi_targets.is_empty() {
-        if !input.allowed_cpis.is_empty() {
-            for cpi_target in &input.cpi_targets {
-                if !input.allowed_cpis.iter().any(|allowed| allowed == cpi_target) {
-                    return Ok(RiskVerdict::Blocked {
-                        pattern: RiskPattern::UnexpectedCpi,
-                        reason: format!(
-                            "CPI target '{}' is not in manifest's allowed CPI list",
-                            cpi_target
-                        ),
-                    });
+        let non_universal_cpis: Vec<&String> = input.cpi_targets.iter()
+            .filter(|cpi| !is_universal_cpi(cpi))
+            .collect();
+        
+        if !non_universal_cpis.is_empty() && !input.allowed_cpis.is_empty() {
+            for cpi_target in &non_universal_cpis {
+                if !input.allowed_cpis.iter().any(|allowed| allowed == cpi_target.as_str()) {
+                    cpi_warnings.push(format!(
+                        "CPI target '{}' is not in manifest's allowed CPI list",
+                        cpi_target
+                    ));
                 }
             }
-        } else {
-            // No manifest data — FAIL-CLOSED (P12)
-            if let Some(cpi_target) = input.cpi_targets.first() {
+        } else if !non_universal_cpis.is_empty() && input.allowed_cpis.is_empty() {
+            // No manifest data at all — unknown protocol, fail-closed (P12)
+            if let Some(cpi_target) = non_universal_cpis.first() {
                 return Ok(RiskVerdict::Blocked {
                     pattern: RiskPattern::UnexpectedCpi,
                     reason: format!(
-                        "CPI target '{}' is not in manifest's allowed CPI list (no manifest data — fail-closed)",
+                        "CPI target '{}' is not in manifest's allowed CPI list (unknown protocol — fail-closed)",
                         cpi_target
                     ),
                 });
@@ -215,7 +259,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         .map(|expected| input.accounts.len() <= expected + 2)
         .unwrap_or(false);
 
-    if !manifest_account_match && detect_drainer_pattern(&input.accounts, &input.expected_state_changes) {
+    let is_dex = DEX_PROGRAMS.contains(&input.program_id.as_str());
+    if !manifest_account_match && !input.variable_accounts && !is_dex && detect_drainer_pattern(&input.accounts, &input.expected_state_changes) {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::Drainer,
             reason: "Transaction matches drainer pattern: high account-to-change ratio".to_string(),
@@ -223,17 +268,20 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 3b: STMT drainer — account count mismatch
-    if let Some(expected_count) = input.expected_account_count {
-        let unique_accounts: std::collections::HashSet<&String> = input.accounts.iter().collect();
-        let unique_count = unique_accounts.len();
-        if unique_count > expected_count + 2 {
-            return Ok(RiskVerdict::Blocked {
-                pattern: RiskPattern::Drainer,
-                reason: format!(
-                    "STMT drainer: transaction has {} unique accounts but manifest expects {} — possible multi-transfer drain",
-                    unique_count, expected_count
-                ),
-            });
+    // Skip for DEX programs (variable account counts) and manifest-declared variable accounts.
+    if !is_dex && !input.variable_accounts {
+        if let Some(expected_count) = input.expected_account_count {
+            let unique_accounts: std::collections::HashSet<&String> = input.accounts.iter().collect();
+            let unique_count = unique_accounts.len();
+            if unique_count > expected_count + 2 {
+                return Ok(RiskVerdict::Blocked {
+                    pattern: RiskPattern::Drainer,
+                    reason: format!(
+                        "STMT drainer: transaction has {} unique accounts but manifest expects {} — possible multi-transfer drain",
+                        unique_count, expected_count
+                    ),
+                });
+            }
         }
     }
 
@@ -461,7 +509,13 @@ pub fn detect_fake_swap(
         .iter()
         .any(|c| c.to_lowercase().contains("credit") || c.to_lowercase().contains("output"));
 
-    if !has_credit && !expected_state_changes.is_empty() {
+    // P12: Skip FakeSwap when state changes are the generic unknown-instruction placeholder.
+    // We can't determine if a swap is fake without instruction-specific state change data.
+    let is_generic_placeholder = expected_state_changes.iter().all(|c| {
+        c.to_lowercase().contains("protocol-level state")
+    });
+
+    if !has_credit && !expected_state_changes.is_empty() && !is_generic_placeholder {
         return Some(RiskPattern::FakeSwap);
     }
 
@@ -526,7 +580,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(result, RiskVerdict::Blocked { .. }));
@@ -543,7 +598,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -560,7 +616,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -583,7 +640,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -606,7 +664,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result1 = assess(&input).unwrap();
         let result2 = assess(&input).unwrap();
@@ -634,7 +693,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -669,7 +729,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -700,7 +761,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -737,7 +799,8 @@ mod tests {
             instruction_discriminator: "e517cb97".to_string(),
             expected_account_count: Some(5),
             proposed_intent_type: "swap".to_string(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -754,7 +817,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(
@@ -783,7 +847,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -806,7 +871,8 @@ mod tests {
             instruction_discriminator: "01".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -838,7 +904,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -858,7 +925,8 @@ mod tests {
             instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -881,7 +949,8 @@ mod tests {
             instruction_discriminator: "01".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -902,7 +971,8 @@ mod tests {
             instruction_discriminator: "e517cb97".to_string(),
             expected_account_count: Some(5),
             proposed_intent_type: "swap".to_string(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -920,7 +990,8 @@ mod tests {
             instruction_discriminator: "03".to_string(), // Transfer
             expected_account_count: Some(3),
             proposed_intent_type: "transfer".to_string(),
-            extracted_output_token: None,
+            variable_accounts: false,
+        extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);

@@ -42,6 +42,7 @@ fn exploit_l1_drainer_threshold_bypass_5_accounts() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -64,6 +65,7 @@ fn exploit_l2_hidden_transfer_threshold_bypass_12_accounts() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -91,6 +93,7 @@ fn exploit_l3_compositional_drain_bypass_4_targets() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -113,6 +116,7 @@ fn exploit_l4_token2022_setauthority_bypass() {
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -190,6 +194,7 @@ fn exploit_l8_empty_discriminator_bypasses_setauthority() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -245,6 +250,7 @@ fn exploit_l12_account_duplication_false_positive() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -267,6 +273,7 @@ fn exploit_l14_unknown_system_instruction_passes() {
         instruction_discriminator: "ff00ff".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -323,6 +330,7 @@ fn exploit_l18_drainer_with_single_meaningful_change_bypass() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -385,6 +393,7 @@ fn exploit_l20_cpi_self_allowing() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();

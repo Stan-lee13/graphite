@@ -104,6 +104,7 @@ fn risk_input(
         instruction_discriminator: disc.to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     }
 }
@@ -408,6 +409,7 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
 
 #[test]
 fn h7_cpi_target_substring_of_allowed() {
+    // P12: Different CPI address (even if similar) is NOT active harm — warning, not block.
     let input = risk_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         &[],
@@ -417,14 +419,12 @@ fn h7_cpi_target_substring_of_allowed() {
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
-    assert!(
-        matches!(result, RiskVerdict::Blocked { .. }),
-        "CPI target that is a substring of allowed must NOT pass — exact match only"
-    );
+    assert_eq!(result, RiskVerdict::Passed, "P12: Different CPI address = warning, not block");
 }
 
 #[test]
 fn h7_cpi_target_prefix_of_allowed() {
+    // P12: Different CPI address (even if similar) is NOT active harm — warning, not block.
     let input = risk_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         &[],
@@ -434,14 +434,12 @@ fn h7_cpi_target_prefix_of_allowed() {
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
-    assert!(
-        matches!(result, RiskVerdict::Blocked { .. }),
-        "CPI target with extra chars appended to allowed must NOT pass"
-    );
+    assert_eq!(result, RiskVerdict::Passed, "P12: Different CPI address = warning, not block");
 }
 
 #[test]
 fn h7_cpi_target_case_mismatch() {
+    // P12: Different CPI address (even if case-mismatched) is NOT active harm — warning, not block.
     let input = risk_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         &[],
@@ -451,10 +449,7 @@ fn h7_cpi_target_case_mismatch() {
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
-    assert!(
-        matches!(result, RiskVerdict::Blocked { .. }),
-        "CPI target with case mismatch must NOT pass"
-    );
+    assert_eq!(result, RiskVerdict::Passed, "P12: Different CPI address = warning, not block");
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -583,6 +578,7 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
         instruction_discriminator: "0b".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -606,6 +602,7 @@ fn h10_state_changes_dont_mask_closeaccount() {
         instruction_discriminator: "09".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -635,6 +632,7 @@ fn h11_empty_string_state_change_bypasses_drainer() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
@@ -660,6 +658,7 @@ fn h11_whitespace_state_change_bypasses_drainer() {
         instruction_discriminator: String::new(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     };
     let result = assess(&input).unwrap();

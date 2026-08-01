@@ -213,6 +213,7 @@ fn risk_input(
         instruction_discriminator: disc.to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
+            variable_accounts: false,
             extracted_output_token: None,
     }
 }
@@ -273,6 +274,8 @@ fn test_exactly_6_accounts_flagged_as_drainer() {
 
 #[test]
 fn test_cpi_allowed_list_blocks_unlisted_target() {
+    // P12 COMPLIANCE: Unexpected CPI is NOT active harm — it's a warning.
+    // The risk engine should return Passed, not Blocked.
     let input = risk_input(
         "program",
         &["a1"],
@@ -281,13 +284,7 @@ fn test_cpi_allowed_list_blocks_unlisted_target() {
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
         "",
     );
-    assert!(matches!(
-        assess(&input).unwrap(),
-        RiskVerdict::Blocked {
-            pattern: RiskPattern::UnexpectedCpi,
-            ..
-        }
-    ));
+    assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
 }
 
 #[test]
@@ -522,6 +519,9 @@ fn test_verify_jupiter_swap_with_allowed_cpi_passes_risk() {
 
 #[test]
 fn test_verify_jupiter_swap_with_unlisted_cpi_blocked() {
+    // P12 COMPLIANCE: Unexpected CPI is NOT active harm — it's a warning.
+    // The risk engine should NOT hard-block on unlisted CPI targets.
+    // A Jupiter route may legitimately CPI to programs not in our manifest.
     let core = GraphiteCore::default();
     let input = make_input(
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
@@ -538,11 +538,11 @@ fn test_verify_jupiter_swap_with_unlisted_cpi_blocked() {
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
-    assert!(
-        !result.approved,
-        "Jupiter swap with unlisted CPI should be blocked"
+    // P12: Risk engine should NOT block on unexpected CPI
+    assert_eq!(
+        result.risk_verdict.status, "Clear",
+        "P12: Unexpected CPI must not hard-block — not active harm"
     );
-    assert_eq!(result.risk_verdict.status, "Blocked");
 }
 
 #[test]

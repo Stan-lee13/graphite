@@ -155,6 +155,456 @@
         "member must be a member of the multisig",
         "RISK: PERMISSION_ESCALATION \u2014 approving a proposal that adds members changes who can approve future transactions"
       ]
+    },
+    {
+      "name": "create",
+      "discriminator": "181ec828051c0777",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "create_with_loader",
+      "discriminator": "9a677c639bbdf317",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "add_member",
+      "discriminator": "0d747b827ec63922",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "remove_member",
+      "discriminator": "ab39e796a7801237",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "change_threshold",
+      "discriminator": "9297d53f794f091d",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "add_member_with_permission",
+      "discriminator": "ff0c6ea488a0f8cf",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "change_member_permission",
+      "discriminator": "f05c92482ff17f9d",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "remove_member_with_permission",
+      "discriminator": "255a98e566bd997d",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "create_proposal",
+      "discriminator": "847444aed8a0c616",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "activate_proposal",
+      "discriminator": "5abacbea46b9bf15",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "approve_proposal",
+      "discriminator": "886c665562720793",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "reject_proposal",
+      "discriminator": "72a2a452bf0b6619",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "cancel_proposal",
+      "discriminator": "6a4a809213412717",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "execute_proposal",
+      "discriminator": "ba3c74856c806f1c",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "execute_transaction",
+      "discriminator": "e7ad315beb184413",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "execute_instruction",
+      "discriminator": "301228284b4a936e",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "set_max_auto_approve",
+      "discriminator": "63acb6adea97bc82",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "set_treasury_slot",
+      "discriminator": "891b9db989c2574d",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Squads V4 instruction"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
     }
   ],
   "trust_tier": "BattleTested"

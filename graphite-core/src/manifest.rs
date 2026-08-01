@@ -31,6 +31,10 @@ pub struct InstructionDef {
     pub expected_state_changes: Vec<String>,
     pub allowed_cpis: Vec<String>,
     pub risk_rules: Vec<String>,
+    /// Whether this instruction has a variable number of accounts (e.g., aggregator routes).
+    /// When true, the drainer pattern heuristic is skipped for this instruction.
+    #[serde(default)]
+    pub variable_accounts: bool,
 }
 
 /// Account role in an instruction.
