@@ -690,6 +690,133 @@
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
       ],
       "risk_rules": []
+    },
+    {
+      "name": "swap_2",
+      "discriminator": "df7e2d55564d1fc2",
+      "accounts": [
+        {
+          "name": "lb_pair",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "bin_array_bitmap_extension",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_x",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_y",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_in",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_out",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_x_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_y_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "host_fee_in",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_wallet",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_x_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_y_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "event_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "swaps tokens using active bin arrays",
+        "debits user_token_in",
+        "credits user_token_out",
+        "updates reserve_x and reserve_y"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": [
+        "user_wallet must be signer",
+        "RISK: verify output amount matches expected within slippage tolerance",
+        "RISK: verify lb_pair is legitimate and not a honeypot"
+      ],
+      "variable_accounts": true
     }
   ],
   "trust_tier": "BattleTested"

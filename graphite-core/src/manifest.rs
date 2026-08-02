@@ -251,3 +251,28 @@ mod tests {
         assert!(registry.load_from_json(bad).is_err());
     }
 }
+
+#[cfg(test)]
+mod test_v2_discriminators {
+    use super::*;
+
+    #[test]
+    fn test_jupiter_v2_instructions_loaded() {
+        let registry = load_seed_manifests();
+        let jupiter = registry.get("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+        assert!(jupiter.is_some());
+        let jupiter = jupiter.unwrap();
+        eprintln!("Jupiter V6: {} instructions", jupiter.instructions.len());
+        let mut found = false;
+        for ix in &jupiter.instructions {
+            if ix.name == "route_v2" {
+                found = true;
+                eprintln!("  FOUND: {} = {}", ix.name, ix.discriminator);
+                assert_eq!(ix.discriminator, "bb64facc31c4af14");
+            }
+        }
+        assert!(found, "route_v2 should be loaded");
+        let f = registry.find_instruction("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "bb64facc31c4af14");
+        assert!(f.is_some(), "find_instruction should match route_v2 disc");
+    }
+}

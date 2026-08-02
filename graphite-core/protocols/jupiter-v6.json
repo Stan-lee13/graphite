@@ -692,6 +692,539 @@
         "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
       ],
       "risk_rules": []
+    },
+    {
+      "name": "route_v2",
+      "discriminator": "bb64facc31c4af14",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_transfer_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "swaps tokens through routed DEX venues",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "risk_rules": [
+        "user_transfer_authority must be signer",
+        "RISK: verify output amount matches expected within slippage tolerance",
+        "RISK: verify route does not include unknown/unverified DEX programs"
+      ],
+      "variable_accounts": true
+    },
+    {
+      "name": "shared_accounts_route_v2",
+      "discriminator": "d19853937cfed8e9",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_transfer_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "source_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "platform_fee_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_2022_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "swaps tokens through routed DEX venues with shared accounts",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "risk_rules": [
+        "user_transfer_authority must be signer",
+        "RISK: verify output amount matches expected within slippage tolerance",
+        "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
+      ],
+      "variable_accounts": true
+    },
+    {
+      "name": "exact_out_route_v2",
+      "discriminator": "9d8ab85215f4f324",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Jupiter V6 aggregator instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "risk_rules": [],
+      "variable_accounts": true
+    },
+    {
+      "name": "shared_accounts_exact_out_route_v2",
+      "discriminator": "3560e5cad8bbfa18",
+      "accounts": [
+        {
+          "name": "user_authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Jupiter V6 aggregator instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "risk_rules": [],
+      "variable_accounts": true
+    },
+    {
+      "name": "route_with_token_ledger_v2",
+      "discriminator": "980ca4794a67adcd",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_transfer_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "swaps tokens through routed DEX venues",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "risk_rules": [
+        "user_transfer_authority must be signer",
+        "RISK: verify output amount matches expected within slippage tolerance",
+        "RISK: verify route does not include unknown/unverified DEX programs"
+      ],
+      "variable_accounts": true
+    },
+    {
+      "name": "shared_accounts_route_with_token_ledger_v2",
+      "discriminator": "79f7e005d0ea42fc",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_transfer_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "source_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "platform_fee_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_2022_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "swaps tokens through routed DEX venues with shared accounts",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "risk_rules": [
+        "user_transfer_authority must be signer",
+        "RISK: verify output amount matches expected within slippage tolerance",
+        "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
+      ],
+      "variable_accounts": true
+    },
+    {
+      "name": "routeWithTokenLedger",
+      "discriminator": "34650f14745e8de8",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_transfer_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "swaps tokens through routed DEX venues",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "risk_rules": [
+        "user_transfer_authority must be signer",
+        "RISK: verify output amount matches expected within slippage tolerance",
+        "RISK: verify route does not include unknown/unverified DEX programs"
+      ],
+      "variable_accounts": true
+    },
+    {
+      "name": "sharedAccountsRouteWithTokenLedger",
+      "discriminator": "b4476e37d9cc1af6",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_transfer_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program_destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "source_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "platform_fee_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_2022_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "swaps tokens through routed DEX venues with shared accounts",
+        "debits user source token account",
+        "credits user destination token account"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "risk_rules": [
+        "user_transfer_authority must be signer",
+        "RISK: verify output amount matches expected within slippage tolerance",
+        "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
+      ],
+      "variable_accounts": true
     }
   ],
   "trust_tier": "BattleTested"
