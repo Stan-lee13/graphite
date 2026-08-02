@@ -114,7 +114,7 @@
     },
     {
       "name": "CreateAccountWithSeed",
-      "discriminator": "00000003",
+      "discriminator": "03000000",
       "accounts": [
         {
           "name": "user_authority",
@@ -139,7 +139,7 @@
     },
     {
       "name": "AdvanceNonceAccount",
-      "discriminator": "00000004",
+      "discriminator": "04000000",
       "accounts": [
         {
           "name": "user_authority",
@@ -164,7 +164,7 @@
     },
     {
       "name": "WithdrawNonceAccount",
-      "discriminator": "00000005",
+      "discriminator": "05000000",
       "accounts": [
         {
           "name": "user_authority",
@@ -189,7 +189,7 @@
     },
     {
       "name": "InitializeNonceAccount",
-      "discriminator": "00000006",
+      "discriminator": "06000000",
       "accounts": [
         {
           "name": "user_authority",
@@ -214,7 +214,7 @@
     },
     {
       "name": "AuthorizeNonceAccount",
-      "discriminator": "00000007",
+      "discriminator": "07000000",
       "accounts": [
         {
           "name": "user_authority",
@@ -239,7 +239,7 @@
     },
     {
       "name": "AllocateWithSeed",
-      "discriminator": "00000009",
+      "discriminator": "09000000",
       "accounts": [
         {
           "name": "user_authority",
@@ -264,7 +264,7 @@
     },
     {
       "name": "AssignWithSeed",
-      "discriminator": "0000000a",
+      "discriminator": "0a000000",
       "accounts": [
         {
           "name": "user_authority",
@@ -289,7 +289,7 @@
     },
     {
       "name": "TransferWithSeed",
-      "discriminator": "0000000b",
+      "discriminator": "0b000000",
       "accounts": [
         {
           "name": "user_authority",

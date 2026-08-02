@@ -229,140 +229,140 @@ fn test_novel_cross_prog_020() {
 
 #[test]
 fn test_novel_trust_manip_021() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 021 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_022() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 022 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_023() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 023 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_024() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 024 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_025() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 025 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_026() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 026 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_027() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 027 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_028() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 028 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_029() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 029 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_trust_manip_030() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust manip 030 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_031() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Enterprise));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Enterprise));
     println!("Profile 031 (Enterprise) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_032() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Treasury));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Treasury));
     println!("Profile 032 (Treasury) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_033() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::TradingBot));
     println!("Profile 033 (TradingBot) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_034() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
     println!("Profile 034 (Gaming) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_035() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Enterprise));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Enterprise));
     println!("Profile 035 (Enterprise) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_036() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Treasury));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Treasury));
     println!("Profile 036 (Treasury) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_037() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::TradingBot));
     println!("Profile 037 (TradingBot) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_038() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
     println!("Profile 038 (Gaming) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_039() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Enterprise));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Enterprise));
     println!("Profile 039 (Enterprise) — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_profile_040() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Treasury));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Treasury));
     println!("Profile 040 (Treasury) — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -439,70 +439,70 @@ fn test_novel_sim_bypass_050() {
 
 #[test]
 fn test_novel_graph_poison_051() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 510, battle_tested_tx_count: 51000, simulation_match_count: 510 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 510, battle_tested_tx_count: 51000, simulation_match_count: 510 }));
     println!("Graph poison 051 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_052() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 520, battle_tested_tx_count: 52000, simulation_match_count: 520 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 520, battle_tested_tx_count: 52000, simulation_match_count: 520 }));
     println!("Graph poison 052 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_053() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 530, battle_tested_tx_count: 53000, simulation_match_count: 530 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 530, battle_tested_tx_count: 53000, simulation_match_count: 530 }));
     println!("Graph poison 053 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_054() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 540, battle_tested_tx_count: 54000, simulation_match_count: 540 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 540, battle_tested_tx_count: 54000, simulation_match_count: 540 }));
     println!("Graph poison 054 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_055() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 550, battle_tested_tx_count: 55000, simulation_match_count: 550 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 550, battle_tested_tx_count: 55000, simulation_match_count: 550 }));
     println!("Graph poison 055 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_056() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 560, battle_tested_tx_count: 56000, simulation_match_count: 560 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 560, battle_tested_tx_count: 56000, simulation_match_count: 560 }));
     println!("Graph poison 056 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_057() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 570, battle_tested_tx_count: 57000, simulation_match_count: 570 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 570, battle_tested_tx_count: 57000, simulation_match_count: 570 }));
     println!("Graph poison 057 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_058() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 580, battle_tested_tx_count: 58000, simulation_match_count: 580 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 580, battle_tested_tx_count: 58000, simulation_match_count: 580 }));
     println!("Graph poison 058 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_059() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 590, battle_tested_tx_count: 59000, simulation_match_count: 590 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 590, battle_tested_tx_count: 59000, simulation_match_count: 590 }));
     println!("Graph poison 059 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_novel_graph_poison_060() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 600, battle_tested_tx_count: 60000, simulation_match_count: 600 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 600, battle_tested_tx_count: 60000, simulation_match_count: 600 }));
     println!("Graph poison 060 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -593,7 +593,7 @@ fn test_novel_instruction_data_072() {
 
 #[test]
 fn test_novel_instruction_data_073() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Instruction data 073 (disc=0b) — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -719,7 +719,7 @@ fn test_novel_boundary_090() {
 
 #[test]
 fn test_novel_comp_evasion_091() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3, A4, A5, A6], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3, A4, A5, A6], &[], WalletProfile::TradingBot));
     println!("Comp evasion 091 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved);
 }
@@ -740,7 +740,7 @@ fn test_novel_comp_evasion_093() {
 
 #[test]
 fn test_novel_comp_evasion_094() {
-    let result = run(make(RAYDIUM, "0b", &[A1, A2, A3, A4, A5, A6], &[A1], WalletProfile::TradingBot));
+    let result = run(make(RAYDIUM, "06", &[A1, A2, A3, A4, A5, A6], &[A1], WalletProfile::TradingBot));
     println!("Comp evasion 094 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved);
 }
@@ -761,7 +761,7 @@ fn test_novel_comp_evasion_096() {
 
 #[test]
 fn test_novel_comp_evasion_097() {
-    let result = run(make(JUPITER_V6, "0b", &[A1, A2, A3, A4, A5, A6], &[], WalletProfile::TradingBot));
+    let result = run(make(JUPITER_V6, "06", &[A1, A2, A3, A4, A5, A6], &[], WalletProfile::TradingBot));
     println!("Comp evasion 097 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved);
 }
@@ -782,7 +782,7 @@ fn test_novel_comp_evasion_099() {
 
 #[test]
 fn test_novel_comp_evasion_100() {
-    let result = run(make(SQUADS, "0b", &[A1, A2, A3, A4, A5, A6], &[A1], WalletProfile::TradingBot));
+    let result = run(make(SQUADS, "06", &[A1, A2, A3, A4, A5, A6], &[A1], WalletProfile::TradingBot));
     println!("Comp evasion 100 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved);
 }

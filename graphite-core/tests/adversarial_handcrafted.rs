@@ -96,7 +96,7 @@ fn test_adv_trust_max_001() {
 
 #[test]
 fn test_adv_trust_max_002() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust max 002 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -110,7 +110,7 @@ fn test_adv_trust_max_003() {
 
 #[test]
 fn test_adv_trust_max_004() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust max 004 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -124,7 +124,7 @@ fn test_adv_trust_max_005() {
 
 #[test]
 fn test_adv_trust_max_006() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust max 006 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -138,7 +138,7 @@ fn test_adv_trust_max_007() {
 
 #[test]
 fn test_adv_trust_max_008() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust max 008 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -152,7 +152,7 @@ fn test_adv_trust_max_009() {
 
 #[test]
 fn test_adv_trust_max_010() {
-    let result = run(make_ev(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
+    let result = run(make_ev(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::Gaming, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 100, battle_tested_tx_count: 1000000, simulation_match_count: 1000 }));
     println!("Trust max 010 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -166,7 +166,7 @@ fn test_adv_profile_011() {
 
 #[test]
 fn test_adv_profile_012() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
     println!("Profile 012 (disc=0b) — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -187,7 +187,7 @@ fn test_adv_profile_014() {
 
 #[test]
 fn test_adv_profile_015() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
     println!("Profile 015 (disc=0b) — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -208,7 +208,7 @@ fn test_adv_profile_017() {
 
 #[test]
 fn test_adv_profile_018() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[A4], WalletProfile::Gaming));
     println!("Profile 018 (disc=0b) — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -446,7 +446,7 @@ fn test_adv_intent_mismatch_051() {
 
 #[test]
 fn test_adv_intent_mismatch_052() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Intent mismatch 052 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -460,7 +460,7 @@ fn test_adv_intent_mismatch_053() {
 
 #[test]
 fn test_adv_intent_mismatch_054() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Intent mismatch 054 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -474,7 +474,7 @@ fn test_adv_intent_mismatch_055() {
 
 #[test]
 fn test_adv_intent_mismatch_056() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Intent mismatch 056 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -488,7 +488,7 @@ fn test_adv_intent_mismatch_057() {
 
 #[test]
 fn test_adv_intent_mismatch_058() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Intent mismatch 058 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -502,7 +502,7 @@ fn test_adv_intent_mismatch_059() {
 
 #[test]
 fn test_adv_intent_mismatch_060() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Intent mismatch 060 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -628,21 +628,21 @@ fn test_adv_empty_077() {
 
 #[test]
 fn test_adv_empty_078() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Empty 078 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_adv_empty_079() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Empty 079 — approved: {}", result.approved);
     assert!(!result.approved);
 }
 
 #[test]
 fn test_adv_empty_080() {
-    let result = run(make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot));
+    let result = run(make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot));
     println!("Empty 080 — approved: {}", result.approved);
     assert!(!result.approved);
 }
@@ -656,7 +656,7 @@ fn test_adv_mixed_signal_081() {
 
 #[test]
 fn test_adv_mixed_signal_082() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 082 — approved: {}, conf: {}", result.approved, result.confidence);
     assert!(!result.approved);
 }
@@ -670,7 +670,7 @@ fn test_adv_mixed_signal_083() {
 
 #[test]
 fn test_adv_mixed_signal_084() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 084 — approved: {}, conf: {}", result.approved, result.confidence);
     assert!(!result.approved);
 }
@@ -684,7 +684,7 @@ fn test_adv_mixed_signal_085() {
 
 #[test]
 fn test_adv_mixed_signal_086() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 086 — approved: {}, conf: {}", result.approved, result.confidence);
     assert!(!result.approved);
 }
@@ -698,7 +698,7 @@ fn test_adv_mixed_signal_087() {
 
 #[test]
 fn test_adv_mixed_signal_088() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 088 — approved: {}, conf: {}", result.approved, result.confidence);
     assert!(!result.approved);
 }
@@ -712,7 +712,7 @@ fn test_adv_mixed_signal_089() {
 
 #[test]
 fn test_adv_mixed_signal_090() {
-    let result = run(make_ev(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
+    let result = run(make_ev(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, BehaviorEvidence { has_signed_manifest: true, community_verified_count: 3, battle_tested_tx_count: 5000, simulation_match_count: 10 }));
     println!("Mixed signal 090 — approved: {}, conf: {}", result.approved, result.confidence);
     assert!(!result.approved);
 }

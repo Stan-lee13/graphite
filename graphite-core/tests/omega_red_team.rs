@@ -113,7 +113,7 @@ fn exploit_l4_token2022_setauthority_bypass() {
         cpi_targets: vec![],
         expected_state_changes: vec!["changes authority".into()],
         allowed_cpis: vec![],
-        instruction_discriminator: "0b".to_string(),
+        instruction_discriminator: "06".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,

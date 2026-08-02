@@ -107,7 +107,7 @@ fn test_evasion_set_authority_with_safe_intent_description() {
     let core = GraphiteCore::default();
     let mut input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
@@ -129,7 +129,7 @@ fn test_evasion_set_authority_on_token_2022_with_safe_intent() {
     let core = GraphiteCore::default();
     let input = make_input(
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
@@ -411,7 +411,7 @@ fn test_chaining_drainer_plus_authority_hijack_plus_cpi() {
         &["unknown_program"],                              // unexpected CPI
         &["debits accounts.from", "credits accounts.to"],
         &[],  // empty allowed_cpis — unknown_program not in any list
-        "0b", // SetAuthority = authority hijack
+        "06", // SetAuthority = authority hijack
     );
     let result = assess(&input).unwrap();
     // Multiple patterns triggered — the engine should block (first match wins or all reported)
@@ -450,7 +450,7 @@ fn test_chaining_cpi_allowed_but_authority_hijack_still_blocks() {
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], // allowed CPI
         &["changes authority"],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
-        "0b", // SetAuthority
+        "06", // SetAuthority
     );
     let result = assess(&input).unwrap();
     assert!(
@@ -652,7 +652,7 @@ fn test_confusion_almost_spl_token() {
     let core = GraphiteCore::default();
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DB", // Last char B instead of A
-        "0b",                                          // SetAuthority discriminator
+        "06",                                          // SetAuthority discriminator
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
@@ -708,7 +708,7 @@ fn test_authority_theft_spl_token_set_authority_blocked() {
         &[],
         &["changes authority"],
         &[],
-        "0b",
+        "06",
     );
     assert!(matches!(
         assess(&input).unwrap(),
@@ -727,7 +727,7 @@ fn test_authority_theft_token_2022_set_authority_blocked() {
         &[],
         &["changes authority"],
         &[],
-        "0b",
+        "06",
     );
     assert!(matches!(
         assess(&input).unwrap(),
@@ -896,7 +896,7 @@ fn test_manifest_trust_tier_does_not_affect_risk_engine() {
         &[],
         &["changes authority"],
         &[],
-        "0b",
+        "06",
     );
     let result = assess(&input).unwrap();
     // Risk engine blocks SetAuthority regardless of what trust_tier the manifest claims
@@ -1038,7 +1038,7 @@ fn test_full_pipeline_blocked_transaction_has_audit_trail() {
     let core = GraphiteCore::default();
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",

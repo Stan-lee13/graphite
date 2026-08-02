@@ -118,7 +118,7 @@ fn h1_max_evidence_cannot_override_risk_block() {
     let core = GraphiteCore::new();
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
@@ -284,7 +284,7 @@ fn h4_swap_intent_with_setauthority_disc() {
         },
         program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         protocol_version: "1.0.0".to_string(),
-        instruction_discriminator: "0b".to_string(),
+        instruction_discriminator: "06".to_string(),
         account_addresses: vec![
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
@@ -379,7 +379,7 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
         "instructions": [
             {
                 "name": "Safe Transfer",
-                "discriminator": "0b",
+                "discriminator": "06",
                 "accounts": ["source", "destination"],
                 "expected_state_changes": ["debits accounts.from", "credits accounts.to"],
                 "allowed_cpis": []
@@ -390,7 +390,7 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
 
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
@@ -575,7 +575,7 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
             "credits accounts.to".to_string(),
         ],
         allowed_cpis: vec![],
-        instruction_discriminator: "0b".to_string(),
+        instruction_discriminator: "06".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
@@ -960,7 +960,7 @@ fn h21_custom_profile_zero_threshold_still_checks_risk() {
         },
         program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         protocol_version: "1.0.0".to_string(),
-        instruction_discriminator: "0b".to_string(),
+        instruction_discriminator: "06".to_string(),
         account_addresses: vec![
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
@@ -989,7 +989,7 @@ fn h21_permissive_profile_still_blocks_risk() {
     let core = GraphiteCore::new();
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",

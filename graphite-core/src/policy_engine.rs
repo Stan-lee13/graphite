@@ -84,6 +84,14 @@ pub struct PolicyInput {
 /// follows a strict order: Risk Engine check FIRST, then confidence threshold,
 /// then trust tier minimum. This ordering is the structural G4 mitigation.
 pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError> {
+    // Validate Custom profile inputs to prevent NaN bypass
+    if let WalletProfile::Custom { min_confidence, min_trust_tier: _ } = &input.profile {
+        if min_confidence.is_nan() || min_confidence.is_infinite() || *min_confidence < 0.0 || *min_confidence > 1.0 {
+            return Err(PolicyError::InvalidConfiguration {
+                reason: "min_confidence must be a valid float in [0.0, 1.0]".to_string(),
+            });
+        }
+    }
     // STEP 1: Risk Engine check FIRST, unconditionally (G4 mitigation)
     // This cannot be overridden by any wallet profile
     if input.risk_verdict != RiskVerdict::Passed {

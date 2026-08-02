@@ -685,7 +685,7 @@ impl GraphiteCore {
                 pda_mismatches.len(),
                 pda_mismatches
                     .iter()
-                    .map(|a| format!("{} (role={})", &a.address[..8], a.role))
+                    .map(|a| format!("{} (role={})", if a.address.len() >= 8 { &a.address[..8] } else { &a.address }, a.role))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -848,6 +848,7 @@ impl GraphiteCore {
             manifest_found,
             trust_tier,
             &input.proposed_intent,
+            l5_result.passed,
         );
         let confidence_result = compute_confidence(&signals, trust_tier)
             .map_err(|e| VerificationError::Confidence(e.to_string()))?;
@@ -1145,6 +1146,7 @@ fn build_signals(
     manifest_found: bool,
     trust_tier: TrustTier,
     intent: &ProposedIntent,
+    l5_passed: bool,
 ) -> Vec<WeightedSignal> {
     // Manifest match: binary 1.0/0.0 — did we find a protocol manifest?
     let manifest_value = if manifest_found { 1.0 } else { 0.0 };
@@ -1179,8 +1181,10 @@ fn build_signals(
     // When no manifest exists, this contributes 0 (consistent with
     // Unknown Protocol Mode). This is NOT the same as L5 semantic
     // verification — it's a confidence INPUT, not a pass/fail gate.
-    let intent_alignment = if manifest_found && !intent.intent_type.is_empty() {
+    let intent_alignment = if manifest_found && !intent.intent_type.is_empty() && l5_passed {
         1.0
+    } else if manifest_found && !intent.intent_type.is_empty() && !l5_passed {
+        0.3
     } else {
         0.0
     };

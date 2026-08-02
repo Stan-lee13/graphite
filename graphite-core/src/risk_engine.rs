@@ -68,13 +68,13 @@ struct KnownRiskPattern {
 const RISKY_PATTERNS: &[KnownRiskPattern] = &[
     KnownRiskPattern {
         program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        discriminator: "0b",
+        discriminator: "06",
         pattern: RiskPattern::AuthorityHijack,
         description: "SPL Token SetAuthority — changes who controls the account",
     },
     KnownRiskPattern {
         program_id: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-        discriminator: "0b",
+        discriminator: "06",
         pattern: RiskPattern::AuthorityHijack,
         description: "Token-2022 SetAuthority — changes who controls the account",
     },

@@ -180,7 +180,7 @@ pub fn update_baseline(
     let new_var_cu = (baseline.std_compute_units * baseline.std_compute_units * n
         + delta_cu * (new_compute_units as f64 - new_mean_cu)) / new_n;
     baseline.mean_compute_units = new_mean_cu;
-    baseline.std_compute_units = new_var_cu.sqrt();
+    baseline.std_compute_units = new_var_cu.max(0.0).sqrt();
 
     // Signal 2: Account writes (Welford's algorithm)
     let delta_aw = new_account_writes as f64 - baseline.mean_account_writes;
@@ -188,7 +188,7 @@ pub fn update_baseline(
     let new_var_aw = (baseline.std_account_writes * baseline.std_account_writes * n
         + delta_aw * (new_account_writes as f64 - new_mean_aw)) / new_n;
     baseline.mean_account_writes = new_mean_aw;
-    baseline.std_account_writes = new_var_aw.sqrt();
+    baseline.std_account_writes = new_var_aw.max(0.0).sqrt();
 
     // Signal 3: CPI hops (Welford's algorithm)
     let delta_ch = new_cpi_hops as f64 - baseline.mean_cpi_hops;
@@ -196,7 +196,7 @@ pub fn update_baseline(
     let new_var_ch = (baseline.std_cpi_hops * baseline.std_cpi_hops * n
         + delta_ch * (new_cpi_hops as f64 - new_mean_ch)) / new_n;
     baseline.mean_cpi_hops = new_mean_ch;
-    baseline.std_cpi_hops = new_var_ch.sqrt();
+    baseline.std_cpi_hops = new_var_ch.max(0.0).sqrt();
 
     baseline.sample_count += 1;
 }

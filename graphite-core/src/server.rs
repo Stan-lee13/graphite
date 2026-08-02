@@ -120,6 +120,7 @@ async fn verify_handler(
                     crate::account_resolution::AccountResolutionError::InstructionNotFound(_, _)
                 )
                 | crate::verification::VerificationError::TransactionBuild(_)
+               
             );
             let status = if is_client_error {
                 StatusCode::BAD_REQUEST

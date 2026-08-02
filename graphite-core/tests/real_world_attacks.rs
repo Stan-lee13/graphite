@@ -196,7 +196,7 @@ fn test_real_stmt_010() {
 
 #[test]
 fn test_real_aat_011() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 011 (SPL_TOKEN) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", SPL_TOKEN);
@@ -204,7 +204,7 @@ fn test_real_aat_011() {
 
 #[test]
 fn test_real_aat_012() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 012 (TOKEN_2022) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", TOKEN_2022);
@@ -212,7 +212,7 @@ fn test_real_aat_012() {
 
 #[test]
 fn test_real_aat_013() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 013 (SPL_TOKEN) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", SPL_TOKEN);
@@ -220,7 +220,7 @@ fn test_real_aat_013() {
 
 #[test]
 fn test_real_aat_014() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 014 (TOKEN_2022) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", TOKEN_2022);
@@ -228,7 +228,7 @@ fn test_real_aat_014() {
 
 #[test]
 fn test_real_aat_015() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 015 (SPL_TOKEN) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", SPL_TOKEN);
@@ -236,7 +236,7 @@ fn test_real_aat_015() {
 
 #[test]
 fn test_real_aat_016() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 016 (TOKEN_2022) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", TOKEN_2022);
@@ -244,7 +244,7 @@ fn test_real_aat_016() {
 
 #[test]
 fn test_real_aat_017() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 017 (SPL_TOKEN) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", SPL_TOKEN);
@@ -252,7 +252,7 @@ fn test_real_aat_017() {
 
 #[test]
 fn test_real_aat_018() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 018 (TOKEN_2022) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", TOKEN_2022);
@@ -260,7 +260,7 @@ fn test_real_aat_018() {
 
 #[test]
 fn test_real_aat_019() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 019 (SPL_TOKEN) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", SPL_TOKEN);
@@ -268,7 +268,7 @@ fn test_real_aat_019() {
 
 #[test]
 fn test_real_aat_020() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("AAT 020 (TOKEN_2022) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority MUST be blocked on {}", TOKEN_2022);
@@ -516,7 +516,7 @@ fn test_real_fake_swap_050() {
 
 #[test]
 fn test_real_auth_theft_051() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 051 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -524,7 +524,7 @@ fn test_real_auth_theft_051() {
 
 #[test]
 fn test_real_auth_theft_052() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 052 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -532,7 +532,7 @@ fn test_real_auth_theft_052() {
 
 #[test]
 fn test_real_auth_theft_053() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 053 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -540,7 +540,7 @@ fn test_real_auth_theft_053() {
 
 #[test]
 fn test_real_auth_theft_054() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 054 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -548,7 +548,7 @@ fn test_real_auth_theft_054() {
 
 #[test]
 fn test_real_auth_theft_055() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 055 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -556,7 +556,7 @@ fn test_real_auth_theft_055() {
 
 #[test]
 fn test_real_auth_theft_056() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 056 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -564,7 +564,7 @@ fn test_real_auth_theft_056() {
 
 #[test]
 fn test_real_auth_theft_057() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 057 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -572,7 +572,7 @@ fn test_real_auth_theft_057() {
 
 #[test]
 fn test_real_auth_theft_058() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 058 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -580,7 +580,7 @@ fn test_real_auth_theft_058() {
 
 #[test]
 fn test_real_auth_theft_059() {
-    let input = make(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 059 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -588,7 +588,7 @@ fn test_real_auth_theft_059() {
 
 #[test]
 fn test_real_auth_theft_060() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3, A4], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Auth theft 060 — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "Authority theft must be blocked");
@@ -676,7 +676,7 @@ fn test_real_unknown_program_070() {
 
 #[test]
 fn test_real_evasion_071() {
-    let input = make_evidence(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 071 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -684,7 +684,7 @@ fn test_real_evasion_071() {
 
 #[test]
 fn test_real_evasion_072() {
-    let input = make_evidence(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 072 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -692,7 +692,7 @@ fn test_real_evasion_072() {
 
 #[test]
 fn test_real_evasion_073() {
-    let input = make_evidence(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 073 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -700,7 +700,7 @@ fn test_real_evasion_073() {
 
 #[test]
 fn test_real_evasion_074() {
-    let input = make_evidence(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 074 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -708,7 +708,7 @@ fn test_real_evasion_074() {
 
 #[test]
 fn test_real_evasion_075() {
-    let input = make_evidence(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 075 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -716,7 +716,7 @@ fn test_real_evasion_075() {
 
 #[test]
 fn test_real_evasion_076() {
-    let input = make_evidence(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 076 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -724,7 +724,7 @@ fn test_real_evasion_076() {
 
 #[test]
 fn test_real_evasion_077() {
-    let input = make_evidence(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 077 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -732,7 +732,7 @@ fn test_real_evasion_077() {
 
 #[test]
 fn test_real_evasion_078() {
-    let input = make_evidence(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 078 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -740,7 +740,7 @@ fn test_real_evasion_078() {
 
 #[test]
 fn test_real_evasion_079() {
-    let input = make_evidence(TOKEN_2022, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(TOKEN_2022, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 079 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -748,7 +748,7 @@ fn test_real_evasion_079() {
 
 #[test]
 fn test_real_evasion_080() {
-    let input = make_evidence(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
+    let input = make_evidence(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot, high_ev());
     let result = run(input);
     println!("Evasion 080 (high evidence) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority with high evidence must still be blocked");
@@ -756,7 +756,7 @@ fn test_real_evasion_080() {
 
 #[test]
 fn test_real_policy_bypass_081() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Treasury);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Treasury);
     let result = run(input);
     println!("Policy bypass 081 (Treasury) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -764,7 +764,7 @@ fn test_real_policy_bypass_081() {
 
 #[test]
 fn test_real_policy_bypass_082() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Policy bypass 082 (TradingBot) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -772,7 +772,7 @@ fn test_real_policy_bypass_082() {
 
 #[test]
 fn test_real_policy_bypass_083() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming);
     let result = run(input);
     println!("Policy bypass 083 (Gaming) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -780,7 +780,7 @@ fn test_real_policy_bypass_083() {
 
 #[test]
 fn test_real_policy_bypass_084() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Enterprise);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Enterprise);
     let result = run(input);
     println!("Policy bypass 084 (Enterprise) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -788,7 +788,7 @@ fn test_real_policy_bypass_084() {
 
 #[test]
 fn test_real_policy_bypass_085() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Policy bypass 085 (TradingBot) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -796,7 +796,7 @@ fn test_real_policy_bypass_085() {
 
 #[test]
 fn test_real_policy_bypass_086() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming);
     let result = run(input);
     println!("Policy bypass 086 (Gaming) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -804,7 +804,7 @@ fn test_real_policy_bypass_086() {
 
 #[test]
 fn test_real_policy_bypass_087() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Treasury);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Treasury);
     let result = run(input);
     println!("Policy bypass 087 (Treasury) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -812,7 +812,7 @@ fn test_real_policy_bypass_087() {
 
 #[test]
 fn test_real_policy_bypass_088() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Enterprise);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Enterprise);
     let result = run(input);
     println!("Policy bypass 088 (Enterprise) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -820,7 +820,7 @@ fn test_real_policy_bypass_088() {
 
 #[test]
 fn test_real_policy_bypass_089() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Policy bypass 089 (TradingBot) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -828,7 +828,7 @@ fn test_real_policy_bypass_089() {
 
 #[test]
 fn test_real_policy_bypass_090() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::Gaming);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::Gaming);
     let result = run(input);
     println!("Policy bypass 090 (Gaming) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked regardless of profile");
@@ -836,7 +836,7 @@ fn test_real_policy_bypass_090() {
 
 #[test]
 fn test_real_edge_091() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Edge 091 (SetAuthority) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked");
@@ -860,7 +860,7 @@ fn test_real_edge_093() {
 
 #[test]
 fn test_real_edge_094() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Edge 094 (SetAuthority) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked");
@@ -884,7 +884,7 @@ fn test_real_edge_096() {
 
 #[test]
 fn test_real_edge_097() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Edge 097 (SetAuthority) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked");
@@ -908,7 +908,7 @@ fn test_real_edge_099() {
 
 #[test]
 fn test_real_edge_100() {
-    let input = make(SPL_TOKEN, "0b", &[A1, A2, A3], &[], WalletProfile::TradingBot);
+    let input = make(SPL_TOKEN, "06", &[A1, A2, A3], &[], WalletProfile::TradingBot);
     let result = run(input);
     println!("Edge 100 (SetAuthority) — approved: {}, risk: {}", result.approved, result.risk_verdict.status);
     assert!(!result.approved, "SetAuthority must be blocked");

@@ -1,105 +1,30 @@
 {
-  "graphite_manifest_version": "1.0",
+  "graphite_manifest_version": "1.0.0",
   "protocol": {
     "name": "Raydium AMM V4",
-    "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-    "website": "https://docs.raydium.io/products/amm-v4",
+    "program_id": "675kPX9MHTjS2zt1q7PYMcjCKa5KqQ1vJXrDhJq5qoM9",
+    "website": "https://raydium.io",
     "github": "https://github.com/raydium-io/raydium-amm"
   },
   "version": {
-    "label": "1.0.0",
+    "label": "4.0.0",
     "effective_from_slot": 0,
     "previous_version_ref": null
   },
+  "trust_tier": "OfficialManifest",
   "instructions": [
-    {
-      "name": "SwapBaseIn",
-      "discriminator": "09",
-      "accounts": [
-        {
-          "name": "amm",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "open_orders",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "target_orders",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "base_vault",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "quote_vault",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_source_token_account",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_destination_token_account",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_source_owner",
-          "role": "signer",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "debits accounts.user_source_token_account by input amount",
-        "credits accounts.user_destination_token_account by output amount (minus fees)",
-        "updates AMM pool reserves"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "user_source_owner must be signer",
-        "RISK: output amount must match expected swap result within slippage tolerance",
-        "RISK: verify amm pool is legitimate and not a honeypot"
-      ],
-      "variable_accounts": true
-    },
     {
       "name": "Deposit",
       "discriminator": "03",
       "accounts": [
         {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
           "name": "amm",
           "role": "writable",
           "is_writable": true,
@@ -107,14 +32,21 @@
           "pda_seeds": []
         },
         {
-          "name": "authority",
+          "name": "amm_authority",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "open_orders",
+          "name": "amm_open_orders",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_target_orders",
           "role": "writable",
           "is_writable": true,
           "is_signer": false,
@@ -128,35 +60,42 @@
           "pda_seeds": []
         },
         {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
           "name": "user_lp_token_account",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "base_vault",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "quote_vault",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_base_token_account",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_quote_token_account",
           "role": "writable",
           "is_writable": true,
           "is_signer": false,
@@ -171,300 +110,818 @@
         }
       ],
       "expected_state_changes": [
-        "debits user_base and quote token accounts",
-        "credits user_lp_token_account with LP tokens",
-        "updates AMM pool reserves"
+        "lp_mint",
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_lp_token_account"
       ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "user_owner must be signer",
-        "RISK: verify LP mint matches the amm pool"
-      ]
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
     },
     {
-      "name": "initialize",
-      "discriminator": "01",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Raydium AMM V4 instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "deposit",
-      "discriminator": "02",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Raydium AMM V4 instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "withdraw",
-      "discriminator": "03",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Raydium AMM V4 instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "swap_base_in",
+      "name": "Withdraw",
       "discriminator": "04",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
+          "name": "token_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
+        },
+        {
+          "name": "amm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_open_orders",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_target_orders",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lp_mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_lp_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
         }
       ],
       "expected_state_changes": [
-        "Raydium AMM V4 instruction"
+        "lp_mint",
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_coin_token_account",
+        "user_pc_token_account"
       ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
+      "allowed_cpis": [],
       "risk_rules": [],
-      "variable_accounts": true
+      "variable_accounts": false
     },
     {
-      "name": "pre_initialize",
-      "discriminator": "05",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Raydium AMM V4 instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "swap_base_out",
-      "discriminator": "06",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Raydium AMM V4 instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": [],
-      "variable_accounts": true
-    },
-    {
-      "name": "set_params",
-      "discriminator": "07",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Raydium AMM V4 instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "withdraw_penalty",
-      "discriminator": "08",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Raydium AMM V4 instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "set_reward",
+      "name": "SwapBaseIn",
       "discriminator": "09",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
+          "name": "token_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
+        },
+        {
+          "name": "amm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_open_orders",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_target_orders",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_bids",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_asks",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_event_queue",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_coin_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_pc_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_vault_signer",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_dest_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
         }
       ],
       "expected_state_changes": [
-        "Raydium AMM V4 instruction"
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account"
       ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
     },
     {
-      "name": "collect_fees",
-      "discriminator": "0a",
+      "name": "SwapBaseOut",
+      "discriminator": "0b",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm",
+          "role": "writable",
           "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_open_orders",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_target_orders",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_bids",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_asks",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_event_queue",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_coin_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_pc_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_vault_signer",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_dest_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
+    },
+    {
+      "name": "SwapBaseInV2",
+      "discriminator": "10",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_dest_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
+    },
+    {
+      "name": "SwapBaseOutV2",
+      "discriminator": "11",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_source_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_dest_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "user_source_token_account",
+        "user_dest_token_account"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
+    },
+    {
+      "name": "SetParams",
+      "discriminator": "06",
+      "accounts": [
+        {
+          "name": "amm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "admin",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "amm"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
+    },
+    {
+      "name": "WithdrawPnl",
+      "discriminator": "07",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pnl_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pnl_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pnl_owner",
+          "role": "signer",
+          "is_writable": false,
           "is_signer": true,
           "pda_seeds": []
         },
         {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
+          "name": "amm_target_orders",
+          "role": "writable",
+          "is_writable": true,
           "is_signer": false,
           "pda_seeds": []
         }
       ],
       "expected_state_changes": [
-        "Raydium AMM V4 instruction"
+        "pool_coin_token_account",
+        "pool_pc_token_account",
+        "pnl_coin_token_account",
+        "pnl_pc_token_account"
       ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
+    },
+    {
+      "name": "Initialize2",
+      "discriminator": "15",
+      "accounts": [
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "amm_open_orders",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lp_mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "coin_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pc_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_coin_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_pc_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_withdraw_queue",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_target_orders_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_lp_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pool_temp_lp_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "market",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_wallet",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_coin",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_pc",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
-      "risk_rules": []
+      "expected_state_changes": [
+        "amm",
+        "lp_mint",
+        "pool_coin_token_account",
+        "pool_pc_token_account"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": false
     }
-  ],
-  "trust_tier": "BattleTested"
+  ]
 }

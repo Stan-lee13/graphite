@@ -323,7 +323,7 @@ fn test_set_authority_discriminator_blocked_on_spl_token() {
         &[],
         &["changes authority"],
         &[],
-        "0b",
+        "06",
     );
     assert!(matches!(
         assess(&input).unwrap(),
@@ -478,7 +478,7 @@ fn test_verify_set_authority_blocked() {
     let core = GraphiteCore::default();
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
@@ -676,7 +676,7 @@ fn test_verify_token_2022_set_authority_blocked() {
     let core = GraphiteCore::default();
     let input = make_input(
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-        "0b",
+        "06",
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
