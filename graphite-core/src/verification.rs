@@ -797,45 +797,39 @@ impl GraphiteCore {
 
         // Step 4: Confidence Computation
         let trust_tier = if manifest_found {
-            // Use the manifest's declared trust tier as the base.
-            // The manifest's trust_tier field is the protocol team's
-            // self-assessment of their own protocol's reliability —
-            // validated against the manifest's instruction surface.
-            //
-            // If the semantic graph has accumulated a HIGHER tier
-            // through independent evidence (community verification,
-            // battle-tested volume), use that — evidence can promote
-            // but never demote below the manifest's declared tier
-            // (Constitution P7: trust is earned through evidence,
-            // but the manifest IS evidence — Tier 2+).
-            //
-            // If the caller provides behavior_evidence that computes
-            // to a HIGHER tier than the manifest declares, use the
-            // higher — accumulated evidence overrides the manifest's
-            // self-assessment (P7: tier is a computed output, never
-            // directly set by the protocol team alone).
+            // Manifest found — the manifest's trust_tier field is the protocol
+            // team's self-assessment. Per Constitution P7, we cap this at
+            // OfficialManifest (Tier 2) — tiers 3+ (SimulationValidated,
+            // CommunityVerified, BattleTested) must be EARNED through
+            // accumulated evidence in the Semantic Graph, not self-asserted.
             let manifest_tier = manifest
                 .map(|m| TrustTier::from_manifest_str(&m.trust_tier))
-                .unwrap_or(TrustTier::HeuristicInferred);
+                .unwrap_or(TrustTier::HeuristicInferred)
+                .min(TrustTier::OfficialManifest); // P7: cap self-asserted tiers
             let evidence_tier = compute_trust_tier_from_evidence(&input.behavior_evidence);
 
             match self.semantic_graph.get(&input.program_id) {
                 Some(b) => {
                     // Graph has accumulated behavior — use the highest
-                    // of manifest tier, evidence tier, and graph tier.
+                    // of manifest tier (capped), evidence tier, and graph tier.
                     b.trust_tier.max(manifest_tier).max(evidence_tier)
                 }
                 None => {
                     // No graph behavior — use the higher of manifest
-                    // declared tier and caller-provided evidence tier.
+                    // declared tier (capped) and caller-provided evidence tier.
                     manifest_tier.max(evidence_tier)
                 }
             }
         } else {
-            // No manifest found — completely unknown protocol.
-            // Hard cap at 0.55 regardless of any evidence provided
-            // (Constitution P6/P12: unknown is capped, period).
-            TrustTier::Unknown
+            // No manifest found — query the Semantic Graph in case we have
+            // accumulated evidence from prior verifications (P7).
+            let graph_tier = self.semantic_graph.get(&input.program_id)
+                .map(|b| b.trust_tier)
+                .unwrap_or(TrustTier::Unknown);
+            let evidence_tier = compute_trust_tier_from_evidence(&input.behavior_evidence);
+            // Without a manifest, cap at HeuristicInferred even with evidence
+            // (P6: unknown protocol ceiling still applies via confidence cap)
+            graph_tier.max(evidence_tier).min(TrustTier::HeuristicInferred)
         };
 
         let signals = build_signals(

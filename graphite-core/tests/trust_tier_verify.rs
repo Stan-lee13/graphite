@@ -7,8 +7,8 @@ fn verify_manifest_trust_tier_used() {
     let core = GraphiteCore::new();
 
     // SPL Token has a manifest with trust_tier="BattleTested"
-    // Before the fix, this would get HeuristicInferred (0.55 cap)
-    // After the fix, it should get BattleTested (1.0 cap)
+    // P7 fix: manifest self-asserted tiers are capped at OfficialManifest (Tier 2)
+    // BattleTested must be earned through evidence in the Semantic Graph
     let input = VerificationInput {
         proposed_intent: ProposedIntent {
             intent_type: "transfer".to_string(),
@@ -42,10 +42,10 @@ fn verify_manifest_trust_tier_used() {
     println!("Manifest found: {}", result.manifest_found);
     println!("Unknown protocol: {}", result.unknown_protocol);
 
-    assert_eq!(result.trust_tier, "BattleTested", 
-        "SPL Token manifest declares BattleTested — trust tier must reflect this");
-    assert!(result.confidence > 0.4,
-        "With BattleTested tier + manifest found + intent alignment, confidence should be > 0.4, got {}",
+    assert_eq!(result.trust_tier, "OfficialManifest", 
+        "P7 fix: manifest self-asserted BattleTested must be capped to OfficialManifest");
+    assert!(result.confidence > 0.3,
+        "With OfficialManifest tier + manifest found + intent alignment, confidence should be > 0.3, got {}",
         result.confidence);
     assert!(!result.unknown_protocol,
         "SPL Token has a manifest — should not be marked as unknown protocol");

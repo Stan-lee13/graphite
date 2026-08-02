@@ -128,14 +128,16 @@ const TRUSTED_CPI_ROOTS: &[&str] = &[
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads (multisig, CPIs to System)
 ];
 
-/// Known DEX/aggregator programs that naturally have high account counts.
+/// Trusted programs that naturally have high/variable account counts.
 /// The drainer heuristic is skipped for these — high account-to-change ratio
-/// is normal behavior when routing through multiple pools.
+/// is normal behavior for DEX routing (many pool accounts) and multisig
+/// execution (many signer/proposal accounts).
 const DEX_PROGRAMS: &[&str] = &[
     "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
     "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
+    "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads V4 (multisig)
 ];
 
 /// Assess a transaction for adversarial risk patterns.

@@ -120,8 +120,16 @@ pub fn compute_trust_tier(evidence: &BehaviorEvidence) -> TrustTier {
         return TrustTier::OfficialManifest;
     }
 
-    // Tier 1: Heuristic-inferred (default for any program with some evidence)
-    // Tier 0: Unknown (no evidence at all - not represented in this enum)
+    // Tier 0: Unknown — no evidence at all (P7: trust must be earned)
+    if evidence.battle_tested_tx_count == 0
+        && evidence.community_verified_count == 0
+        && evidence.simulation_match_count == 0
+        && !evidence.has_signed_manifest
+    {
+        return TrustTier::Unknown;
+    }
+
+    // Tier 1: Heuristic-inferred (some signal present but insufficient for higher tiers)
     TrustTier::HeuristicInferred
 }
 

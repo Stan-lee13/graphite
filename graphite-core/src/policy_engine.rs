@@ -103,8 +103,11 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
     };
 
     // STEP 3: Check confidence threshold
+    // Use epsilon comparison to avoid floating-point precision issues
+    // (e.g., 0.7999999999999999 should pass a 0.80 threshold)
+    const EPSILON: f64 = 1e-9;
     let actual_confidence = input.confidence_result.confidence;
-    if actual_confidence < min_confidence {
+    if actual_confidence < min_confidence - EPSILON {
         return Ok(PolicyVerdict::RejectedBelowThreshold {
             required: min_confidence,
             actual: actual_confidence,
