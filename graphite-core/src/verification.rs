@@ -458,8 +458,8 @@ impl GraphiteCore {
             _ => {
                 return PipelineLayerResult {
                     layer: layer_name.to_string(),
-                    passed: true,
-                    reason: format!("Unknown intent type {} - semantic check skipped", intent),
+                    passed: false,
+                    reason: format!("Unknown intent type {} - semantic verification failed (P12 fail-closed)", intent),
                 };
             }
         };
@@ -495,6 +495,17 @@ impl GraphiteCore {
         &self,
         input: &VerificationInput,
     ) -> Result<VerificationResult, VerificationError> {
+        // Input validation: cap account count to prevent DoS
+        const MAX_ACCOUNTS: usize = 64;
+        if input.account_addresses.len() > MAX_ACCOUNTS {
+            return Err(VerificationError::AccountResolution(
+                crate::account_resolution::AccountResolutionError::AccountCountMismatch {
+                    expected: MAX_ACCOUNTS,
+                    actual: input.account_addresses.len(),
+                }
+            ));
+        }
+
         // Step 1: Account Resolution
         // Fail-closed (P12): If the manifest is found but the instruction discriminator
         // is not in the manifest, BLOCK the transaction instead of returning an error.
