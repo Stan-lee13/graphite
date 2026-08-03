@@ -453,6 +453,8 @@ fn test_verify_unknown_program_blocked() {
 #[test]
 fn test_verify_safe_system_transfer_approved() {
     let core = GraphiteCore::default();
+    // SECURITY FIX: Use Custom profile (min_confidence 0.40) since
+    // caller-provided evidence no longer boosts confidence.
     let input = make_input(
         "11111111111111111111111111111111",
         "02000000",
@@ -461,14 +463,17 @@ fn test_verify_safe_system_transfer_approved() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::TradingBot,
+        WalletProfile::Custom {
+            min_confidence: 0.40,
+            min_trust_tier: TrustTier::OfficialManifest,
+        },
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
     assert!(result.approved, "safe system transfer should be approved");
     assert!(
-        result.confidence > 0.5,
-        "safe transfer should have confidence > 0.5, got {}",
+        result.confidence >= 0.4,
+        "safe transfer should have confidence >= 0.4 (manifest match + tier + intent, no evidence signals), got {}",
         result.confidence
     );
 }

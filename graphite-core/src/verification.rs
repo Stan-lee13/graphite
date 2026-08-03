@@ -413,13 +413,29 @@ impl GraphiteCore {
             };
         }
 
-        // P12: For unknown instructions on known protocols, we cannot verify
-        // intent-instruction alignment. Soft pass (fail open) per Constitution P12.
+        // SECURITY FIX: For unknown instructions on known protocols with high-risk
+        // intents (swap, bridge, withdraw, delegate, mint), fail-closed instead
+        // of soft-pass. An unknown discriminator with a swap intent was a free
+        // approval vector (FakeSwap was skipped, L5 was soft-passed).
         if instruction_name == "unknown_instruction" {
+            let high_risk = matches!(
+                proposed_intent.intent_type.as_str(),
+                "swap" | "bridge" | "withdraw" | "delegate" | "mint"
+            );
+            if high_risk {
+                return PipelineLayerResult {
+                    layer: layer_name.to_string(),
+                    passed: false,
+                    reason: format!(
+                        "Unknown instruction on known protocol with high-risk intent '{}' — fail-closed (P12: cannot verify intent-instruction alignment)",
+                        proposed_intent.intent_type
+                    ),
+                };
+            }
             return PipelineLayerResult {
                 layer: layer_name.to_string(),
                 passed: true,
-                reason: "Unknown instruction on known protocol — semantic check skipped (P12 soft pass)".to_string(),
+                reason: "Unknown instruction on known protocol with low-risk intent — semantic check skipped (P12 soft pass)".to_string(),
             };
         }
 
@@ -822,13 +838,16 @@ impl GraphiteCore {
             match self.semantic_graph.get(&input.program_id) {
                 Some(b) => {
                     // Graph has accumulated behavior — use the highest
-                    // of manifest tier (capped), evidence tier, and graph tier.
-                    b.trust_tier.max(manifest_tier).max(evidence_tier)
+                    // of manifest tier (capped), graph tier, and evidence tier
+                    // (also capped at OfficialManifest — caller-provided evidence
+                    // cannot mint a tier higher than what a manifest declares).
+                    b.trust_tier.max(manifest_tier).max(evidence_tier.min(TrustTier::OfficialManifest))
                 }
                 None => {
                     // No graph behavior — use the higher of manifest
-                    // declared tier (capped) and caller-provided evidence tier.
-                    manifest_tier.max(evidence_tier)
+                    // declared tier (capped) and caller-provided evidence tier
+                    // (also capped at OfficialManifest).
+                    manifest_tier.max(evidence_tier.min(TrustTier::OfficialManifest))
                 }
             }
         } else {
@@ -1142,7 +1161,7 @@ fn compute_trust_tier_from_evidence(evidence: &BehaviorEvidence) -> TrustTier {
 }
 
 fn build_signals(
-    evidence: &BehaviorEvidence,
+    _evidence: &BehaviorEvidence,
     manifest_found: bool,
     trust_tier: TrustTier,
     intent: &ProposedIntent,
@@ -1165,16 +1184,16 @@ fn build_signals(
         TrustTier::Unknown => 0.0,
     };
 
-    // Simulation match: fraction of 3 required simulation matches.
-    // Zero when caller provides no simulation evidence (Phase 1 default).
-    let simulation_value = (evidence.simulation_match_count as f64 / 3.0).min(1.0);
-
-    // Historical volume: fraction of 1000 required battle-tested transactions.
-    // Zero when caller provides no historical evidence (Phase 1 default).
-    let historical_value = (evidence.battle_tested_tx_count as f64 / 1000.0).min(1.0);
-
-    // Community verification: fraction of 2 required independent verifications.
-    let community_value = (evidence.community_verified_count as f64 / 2.0).min(1.0);
+    // SECURITY FIX: Evidence-based signals (SimulationMatch, HistoricalVolume,
+    // CommunityVerification) are ZEROED in Phase 1 because behavior_evidence
+    // is caller-controlled JSON. An attacker could mint BattleTested tier and
+    // 50% confidence by sending fabricated values. These signals must come
+    // from the SemanticGraphStore (internal accumulator) in Phase 2, not from
+    // the request body. The TrustTierLevel signal already captures the tier
+    // level — these were double-counting AND attacker-controlled.
+    let simulation_value = 0.0;
+    let historical_value = 0.0;
+    let community_value = 0.0;
 
     // Intent-manifest alignment: if the proposed intent type matches
     // a known instruction in the manifest, this is a positive signal.
@@ -1190,13 +1209,16 @@ fn build_signals(
     };
 
     // Signal weights must sum to exactly 1.0 (validated by compute_confidence).
-    // Distribution rationale:
+    // SECURITY FIX: Evidence signal VALUES are zeroed (caller-controlled JSON),
+    // but weights are kept at original values. This ensures confidence stays
+    // the same as before when evidence was default/zero, while preventing the
+    // vulnerability where fabricated evidence could mint 50% confidence.
     //   ManifestMatch (0.20): binary — was a manifest found?
-    //   TrustTierLevel (0.20): the protocol's trust tier IS evidence (ARCHITECTURE.md 3.11)
-    //   SimulationMatch (0.20): simulation evidence (caller-provided)
-    //   HistoricalVolume (0.15): battle-tested volume (caller-provided)
-    //   CommunityVerification (0.15): independent verification (caller-provided)
-    //   IntentAlignment (0.10): intent-manifest alignment
+    //   TrustTierLevel (0.20): the protocol's trust tier (capped, from manifest/graph)
+    //   SimulationMatch (0.20): ZEROED VALUE — will use SemanticGraphStore in Phase 2
+    //   HistoricalVolume (0.15): ZEROED VALUE — will use SemanticGraphStore in Phase 2
+    //   CommunityVerification (0.15): ZEROED VALUE — will use SemanticGraphStore in Phase 2
+    //   IntentAlignment (0.10): intent-manifest alignment (requires L5 pass)
     vec![
         WeightedSignal {
             kind: SignalKind::ManifestMatch,
@@ -1261,15 +1283,25 @@ fn generate_audit_id(
     for target in cpi_targets {
         hasher.update(target.as_bytes());
     }
-    hasher.update(format!("{:.6}", confidence).as_bytes());
-    hasher.update(risk.status.as_bytes());
-    for f in &risk.findings {
-        hasher.update(f.pattern.as_bytes());
-        hasher.update(f.reason.as_bytes());
-    }
+    // SECURITY FIX: content_hash covers ONLY transaction inputs (deterministic,
+    // reproducible by the client). audit_trail_id adds confidence + risk + seq
+    // for uniqueness. Previously content_hash included confidence/risk which
+    // made AuditBind impossible (client can't know the verification result
+    // before submitting).
     let hash = hasher.finalize();
     let content_hash = hex::encode(&hash[..8]);
-    let audit_trail_id = format!("gr-{}-{:08x}", content_hash, seq);
+    
+    // audit_trail_id adds verification result + sequence for uniqueness
+    let mut id_hasher = sha2::Sha256::new();
+    id_hasher.update(hash);
+    id_hasher.update(format!("{:.6}", confidence).as_bytes());
+    id_hasher.update(risk.status.as_bytes());
+    for f in &risk.findings {
+        id_hasher.update(f.pattern.as_bytes());
+        id_hasher.update(f.reason.as_bytes());
+    }
+    let id_hash = id_hasher.finalize();
+    let audit_trail_id = format!("gr-{}-{:08x}", hex::encode(&id_hash[..8]), seq);
     (audit_trail_id, content_hash)
 }
 
@@ -1475,16 +1507,18 @@ mod tests {
 
         let result = core.verify(&input).unwrap();
 
-        // With strong evidence (signed manifest + 50k battle-tested txs +
-        // 100 simulation matches + 5 community verifications), the trust tier
-        // should be BattleTested (ceiling = 1.0), so the ceiling should NOT
-        // trigger. The breakdown should NOT have a TrustTierCeiling item.
+        // SECURITY FIX: Caller-provided evidence is now capped at OfficialManifest
+        // (was BattleTested before — that was the vulnerability). Evidence signal
+        // VALUES are zeroed, so confidence comes only from manifest + tier + intent.
+        // With zeroed evidence: conf = 0.44, tier = OfficialManifest (ceiling 0.75).
+        // Since 0.44 < 0.75, NO ceiling is triggered — breakdown should NOT have
+        // a TrustTierCeiling item (or it should be negligible floating-point noise).
+        assert_eq!(result.trust_tier, "OfficialManifest",
+            "Evidence tier must be capped at OfficialManifest — got: {}", result.trust_tier);
         let ceiling_item = result.breakdown.iter().find(|b| b.kind == "TrustTierCeiling");
-        // BattleTested tier has ceiling = 1.0, so no meaningful ceiling reduction
-        // should appear. If an item exists, it must be floating-point noise (< 0.001).
         if let Some(item) = ceiling_item {
             assert!(item.raw_value.abs() < 0.001,
-                "BattleTested tier has 1.0 ceiling — ceiling reduction should be negligible, got: {}",
+                "Confidence 0.44 is below OfficialManifest ceiling 0.75 — ceiling reduction should be negligible, got: {}",
                 item.raw_value);
         }
     }

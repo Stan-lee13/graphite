@@ -317,7 +317,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
                 ],
                 &[],
-                WalletProfile::TradingBot,
+                WalletProfile::Custom {
+                    min_confidence: 0.40,
+                    min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                },
                 good_evidence(),
             ),
         },
@@ -334,7 +337,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
                 ],
                 &[],
-                WalletProfile::TradingBot,
+                WalletProfile::Custom {
+                    min_confidence: 0.40,
+                    min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                },
                 good_evidence(),
             ),
         },
@@ -351,7 +357,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
                 ],
                 &[],
-                WalletProfile::TradingBot,
+                WalletProfile::Custom {
+                    min_confidence: 0.40,
+                    min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                },
                 good_evidence(),
             ),
         },
@@ -369,7 +378,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
                 ],
                 &["unverified_malicious_program"],
-                WalletProfile::TradingBot,
+                WalletProfile::Custom {
+                    min_confidence: 0.40,
+                    min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                },
                 good_evidence(),
             ),
         },
@@ -385,7 +397,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
                 ],
                 &["prog_a", "prog_a", "prog_b", "prog_a", "prog_c"],
-                WalletProfile::TradingBot,
+                WalletProfile::Custom {
+                    min_confidence: 0.40,
+                    min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                },
                 good_evidence(),
             ),
         },
@@ -464,7 +479,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
                     ],
                     &[],
-                    WalletProfile::TradingBot,
+                    WalletProfile::Custom {
+                        min_confidence: 0.40,
+                        min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                    },
                     good_evidence(),
                 );
                 inp.proposed_intent.intent_type = "swap".to_string();
@@ -486,7 +504,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
                     ],
                     &[],
-                    WalletProfile::TradingBot,
+                    WalletProfile::Custom {
+                        min_confidence: 0.40,
+                        min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                    },
                     good_evidence(),
                 );
                 inp.compute_units = 50000;
@@ -515,7 +536,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
                     ],
                     &[],
-                    WalletProfile::TradingBot,
+                    WalletProfile::Custom {
+                        min_confidence: 0.40,
+                        min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                    },
                     good_evidence(),
                 );
                 inp.compute_units = 160;
@@ -544,7 +568,10 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
                 ],
                 &[],
-                WalletProfile::TradingBot,
+                WalletProfile::Custom {
+                    min_confidence: 0.40,
+                    min_trust_tier: crate::semantic_graph_store::TrustTier::OfficialManifest,
+                },
                 good_evidence(),
             ),
         },

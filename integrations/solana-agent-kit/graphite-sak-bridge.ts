@@ -64,11 +64,13 @@ export class AuditBind {
     transaction: { programId: string; instructionDiscriminator: string; accountAddresses: string[]; instructionData?: number[]; cpiTargets?: string[] };
     contentHash: string;
   }): void {
-    // If contentHash is an audit_trail_id (starts with "gr-"), the Rust server
-    // doesn't support content_hash yet. Skip the TOCTOU check with a warning.
+    // SECURITY FIX: If contentHash starts with "gr-", it means we received
+    // audit_trail_id instead of content_hash — fail-closed (throw, not skip).
     if (params.contentHash.startsWith("gr-")) {
-      console.warn("[AuditBind] content_hash not available from API (got audit_trail_id). Skipping TOCTOU hash check.");
-      return;
+      throw new Error(
+        `[AuditBind] content_hash not available from API (got audit_trail_id). ` +
+        `TOCTOU check cannot be performed — ABORTING.`
+      );
     }
     const computed = AuditBind.computeHash(params.transaction);
     if (computed !== params.contentHash) {

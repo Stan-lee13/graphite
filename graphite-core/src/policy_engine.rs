@@ -32,9 +32,9 @@ pub enum PolicyError {
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 pub enum WalletProfile {
     /// Treasury profile: high confidence, high trust tier required
+    #[default]
     Treasury,
     /// TradingBot profile: moderate requirements
-    #[default]
     TradingBot,
     /// Gaming profile: lower requirements for testing/dev
     Gaming,

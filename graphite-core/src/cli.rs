@@ -21,6 +21,10 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             let core = GraphiteCore::new();
             let result = core.verify(&input)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
+            // SECURITY FIX: Exit 1 on REJECT so CLI can be used as CI gate
+            if !result.approved {
+                std::process::exit(1);
+            }
             Ok(())
         }
         CliCommand::Manifests => {

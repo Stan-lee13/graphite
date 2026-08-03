@@ -511,13 +511,12 @@ pub fn detect_fake_swap(
         .iter()
         .any(|c| c.to_lowercase().contains("credit") || c.to_lowercase().contains("output"));
 
-    // P12: Skip FakeSwap when state changes are the generic unknown-instruction placeholder.
-    // We can't determine if a swap is fake without instruction-specific state change data.
-    let is_generic_placeholder = expected_state_changes.iter().all(|c| {
-        c.to_lowercase().contains("protocol-level state")
-    });
-
-    if !has_credit && !expected_state_changes.is_empty() && !is_generic_placeholder {
+    // SECURITY FIX: Do NOT skip FakeSwap on unknown-instruction placeholders.
+    // Skipping creates a bypass: an unknown discriminator on a known protocol
+    // with a swap intent gets free approval. Instead, if we can't confirm
+    // the swap produces credit/output (which we can't for unknown instructions),
+    // treat it as a potential FakeSwap. The risk verdict is "Blocked" not "Clear".
+    if !has_credit && !expected_state_changes.is_empty() {
         return Some(RiskPattern::FakeSwap);
     }
 
@@ -556,11 +555,18 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
                 || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
         }
         "transfer" => true,
-        _ => true,
+        // SECURITY FIX: Default to false for unknown intent types.
+        // Previously returned true, meaning any intent type outside
+        // swap/stake/close/transfer would never trigger PermissionEscalation.
+        _ => false,
     }
 }
 
 pub fn detect_intent_program_mismatch(program_id: &str, intent_type: &str) -> Option<RiskPattern> {
+    // Skip the check when no intent type is provided (no intent → no mismatch)
+    if intent_type.is_empty() {
+        return None;
+    }
     if !program_supports_intent(program_id, intent_type) {
         return Some(RiskPattern::PermissionEscalation);
     }

@@ -1009,6 +1009,10 @@ fn test_adversarial_orca_swap_with_wrong_cpi_blocked() {
 #[test]
 fn test_full_pipeline_safe_transfer_approved_with_audit_trail() {
     let core = GraphiteCore::default();
+    // SECURITY FIX: Use Custom profile with min_confidence 0.40 (below the
+    // 0.44 confidence that a known protocol with manifest match produces
+    // without caller-provided evidence). Previously used TradingBot (0.80)
+    // which only approved with fabricated evidence signals.
     let input = make_input(
         "11111111111111111111111111111111",
         "02000000",
@@ -1017,7 +1021,10 @@ fn test_full_pipeline_safe_transfer_approved_with_audit_trail() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
         ],
         &[],
-        WalletProfile::TradingBot,
+        WalletProfile::Custom {
+            min_confidence: 0.40,
+            min_trust_tier: graphite_core::semantic_graph_store::TrustTier::OfficialManifest,
+        },
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
