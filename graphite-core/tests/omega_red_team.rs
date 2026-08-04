@@ -11,7 +11,7 @@ use graphite_core::policy_engine::WalletProfile;
 use graphite_core::risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::simulation_integrity::{
-    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput
+    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput,
 };
 use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
 
@@ -40,10 +40,10 @@ fn exploit_l1_drainer_threshold_bypass_5_accounts() {
         expected_state_changes: vec![],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -63,10 +63,10 @@ fn exploit_l2_hidden_transfer_threshold_bypass_12_accounts() {
         expected_state_changes: vec!["accounts.0.transfer".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -91,10 +91,10 @@ fn exploit_l3_compositional_drain_bypass_4_targets() {
         expected_state_changes: vec![],
         allowed_cpis: vec![drainer.into()],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -114,10 +114,10 @@ fn exploit_l4_token2022_setauthority_bypass() {
         expected_state_changes: vec!["changes authority".into()],
         allowed_cpis: vec![],
         instruction_discriminator: "06".to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -192,10 +192,10 @@ fn exploit_l8_empty_discriminator_bypasses_setauthority() {
         expected_state_changes: vec!["transfer".into()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -248,10 +248,10 @@ fn exploit_l12_account_duplication_false_positive() {
         expected_state_changes: vec![],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -271,10 +271,10 @@ fn exploit_l14_unknown_system_instruction_passes() {
         expected_state_changes: vec!["some_change".into()],
         allowed_cpis: vec![],
         instruction_discriminator: "ff00ff".to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -328,10 +328,10 @@ fn exploit_l18_drainer_with_single_meaningful_change_bypass() {
         expected_state_changes: vec!["transfer".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -391,10 +391,10 @@ fn exploit_l20_cpi_self_allowing() {
         expected_state_changes: vec!["transfer".into()],
         allowed_cpis: vec![malicious.into()],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert_eq!(

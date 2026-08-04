@@ -210,4 +210,19 @@ mod tests {
         };
         assert!(build_transaction(&plan).is_err());
     }
+
+    #[test]
+    fn test_invalid_account_address_rejected() {
+        let plan = TransactionPlan {
+            program_id: "11111111111111111111111111111111".to_string(),
+            protocol_version: "1.0".to_string(),
+            instruction_discriminator: "02000000".to_string(),
+            instruction_name: "Transfer".to_string(),
+            resolved_accounts: vec![make_account("not-a-valid-address!!!", true, true)],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            instruction_data: vec![],
+        };
+        assert!(matches!(build_transaction(&plan), Err(TransactionBuilderError::InvalidPubkey(_))));
+    }
 }

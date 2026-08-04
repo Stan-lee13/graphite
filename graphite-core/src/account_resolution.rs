@@ -109,20 +109,13 @@ pub fn resolve_accounts(
             Some(r) => {
                 let is_pda = !r.pda_seeds.is_empty();
                 let seeds = if is_pda {
-                    // Verify PDA can be re-derived
+                    // Verify PDA can be re-derived, supporting dynamic template vars.
                     let program_pk = Pubkey::from_base58(&input.program_id)
                         .map_err(|e| AccountResolutionError::InvalidAddress(e.to_string()))?;
-                    // Seeds may contain template vars like {program_id}
                     let resolved_seeds: Vec<Vec<u8>> = r
                         .pda_seeds
                         .iter()
-                        .map(|s| {
-                            if s == "{program_id}" {
-                                program_pk.as_bytes().to_vec()
-                            } else {
-                                s.as_bytes().to_vec()
-                            }
-                        })
+                        .map(|s| resolve_pda_seed_template(s, input, &program_pk, &pubkeys))
                         .collect();
                     let seed_refs: Vec<&[u8]> =
                         resolved_seeds.iter().map(|s| s.as_slice()).collect();
@@ -200,6 +193,67 @@ fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionRe
         resolution_order: order,
         instruction_name: "Unknown".to_string(),
         manifest_found: false,
+    }
+}
+
+fn resolve_pda_seed_template(
+    seed: &str,
+    input: &AccountResolutionInput,
+    program_pk: &Pubkey,
+    pubkeys: &[Pubkey],
+) -> Vec<u8> {
+    if seed == "{program_id}" {
+        program_pk.as_bytes().to_vec()
+    } else if seed == "{instruction_data}" {
+        input.instruction_data.clone().unwrap_or_default()
+    } else if let Some(slice_spec) = seed
+        .strip_prefix("{instruction_data:")
+        .and_then(|s| s.strip_suffix("}"))
+    {
+        let data = input.instruction_data.clone().unwrap_or_default();
+        parse_slice_template(&data, slice_spec)
+    } else if let Some(slice_spec) = seed
+        .strip_prefix("{account_")
+        .and_then(|s| s.strip_suffix("}"))
+    {
+        if let Some((index_str, range_spec)) = slice_spec.split_once(':') {
+            if let Ok(index) = index_str.parse::<usize>() {
+                let account_bytes = pubkeys
+                    .get(index)
+                    .map(|pk| pk.as_bytes().to_vec())
+                    .unwrap_or_default();
+                return parse_slice_template(&account_bytes, range_spec);
+            }
+        } else if let Ok(index) = slice_spec.parse::<usize>() {
+            return pubkeys
+                .get(index)
+                .map(|pk| pk.as_bytes().to_vec())
+                .unwrap_or_else(|| seed.as_bytes().to_vec());
+        }
+        seed.as_bytes().to_vec()
+    } else if seed.starts_with("0x") {
+        hex::decode(&seed[2..]).unwrap_or_else(|_| seed.as_bytes().to_vec())
+    } else {
+        seed.as_bytes().to_vec()
+    }
+}
+
+fn parse_slice_template(data: &[u8], slice_spec: &str) -> Vec<u8> {
+    let parts: Vec<&str> = slice_spec.split(':').collect();
+    match parts.as_slice() {
+        [start, end] => {
+            if let (Ok(start), Ok(end)) = (start.parse::<usize>(), end.parse::<usize>()) {
+                return data.get(start..end).map(|s| s.to_vec()).unwrap_or_default();
+            }
+            data.to_vec()
+        }
+        [start] => {
+            if let Ok(start) = start.parse::<usize>() {
+                return data.get(start..).map(|s| s.to_vec()).unwrap_or_default();
+            }
+            data.to_vec()
+        }
+        _ => data.to_vec(),
     }
 }
 
@@ -282,5 +336,75 @@ mod tests {
             &["not-a-valid-address!!!"],
         );
         assert!(resolve_accounts(&input, &registry).is_err());
+    }
+
+    #[test]
+    fn test_dynamic_pda_seed_resolution() {
+        let program_id = "11111111111111111111111111111111";
+        let program_pk = Pubkey::from_base58(program_id).unwrap();
+        let signer_pk =
+            Pubkey::from_base58("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").unwrap();
+        let (pda_pk, _bump) = solana_types::find_program_address(
+            &[program_pk.as_bytes(), signer_pk.as_bytes()],
+            &program_pk,
+        )
+        .unwrap();
+
+        let manifest = ProtocolManifest {
+            graphite_manifest_version: "1.0".to_string(),
+            protocol: ProtocolInfo {
+                name: "DynamicPdaTest".to_string(),
+                program_id: program_id.to_string(),
+                website: String::new(),
+                github: String::new(),
+            },
+            version: ManifestVersion {
+                label: "1.0".to_string(),
+                effective_from_slot: 0,
+                previous_version_ref: None,
+            },
+            instructions: vec![InstructionDef {
+                name: "DynamicPda".to_string(),
+                discriminator: "deadbeef".to_string(),
+                accounts: vec![
+                    AccountRoleDef {
+                        name: "authority".to_string(),
+                        role: "signer".to_string(),
+                        is_writable: false,
+                        is_signer: true,
+                        pda_seeds: vec![],
+                    },
+                    AccountRoleDef {
+                        name: "derived".to_string(),
+                        role: "pda".to_string(),
+                        is_writable: false,
+                        is_signer: false,
+                        pda_seeds: vec!["{program_id}".to_string(), "{account_0}".to_string()],
+                    },
+                ],
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                risk_rules: vec![],
+                variable_accounts: false,
+            }],
+            trust_tier: String::new(),
+        };
+
+        let mut registry = ManifestRegistry::new();
+        registry
+            .load_from_json(&serde_json::to_string(&manifest).unwrap())
+            .unwrap();
+
+        let input = AccountResolutionInput {
+            program_id: program_id.to_string(),
+            instruction_discriminator: "deadbeef".to_string(),
+            account_addresses: vec![signer_pk.to_base58(), pda_pk.to_base58()],
+            instruction_data: None,
+        };
+        let result = resolve_accounts(&input, &registry).unwrap();
+        assert!(result.manifest_found);
+        assert_eq!(result.resolved_accounts.len(), 2);
+        assert!(result.resolved_accounts[1].is_pda);
+        assert!(!result.resolved_accounts[1].pda_mismatch);
     }
 }

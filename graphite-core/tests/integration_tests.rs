@@ -183,7 +183,10 @@ fn test_e2e_audit_trail_id_is_deterministic() {
         r1.content_hash, r2.content_hash,
         "content_hash must be identical for same input (P2 determinism)"
     );
-    assert!(!r1.content_hash.is_empty(), "content_hash must not be empty");
+    assert!(
+        !r1.content_hash.is_empty(),
+        "content_hash must not be empty"
+    );
 }
 
 #[test]
@@ -472,10 +475,10 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
             mean_compute_units: 150.0,
             std_compute_units: 10.0,
             sample_count: 100,
-                    mean_account_writes: 0.0,
-                    std_account_writes: 0.0,
-                    mean_cpi_hops: 0.0,
-                    std_cpi_hops: 0.0,
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
         }),
     };
     let result = core.verify(&input).unwrap();
@@ -511,7 +514,8 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
     let test_program_id = "TestPDA111111111111111111111111111111111111";
     let test_discriminator = "aaaaaaaaaaaaaaaa";
 
-    let test_manifest_json = format!(r#"{{
+    let test_manifest_json = format!(
+        r#"{{
         "graphite_manifest_version": "1.0",
         "protocol": {{
             "name": "Test PDA Protocol",
@@ -548,21 +552,24 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
                 "risk_rules": []
             }}
         ]
-    }}"#, pid = test_program_id, disc = test_discriminator);
+    }}"#,
+        pid = test_program_id,
+        disc = test_discriminator
+    );
 
     // Build a registry with both production manifests and our test manifest
     let mut registry = load_seed_manifests();
-    registry.load_from_json(&test_manifest_json)
+    registry
+        .load_from_json(&test_manifest_json)
         .expect("test manifest must load");
 
     // Derive the CORRECT PDA from seed ["{program_id}"] + test program ID.
     // The {program_id} template resolves to the program's 32-byte public key.
-    let program_pk = Pubkey::from_base58(test_program_id)
-        .expect("valid base58 program ID");
+    let program_pk = Pubkey::from_base58(test_program_id).expect("valid base58 program ID");
     let seed_bytes = program_pk.as_bytes().to_vec();
     let seed_refs: Vec<&[u8]> = std::iter::once(seed_bytes.as_slice()).collect::<Vec<_>>();
-    let (correct_pda, _bump) = find_program_address(&seed_refs, &program_pk)
-        .expect("PDA derivation must succeed");
+    let (correct_pda, _bump) =
+        find_program_address(&seed_refs, &program_pk).expect("PDA derivation must succeed");
     let correct_pda_str = correct_pda.to_base58();
 
     // Use a clearly different address as the spoofed PDA
@@ -573,10 +580,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
     let input_correct = AccountResolutionInput {
         program_id: test_program_id.to_string(),
         instruction_discriminator: test_discriminator.to_string(),
-        account_addresses: vec![
-            authority.to_string(),
-            correct_pda_str.clone(),
-        ],
+        account_addresses: vec![authority.to_string(), correct_pda_str.clone()],
         instruction_data: None,
     };
 
@@ -584,18 +588,14 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
     assert!(
         !result_correct.resolved_accounts[1].pda_mismatch,
         "Correct PDA should NOT have pda_mismatch=true — derived: {}, provided: {}",
-        correct_pda_str,
-        result_correct.resolved_accounts[1].address
+        correct_pda_str, result_correct.resolved_accounts[1].address
     );
 
     // --- CASE 2: Spoofed PDA → mismatch detected ---
     let input_spoofed = AccountResolutionInput {
         program_id: test_program_id.to_string(),
         instruction_discriminator: test_discriminator.to_string(),
-        account_addresses: vec![
-            authority.to_string(),
-            spoofed_pda.to_string(),
-        ],
+        account_addresses: vec![authority.to_string(), spoofed_pda.to_string()],
         instruction_data: None,
     };
 
@@ -617,10 +617,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         program_id: test_program_id.to_string(),
         protocol_version: "1.0".to_string(),
         instruction_discriminator: test_discriminator.to_string(),
-        account_addresses: vec![
-            authority.to_string(),
-            spoofed_pda.to_string(),
-        ],
+        account_addresses: vec![authority.to_string(), spoofed_pda.to_string()],
         instruction_data: None,
         cpi_targets: vec![],
         wallet_profile: WalletProfile::TradingBot,
@@ -666,7 +663,8 @@ fn test_pda_mismatch_correct_pda_passes() {
     let test_program_id = "TestPDA111111111111111111111111111111111111";
     let test_discriminator = "aaaaaaaaaaaaaaaa";
 
-    let test_manifest_json = format!(r#"{{
+    let test_manifest_json = format!(
+        r#"{{
         "graphite_manifest_version": "1.0",
         "protocol": {{
             "name": "Test PDA Protocol",
@@ -703,29 +701,29 @@ fn test_pda_mismatch_correct_pda_passes() {
                 "risk_rules": []
             }}
         ]
-    }}"#, pid = test_program_id, disc = test_discriminator);
+    }}"#,
+        pid = test_program_id,
+        disc = test_discriminator
+    );
 
     let mut registry = load_seed_manifests();
-    registry.load_from_json(&test_manifest_json)
+    registry
+        .load_from_json(&test_manifest_json)
         .expect("test manifest must load");
 
     // Derive the correct PDA
-    let program_pk = Pubkey::from_base58(test_program_id)
-        .expect("valid base58 program ID");
+    let program_pk = Pubkey::from_base58(test_program_id).expect("valid base58 program ID");
     let seed_bytes = program_pk.as_bytes().to_vec();
     let seed_refs: Vec<&[u8]> = std::iter::once(seed_bytes.as_slice()).collect::<Vec<_>>();
-    let (correct_pda, _bump) = find_program_address(&seed_refs, &program_pk)
-        .expect("PDA derivation must succeed");
+    let (correct_pda, _bump) =
+        find_program_address(&seed_refs, &program_pk).expect("PDA derivation must succeed");
     let correct_pda_str = correct_pda.to_base58();
     let authority = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
 
     let input = AccountResolutionInput {
         program_id: test_program_id.to_string(),
         instruction_discriminator: test_discriminator.to_string(),
-        account_addresses: vec![
-            authority.to_string(),
-            correct_pda_str.clone(),
-        ],
+        account_addresses: vec![authority.to_string(), correct_pda_str.clone()],
         instruction_data: None,
     };
 
@@ -747,10 +745,7 @@ fn test_pda_mismatch_correct_pda_passes() {
         program_id: test_program_id.to_string(),
         protocol_version: "1.0".to_string(),
         instruction_discriminator: test_discriminator.to_string(),
-        account_addresses: vec![
-            authority.to_string(),
-            correct_pda_str,
-        ],
+        account_addresses: vec![authority.to_string(), correct_pda_str],
         instruction_data: None,
         cpi_targets: vec![],
         wallet_profile: WalletProfile::TradingBot,

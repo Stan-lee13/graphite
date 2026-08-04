@@ -98,7 +98,8 @@ pub fn check_simulation_integrity(
     }
 
     // Signal 1: Compute units z-score
-    let compute_z = (input.simulation_usage.compute_units as f64 - input.baseline.mean_compute_units)
+    let compute_z = (input.simulation_usage.compute_units as f64
+        - input.baseline.mean_compute_units)
         / input.baseline.std_compute_units;
 
     if compute_z.is_nan() || compute_z.is_infinite() {
@@ -122,16 +123,22 @@ pub fn check_simulation_integrity(
 
     // Signal 2: Account writes z-score (if baseline has data)
     if input.baseline.std_account_writes > 0.0 && !input.baseline.mean_account_writes.is_nan() {
-        let writes_z = (input.simulation_usage.account_writes as f64 - input.baseline.mean_account_writes)
+        let writes_z = (input.simulation_usage.account_writes as f64
+            - input.baseline.mean_account_writes)
             / input.baseline.std_account_writes;
 
-        if !writes_z.is_nan() && !writes_z.is_infinite() && writes_z.abs() > input.divergence_threshold {
+        if !writes_z.is_nan()
+            && !writes_z.is_infinite()
+            && writes_z.abs() > input.divergence_threshold
+        {
             return Ok(SimulationIntegrityResult {
                 flagged: true,
                 divergence_score: writes_z,
                 reason: Some(format!(
                     "Account write divergence: {:.2}σ from baseline ({} writes vs mean {:.1})",
-                    writes_z, input.simulation_usage.account_writes, input.baseline.mean_account_writes
+                    writes_z,
+                    input.simulation_usage.account_writes,
+                    input.baseline.mean_account_writes
                 )),
             });
         }
@@ -178,7 +185,8 @@ pub fn update_baseline(
     let delta_cu = new_compute_units as f64 - baseline.mean_compute_units;
     let new_mean_cu = baseline.mean_compute_units + delta_cu / new_n;
     let new_var_cu = (baseline.std_compute_units * baseline.std_compute_units * n
-        + delta_cu * (new_compute_units as f64 - new_mean_cu)) / new_n;
+        + delta_cu * (new_compute_units as f64 - new_mean_cu))
+        / new_n;
     baseline.mean_compute_units = new_mean_cu;
     baseline.std_compute_units = new_var_cu.max(0.0).sqrt();
 
@@ -186,7 +194,8 @@ pub fn update_baseline(
     let delta_aw = new_account_writes as f64 - baseline.mean_account_writes;
     let new_mean_aw = baseline.mean_account_writes + delta_aw / new_n;
     let new_var_aw = (baseline.std_account_writes * baseline.std_account_writes * n
-        + delta_aw * (new_account_writes as f64 - new_mean_aw)) / new_n;
+        + delta_aw * (new_account_writes as f64 - new_mean_aw))
+        / new_n;
     baseline.mean_account_writes = new_mean_aw;
     baseline.std_account_writes = new_var_aw.max(0.0).sqrt();
 
@@ -194,7 +203,8 @@ pub fn update_baseline(
     let delta_ch = new_cpi_hops as f64 - baseline.mean_cpi_hops;
     let new_mean_ch = baseline.mean_cpi_hops + delta_ch / new_n;
     let new_var_ch = (baseline.std_cpi_hops * baseline.std_cpi_hops * n
-        + delta_ch * (new_cpi_hops as f64 - new_mean_ch)) / new_n;
+        + delta_ch * (new_cpi_hops as f64 - new_mean_ch))
+        / new_n;
     baseline.mean_cpi_hops = new_mean_ch;
     baseline.std_cpi_hops = new_var_ch.max(0.0).sqrt();
 
@@ -325,7 +335,10 @@ mod tests {
             divergence_threshold: 2.0,
         };
         let result = check_simulation_integrity(&input);
-        assert!(matches!(result, Err(SimulationIntegrityError::NoBaseline { .. })));
+        assert!(matches!(
+            result,
+            Err(SimulationIntegrityError::NoBaseline { .. })
+        ));
     }
 
     #[test]

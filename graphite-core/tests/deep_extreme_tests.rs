@@ -80,7 +80,11 @@ fn no_evidence() -> BehaviorEvidence {
 fn test_all_11_manifests_load_with_valid_pubkeys() {
     let registry = load_seed_manifests();
     let manifests = registry.list();
-    assert_eq!(manifests.len(), 11, "expected exactly 11 seed manifests (10 original + legacy Memo)");
+    assert_eq!(
+        manifests.len(),
+        11,
+        "expected exactly 11 seed manifests (10 original + legacy Memo)"
+    );
 
     for m in &manifests {
         let pubkey = Pubkey::from_base58(&m.protocol.program_id);
@@ -211,10 +215,10 @@ fn risk_input(
         expected_state_changes: changes.iter().map(|s| s.to_string()).collect(),
         allowed_cpis: allowed.iter().map(|s| s.to_string()).collect(),
         instruction_discriminator: disc.to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     }
 }
 

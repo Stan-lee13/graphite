@@ -37,7 +37,7 @@ use graphite_core::{
     policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict},
     risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict},
     semantic_graph_store::BehaviorEvidence,
-    GraphiteCore, ProposedIntent, VerificationInput, WalletProfile
+    GraphiteCore, ProposedIntent, VerificationInput, WalletProfile,
 };
 
 fn max_evidence() -> BehaviorEvidence {
@@ -102,10 +102,10 @@ fn risk_input(
         expected_state_changes: state_changes.iter().map(|s| s.to_string()).collect(),
         allowed_cpis: allowed_cpis.iter().map(|s| s.to_string()).collect(),
         instruction_discriminator: disc.to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     }
 }
 
@@ -419,7 +419,11 @@ fn h7_cpi_target_substring_of_allowed() {
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
-    assert_eq!(result, RiskVerdict::Passed, "P12: Different CPI address = warning, not block");
+    assert_eq!(
+        result,
+        RiskVerdict::Passed,
+        "P12: Different CPI address = warning, not block"
+    );
 }
 
 #[test]
@@ -434,7 +438,11 @@ fn h7_cpi_target_prefix_of_allowed() {
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
-    assert_eq!(result, RiskVerdict::Passed, "P12: Different CPI address = warning, not block");
+    assert_eq!(
+        result,
+        RiskVerdict::Passed,
+        "P12: Different CPI address = warning, not block"
+    );
 }
 
 #[test]
@@ -449,7 +457,11 @@ fn h7_cpi_target_case_mismatch() {
         "e517cb977ae3ad2a",
     );
     let result = assess(&input).unwrap();
-    assert_eq!(result, RiskVerdict::Passed, "P12: Different CPI address = warning, not block");
+    assert_eq!(
+        result,
+        RiskVerdict::Passed,
+        "P12: Different CPI address = warning, not block"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -576,10 +588,10 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
         ],
         allowed_cpis: vec![],
         instruction_discriminator: "06".to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -600,10 +612,10 @@ fn h10_state_changes_dont_mask_closeaccount() {
         ],
         allowed_cpis: vec![],
         instruction_discriminator: "09".to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -630,10 +642,10 @@ fn h11_empty_string_state_change_bypasses_drainer() {
         expected_state_changes: vec!["".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     // If this passes (not blocked), we found a drainer bypass
@@ -656,10 +668,10 @@ fn h11_whitespace_state_change_bypasses_drainer() {
         expected_state_changes: vec!["   ".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(

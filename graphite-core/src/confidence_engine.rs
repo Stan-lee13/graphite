@@ -60,7 +60,6 @@ pub enum TrustTier {
     BattleTested,
 }
 
-
 impl TrustTier {
     /// Parse a trust tier from a manifest's `trust_tier` string field.
     ///

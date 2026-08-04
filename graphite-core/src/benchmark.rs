@@ -41,47 +41,45 @@ pub fn run_benchmark() {
 
     for case in &cases {
         let start = Instant::now();
-        let result = core
-            .verify(&case.input)
-            .unwrap_or_else(|_| {
-                // Verification error = fail-closed (blocked)
-                crate::verification::VerificationResult {
-                    approved: false,
-                    confidence: 0.0,
-                    breakdown: vec![],
-                    trust_tier: "Unknown".to_string(),
-                    risk_verdict: crate::verification::RiskVerdictSummary {
-                        status: "Blocked".to_string(),
-                        findings: vec![],
-                    },
-                    policy_verdict: "Rejected".to_string(),
-                    audit_trail_id: "gr-error".to_string(),
-                    content_hash: "error".to_string(),
-                    transaction: crate::transaction_builder::BuiltTransaction {
-                        program_id: case.input.program_id.clone(),
-                        protocol_version: case.input.protocol_version.clone(),
-                        instruction_name: "Error".to_string(),
-                        instruction_discriminator: case.input.instruction_discriminator.clone(),
-                        instruction_count: 0,
-                        account_count: case.input.account_addresses.len(),
-                        signer_count: 0,
-                        writable_count: 0,
-                        compute_budget_units: 0,
-                        accounts: vec![],
-                        data_hex: String::new(),
-                        data_len: 0,
-                    },
-                    resolved_accounts: vec![],
-                    protocol_name: "Error".to_string(),
+        let result = core.verify(&case.input).unwrap_or_else(|_| {
+            // Verification error = fail-closed (blocked)
+            crate::verification::VerificationResult {
+                approved: false,
+                confidence: 0.0,
+                breakdown: vec![],
+                trust_tier: "Unknown".to_string(),
+                risk_verdict: crate::verification::RiskVerdictSummary {
+                    status: "Blocked".to_string(),
+                    findings: vec![],
+                },
+                policy_verdict: "Rejected".to_string(),
+                audit_trail_id: "gr-error".to_string(),
+                content_hash: "error".to_string(),
+                transaction: crate::transaction_builder::BuiltTransaction {
+                    program_id: case.input.program_id.clone(),
+                    protocol_version: case.input.protocol_version.clone(),
                     instruction_name: "Error".to_string(),
-                    manifest_found: false,
-                    unknown_protocol: true,
-                    summary: "BLOCKED | verification error".to_string(),
-                    simulation_flagged: None,
-                    simulation_divergence: None,
-                    layers: vec![],
-                }
-            });
+                    instruction_discriminator: case.input.instruction_discriminator.clone(),
+                    instruction_count: 0,
+                    account_count: case.input.account_addresses.len(),
+                    signer_count: 0,
+                    writable_count: 0,
+                    compute_budget_units: 0,
+                    accounts: vec![],
+                    data_hex: String::new(),
+                    data_len: 0,
+                },
+                resolved_accounts: vec![],
+                protocol_name: "Error".to_string(),
+                instruction_name: "Error".to_string(),
+                manifest_found: false,
+                unknown_protocol: true,
+                summary: "BLOCKED | verification error".to_string(),
+                simulation_flagged: None,
+                simulation_divergence: None,
+                layers: vec![],
+            }
+        });
         let elapsed = start.elapsed();
         total_latency_us += elapsed.as_micros();
 
@@ -235,10 +233,14 @@ pub fn run_benchmark() {
     );
     println!("└──────────────────────┴───────────────┴──────────┴───────────────┘");
     println!();
-    println!("  Baseline: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
-        baseline_correct, baseline_scored, baseline_tp, baseline_tn, baseline_fp, baseline_fn);
-    println!("  Graphite: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
-        correct, scored, true_positives, true_negatives, false_positives, false_negatives);
+    println!(
+        "  Baseline: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
+        baseline_correct, baseline_scored, baseline_tp, baseline_tn, baseline_fp, baseline_fn
+    );
+    println!(
+        "  Graphite: {} correct / {} scored (TP={}, TN={}, FP={}, FN={})",
+        correct, scored, true_positives, true_negatives, false_positives, false_negatives
+    );
     println!();
 }
 
@@ -250,7 +252,15 @@ fn make_input(
     profile: WalletProfile,
     evidence: BehaviorEvidence,
 ) -> VerificationInput {
-    make_input_with_intent(program, disc, accounts, cpi_targets, profile, evidence, "transfer")
+    make_input_with_intent(
+        program,
+        disc,
+        accounts,
+        cpi_targets,
+        profile,
+        evidence,
+        "transfer",
+    )
 }
 
 fn make_input_with_intent(
@@ -280,6 +290,7 @@ fn make_input_with_intent(
         compute_units: 150,
         account_writes: 2,
         cpi_hops: cpi_targets.len() as u32,
+        signed_transaction: None,
         simulation_baseline: None,
     }
 }

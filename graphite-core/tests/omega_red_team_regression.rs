@@ -9,7 +9,7 @@
 use graphite_core::confidence_engine::{compute_confidence, SignalKind, TrustTier, WeightedSignal};
 use graphite_core::risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
 use graphite_core::simulation_integrity::{
-    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput
+    check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput,
 };
 
 // R-L1: Drainer with 5 accounts should now be BLOCKED (>=5, not >5)
@@ -28,10 +28,10 @@ fn regression_l1_drainer_5_accounts_now_blocked() {
         expected_state_changes: vec![],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -64,10 +64,10 @@ fn regression_l2_hidden_transfer_12_accounts_now_blocked() {
         ],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -98,10 +98,10 @@ fn regression_l3_compositional_drain_4_targets_now_blocked() {
         expected_state_changes: vec![],
         allowed_cpis: vec![drainer.into()],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -127,10 +127,10 @@ fn regression_l4_token2022_setauthority_now_blocked() {
         expected_state_changes: vec!["changes authority".into()],
         allowed_cpis: vec![],
         instruction_discriminator: "06".to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -157,10 +157,10 @@ fn regression_l4b_spl_token_setauthority_now_blocked() {
         expected_state_changes: vec!["changes authority".into()],
         allowed_cpis: vec![],
         instruction_discriminator: "06".to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -239,10 +239,10 @@ fn regression_l8_empty_discriminator_spl_token_now_blocked() {
         expected_state_changes: vec!["transfer".into()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -293,10 +293,10 @@ fn regression_l12_dedup_prevents_false_positive() {
         expected_state_changes: vec![],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     // After dedup, only 1 unique account → should NOT be flagged as drainer
@@ -318,10 +318,10 @@ fn regression_l18_100_accounts_1_change_now_blocked() {
         expected_state_changes: vec!["transfer".to_string()],
         allowed_cpis: vec![],
         instruction_discriminator: String::new(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     };
     let result = assess(&input).unwrap();
     assert!(

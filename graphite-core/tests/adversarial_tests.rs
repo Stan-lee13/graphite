@@ -90,10 +90,10 @@ fn risk_input(
         expected_state_changes: changes.iter().map(|s| s.to_string()).collect(),
         allowed_cpis: allowed.iter().map(|s| s.to_string()).collect(),
         instruction_discriminator: disc.to_string(),
-            expected_account_count: None,
-            proposed_intent_type: String::new(),
-            variable_accounts: false,
-            extracted_output_token: None,
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
     }
 }
 

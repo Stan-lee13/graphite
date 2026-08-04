@@ -34,7 +34,10 @@ pub enum RiskPattern {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RiskVerdict {
     Passed,
-    Blocked { pattern: RiskPattern, reason: String },
+    Blocked {
+        pattern: RiskPattern,
+        reason: String,
+    },
 }
 
 /// Input for risk assessment — manifest-aware.
@@ -152,7 +155,7 @@ const DEX_PROGRAMS: &[&str] = &[
 ///
 /// No protocol should be blocked for calling these via CPI.
 const UNIVERSAL_CPI_WHITELIST: &[&str] = &[
-    "11111111111111111111111111111111", // System Program
+    "11111111111111111111111111111111",            // System Program
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // SPL Token
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", // Token-2022
     "ComputeBudget111111111111111111111111111111", // Compute Budget
@@ -177,13 +180,19 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // For unknown protocols: unexpected CPI is suspicious — still fail-closed.
     let mut cpi_warnings: Vec<String> = Vec::new();
     if !input.cpi_targets.is_empty() {
-        let non_universal_cpis: Vec<&String> = input.cpi_targets.iter()
+        let non_universal_cpis: Vec<&String> = input
+            .cpi_targets
+            .iter()
             .filter(|cpi| !is_universal_cpi(cpi))
             .collect();
-        
+
         if !non_universal_cpis.is_empty() && !input.allowed_cpis.is_empty() {
             for cpi_target in &non_universal_cpis {
-                if !input.allowed_cpis.iter().any(|allowed| allowed == cpi_target.as_str()) {
+                if !input
+                    .allowed_cpis
+                    .iter()
+                    .any(|allowed| allowed == cpi_target.as_str())
+                {
                     cpi_warnings.push(format!(
                         "CPI target '{}' is not in manifest's allowed CPI list",
                         cpi_target
@@ -257,12 +266,17 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // Skip if manifest declares expected account count and actual count is within range.
     // A manifest-aware account count match means the transaction structure is expected
     // — the drainer heuristic is for catching UNEXPECTED account proliferation.
-    let manifest_account_match = input.expected_account_count
+    let manifest_account_match = input
+        .expected_account_count
         .map(|expected| input.accounts.len() <= expected + 2)
         .unwrap_or(false);
 
     let is_dex = DEX_PROGRAMS.contains(&input.program_id.as_str());
-    if !manifest_account_match && !input.variable_accounts && !is_dex && detect_drainer_pattern(&input.accounts, &input.expected_state_changes) {
+    if !manifest_account_match
+        && !input.variable_accounts
+        && !is_dex
+        && detect_drainer_pattern(&input.accounts, &input.expected_state_changes)
+    {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::Drainer,
             reason: "Transaction matches drainer pattern: high account-to-change ratio".to_string(),
@@ -273,7 +287,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // Skip for DEX programs (variable account counts) and manifest-declared variable accounts.
     if !is_dex && !input.variable_accounts {
         if let Some(expected_count) = input.expected_account_count {
-            let unique_accounts: std::collections::HashSet<&String> = input.accounts.iter().collect();
+            let unique_accounts: std::collections::HashSet<&String> =
+                input.accounts.iter().collect();
             let unique_count = unique_accounts.len();
             if unique_count > expected_count + 2 {
                 return Ok(RiskVerdict::Blocked {
@@ -288,7 +303,9 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 4: Compositional drain (deep CPI chains with revisits)
-    if input.cpi_targets.len() >= 3 && detect_compositional_drain(&input.cpi_targets, &input.program_id) {
+    if input.cpi_targets.len() >= 3
+        && detect_compositional_drain(&input.cpi_targets, &input.program_id)
+    {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::CompositionalDrainPattern,
             reason: "Deep CPI chain with repeated program targets — matches compositional drain signature".to_string(),
@@ -389,7 +406,9 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 9: Intent-Program mismatch — intent type not supported by the program
-    if let Some(_pattern) = detect_intent_program_mismatch(&input.program_id, &input.proposed_intent_type) {
+    if let Some(_pattern) =
+        detect_intent_program_mismatch(&input.program_id, &input.proposed_intent_type)
+    {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::PermissionEscalation,
             reason: format!(
@@ -542,10 +561,10 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
     match intent_type {
         "swap" => {
             const SWAP_PROGRAMS: &[&str] = &[
-                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",      // Jupiter V6
-                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",     // Orca Whirlpools
-                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",     // Meteora DLMM
-                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",    // Raydium AMM V4
+                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
+                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
+                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
+                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
             ];
             SWAP_PROGRAMS.contains(&program_id)
         }
@@ -589,7 +608,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(result, RiskVerdict::Blocked { .. }));
@@ -607,7 +626,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -625,7 +644,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -649,7 +668,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -673,7 +692,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result1 = assess(&input).unwrap();
         let result2 = assess(&input).unwrap();
@@ -702,7 +721,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -738,7 +757,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -770,7 +789,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -808,7 +827,7 @@ mod tests {
             expected_account_count: Some(5),
             proposed_intent_type: "swap".to_string(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -826,7 +845,7 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(
@@ -846,8 +865,12 @@ mod tests {
         let input = RiskAssessmentInput {
             program_id: "some_program".to_string(),
             accounts: vec![
-                "a1".to_string(), "a2".to_string(), "a3".to_string(),
-                "a4".to_string(), "a5".to_string(), "a6".to_string(),
+                "a1".to_string(),
+                "a2".to_string(),
+                "a3".to_string(),
+                "a4".to_string(),
+                "a5".to_string(),
+                "a6".to_string(),
             ],
             cpi_targets: vec![],
             expected_state_changes: vec![],
@@ -856,12 +879,15 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
             result,
-            RiskVerdict::Blocked { pattern: RiskPattern::Drainer, .. }
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Drainer,
+                ..
+            }
         ));
     }
 
@@ -880,12 +906,15 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
             result,
-            RiskVerdict::Blocked { pattern: RiskPattern::Drainer, .. }
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Drainer,
+                ..
+            }
         ));
     }
 
@@ -913,12 +942,15 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
             result,
-            RiskVerdict::Blocked { pattern: RiskPattern::HiddenTransfer, .. }
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::HiddenTransfer,
+                ..
+            }
         ));
     }
 
@@ -934,12 +966,15 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
             result,
-            RiskVerdict::Blocked { pattern: RiskPattern::UnexpectedCpi, .. }
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::UnexpectedCpi,
+                ..
+            }
         ));
     }
 
@@ -958,12 +993,15 @@ mod tests {
             expected_account_count: None,
             proposed_intent_type: String::new(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
             result,
-            RiskVerdict::Blocked { pattern: RiskPattern::AuthorityHijack, .. }
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::AuthorityHijack,
+                ..
+            }
         ));
     }
 
@@ -980,7 +1018,7 @@ mod tests {
             expected_account_count: Some(5),
             proposed_intent_type: "swap".to_string(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -999,7 +1037,7 @@ mod tests {
             expected_account_count: Some(3),
             proposed_intent_type: "transfer".to_string(),
             variable_accounts: false,
-        extracted_output_token: None,
+            extracted_output_token: None,
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);

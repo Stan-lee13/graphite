@@ -58,24 +58,15 @@ impl Pubkey {
 
     /// SPL Token Program: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
     pub fn spl_token() -> Pubkey {
-        Pubkey(
-            bs58::decode("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-                .into_vec()
-                .unwrap()
-                .try_into()
-                .unwrap(),
-        )
+        // Prefer `from_base58` to avoid panics; fall back to SYSTEM_PROGRAM
+        Pubkey::from_base58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            .unwrap_or(Pubkey::SYSTEM_PROGRAM)
     }
 
     /// Token-2022 Program: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
     pub fn token_2022() -> Pubkey {
-        Pubkey(
-            bs58::decode("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
-                .into_vec()
-                .unwrap()
-                .try_into()
-                .unwrap(),
-        )
+        Pubkey::from_base58("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
+            .unwrap_or(Pubkey::SYSTEM_PROGRAM)
     }
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -133,11 +124,18 @@ pub fn find_program_address(
         hasher.update([nonce]);
         let hash = hasher.finalize();
 
-        let compressed = CompressedEdwardsY::from_slice(&hash).expect("hash is always 32 bytes");
+        // Convert GenericArray to [u8;32] safely
+        let hash_bytes: [u8; 32] = match <[u8; 32]>::try_from(hash.as_slice()) {
+            Ok(b) => b,
+            Err(_) => return Err(SolanaTypeError::InvalidLength(hash.as_slice().len())),
+        };
+
+        let compressed = match CompressedEdwardsY::from_slice(&hash_bytes) {
+            Ok(c) => c,
+            Err(_) => return Err(SolanaTypeError::InvalidLength(hash_bytes.len())),
+        };
         if compressed.decompress().is_none() {
-            let mut bytes = [0u8; 32];
-            bytes.copy_from_slice(&hash);
-            return Ok((Pubkey(bytes), nonce));
+            return Ok((Pubkey(hash_bytes), nonce));
         }
     }
     Err(SolanaTypeError::PdaExhausted)
@@ -146,8 +144,10 @@ pub fn find_program_address(
 /// Check if a pubkey is on the ed25519 curve (i.e., could be a keypair pubkey,
 /// NOT a PDA). PDAs are off-curve by construction.
 pub fn is_on_curve(pubkey: &Pubkey) -> bool {
-    let compressed =
-        CompressedEdwardsY::from_slice(pubkey.as_bytes()).expect("pubkey is always 32 bytes");
+    let compressed = match CompressedEdwardsY::from_slice(pubkey.as_bytes()) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
     compressed.decompress().is_some()
 }
 
@@ -238,6 +238,11 @@ mod tests {
         let s = pk.to_base58();
         let pk2 = Pubkey::from_base58(&s).unwrap();
         assert_eq!(pk, pk2);
+    }
+
+    #[test]
+    fn test_pubkey_from_base58_invalid() {
+        assert!(Pubkey::from_base58("not-a-valid-address!!!").is_err());
     }
 
     #[test]

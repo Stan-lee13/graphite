@@ -15,10 +15,14 @@ bs58 = "0.5"
 curve25519-dalek = "4"
 hex = "0.4"
 anyhow = "1"
+reqwest = { version = "0.11", optional = true, features = ["json", "gzip", "brotli", "rustls-tls"] }
+base64 = "0.21"
+tracing = "0.1"
 
 # Server (feature-gated)
 axum = { version = "0.8", optional = true }
-tower-http = { version = "0.6", features = ["cors", "limit", "timeout"], optional = true }
+tower = { version = "0.4", optional = true, features = ["limit", "util"] }
+tower-http = { version = "0.6", features = ["cors", "limit", "timeout", "trace"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 
 # CLI (feature-gated)
@@ -26,8 +30,9 @@ clap = { version = "4", features = ["derive"], optional = true }
 
 [features]
 default = ["server", "cli"]
-server = ["dep:axum", "dep:tokio", "dep:tower-http"]
+server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower"]
 cli = ["dep:clap"]
+rpc = ["dep:reqwest", "dep:tokio"]
 
 [dev-dependencies]
 proptest = "1.0"

@@ -14,6 +14,8 @@ use crate::confidence_engine::{
 use crate::manifest::{load_seed_manifests, ManifestRegistry};
 use crate::policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict, WalletProfile};
 use crate::risk_engine::{assess, RiskAssessmentInput, RiskVerdict};
+#[cfg(feature = "rpc")]
+use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 use crate::transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
 use crate::unknown_protocol_mode::apply_unknown_protocol_ceiling;
@@ -63,6 +65,12 @@ pub struct VerificationInput {
     pub account_writes: u32,
     #[serde(default)]
     pub cpi_hops: u32,
+    /// Optional fully-signed transaction blob (binary). When provided, the
+    /// RPC client will use this exact blob for `simulateTransaction` which
+    /// yields the most accurate simulation result. If absent, a best-effort
+    /// simulation will use `instruction_data` as a minimal payload.
+    #[serde(default)]
+    pub signed_transaction: Option<Vec<u8>>,
     // Phase 1.5: Simulation Integrity (optional — if None, skip simulation check)
     #[serde(default)]
     pub simulation_baseline: Option<crate::simulation_integrity::ComputeBaseline>,
@@ -146,6 +154,8 @@ pub struct PipelineLayerResult {
 pub struct GraphiteCore {
     registry: ManifestRegistry,
     semantic_graph: SemanticGraphStore,
+    #[cfg(feature = "rpc")]
+    rpc_client: Option<SolanaRpcClient>,
 }
 
 impl Default for GraphiteCore {
@@ -160,6 +170,8 @@ impl GraphiteCore {
         Self {
             registry: load_seed_manifests(),
             semantic_graph: SemanticGraphStore::new(),
+            #[cfg(feature = "rpc")]
+            rpc_client: None,
         }
     }
 
@@ -168,7 +180,27 @@ impl GraphiteCore {
         Self {
             registry,
             semantic_graph: SemanticGraphStore::new(),
+            #[cfg(feature = "rpc")]
+            rpc_client: None,
         }
+    }
+
+    /// Attach an RPC client for Phase 2 features (simulation, on-chain checks).
+    #[cfg(feature = "rpc")]
+    pub fn attach_rpc_client(&mut self, client: SolanaRpcClient) {
+        self.rpc_client = Some(client);
+    }
+
+    /// Synchronous wrapper around the async verification API.
+    /// This preserves the original synchronous `verify()` surface so existing
+    /// call sites and tests continue to work. It blocks on a new Tokio runtime.
+    pub fn verify(
+        &self,
+        input: &VerificationInput,
+    ) -> Result<VerificationResult, VerificationError> {
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
+        rt.block_on(self.verify_async(input))
     }
 
     /// Load an additional protocol manifest at runtime.
@@ -265,13 +297,15 @@ impl GraphiteCore {
                 let disc_hex = input.instruction_discriminator.trim_start_matches("0x");
                 if let Ok(disc_bytes) = hex::decode(disc_hex) {
                     if data.len() >= disc_bytes.len()
-                        && &data[..disc_bytes.len()] != disc_bytes.as_slice() {
-                            return PipelineLayerResult {
-                                layer: layer_name.to_string(),
-                                passed: false,
-                                reason: "Instruction data does not start with expected discriminator".to_string(),
-                            };
-                        }
+                        && &data[..disc_bytes.len()] != disc_bytes.as_slice()
+                    {
+                        return PipelineLayerResult {
+                            layer: layer_name.to_string(),
+                            passed: false,
+                            reason: "Instruction data does not start with expected discriminator"
+                                .to_string(),
+                        };
+                    }
                 }
             }
         }
@@ -327,7 +361,8 @@ impl GraphiteCore {
             return PipelineLayerResult {
                 layer: layer_name.to_string(),
                 passed: true,
-                reason: "No manifest or no expected state changes - state check skipped".to_string(),
+                reason: "No manifest or no expected state changes - state check skipped"
+                    .to_string(),
             };
         }
 
@@ -339,8 +374,11 @@ impl GraphiteCore {
         // If state changes mention debit/credit/transfer/swap/stake,
         // there should be at least 2 writable accounts
         let needs_writable = changes_lower.iter().any(|c| {
-            c.contains("debit") || c.contains("credit") || c.contains("transfer")
-                || c.contains("swap") || c.contains("stake")
+            c.contains("debit")
+                || c.contains("credit")
+                || c.contains("transfer")
+                || c.contains("swap")
+                || c.contains("stake")
         });
 
         let writable_count = resolved_accounts.iter().filter(|a| a.is_writable).count();
@@ -359,7 +397,9 @@ impl GraphiteCore {
         // If state changes mention signer/authority/delegate/approve,
         // there should be at least 1 signer account
         let needs_signer = changes_lower.iter().any(|c| {
-            c.contains("signer") || c.contains("authority") || c.contains("delegate")
+            c.contains("signer")
+                || c.contains("authority")
+                || c.contains("delegate")
                 || c.contains("approve")
         });
 
@@ -369,18 +409,23 @@ impl GraphiteCore {
             return PipelineLayerResult {
                 layer: layer_name.to_string(),
                 passed: false,
-                reason: "Expected state changes require a signer but no signer account found".to_string(),
+                reason: "Expected state changes require a signer but no signer account found"
+                    .to_string(),
             };
         }
 
         // If state changes mention close/closure,
         // verify there is a writable account (the one being closed)
-        let needs_close = changes_lower.iter().any(|c| c.contains("close") || c.contains("closure"));
+        let needs_close = changes_lower
+            .iter()
+            .any(|c| c.contains("close") || c.contains("closure"));
         if needs_close && writable_count == 0 {
             return PipelineLayerResult {
                 layer: layer_name.to_string(),
                 passed: false,
-                reason: "Expected state changes mention close/closure but no writable account found".to_string(),
+                reason:
+                    "Expected state changes mention close/closure but no writable account found"
+                        .to_string(),
             };
         }
 
@@ -475,15 +520,18 @@ impl GraphiteCore {
                 return PipelineLayerResult {
                     layer: layer_name.to_string(),
                     passed: false,
-                    reason: format!("Unknown intent type {} - semantic verification failed (P12 fail-closed)", intent),
+                    reason: format!(
+                        "Unknown intent type {} - semantic verification failed (P12 fail-closed)",
+                        intent
+                    ),
                 };
             }
         };
 
         let ix_matches = intent_keywords.iter().any(|kw| ix_name.contains(kw));
-        let changes_match = changes_lower.iter().any(|c| {
-            intent_keywords.iter().any(|kw| c.contains(kw))
-        });
+        let changes_match = changes_lower
+            .iter()
+            .any(|c| intent_keywords.iter().any(|kw| c.contains(kw)));
 
         if !ix_matches && !changes_match {
             return PipelineLayerResult {
@@ -507,7 +555,7 @@ impl GraphiteCore {
     }
 
     /// Run the full verification pipeline on a transaction.
-    pub fn verify(
+    pub async fn verify_async(
         &self,
         input: &VerificationInput,
     ) -> Result<VerificationResult, VerificationError> {
@@ -518,7 +566,7 @@ impl GraphiteCore {
                 crate::account_resolution::AccountResolutionError::AccountCountMismatch {
                     expected: MAX_ACCOUNTS,
                     actual: input.account_addresses.len(),
-                }
+                },
             ));
         }
 
@@ -537,7 +585,10 @@ impl GraphiteCore {
             &self.registry,
         ) {
             Ok(r) => r,
-            Err(crate::account_resolution::AccountResolutionError::InstructionNotFound(_disc, _prog)) => {
+            Err(crate::account_resolution::AccountResolutionError::InstructionNotFound(
+                _disc,
+                _prog,
+            )) => {
                 // P12 COMPLIANCE: Known protocol + unknown instruction is NOT a hard block.
                 // Per Constitution P12 and the 5-Response Framework:
                 //   - Response 2 (fail open with explanation) applies: "protocol/instruction
@@ -554,17 +605,24 @@ impl GraphiteCore {
                     manifest_found: true,
                     resolution_order: (0..input.account_addresses.len()).collect(),
                     instruction_name: "unknown_instruction".to_string(),
-                    resolved_accounts: input.account_addresses.iter().enumerate().map(|(i, addr)| {
-                        crate::account_resolution::ResolvedAccount {
+                    resolved_accounts: input
+                        .account_addresses
+                        .iter()
+                        .enumerate()
+                        .map(|(i, addr)| crate::account_resolution::ResolvedAccount {
                             address: addr.clone(),
-                            role: if i == 0 { "signer".to_string() } else { "readonly".to_string() },
+                            role: if i == 0 {
+                                "signer".to_string()
+                            } else {
+                                "readonly".to_string()
+                            },
                             is_pda: false,
                             is_signer: i == 0,
                             is_writable: i == 0,
                             pda_seeds: vec![],
                             pda_mismatch: false,
-                        }
-                    }).collect(),
+                        })
+                        .collect(),
                 }
             }
             Err(crate::account_resolution::AccountResolutionError::InvalidAddress(addr)) => {
@@ -573,10 +631,16 @@ impl GraphiteCore {
                     crate::account_resolution::AccountResolutionError::InvalidAddress(addr),
                 ));
             }
-            Err(crate::account_resolution::AccountResolutionError::AccountCountMismatch { expected, actual }) => {
+            Err(crate::account_resolution::AccountResolutionError::AccountCountMismatch {
+                expected,
+                actual,
+            }) => {
                 // Client provided wrong number of accounts — return error (caller-fixable)
                 return Err(VerificationError::AccountResolution(
-                    crate::account_resolution::AccountResolutionError::AccountCountMismatch { expected, actual },
+                    crate::account_resolution::AccountResolutionError::AccountCountMismatch {
+                        expected,
+                        actual,
+                    },
                 ));
             }
             Err(e) => {
@@ -610,10 +674,18 @@ impl GraphiteCore {
                 let input_disc_lower = input.instruction_discriminator.to_lowercase();
                 let ix = m.instructions.iter().find(|i| {
                     let manifest_disc = i.discriminator.to_lowercase();
-                    if manifest_disc.is_empty() { return false; }
-                    if manifest_disc == input_disc_lower { return true; }
-                    if input_disc_lower.starts_with(&manifest_disc) { return true; }
-                    if manifest_disc.starts_with(&input_disc_lower) && input_disc_lower.len() >= 4 { return true; }
+                    if manifest_disc.is_empty() {
+                        return false;
+                    }
+                    if manifest_disc == input_disc_lower {
+                        return true;
+                    }
+                    if input_disc_lower.starts_with(&manifest_disc) {
+                        return true;
+                    }
+                    if manifest_disc.starts_with(&input_disc_lower) && input_disc_lower.len() >= 4 {
+                        return true;
+                    }
                     false
                 });
                 match ix {
@@ -621,7 +693,9 @@ impl GraphiteCore {
                     None => {
                         // Unknown instruction on known protocol (P12 path)
                         // Use UNION of all allowed_cpis from all instructions
-                        let union_cpis: Vec<String> = m.instructions.iter()
+                        let union_cpis: Vec<String> = m
+                            .instructions
+                            .iter()
                             .flat_map(|i| i.allowed_cpis.iter().cloned())
                             .collect::<std::collections::HashSet<_>>()
                             .into_iter()
@@ -652,10 +726,18 @@ impl GraphiteCore {
                 let input_disc_lower = input.instruction_discriminator.to_lowercase();
                 let ix = m.instructions.iter().find(|i| {
                     let manifest_disc = i.discriminator.to_lowercase();
-                    if manifest_disc.is_empty() { return false; }
-                    if manifest_disc == input_disc_lower { return true; }
-                    if input_disc_lower.starts_with(&manifest_disc) { return true; }
-                    if manifest_disc.starts_with(&input_disc_lower) && input_disc_lower.len() >= 4 { return true; }
+                    if manifest_disc.is_empty() {
+                        return false;
+                    }
+                    if manifest_disc == input_disc_lower {
+                        return true;
+                    }
+                    if input_disc_lower.starts_with(&manifest_disc) {
+                        return true;
+                    }
+                    if manifest_disc.starts_with(&input_disc_lower) && input_disc_lower.len() >= 4 {
+                        return true;
+                    }
                     false
                 });
                 match ix {
@@ -683,6 +765,35 @@ impl GraphiteCore {
                 .and_then(|p| p.output_token.clone()),
         })?;
 
+        // Phase 2 (best-effort): if an RPC client is attached, fetch the first
+        // account to provide additional context for L3 (simulation) layer.
+        // This is intentionally best-effort and will not hard-fail verification
+        // if the RPC call errors — it enriches the report when available.
+        let l3_rpc_account_info: Option<String> = None;
+        #[cfg(feature = "rpc")]
+        {
+            if let Some(client) = &self.rpc_client {
+                if let Some(first_addr) = input.account_addresses.get(0) {
+                    if let Ok(pk) = crate::solana_types::Pubkey::from_base58(first_addr) {
+                        match client.get_account(&pk).await {
+                            Ok(acc) => {
+                                l3_rpc_account_info = Some(format!(
+                                    "RPC account {}: lamports={}, owner={}, data_len={}",
+                                    acc.pubkey,
+                                    acc.lamports,
+                                    acc.owner,
+                                    acc.data.len()
+                                ));
+                            }
+                            Err(e) => {
+                                l3_rpc_account_info = Some(format!("RPC error: {}", e));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Note: Intent-Program mismatch and FakeSwap checks are now handled
         // inside the risk engine's assess() function (P0 Checks 8 and 9).
 
@@ -701,7 +812,15 @@ impl GraphiteCore {
                 pda_mismatches.len(),
                 pda_mismatches
                     .iter()
-                    .map(|a| format!("{} (role={})", if a.address.len() >= 8 { &a.address[..8] } else { &a.address }, a.role))
+                    .map(|a| format!(
+                        "{} (role={})",
+                        if a.address.len() >= 8 {
+                            &a.address[..8]
+                        } else {
+                            &a.address
+                        },
+                        a.role
+                    ))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -761,14 +880,51 @@ impl GraphiteCore {
         // Step 3.5: Simulation Integrity Check (Phase 1.5)
         let (sim_flagged, sim_divergence) = if let Some(ref baseline) = input.simulation_baseline {
             if baseline.sample_count >= 10 && baseline.std_compute_units > 0.0 {
+                // Build a simulation usage object, preferring live RPC simulation
+                // when an RPC client is attached. Fall back to caller-provided
+                // `input.compute_units` etc. if RPC simulation fails or is
+                // unavailable.
+                let usage = crate::simulation_integrity::ComputeUsage {
+                    compute_units: input.compute_units,
+                    account_writes: input.account_writes,
+                    cpi_hops: input.cpi_hops,
+                };
+
+                #[cfg(feature = "rpc")]
+                {
+                    if let Some(client) = &self.rpc_client {
+                        // Try to construct a best-effort transaction payload.
+                        // Prefer a fully-signed transaction blob when provided by caller;
+                        // otherwise fall back to `instruction_data` as a minimal payload.
+                        let tx_bytes = input
+                            .signed_transaction
+                            .as_ref()
+                            .cloned()
+                            .unwrap_or_else(|| input.instruction_data.clone().unwrap_or_default());
+                        match client.simulate_transaction(&tx_bytes).await {
+                            Ok(sim_res) => {
+                                if sim_res.units_consumed > 0 {
+                                    usage.compute_units = sim_res.units_consumed;
+                                }
+                                if let Some(writes) = sim_res.account_writes {
+                                    usage.account_writes = writes;
+                                }
+                                if let Some(hops) = sim_res.cpi_hops {
+                                    usage.cpi_hops = hops;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("simulateTransaction failed: {}", e);
+                                // keep usage as-is (caller-provided)
+                            }
+                        }
+                    }
+                }
+
                 match crate::simulation_integrity::check_simulation_integrity(
                     &crate::simulation_integrity::SimulationIntegrityInput {
                         program_id: input.program_id.clone(),
-                        simulation_usage: crate::simulation_integrity::ComputeUsage {
-                            compute_units: input.compute_units,
-                            account_writes: input.account_writes,
-                            cpi_hops: input.cpi_hops,
-                        },
+                        simulation_usage: usage,
                         baseline: baseline.clone(),
                         divergence_threshold: 2.0,
                     },
@@ -776,7 +932,10 @@ impl GraphiteCore {
                     Ok(result) => (Some(result.flagged), Some(result.divergence_score)),
                     // Fail-closed (Constitution P12): on integrity check error,
                     // flag the simulation rather than silently passing it.
-                    Err(_) => (Some(true), Some(f64::MAX)),
+                    Err(e) => {
+                        tracing::error!("simulation integrity check error: {}", e);
+                        (Some(true), Some(f64::MAX))
+                    }
                 }
             } else {
                 (None, None)
@@ -841,7 +1000,9 @@ impl GraphiteCore {
                     // of manifest tier (capped), graph tier, and evidence tier
                     // (also capped at OfficialManifest — caller-provided evidence
                     // cannot mint a tier higher than what a manifest declares).
-                    b.trust_tier.max(manifest_tier).max(evidence_tier.min(TrustTier::OfficialManifest))
+                    b.trust_tier
+                        .max(manifest_tier)
+                        .max(evidence_tier.min(TrustTier::OfficialManifest))
                 }
                 None => {
                     // No graph behavior — use the higher of manifest
@@ -853,13 +1014,17 @@ impl GraphiteCore {
         } else {
             // No manifest found — query the Semantic Graph in case we have
             // accumulated evidence from prior verifications (P7).
-            let graph_tier = self.semantic_graph.get(&input.program_id)
+            let graph_tier = self
+                .semantic_graph
+                .get(&input.program_id)
                 .map(|b| b.trust_tier)
                 .unwrap_or(TrustTier::Unknown);
             let evidence_tier = compute_trust_tier_from_evidence(&input.behavior_evidence);
             // Without a manifest, cap at HeuristicInferred even with evidence
             // (P6: unknown protocol ceiling still applies via confidence cap)
-            graph_tier.max(evidence_tier).min(TrustTier::HeuristicInferred)
+            graph_tier
+                .max(evidence_tier)
+                .min(TrustTier::HeuristicInferred)
         };
 
         let signals = build_signals(
@@ -878,7 +1043,8 @@ impl GraphiteCore {
         // accidentally removes the ceiling from compute_confidence(). The second cap
         // is always a no-op given the first cap is in place — it exists as a safety net.
         let confidence = apply_unknown_protocol_ceiling(trust_tier, confidence_result.confidence);
-        let confidence = (confidence - semantic_penalty - instruction_penalty - state_penalty).max(0.0);
+        let confidence =
+            (confidence - semantic_penalty - instruction_penalty - state_penalty).max(0.0);
 
         // Step 5: Policy Evaluation
         let policy_input = PolicyInput {
@@ -1048,14 +1214,21 @@ impl GraphiteCore {
                 PipelineLayerResult {
                     layer: "L3_SimulationVerification".to_string(),
                     passed: true,
-                    reason: if input.compute_units > 0 {
-                        format!(
-                            "Simulation integrity checked: {} compute units, {} account writes, {} CPI hops — divergence: {}",
-                            input.compute_units, input.account_writes, input.cpi_hops,
-                            if sim_flagged == Some(true) { "FLAGGED" } else { "none" }
-                        )
-                    } else {
-                        "Phase 1: simulation skipped (no RPC connection) — simulation integrity module active when caller provides compute data".to_string()
+                    reason: {
+                        let base = if input.compute_units > 0 {
+                            format!(
+                                "Simulation integrity checked: {} compute units, {} account writes, {} CPI hops — divergence: {}",
+                                input.compute_units, input.account_writes, input.cpi_hops,
+                                if sim_flagged == Some(true) { "FLAGGED" } else { "none" }
+                            )
+                        } else {
+                            "Phase 1: simulation skipped (no RPC connection) — simulation integrity module active when caller provides compute data".to_string()
+                        };
+                        if let Some(ref info) = l3_rpc_account_info {
+                            format!("{} | RPC: {}", base, info)
+                        } else {
+                            base
+                        }
                     },
                 },
                 // L4: State Verification — diff pre/post account state against declared intent
@@ -1290,7 +1463,7 @@ fn generate_audit_id(
     // before submitting).
     let hash = hasher.finalize();
     let content_hash = hex::encode(&hash[..8]);
-    
+
     // audit_trail_id adds verification result + sequence for uniqueness
     let mut id_hasher = sha2::Sha256::new();
     id_hasher.update(hash);
@@ -1513,9 +1686,15 @@ mod tests {
         // With zeroed evidence: conf = 0.44, tier = OfficialManifest (ceiling 0.75).
         // Since 0.44 < 0.75, NO ceiling is triggered — breakdown should NOT have
         // a TrustTierCeiling item (or it should be negligible floating-point noise).
-        assert_eq!(result.trust_tier, "OfficialManifest",
-            "Evidence tier must be capped at OfficialManifest — got: {}", result.trust_tier);
-        let ceiling_item = result.breakdown.iter().find(|b| b.kind == "TrustTierCeiling");
+        assert_eq!(
+            result.trust_tier, "OfficialManifest",
+            "Evidence tier must be capped at OfficialManifest — got: {}",
+            result.trust_tier
+        );
+        let ceiling_item = result
+            .breakdown
+            .iter()
+            .find(|b| b.kind == "TrustTierCeiling");
         if let Some(item) = ceiling_item {
             assert!(item.raw_value.abs() < 0.001,
                 "Confidence 0.44 is below OfficialManifest ceiling 0.75 — ceiling reduction should be negligible, got: {}",
@@ -1565,18 +1744,26 @@ mod tests {
         // With strong evidence (but no manifest), the raw confidence from
         // signals will be high, but the ceiling should cap it to 0.55.
         // The breakdown should include a TrustTierCeiling item.
-        let ceiling_item = result.breakdown.iter().find(|b| b.kind == "TrustTierCeiling");
+        let ceiling_item = result
+            .breakdown
+            .iter()
+            .find(|b| b.kind == "TrustTierCeiling");
 
         // The confidence should be <= 0.55 (capped)
-        assert!(result.confidence <= 0.55,
-            "Unknown protocol should be capped at 0.55, got confidence={}", result.confidence);
+        assert!(
+            result.confidence <= 0.55,
+            "Unknown protocol should be capped at 0.55, got confidence={}",
+            result.confidence
+        );
 
         // If the raw confidence exceeded 0.55, the ceiling item should be present
         // With these evidence values, the raw confidence should be high enough
         if let Some(item) = ceiling_item {
-            assert!(item.contribution < 0.0,
+            assert!(
+                item.contribution < 0.0,
                 "Ceiling contribution should be negative (reducing confidence), got: {}",
-                item.contribution);
+                item.contribution
+            );
         }
         // If ceiling_item is None, it means the raw confidence was already <= 0.55
         // (the signals didn't produce a high enough raw score). This is also OK —

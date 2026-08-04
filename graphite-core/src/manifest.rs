@@ -96,7 +96,15 @@ impl ManifestRegistry {
         self.validate(&manifest)?;
         let key = manifest.protocol.program_id.clone();
         self.manifests.insert(key.clone(), manifest);
-        Ok(self.manifests.get(&key).expect("manifest was just inserted — key must exist"))
+        // Safe: attempt to retrieve the manifest we just inserted; return a
+        // meaningful error if retrieval fails instead of panicking.
+        match self.manifests.get(&key) {
+            Some(m) => Ok(m),
+            None => Err(ManifestError::Invalid(format!(
+                "manifest insertion failed for key {}",
+                key
+            ))),
+        }
     }
 
     /// Get a manifest by program ID (base58 string).
@@ -114,7 +122,8 @@ impl ManifestRegistry {
         self.manifests.values().collect()
     }
 
-    /// Find an instruction definition by discriminator (hex).
+    /// Find an instruction definition by discriminator (hex), allowing
+    /// exact or prefix matches for short discriminators.
     pub fn find_instruction<'a>(
         &'a self,
         program_id: &str,
@@ -123,7 +132,7 @@ impl ManifestRegistry {
         self.get(program_id)?
             .instructions
             .iter()
-            .find(|i| i.discriminator.to_lowercase() == discriminator_hex.to_lowercase())
+            .find(|i| discriminator_matches(&i.discriminator, discriminator_hex))
     }
 
     fn validate(&self, manifest: &ProtocolManifest) -> Result<(), ManifestError> {
@@ -151,53 +160,107 @@ impl ManifestRegistry {
                     ))
                 })?;
             }
+            // Validate PDA seed templates when present. Support placeholder vars
+            // that can be resolved at runtime for dynamic PDA derivation.
+            for seed in ix.accounts.iter().flat_map(|a| a.pda_seeds.iter()) {
+                if seed.starts_with("{") && !seed.ends_with("}") {
+                    return Err(ManifestError::Invalid(format!(
+                        "instruction '{}' has malformed PDA seed template: {}",
+                        ix.name, seed
+                    )));
+                }
+            }
         }
         Ok(())
     }
+}
+
+fn discriminator_matches(manifest_disc: &str, input_disc: &str) -> bool {
+    let manifest_disc = manifest_disc.to_lowercase();
+    let input_disc = input_disc.to_lowercase();
+
+    if manifest_disc.is_empty() {
+        return false;
+    }
+    if manifest_disc == input_disc {
+        return true;
+    }
+    if input_disc.starts_with(&manifest_disc) {
+        return true;
+    }
+    if manifest_disc.starts_with(&input_disc) && input_disc.len() >= 4 {
+        return true;
+    }
+    false
 }
 
 /// Load the built-in seed protocol manifests.
 /// These are embedded at compile time — no file system access needed.
 pub fn load_seed_manifests() -> ManifestRegistry {
     let mut registry = ManifestRegistry::new();
-
     // Fail-closed: seed manifests are compile-time-baked via include_str!.
-    // If one fails to parse, it indicates corruption or a bug — we panic
-    // rather than silently running without the protocol (which would weaken
-    // security by treating that protocol as "unknown" and capping at 0.55).
-    registry
-        .load_from_json(include_str!("../protocols/system-program.json"))
-        .expect("FATAL: system-program.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/spl-token.json"))
-        .expect("FATAL: spl-token.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/token-2022.json"))
-        .expect("FATAL: token-2022.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/stake-program.json"))
-        .expect("FATAL: stake-program.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
-        .expect("FATAL: raydium-amm-v4.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/squads-v4.json"))
-        .expect("FATAL: squads-v4.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/jupiter-v6.json"))
-        .expect("FATAL: jupiter-v6.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/orca-whirlpools.json"))
-        .expect("FATAL: orca-whirlpools.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/meteora-dlmm.json"))
-        .expect("FATAL: meteora-dlmm.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/memo-program.json"))
-        .expect("FATAL: memo-program.json manifest failed to load");
-    registry
-        .load_from_json(include_str!("../protocols/legacy-memo-program.json"))
-        .expect("FATAL: legacy-memo-program.json manifest failed to load");
+    // If one fails to parse or validate, log the error and abort with a
+    // non-zero exit to avoid running in a weakened, unknown-protocol state.
+    let seed_paths = [
+        "../protocols/system-program.json",
+        "../protocols/spl-token.json",
+        "../protocols/token-2022.json",
+        "../protocols/stake-program.json",
+        "../protocols/raydium-amm-v4.json",
+        "../protocols/squads-v4.json",
+        "../protocols/jupiter-v6.json",
+        "../protocols/orca-whirlpools.json",
+        "../protocols/meteora-dlmm.json",
+        "../protocols/memo-program.json",
+        "../protocols/legacy-memo-program.json",
+    ];
+
+    for p in &seed_paths {
+        let json = include_str!("../protocols/system-program.json");
+        // include_str! requires a string literal; map path to literal explicitly
+        let res = match *p {
+            "../protocols/system-program.json" => {
+                registry.load_from_json(include_str!("../protocols/system-program.json"))
+            }
+            "../protocols/spl-token.json" => {
+                registry.load_from_json(include_str!("../protocols/spl-token.json"))
+            }
+            "../protocols/token-2022.json" => {
+                registry.load_from_json(include_str!("../protocols/token-2022.json"))
+            }
+            "../protocols/stake-program.json" => {
+                registry.load_from_json(include_str!("../protocols/stake-program.json"))
+            }
+            "../protocols/raydium-amm-v4.json" => {
+                registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
+            }
+            "../protocols/squads-v4.json" => {
+                registry.load_from_json(include_str!("../protocols/squads-v4.json"))
+            }
+            "../protocols/jupiter-v6.json" => {
+                registry.load_from_json(include_str!("../protocols/jupiter-v6.json"))
+            }
+            "../protocols/orca-whirlpools.json" => {
+                registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"))
+            }
+            "../protocols/meteora-dlmm.json" => {
+                registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"))
+            }
+            "../protocols/memo-program.json" => {
+                registry.load_from_json(include_str!("../protocols/memo-program.json"))
+            }
+            "../protocols/legacy-memo-program.json" => {
+                registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
+            }
+            _ => unreachable!(),
+        };
+
+        if let Err(e) = res {
+            tracing::error!(path = %p, error = %e, "Failed to load seed manifest");
+            std::process::exit(1);
+        }
+        let _ = json; // silence unused variable in branches where it's unused
+    }
 
     registry
 }
@@ -272,7 +335,10 @@ mod test_v2_discriminators {
             }
         }
         assert!(found, "route_v2 should be loaded");
-        let f = registry.find_instruction("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "bb64facc31c4af14");
+        let f = registry.find_instruction(
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            "bb64facc31c4af14",
+        );
         assert!(f.is_some(), "find_instruction should match route_v2 disc");
     }
 }

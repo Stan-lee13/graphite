@@ -1,8 +1,8 @@
 #[test]
 fn verify_manifest_trust_tier_used() {
-    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
-    use graphite_core::semantic_graph_store::BehaviorEvidence;
     use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::semantic_graph_store::BehaviorEvidence;
+    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
 
     let core = GraphiteCore::new();
 
@@ -42,20 +42,24 @@ fn verify_manifest_trust_tier_used() {
     println!("Manifest found: {}", result.manifest_found);
     println!("Unknown protocol: {}", result.unknown_protocol);
 
-    assert_eq!(result.trust_tier, "OfficialManifest", 
-        "P7 fix: manifest self-asserted BattleTested must be capped to OfficialManifest");
+    assert_eq!(
+        result.trust_tier, "OfficialManifest",
+        "P7 fix: manifest self-asserted BattleTested must be capped to OfficialManifest"
+    );
     assert!(result.confidence > 0.3,
         "With OfficialManifest tier + manifest found + intent alignment, confidence should be > 0.3, got {}",
         result.confidence);
-    assert!(!result.unknown_protocol,
-        "SPL Token has a manifest — should not be marked as unknown protocol");
+    assert!(
+        !result.unknown_protocol,
+        "SPL Token has a manifest — should not be marked as unknown protocol"
+    );
 }
 
 #[test]
 fn verify_unknown_protocol_still_capped() {
-    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
-    use graphite_core::semantic_graph_store::BehaviorEvidence;
     use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::semantic_graph_store::BehaviorEvidence;
+    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
 
     let core = GraphiteCore::new();
 
@@ -89,11 +93,17 @@ fn verify_unknown_protocol_still_capped() {
     println!("Unknown protocol trust tier: {}", result.trust_tier);
     println!("Unknown protocol confidence: {}", result.confidence);
 
-    assert_eq!(result.trust_tier, "Unknown",
-        "Unknown program must get Unknown trust tier (Constitution P6)");
-    assert!(result.confidence <= 0.55,
+    assert_eq!(
+        result.trust_tier, "Unknown",
+        "Unknown program must get Unknown trust tier (Constitution P6)"
+    );
+    assert!(
+        result.confidence <= 0.55,
         "Unknown protocol confidence must be capped at 0.55, got {}",
-        result.confidence);
-    assert!(result.unknown_protocol,
-        "Unknown program must be marked as unknown protocol");
+        result.confidence
+    );
+    assert!(
+        result.unknown_protocol,
+        "Unknown program must be marked as unknown protocol"
+    );
 }
