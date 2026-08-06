@@ -21,7 +21,17 @@ use graphite_core::WalletProfile;
 #[tokio::test]
 #[ignore = "network test — run explicitly: cargo test --features rpc -- --ignored live_transactions"]
 async fn verify_real_devnet_transactions() {
-    let client = graphite_core::rpc_client::SolanaRpcClient::devnet();
+    // Use the operator-configured RPC endpoint when provided (production
+    // setup: GRAPHITE_RPC_URL), falling back to public devnet for CI.
+    let client = match std::env::var("GRAPHITE_RPC_URL") {
+        Ok(url) if !url.is_empty() => {
+            graphite_core::rpc_client::SolanaRpcClient::new(graphite_core::rpc_client::RpcConfig {
+                endpoint: url,
+                ..Default::default()
+            })
+        }
+        _ => graphite_core::rpc_client::SolanaRpcClient::devnet(),
+    };
     let core = graphite_core::GraphiteCore::new();
 
     // Network tests must degrade gracefully, never panic the suite: if devnet
@@ -33,8 +43,9 @@ async fn verify_real_devnet_transactions() {
 
     let mut verified = 0usize;
     let mut attempted = 0usize;
-    // Walk back up to 30 slots to find blocks with transactions.
-    for s in slot.saturating_sub(30)..=slot {
+    // Devnet block production is bursty (long empty stretches), so walk back
+    // up to 300 slots to find non-empty blocks with real transactions.
+    for s in slot.saturating_sub(300)..=slot {
         if verified >= 10 {
             break;
         }
@@ -52,7 +63,7 @@ async fn verify_real_devnet_transactions() {
                 continue;
             };
             attempted += 1;
-            match core.verify(&input) {
+            match core.verify_async(&input).await {
                 Ok(result) => {
                     assert!(
                         (0.0..=1.0).contains(&result.confidence) && result.confidence.is_finite(),
@@ -90,7 +101,15 @@ fn tx_to_input(tx: &serde_json::Value) -> Option<VerificationInput> {
     let msg = tx.get("transaction")?.get("message")?;
     let keys = msg.get("accountKeys")?.as_array()?;
     let ixs = msg.get("instructions")?.as_array()?;
-    let ix = ixs.first()?;
+
+    // Skip setup-only instructions (e.g. ComputeBudget with zero accounts):
+    // pick the first instruction that actually references accounts.
+    let ix = ixs.iter().find(|ix| {
+        ix.get("accounts")
+            .and_then(|a| a.as_array())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false)
+    })?;
 
     let program_idx = ix.get("programIdIndex")?.as_u64()? as usize;
     let program_id = keys.get(program_idx)?.as_str()?;
