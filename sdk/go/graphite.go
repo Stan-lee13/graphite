@@ -160,10 +160,13 @@ type VerificationResult struct {
 	Layers               []PipelineLayerResult     `json:"layers,omitempty"`
 }
 
-// PipelineLayerResult tracks the pass/fail status of each layer in the 8-layer pipeline.
+// PipelineLayerResult tracks the status of each layer in the 8-layer pipeline.
+// Status is the tri-state truth (passed | failed | inconclusive); Passed is
+// derived from it (only "passed" yields true) — GAP-2026-08-06-3.
 type PipelineLayerResult struct {
 	Layer  string `json:"layer"`
 	Passed bool   `json:"passed"`
+	Status string `json:"status,omitempty"`
 	Reason string `json:"reason"`
 }
 

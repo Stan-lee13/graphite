@@ -149,12 +149,71 @@ pub enum VerificationError {
     InvalidInput(String),
 }
 
+/// Tri-state outcome of a single pipeline layer (GAP-2026-08-06-3).
+///
+/// A layer either PASSES, FAILS, or is INCONCLUSIVE — it never reports a
+/// verdict it did not reach. `passed` (kept for SDK backward compatibility)
+/// is DERIVED at construction: only `Passed` yields `passed: true`. This
+/// eliminates the phantom-pass class where L3/L8 hardcoded `passed: true`
+/// while the real verdict lived elsewhere in the result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayerStatus {
+    /// The layer ran and confirmed its check.
+    Passed,
+    /// The layer ran and its check failed (blocks / reduces confidence).
+    Failed,
+    /// The layer could not produce a verdict (not run, skipped, or
+    /// insufficient evidence). Never reported as a pass.
+    Inconclusive,
+}
+
+impl Default for LayerStatus {
+    /// Fail-closed default: an absent/unknown status must not claim a pass.
+    fn default() -> Self {
+        LayerStatus::Inconclusive
+    }
+}
+
+impl LayerStatus {
+    /// Serde-consistent snake_case name (used in the audit trail).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LayerStatus::Passed => "passed",
+            LayerStatus::Failed => "failed",
+            LayerStatus::Inconclusive => "inconclusive",
+        }
+    }
+}
+
 /// Result of a single pipeline layer verification.
+///
+/// `passed` is the legacy boolean (SDK-consumed) and is ALWAYS derived from
+/// `status` at construction — never set independently, so the report cannot
+/// drift from reality.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PipelineLayerResult {
     pub layer: String,
     pub passed: bool,
+    /// Tri-state truth (GAP-2026-08-06-3). `#[serde(default)]` keeps
+    /// deserialization of older payloads that predate the field working; the
+    /// fail-closed default is `Inconclusive`.
+    #[serde(default)]
+    pub status: LayerStatus,
     pub reason: String,
+}
+
+impl PipelineLayerResult {
+    /// Single construction point: `passed` is derived from `status`, so the
+    /// boolean can never contradict the tri-state.
+    pub fn new(layer: impl Into<String>, status: LayerStatus, reason: impl Into<String>) -> Self {
+        Self {
+            layer: layer.into(),
+            passed: status == LayerStatus::Passed,
+            status,
+            reason: reason.into(),
+        }
+    }
 }
 
 /// File name of the semantic-graph snapshot inside the data directory.
@@ -404,11 +463,12 @@ impl GraphiteCore {
         let manifest = match manifest {
             Some(m) => m,
             None => {
-                return PipelineLayerResult {
-                    layer: layer_name.to_string(),
-                    passed: true,
-                    reason: "No manifest - unknown protocol, instruction check skipped".to_string(),
-                };
+                // GAP-2026-08-06-3: a SKIPPED check is Inconclusive, never a pass.
+                return PipelineLayerResult::new(
+                    layer_name,
+                    LayerStatus::Inconclusive,
+                    "No manifest - unknown protocol, instruction check skipped",
+                );
             }
         };
 
@@ -431,15 +491,15 @@ impl GraphiteCore {
                 // The instruction is unknown but the protocol is trusted.
                 // Confidence will be lower (no InstructionMatch signal).
                 // Risk Engine still checks for malicious patterns.
-                return PipelineLayerResult {
-                    layer: layer_name.to_string(),
-                    passed: true,
-                    reason: format!(
+                return PipelineLayerResult::new(
+                    layer_name,
+                    LayerStatus::Passed,
+                    format!(
                         "Unknown instruction '{}' on known protocol {} — P12 soft pass (reduced confidence)",
                         input.instruction_discriminator,
                         manifest.protocol.name
                     ),
-                };
+                );
             }
         };
 
@@ -451,12 +511,11 @@ impl GraphiteCore {
                     if data.len() >= disc_bytes.len()
                         && &data[..disc_bytes.len()] != disc_bytes.as_slice()
                     {
-                        return PipelineLayerResult {
-                            layer: layer_name.to_string(),
-                            passed: false,
-                            reason: "Instruction data does not start with expected discriminator"
-                                .to_string(),
-                        };
+                        return PipelineLayerResult::new(
+                            layer_name,
+                            LayerStatus::Failed,
+                            "Instruction data does not start with expected discriminator",
+                        );
                     }
                 }
             }
@@ -472,32 +531,32 @@ impl GraphiteCore {
         let actual_accounts = resolution.resolved_accounts.len();
         if actual_accounts < expected_accounts {
             // Too few accounts is always a hard fail — missing required accounts
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: false,
-                reason: format!(
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Failed,
+                format!(
                     "Account count insufficient: manifest requires {}, got {}",
                     expected_accounts, actual_accounts
                 ),
-            };
+            );
         } else if actual_accounts > expected_accounts && expected_accounts > 0 {
             // More accounts than manifest expects — common for aggregators
             // that route through multiple DEX venues. Soft pass with note.
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: true,
-                reason: format!(
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Passed,
+                format!(
                     "Instruction {} verified (manifest min: {}, actual: {} — variable accounts for routing)",
                     ix.name, expected_accounts, actual_accounts
                 ),
-            };
+            );
         }
 
-        PipelineLayerResult {
-            layer: layer_name.to_string(),
-            passed: true,
-            reason: format!("Instruction {} verified against manifest", ix.name),
-        }
+        PipelineLayerResult::new(
+            layer_name,
+            LayerStatus::Passed,
+            format!("Instruction {} verified against manifest", ix.name),
+        )
     }
 
     // L4: State Verification
@@ -510,12 +569,12 @@ impl GraphiteCore {
         let layer_name = "L4_StateVerification";
 
         if !manifest_found || expected_state_changes.is_empty() {
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: true,
-                reason: "No manifest or no expected state changes - state check skipped"
-                    .to_string(),
-            };
+            // GAP-2026-08-06-3: a SKIPPED check is Inconclusive, never a pass.
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Inconclusive,
+                "No manifest or no expected state changes - state check skipped",
+            );
         }
 
         let changes_lower: Vec<String> = expected_state_changes
@@ -536,14 +595,14 @@ impl GraphiteCore {
         let writable_count = resolved_accounts.iter().filter(|a| a.is_writable).count();
 
         if needs_writable && writable_count < 2 {
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: false,
-                reason: format!(
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Failed,
+                format!(
                     "Expected state changes require writable accounts but only {} writable account(s) found",
                     writable_count
                 ),
-            };
+            );
         }
 
         // If state changes mention signer/authority/delegate/approve,
@@ -558,12 +617,11 @@ impl GraphiteCore {
         let signer_count = resolved_accounts.iter().filter(|a| a.is_signer).count();
 
         if needs_signer && signer_count == 0 {
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: false,
-                reason: "Expected state changes require a signer but no signer account found"
-                    .to_string(),
-            };
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Failed,
+                "Expected state changes require a signer but no signer account found",
+            );
         }
 
         // If state changes mention close/closure,
@@ -572,24 +630,22 @@ impl GraphiteCore {
             .iter()
             .any(|c| c.contains("close") || c.contains("closure"));
         if needs_close && writable_count == 0 {
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: false,
-                reason:
-                    "Expected state changes mention close/closure but no writable account found"
-                        .to_string(),
-            };
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Failed,
+                "Expected state changes mention close/closure but no writable account found",
+            );
         }
 
-        PipelineLayerResult {
-            layer: layer_name.to_string(),
-            passed: true,
-            reason: format!(
+        PipelineLayerResult::new(
+            layer_name,
+            LayerStatus::Passed,
+            format!(
                 "State verification passed: {} state change(s) consistent with {} account(s)",
                 expected_state_changes.len(),
                 resolved_accounts.len()
             ),
-        }
+        )
     }
 
     // L5: Semantic Verification
@@ -603,11 +659,12 @@ impl GraphiteCore {
         let layer_name = "L5_SemanticVerification";
 
         if !manifest_found {
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: true,
-                reason: "No manifest - unknown protocol, semantic check skipped".to_string(),
-            };
+            // GAP-2026-08-06-3: a SKIPPED check is Inconclusive, never a pass.
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Inconclusive,
+                "No manifest - unknown protocol, semantic check skipped",
+            );
         }
 
         // SECURITY FIX: For unknown instructions on known protocols with high-risk
@@ -620,20 +677,22 @@ impl GraphiteCore {
                 "swap" | "bridge" | "withdraw" | "delegate" | "mint"
             );
             if high_risk {
-                return PipelineLayerResult {
-                    layer: layer_name.to_string(),
-                    passed: false,
-                    reason: format!(
+                return PipelineLayerResult::new(
+                    layer_name,
+                    LayerStatus::Failed,
+                    format!(
                         "Unknown instruction on known protocol with high-risk intent '{}' — fail-closed (P12: cannot verify intent-instruction alignment)",
                         proposed_intent.intent_type
                     ),
-                };
+                );
             }
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: true,
-                reason: "Unknown instruction on known protocol with low-risk intent — semantic check skipped (P12 soft pass)".to_string(),
-            };
+            // Low-risk unknown instruction: the semantic check itself did not
+            // run against a known shape — Inconclusive, not a pass (GAP-2026-08-06-3).
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Inconclusive,
+                "Unknown instruction on known protocol with low-risk intent — semantic check skipped (P12 soft pass)",
+            );
         }
 
         let intent = proposed_intent.intent_type.to_lowercase();
@@ -669,14 +728,14 @@ impl GraphiteCore {
                 "approve/revoke intent but instruction does not match",
             ),
             _ => {
-                return PipelineLayerResult {
-                    layer: layer_name.to_string(),
-                    passed: false,
-                    reason: format!(
+                return PipelineLayerResult::new(
+                    layer_name,
+                    LayerStatus::Failed,
+                    format!(
                         "Unknown intent type {} - semantic verification failed (P12 fail-closed)",
                         intent
                     ),
-                };
+                );
             }
         };
 
@@ -686,24 +745,24 @@ impl GraphiteCore {
             .any(|c| intent_keywords.iter().any(|kw| c.contains(kw)));
 
         if !ix_matches && !changes_match {
-            return PipelineLayerResult {
-                layer: layer_name.to_string(),
-                passed: false,
-                reason: format!(
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Failed,
+                format!(
                     "{}: intent={}, instruction={}, state_changes={:?}",
                     mismatch_msg, intent, instruction_name, expected_state_changes
                 ),
-            };
+            );
         }
 
-        PipelineLayerResult {
-            layer: layer_name.to_string(),
-            passed: true,
-            reason: format!(
+        PipelineLayerResult::new(
+            layer_name,
+            LayerStatus::Passed,
+            format!(
                 "Semantic verification passed: intent {} consistent with instruction {}",
                 intent, instruction_name
             ),
-        }
+        )
     }
 
     /// Run the full verification pipeline on a transaction.
@@ -1226,9 +1285,25 @@ impl GraphiteCore {
             manifest_found,
         );
 
-        let semantic_penalty = if !l5_result.passed { 0.3 } else { 0.0 };
-        let instruction_penalty = if !l2_result.passed { 0.2 } else { 0.0 };
-        let state_penalty = if !l4_result.passed { 0.15 } else { 0.0 };
+        // GAP-2026-08-06-3: penalties key off the tri-state — only a genuine
+        // FAILED check penalizes. Inconclusive (skipped/unverified) is absence
+        // of evidence, not failure: it must not shift the verdict math, only
+        // the (now honest) layer report.
+        let semantic_penalty = if l5_result.status == LayerStatus::Failed {
+            0.3
+        } else {
+            0.0
+        };
+        let instruction_penalty = if l2_result.status == LayerStatus::Failed {
+            0.2
+        } else {
+            0.0
+        };
+        let state_penalty = if l4_result.status == LayerStatus::Failed {
+            0.15
+        } else {
+            0.0
+        };
 
         // Step 4: Confidence Computation
         let trust_tier = if manifest_found {
@@ -1279,7 +1354,10 @@ impl GraphiteCore {
             manifest_found,
             trust_tier,
             &input.proposed_intent,
-            l5_result.passed,
+            // Only a genuine Failed L5 blocks the intent-alignment signal; an
+            // Inconclusive (skipped) semantic check keeps the pre-GAP-2026-08-06-3
+            // behavior (no alignment penalty) while the layer report is now honest.
+            l5_result.status != LayerStatus::Failed,
         );
         let confidence_result = compute_confidence(&signals, trust_tier)
             .map_err(|e| VerificationError::Confidence(e.to_string()))?;
@@ -1459,22 +1537,22 @@ impl GraphiteCore {
             layers: vec![
                 // L1: Account Resolution — resolve all required accounts/PDAs
                 // ARCHITECTURE.md 3.12: "Resolve all required accounts/PDAs"
-                PipelineLayerResult {
-                    layer: "L1_AccountResolution".to_string(),
-                    passed: true,
-                    reason: format!(
+                PipelineLayerResult::new(
+                    "L1_AccountResolution",
+                    LayerStatus::Passed,
+                    format!(
                         "Resolved {} account(s), manifest {}",
                         resolution.resolved_accounts.len(),
                         if manifest_found { "found" } else { "not found" }
                     ),
-                },
+                ),
                 // L2: Instruction Verification — confirm discriminator + args match known shape
                 // ARCHITECTURE.md 3.12: "Confirm instruction discriminator + args match a known shape"
-                PipelineLayerResult {
-                    layer: "L2_InstructionVerification".to_string(),
-                    passed: l2_result.passed,
-                    reason: l2_result.reason.clone(),
-                },
+                PipelineLayerResult::new(
+                    "L2_InstructionVerification",
+                    l2_result.status,
+                    l2_result.reason.clone(),
+                ),
                 // L3: Simulation Verification — run simulateTransaction, confirm it succeeds
                 // ARCHITECTURE.md 3.12: "Run simulateTransaction, confirm it succeeds"
                 // Phase 1: SKIPPED — no RPC connection available. Simulation requires a
@@ -1483,10 +1561,21 @@ impl GraphiteCore {
                 // module IS wired in and checks for compute-unit divergence when
                 // simulation data is provided by the caller, but the full L3 (actually
                 // running simulateTransaction against an RPC node) is not yet active.
-                PipelineLayerResult {
-                    layer: "L3_SimulationVerification".to_string(),
-                    passed: true,
-                    reason: {
+                // GAP-2026-08-06-3: the L3 layer result now carries the REAL
+                // simulation-integrity verdict. The provenance-aware tri-state:
+                //   Some(true)  → Failed   (integrity check flagged)
+                //   Some(false) → Passed   (RPC-verified clean)
+                //   None        → Inconclusive (no trusted verdict: no baseline,
+                //                  insufficient samples, or unverified
+                //                  caller-supplied usage — P5 cannot certify)
+                PipelineLayerResult::new(
+                    "L3_SimulationVerification",
+                    match sim_flagged {
+                        Some(true) => LayerStatus::Failed,
+                        Some(false) => LayerStatus::Passed,
+                        None => LayerStatus::Inconclusive,
+                    },
+                    {
                         let base = match (sim_flagged, sim_divergence) {
                             (Some(true), _) => {
                                 // Clamp the DISPLAYED divergence: zero-variance
@@ -1522,36 +1611,40 @@ impl GraphiteCore {
                             base
                         }
                     },
-                },
+                ),
                 // L4: State Verification — diff pre/post account state against declared intent
                 // ARCHITECTURE.md 3.12: "Diff pre/post account state against declared intent"
                 // Phase 1: heuristic check — verifies writable/signer account counts
                 // are consistent with declared state changes. Full pre/post state diff
                 // requires RPC access (Phase 2).
-                PipelineLayerResult {
-                    layer: "L4_StateVerification".to_string(),
-                    passed: l4_result.passed,
-                    reason: l4_result.reason.clone(),
-                },
+                PipelineLayerResult::new(
+                    "L4_StateVerification",
+                    l4_result.status,
+                    l4_result.reason.clone(),
+                ),
                 // L5: Semantic Verification — compare diff against Semantic Graph expected Behavior
                 // ARCHITECTURE.md 3.12: "Compare diff against the Semantic Graph's expected Behavior"
                 // Phase 1: keyword matching between intent type, instruction name, and
                 // expected state changes. Full Semantic Graph comparison requires
                 // accumulated behavior data (Phase 2+).
-                PipelineLayerResult {
-                    layer: "L5_SemanticVerification".to_string(),
-                    passed: l5_result.passed,
-                    reason: l5_result.reason.clone(),
-                },
+                PipelineLayerResult::new(
+                    "L5_SemanticVerification",
+                    l5_result.status,
+                    l5_result.reason.clone(),
+                ),
                 // L6: Policy Verification — apply the active wallet's Policy Engine profile
                 // ARCHITECTURE.md 3.12: "Apply the active wallet's Policy Engine profile"
                 // Includes confidence computation (3.11) + policy threshold checks (3.13).
                 // Confidence is computed first, then policy evaluates it against the
                 // wallet profile's minimum confidence and trust tier thresholds.
-                PipelineLayerResult {
-                    layer: "L6_PolicyVerification".to_string(),
-                    passed: matches!(policy_verdict, PolicyVerdict::Approved),
-                    reason: format!(
+                PipelineLayerResult::new(
+                    "L6_PolicyVerification",
+                    if matches!(policy_verdict, PolicyVerdict::Approved) {
+                        LayerStatus::Passed
+                    } else {
+                        LayerStatus::Failed
+                    },
+                    format!(
                         "Confidence: {:.4} (tier: {:?}, ceiling: {:.2}) → Policy: {} (min_conf: {:.2}, min_tier: {:?})",
                         confidence, trust_tier, confidence_result.ceiling_applied,
                         policy_str,
@@ -1570,7 +1663,7 @@ impl GraphiteCore {
                             WalletProfile::Custom { min_trust_tier, .. } => min_trust_tier,
                         }
                     ),
-                },
+                ),
                 // L7: Risk Verification — runs the Risk Engine (3.21)
                 // ARCHITECTURE.md 3.12: "Forbidden patterns, allowlist/denylist, compositional risk"
                 // NOTE: The Risk Engine executes EARLY in the pipeline (before confidence/policy)
@@ -1579,10 +1672,14 @@ impl GraphiteCore {
                 // per the architecture spec's layer ordering. A risk block is a hard gate
                 // that overrides any policy approval (Constitution: risk block is binary,
                 // not a scored signal).
-                PipelineLayerResult {
-                    layer: "L7_RiskVerification".to_string(),
-                    passed: risk_summary.status == "Clear",
-                    reason: if risk_summary.status == "Clear" {
+                PipelineLayerResult::new(
+                    "L7_RiskVerification",
+                    if risk_summary.status == "Clear" {
+                        LayerStatus::Passed
+                    } else {
+                        LayerStatus::Failed
+                    },
+                    if risk_summary.status == "Clear" {
                         if risk_warnings.is_empty() {
                             "No risk patterns detected (8 patterns checked)".to_string()
                         } else {
@@ -1594,19 +1691,21 @@ impl GraphiteCore {
                     } else {
                         format!("Blocked: {} finding(s) — {:?}", risk_summary.findings.len(), risk_summary.findings.iter().map(|f| &f.pattern).collect::<Vec<_>>())
                     },
-                },
+                ),
                 // L8: Execution Verification — confirm finalized on-chain result matches prediction
                 // ARCHITECTURE.md 3.12: "Post-submission: confirm the finalized on-chain result
                 // matches what L1-L7 predicted"
-                // Phase 1: SKIPPED — requires transaction submission to Solana mainnet/devnet.
-                // This is a Phase 2+ feature (requires SAK integration or direct RPC submission).
-                // The audit_trail_id (SHA-256 of accounts + instruction data + CPI targets)
-                // enables post-hoc verification once L8 is implemented.
-                PipelineLayerResult {
-                    layer: "L8_ExecutionVerification".to_string(),
-                    passed: true,
-                    reason: "Phase 1: execution verification skipped (post-submission feature) — audit_trail_id bound to transaction for future L8 replay".to_string(),
-                },
+                // GAP-2026-08-06-3: L8 emits a REAL 'not yet verified' state —
+                // Inconclusive, never a phantom pass. Execution verification requires
+                // transaction submission to Solana mainnet/devnet (Phase 2+, SAK
+                // integration or direct RPC submission). The audit_trail_id (SHA-256
+                // of accounts + instruction data + CPI targets) enables post-hoc
+                // verification once L8 is implemented.
+                PipelineLayerResult::new(
+                    "L8_ExecutionVerification",
+                    LayerStatus::Inconclusive,
+                    "Phase 1: execution verification not yet verified (post-submission feature) — audit_trail_id bound to transaction for future L8 replay",
+                ),
             ],
         })
     }

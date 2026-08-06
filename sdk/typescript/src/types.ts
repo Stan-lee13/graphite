@@ -147,6 +147,12 @@ export interface VerificationResult {
 export interface PipelineLayerResult {
   layer: string;
   passed: boolean;
+  /**
+   * Tri-state layer outcome (GAP-2026-08-06-3). `passed` is derived from
+   * this: only 'passed' yields `passed: true`. Inconclusive = skipped or
+   * not yet verified — never a pass.
+   */
+  status?: 'passed' | 'failed' | 'inconclusive';
   reason: string;
 }
 

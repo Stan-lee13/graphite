@@ -535,6 +535,17 @@ async fn verify_handler(
             // Durability: append to the audit log before responding (the line
             // is flushed synchronously). Best-effort — never fails the request.
             if let Some(log) = &state.audit {
+                // GAP-2026-08-06-3: the audit trail records the REAL L3/L8 layer
+                // states (never the old phantom `passed: true`). Layers are the
+                // single source of truth for the pipeline report.
+                let layer_status = |name: &str| -> String {
+                    result
+                        .layers
+                        .iter()
+                        .find(|l| l.layer == name)
+                        .map(|l| l.status.as_str().to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                };
                 log.append(&AuditRecord {
                     timestamp: crate::durable::now_utc_rfc3339(),
                     audit_trail_id: result.audit_trail_id.clone(),
@@ -547,6 +558,8 @@ async fn verify_handler(
                     confidence: result.confidence,
                     risk_status: result.risk_verdict.status.clone(),
                     policy_verdict: result.policy_verdict.clone(),
+                    l3_status: layer_status("L3_SimulationVerification"),
+                    l8_status: layer_status("L8_ExecutionVerification"),
                 });
             }
 

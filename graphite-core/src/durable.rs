@@ -36,6 +36,12 @@ pub struct AuditRecord {
     pub confidence: f64,
     pub risk_status: String,
     pub policy_verdict: String,
+    /// L3 simulation verdict as emitted by the layer (passed/failed/inconclusive)
+    /// — GAP-2026-08-06-3: the audit trail must reflect the REAL layer states.
+    pub l3_status: String,
+    /// L8 execution-verification state (always "inconclusive" until Phase 2
+    /// wires post-submission verification) — GAP-2026-08-06-3.
+    pub l8_status: String,
 }
 
 /// An audit record for a verification that FAILED before producing a result
@@ -126,4 +132,41 @@ pub fn now_utc_rfc3339() -> String {
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
         y, mon, d, h, min, s, millis
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// GAP-2026-08-06-3: the audit record must carry the REAL L3/L8 layer
+    /// states (never the old phantom `passed: true`).
+    #[test]
+    fn audit_record_serializes_l3_and_l8_status() {
+        let record = AuditRecord {
+            timestamp: "2026-08-06T00:00:00.000Z".to_string(),
+            audit_trail_id: "gr-test".to_string(),
+            content_hash: "abc".to_string(),
+            program_id: "11111111111111111111111111111111".to_string(),
+            instruction_name: "transfer".to_string(),
+            protocol_name: "system-program".to_string(),
+            manifest_version: None,
+            approved: true,
+            confidence: 0.9,
+            risk_status: "Clear".to_string(),
+            policy_verdict: "Approved".to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+        };
+        let json = serde_json::to_string(&record).expect("audit record serializes");
+        assert!(
+            json.contains("\"l3_status\":\"inconclusive\""),
+            "audit record must carry the L3 state, got: {}",
+            json
+        );
+        assert!(
+            json.contains("\"l8_status\":\"inconclusive\""),
+            "audit record must carry the L8 state, got: {}",
+            json
+        );
+    }
 }

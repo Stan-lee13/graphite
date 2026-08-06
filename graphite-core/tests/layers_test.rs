@@ -64,3 +64,188 @@ fn verify_8_layers_tracked() {
     assert_eq!(result.layers[6].layer, "L7_RiskVerification");
     assert_eq!(result.layers[7].layer, "L8_ExecutionVerification");
 }
+
+/// GAP-2026-08-06-3: L3 must reflect the real simulation-integrity verdict —
+/// never a phantom `passed: true`. A flagged simulation is a FAILED layer.
+#[test]
+fn l3_reflects_flagged_simulation_as_failed() {
+    use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::semantic_graph_store::BehaviorEvidence;
+    use graphite_core::simulation_integrity::ComputeBaseline;
+    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
+
+    let core = GraphiteCore::new();
+    // Operator-seeded trusted baseline (mean 150 CU, std 10, 100 samples).
+    core.seed_simulation_baseline(
+        "11111111111111111111111111111111",
+        ComputeBaseline {
+            mean_compute_units: 150.0,
+            std_compute_units: 10.0,
+            sample_count: 100,
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
+        },
+    )
+    .unwrap();
+
+    let input = VerificationInput {
+        program_id: "11111111111111111111111111111111".to_string(),
+        instruction_discriminator: "02000000".to_string(),
+        account_addresses: vec![
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+        ],
+        instruction_data: None,
+        cpi_targets: vec![],
+        proposed_intent: ProposedIntent {
+            intent_type: "transfer".to_string(),
+            raw_natural_language: "Transfer tokens".to_string(),
+            confidence_of_parse: 1.0,
+            extracted_parameters: None,
+        },
+        behavior_evidence: BehaviorEvidence::default(),
+        wallet_profile: WalletProfile::TradingBot,
+        protocol_version: "".to_string(),
+        signed_transaction: None,
+        compute_units: 999999, // 100kσ from baseline — must flag
+        account_writes: 2,
+        cpi_hops: 0,
+    };
+
+    let result = core.verify(&input).unwrap();
+    assert_eq!(
+        result.simulation_flagged,
+        Some(true),
+        "divergent usage must flag the simulation"
+    );
+    let l3 = result
+        .layers
+        .iter()
+        .find(|l| l.layer == "L3_SimulationVerification");
+    let l3 = l3.expect("L3 layer must be present");
+    assert!(
+        !l3.passed,
+        "L3 must NOT report passed when simulation integrity is flagged — got passed={}",
+        l3.passed
+    );
+    assert_eq!(
+        l3.status,
+        graphite_core::verification::LayerStatus::Failed,
+        "L3 status must be Failed when simulation is flagged"
+    );
+    assert!(
+        l3.reason.contains("FLAGGED"),
+        "L3 reason must surface the flag, got: {}",
+        l3.reason
+    );
+}
+
+/// GAP-2026-08-06-3: with no trusted baseline the simulation was never
+/// verified — the layer must be INCONCLUSIVE (never a phantom pass, and never
+/// a false failure).
+#[test]
+fn l3_is_inconclusive_without_trusted_verdict() {
+    use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::semantic_graph_store::BehaviorEvidence;
+    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
+
+    let core = GraphiteCore::new(); // no baseline, no RPC client
+    let input = VerificationInput {
+        program_id: "11111111111111111111111111111111".to_string(),
+        instruction_discriminator: "02000000".to_string(),
+        account_addresses: vec![
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+        ],
+        instruction_data: None,
+        cpi_targets: vec![],
+        proposed_intent: ProposedIntent {
+            intent_type: "transfer".to_string(),
+            raw_natural_language: "Transfer tokens".to_string(),
+            confidence_of_parse: 1.0,
+            extracted_parameters: None,
+        },
+        behavior_evidence: BehaviorEvidence::default(),
+        wallet_profile: WalletProfile::TradingBot,
+        protocol_version: "".to_string(),
+        signed_transaction: None,
+        compute_units: 150,
+        account_writes: 2,
+        cpi_hops: 0,
+    };
+
+    let result = core.verify(&input).unwrap();
+    let l3 = result
+        .layers
+        .iter()
+        .find(|l| l.layer == "L3_SimulationVerification");
+    let l3 = l3.expect("L3 layer must be present");
+    assert_eq!(
+        l3.status,
+        graphite_core::verification::LayerStatus::Inconclusive,
+        "L3 with no trusted verdict must be Inconclusive, got {:?}",
+        l3.status
+    );
+    assert!(
+        !l3.passed,
+        "L3 must not report passed when the simulation was never verified"
+    );
+}
+
+/// GAP-2026-08-06-3: L8 execution verification is a post-submission feature —
+/// it must emit a real 'not yet verified' state, never a phantom pass.
+#[test]
+fn l8_reports_not_yet_verified() {
+    use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::semantic_graph_store::BehaviorEvidence;
+    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
+
+    let core = GraphiteCore::new();
+    let input = VerificationInput {
+        program_id: "11111111111111111111111111111111".to_string(),
+        instruction_discriminator: "02000000".to_string(),
+        account_addresses: vec![
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+        ],
+        instruction_data: None,
+        cpi_targets: vec![],
+        proposed_intent: ProposedIntent {
+            intent_type: "transfer".to_string(),
+            raw_natural_language: "Transfer tokens".to_string(),
+            confidence_of_parse: 1.0,
+            extracted_parameters: None,
+        },
+        behavior_evidence: BehaviorEvidence::default(),
+        wallet_profile: WalletProfile::TradingBot,
+        protocol_version: "".to_string(),
+        signed_transaction: None,
+        compute_units: 0,
+        account_writes: 0,
+        cpi_hops: 0,
+    };
+
+    let result = core.verify(&input).unwrap();
+    let l8 = result
+        .layers
+        .iter()
+        .find(|l| l.layer == "L8_ExecutionVerification");
+    let l8 = l8.expect("L8 layer must be present");
+    assert_eq!(
+        l8.status,
+        graphite_core::verification::LayerStatus::Inconclusive,
+        "L8 must be Inconclusive (not yet verified), got {:?}",
+        l8.status
+    );
+    assert!(
+        !l8.passed,
+        "L8 must not report passed — execution verification has not run yet"
+    );
+    assert!(
+        l8.reason.contains("not yet verified"),
+        "L8 reason must say 'not yet verified', got: {}",
+        l8.reason
+    );
+}
