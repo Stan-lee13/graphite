@@ -4,6 +4,12 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      no_default_features:
+        description: "Also gate the library without default features (finding #4)"
+        type: boolean
+        default: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,6 +32,12 @@ jobs:
           workspaces: graphite-core
       - name: Format
         run: cargo fmt --all -- --check
+      - name: Library builds with no features (embedded-use contract)
+        if: always()
+        run: cargo check --no-default-features
+      - name: Library builds with cli feature only (no rpc/server)
+        if: always()
+        run: cargo check --no-default-features --features cli
       - name: Clippy (all targets, all features — includes the rpc feature)
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Tests
