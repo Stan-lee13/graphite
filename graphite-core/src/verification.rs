@@ -981,7 +981,21 @@ impl GraphiteCore {
         // These are surfaced in the L7 layer report and the summary below so the
         // signal is never silently dropped (Constitution P3 explainability).
         let risk_verdict = risk_detail.verdict;
-        let risk_warnings = risk_detail.warnings;
+        let mut risk_warnings = risk_detail.warnings;
+
+        // GAP-2026-08-06-1: a NOVEL instruction on a KNOWN protocol is exactly
+        // where new attacker behavior hides. The confidence ceiling (P6) already
+        // reduces score, but the Risk Engine pattern list only matches known
+        // discriminators — so a novel instruction would otherwise pass with NO
+        // risk signal at all. Surface it as a non-blocking WARNING (P12
+        // fail-open: unknown ≠ active harm, response 2 of the 5-Response
+        // Framework) so consumers see the novelty signal without a false block.
+        if manifest_found && instruction_name == "unknown_instruction" {
+            risk_warnings.push(format!(
+                "novel instruction discriminator '{}' on known protocol {} — not in manifest (confidence reduced, P6)",
+                input.instruction_discriminator, input.program_id
+            ));
+        }
 
         // Phase 2 (best-effort): if an RPC client is attached, fetch the first
         // account to provide additional context for L3 (simulation) layer.

@@ -194,6 +194,63 @@ fn l3_is_inconclusive_without_trusted_verdict() {
     );
 }
 
+/// GAP-2026-08-06-1: a NOVEL instruction discriminator on a KNOWN protocol
+/// must surface a non-blocking risk warning (P12 fail-open, response 2) — it
+/// must not pass with zero risk signal. The confidence ceiling (P6) reduces
+/// score, but consumers must SEE the novelty.
+#[test]
+fn l7_surfaces_novel_instruction_warning_on_known_protocol() {
+    use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::semantic_graph_store::BehaviorEvidence;
+    use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
+
+    let core = GraphiteCore::new();
+    // SPL Token (known protocol) with a discriminator that is NOT in its
+    // manifest — a novel/unknown instruction on a known program.
+    let input = VerificationInput {
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+        instruction_discriminator: "deadbeef".to_string(), // not a real SPL Token disc
+        account_addresses: vec![
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+            "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx".to_string(),
+        ],
+        instruction_data: None,
+        cpi_targets: vec![],
+        proposed_intent: ProposedIntent {
+            intent_type: "transfer".to_string(),
+            raw_natural_language: "Transfer tokens".to_string(),
+            confidence_of_parse: 1.0,
+            extracted_parameters: None,
+        },
+        behavior_evidence: BehaviorEvidence::default(),
+        wallet_profile: WalletProfile::TradingBot,
+        protocol_version: "".to_string(),
+        signed_transaction: None,
+        compute_units: 150,
+        account_writes: 2,
+        cpi_hops: 0,
+    };
+
+    let result = core.verify(&input).unwrap();
+    assert!(result.manifest_found, "SPL Token manifest must be found");
+    let l7 = result
+        .layers
+        .iter()
+        .find(|l| l.layer == "L7_RiskVerification");
+    let l7 = l7.expect("L7 layer must be present");
+    assert!(
+        l7.reason.contains("novel instruction"),
+        "L7 must surface the novel-instruction warning, got: {}",
+        l7.reason
+    );
+    assert!(
+        result.summary.contains("novel instruction"),
+        "summary must surface the novel-instruction warning, got: {}",
+        result.summary
+    );
+}
+
 /// GAP-2026-08-06-3: L8 execution verification is a post-submission feature —
 /// it must emit a real 'not yet verified' state, never a phantom pass.
 #[test]

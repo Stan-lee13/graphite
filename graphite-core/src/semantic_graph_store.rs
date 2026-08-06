@@ -285,9 +285,13 @@ impl SemanticGraphStore {
         program_id: &str,
         baseline: ComputeBaseline,
     ) -> Result<(), SemanticGraphError> {
-        if program_id.is_empty() {
+        // GAP-2026-08-06-9: whitespace-only is the same poison-key class as
+        // empty (`"   ".is_empty()` is false, so a bare is_empty() check lets
+        // a whitespace key through that can never match a real base58 program
+        // ID and survives snapshot restore). Reject after trimming.
+        if program_id.trim().is_empty() {
             return Err(SemanticGraphError::InvalidRecord {
-                reason: "program_id cannot be empty".to_string(),
+                reason: "program_id cannot be empty or whitespace-only".to_string(),
             });
         }
         validate_baseline(&baseline)?;
@@ -446,6 +450,34 @@ mod tests {
             store.get_simulation_baseline("").is_none(),
             "empty program_id baseline must not be stored"
         );
+    }
+
+    /// GAP-2026-08-06-9: whitespace-only program_id must be rejected too —
+    /// it is the same poison-key class as empty (`"   ".is_empty()` is false,
+    /// so a bare is_empty() check silently plants a whitespace key that can
+    /// never match a real base58 program ID and survives snapshot restore).
+    #[test]
+    fn test_seed_rejects_whitespace_only_program_id() {
+        let mut store = SemanticGraphStore::new();
+        let valid = ComputeBaseline {
+            mean_compute_units: 100.0,
+            std_compute_units: 10.0,
+            sample_count: 50,
+            ..Default::default()
+        };
+        for bad in [" ", "   ", "\t", "\n"] {
+            let result = store.seed_simulation_baseline(bad, valid.clone());
+            assert!(
+                result.is_err(),
+                "whitespace-only program_id {:?} must be rejected (GAP-9)",
+                bad
+            );
+            assert!(
+                store.get_simulation_baseline(bad).is_none(),
+                "whitespace-only program_id {:?} baseline must not be stored",
+                bad
+            );
+        }
     }
 
     #[test]
