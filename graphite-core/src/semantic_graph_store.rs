@@ -275,12 +275,21 @@ impl SemanticGraphStore {
     /// negative baseline would otherwise make every subsequent integrity check
     /// for that program fail-closed (or, worse, silently skew every z-score)
     /// with no recovery short of reseeding — a single corrupt seed becomes a
-    /// permanent DoS. Returns an error instead of storing poison.
+    /// permanent DoS. An empty program ID is rejected for the same reason
+    /// `append` rejects one: it is a malformed key that can never correspond
+    /// to a real on-chain program, and accepting it would plant a poison
+    /// entry that survives snapshot restore. Returns an error instead of
+    /// storing poison.
     pub fn seed_simulation_baseline(
         &mut self,
         program_id: &str,
         baseline: ComputeBaseline,
     ) -> Result<(), SemanticGraphError> {
+        if program_id.is_empty() {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: "program_id cannot be empty".to_string(),
+            });
+        }
         validate_baseline(&baseline)?;
         self.baselines.insert(program_id.to_string(), baseline);
         Ok(())
@@ -417,6 +426,26 @@ mod tests {
         };
         assert!(store.seed_simulation_baseline("p6", zero_var).is_ok());
         assert!(store.get_simulation_baseline("p6").is_some());
+    }
+
+    #[test]
+    fn test_seed_rejects_empty_program_id() {
+        let mut store = SemanticGraphStore::new();
+        let valid = ComputeBaseline {
+            mean_compute_units: 100.0,
+            std_compute_units: 10.0,
+            sample_count: 50,
+            ..Default::default()
+        };
+        let result = store.seed_simulation_baseline("", valid);
+        assert!(
+            result.is_err(),
+            "empty program_id must be rejected (rule 10)"
+        );
+        assert!(
+            store.get_simulation_baseline("").is_none(),
+            "empty program_id baseline must not be stored"
+        );
     }
 
     #[test]
