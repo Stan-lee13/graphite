@@ -15,7 +15,11 @@ bs58 = "0.5"
 curve25519-dalek = "4"
 hex = "0.4"
 anyhow = "1"
-reqwest = { version = "0.11", optional = true, features = ["json", "gzip", "brotli", "rustls-tls"] }
+# default-features = false is REQUIRED: reqwest 0.11's default-tls feature
+# pulls native-tls → openssl-sys, which fails to build on systems without
+# OpenSSL dev packages (CI containers, minimal Docker images). rustls-tls is
+# the pure-Rust TLS backend.
+reqwest = { version = "0.11", optional = true, default-features = false, features = ["json", "gzip", "brotli", "rustls-tls"] }
 base64 = "0.21"
 tracing = "0.1"
 
@@ -31,7 +35,11 @@ clap = { version = "4", features = ["derive"], optional = true }
 [features]
 default = ["server", "cli"]
 server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "rpc"]
-cli = ["dep:clap"]
+# cli pulls tokio: the synchronous verify() wrapper needs an async runtime,
+# and the CLI's verify subcommand uses it. A no-feature LIBRARY build still
+# compiles (verify() degrades to a fail-closed stub) — only the library core
+# is expected to be embeddable without a runtime.
+cli = ["dep:clap", "dep:tokio"]
 rpc = ["dep:reqwest", "dep:tokio"]
 
 [dev-dependencies]

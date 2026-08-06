@@ -487,12 +487,17 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
         },
-    );
+    )
+    .unwrap();
     let result = core.verify(&input).unwrap();
-    // With a baseline and compute_units=150 (close to mean=150), simulation should not be flagged
-    assert!(
-        result.simulation_flagged == Some(false) || result.simulation_flagged == None,
-        "Simulation should not be flagged for normal compute usage"
+    // The check ran against the seeded baseline and normal usage was NOT
+    // flagged. But with no RPC client, the usage is caller-supplied, so the
+    // verdict is provenance-aware: exactly None ("no trusted verdict"), never
+    // a caller-fabricatable Some(false) "clean" (P5). The previous tolerant
+    // assertion `Some(false) || None` accepted a false-clean verdict.
+    assert_eq!(
+        result.simulation_flagged, None,
+        "caller-supplied usage cannot certify a clean simulation (P5)"
     );
 }
 

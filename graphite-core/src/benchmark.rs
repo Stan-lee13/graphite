@@ -41,7 +41,8 @@ pub fn run_benchmark() {
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
         },
-    );
+    )
+    .expect("benchmark baseline must be valid");
 
     let mut true_positives = 0; // malicious correctly blocked
     let mut true_negatives = 0; // safe correctly approved

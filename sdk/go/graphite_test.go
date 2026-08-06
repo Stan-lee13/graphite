@@ -2,6 +2,7 @@ package graphite
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -100,7 +101,7 @@ func TestVerificationInputRejectsClientSuppliedSimulationBaseline(t *testing.T) 
 			RawNaturalLanguage: "Swap 1 SOL for USDC",
 			ConfidenceOfParse:  0.9,
 		},
-		ProgramID:                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRTaV4",
+		ProgramID:                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
 		InstructionDiscriminator: "e517cb977ae3ad2a",
 		AccountAddresses:         []string{"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"},
 		WalletProfile:            WalletProfileTradingBot,
@@ -143,6 +144,15 @@ func TestVerificationInputRejectsClientSuppliedSimulationBaseline(t *testing.T) 
 	}
 	if clean.ComputeUnits != 200000 {
 		t.Errorf("expected compute_units=200000, got %d", clean.ComputeUnits)
+	}
+	// CRITICAL (was a vacuous assertion): the struct unmarshaled from the
+	// hostile JSON must be field-for-field identical to the clean one — the
+	// injected simulation_baseline must have been structurally dropped, and
+	// nothing else may have shifted. Previously `roundtrip` was unmarshaled
+	// and never asserted against, so the test passed regardless of whether
+	// the hostile field actually survived.
+	if !reflect.DeepEqual(roundtrip, clean) {
+		t.Errorf("hostile JSON must deserialize identically to clean JSON\n  clean:    %+v\n  hostile:  %+v", clean, roundtrip)
 	}
 }
 
@@ -192,7 +202,7 @@ func TestVerificationResultFullDeserialization(t *testing.T) {
 		"policy_verdict": "Approved",
 		"audit_trail_id": "gr-abc12345-00000001",
 		"transaction": {
-			"program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V4",
+			"program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
 			"protocol_version": "6.0.0",
 			"instruction_name": "Swap",
 			"instruction_discriminator": "e517cb977ae3ad2a",
@@ -251,7 +261,7 @@ func TestVerificationResultFullDeserialization(t *testing.T) {
 	}
 
 	// Transaction (previously dropped)
-	if result.Transaction.ProgramID != "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyRT1V4" {
+	if result.Transaction.ProgramID != "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" {
 		t.Errorf("expected program_id Jupiter, got %s", result.Transaction.ProgramID)
 	}
 	if result.Transaction.InstructionName != "Swap" {

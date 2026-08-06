@@ -270,8 +270,20 @@ impl SemanticGraphStore {
     /// Trusted operator API: seed or override a program's simulation
     /// baseline (e.g. restoring a previous deployment's export). Not exposed
     /// over the wire — server operators call this at startup.
-    pub fn seed_simulation_baseline(&mut self, program_id: &str, baseline: ComputeBaseline) {
+    ///
+    /// SECURITY: the baseline is VALIDATED before storage. A NaN/Infinity or
+    /// negative baseline would otherwise make every subsequent integrity check
+    /// for that program fail-closed (or, worse, silently skew every z-score)
+    /// with no recovery short of reseeding — a single corrupt seed becomes a
+    /// permanent DoS. Returns an error instead of storing poison.
+    pub fn seed_simulation_baseline(
+        &mut self,
+        program_id: &str,
+        baseline: ComputeBaseline,
+    ) -> Result<(), SemanticGraphError> {
+        validate_baseline(&baseline)?;
         self.baselines.insert(program_id.to_string(), baseline);
+        Ok(())
     }
 
     /// Serialize the store to JSON (durability snapshot).
@@ -282,14 +294,159 @@ impl SemanticGraphStore {
     /// Deserialize a store snapshot. On failure, callers should start fresh
     /// (fail-closed: a corrupt snapshot must not silently lose data, but a
     /// fresh store is still safe — tiers and baselines are re-earned).
+    ///
+    /// Defensively DROPS any baseline that fails validation (e.g. a poisoned
+    /// snapshot written by an older, pre-validation build). An invalid
+    /// baseline must never reach the integrity layer.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
+        let mut store: SemanticGraphStore = serde_json::from_str(json)?;
+        store.baselines.retain(|_, b| validate_baseline(b).is_ok());
+        Ok(store)
     }
+}
+
+/// Validate a simulation baseline before it enters the trusted accumulator.
+/// Usage counts are non-negative integers, so means and standard deviations
+/// must be finite and non-negative. Rejects NaN/Infinity/negative values.
+pub fn validate_baseline(baseline: &ComputeBaseline) -> Result<(), SemanticGraphError> {
+    let fields = [
+        ("mean_compute_units", baseline.mean_compute_units),
+        ("std_compute_units", baseline.std_compute_units),
+        ("mean_account_writes", baseline.mean_account_writes),
+        ("std_account_writes", baseline.std_account_writes),
+        ("mean_cpi_hops", baseline.mean_cpi_hops),
+        ("std_cpi_hops", baseline.std_cpi_hops),
+    ];
+    for (name, value) in fields {
+        if !value.is_finite() {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: format!("baseline field {} must be finite (got {})", name, value),
+            });
+        }
+        if value < 0.0 {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: format!(
+                    "baseline field {} must be non-negative (got {})",
+                    name, value
+                ),
+            });
+        }
+    }
+    // A fully-degenerate COMPUTE baseline (zero mean AND zero variance) is
+    // meaningless: every integrity check against it would fail-closed,
+    // permanently blocking the program until an operator reseeds (the same
+    // permanent-DoS class as NaN poisoning). Reject it at the seed/restore
+    // boundary instead of letting the state exist. Note this ONLY applies to
+    // the compute pair — a writes/hops pair of 0/0 means "signal never
+    // observed" and is legitimate.
+    if baseline.std_compute_units == 0.0 && baseline.mean_compute_units == 0.0 {
+        return Err(SemanticGraphError::InvalidRecord {
+            reason: "compute baseline is degenerate (zero mean and zero variance)".to_string(),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_seed_rejects_nan_and_negative_baselines() {
+        let mut store = SemanticGraphStore::new();
+
+        // NaN mean — would permanently fail-closed every check.
+        let nan = ComputeBaseline {
+            mean_compute_units: f64::NAN,
+            ..Default::default()
+        };
+        assert!(store.seed_simulation_baseline("p1", nan).is_err());
+        assert!(
+            store.get_simulation_baseline("p1").is_none(),
+            "poison must not be stored"
+        );
+
+        // Negative mean — would skew every z-score.
+        let negative = ComputeBaseline {
+            mean_compute_units: -100.0,
+            std_compute_units: 10.0,
+            sample_count: 50,
+            ..Default::default()
+        };
+        assert!(store.seed_simulation_baseline("p2", negative).is_err());
+        assert!(store.get_simulation_baseline("p2").is_none());
+
+        // Infinity std.
+        let inf = ComputeBaseline {
+            mean_compute_units: 100.0,
+            std_compute_units: f64::INFINITY,
+            sample_count: 50,
+            ..Default::default()
+        };
+        assert!(store.seed_simulation_baseline("p3", inf).is_err());
+        assert!(store.get_simulation_baseline("p3").is_none());
+
+        // A valid baseline is stored.
+        let valid = ComputeBaseline {
+            mean_compute_units: 100.0,
+            std_compute_units: 10.0,
+            sample_count: 50,
+            ..Default::default()
+        };
+        assert!(store.seed_simulation_baseline("p4", valid).is_ok());
+        assert!(store.get_simulation_baseline("p4").is_some());
+
+        // Degenerate (zero mean AND zero variance) compute baseline — would
+        // permanently fail-closed every check; rejected at the seed boundary.
+        let degenerate = ComputeBaseline {
+            mean_compute_units: 0.0,
+            std_compute_units: 0.0,
+            sample_count: 100,
+            ..Default::default()
+        };
+        assert!(store.seed_simulation_baseline("p5", degenerate).is_err());
+        assert!(store.get_simulation_baseline("p5").is_none());
+
+        // Zero-variance with a NONZERO mean (all identical samples) is valid
+        // and must still be accepted — the integrity layer handles it.
+        let zero_var = ComputeBaseline {
+            mean_compute_units: 1000.0,
+            std_compute_units: 0.0,
+            sample_count: 100,
+            ..Default::default()
+        };
+        assert!(store.seed_simulation_baseline("p6", zero_var).is_ok());
+        assert!(store.get_simulation_baseline("p6").is_some());
+    }
+
+    #[test]
+    fn test_from_json_drops_poisoned_baselines() {
+        let mut store = SemanticGraphStore::new();
+        let good = ComputeBaseline {
+            mean_compute_units: 100.0,
+            std_compute_units: 10.0,
+            sample_count: 50,
+            ..Default::default()
+        };
+        store.seed_simulation_baseline("good", good).unwrap();
+
+        let json = store.to_json().unwrap();
+        // Simulate a poisoned snapshot: inject a NEGATIVE mean (the one
+        // non-finite poison that is actually representable in JSON) via raw
+        // string surgery. NaN/Infinity cannot be written by serde_json, so a
+        // snapshot carrying them would fail to parse entirely (callers start
+        // fresh — already fail-closed).
+        let poisoned = json.replacen("\"good\"", "\"bad\"", 1);
+        let poisoned = poisoned.replace(
+            "\"mean_compute_units\":100.0",
+            "\"mean_compute_units\":-100.0",
+        );
+        let restored = SemanticGraphStore::from_json(&poisoned).unwrap();
+        assert!(
+            restored.get_simulation_baseline("bad").is_none(),
+            "poisoned baseline must be dropped on restore"
+        );
+    }
 
     #[test]
     fn test_append_only_enforcement() {

@@ -54,14 +54,29 @@ struct AppState {
 }
 
 /// Per-IP token bucket (GCRA-style). Shared across clones via Arc.
-/// The bucket map is bounded: beyond `MAX_BUCKETS` distinct IPs, the
-/// oldest-buckets-sweep kicks in so a spoofed-IP or distributed sweep
-/// cannot grow memory without bound (memory-DoS hardening on the very
-/// layer meant to prevent DoS).
+///
+/// The bucket map is BOUNDED at `MAX_BUCKETS` distinct IPs. When at capacity
+/// the OLDEST-INSERTED bucket is evicted via a FIFO ring — O(1) amortized, so
+/// an attacker rotating (spoofed, when behind a trusted proxy) IPs can never
+/// trigger an O(n) full-map sweep. The previous implementation swept the
+/// entire bucket map on every request at capacity, which was itself a CPU-DoS
+/// vector at the exact layer meant to prevent DoS.
+///
+/// Tradeoff (recorded per Constitution P14): FIFO eviction means a client can
+/// re-enter with a fresh bucket once MAX_BUCKETS distinct IPs have appeared.
+/// At that scale per-IP limiting has already lost meaning, and bounding memory
+/// is the priority.
 #[derive(Clone)]
 struct RateLimiter {
-    buckets: Arc<Mutex<HashMap<IpAddr, Bucket>>>,
+    buckets: Arc<Mutex<RateLimiterInner>>,
     per_second: f64,
+    max_buckets: usize,
+}
+
+struct RateLimiterInner {
+    buckets: HashMap<IpAddr, Bucket>,
+    /// Insertion order, used as the FIFO eviction ring (bounded by MAX_BUCKETS).
+    order: std::collections::VecDeque<IpAddr>,
 }
 
 const MAX_BUCKETS: usize = 1_000_000;
@@ -73,34 +88,45 @@ struct Bucket {
 
 impl RateLimiter {
     fn new(per_second: f64) -> Self {
+        Self::with_capacity(MAX_BUCKETS, per_second)
+    }
+
+    /// Constructor with an explicit bucket cap (the production default is
+    /// `MAX_BUCKETS`; small caps are used in tests to exercise FIFO eviction).
+    fn with_capacity(max_buckets: usize, per_second: f64) -> Self {
         Self {
-            buckets: Arc::new(Mutex::new(HashMap::new())),
+            buckets: Arc::new(Mutex::new(RateLimiterInner {
+                buckets: HashMap::new(),
+                order: std::collections::VecDeque::new(),
+            })),
             per_second: per_second.max(0.1),
+            max_buckets: max_buckets.max(1),
         }
     }
 
     fn check(&self, ip: IpAddr) -> bool {
         let now = Instant::now();
-        let mut buckets = self.buckets.lock().unwrap_or_else(|p| p.into_inner());
+        let mut inner = self.buckets.lock().unwrap_or_else(|p| p.into_inner());
 
-        // Bounded map: when at capacity, evict idle buckets (tokens fully
-        // refilled) rather than growing forever. An idle bucket is useless
-        // state — evicting it costs nothing because a fresh bucket starts
-        // with a full token allowance anyway.
-        if buckets.len() >= MAX_BUCKETS {
-            let idle: Vec<IpAddr> = buckets
-                .iter()
-                .filter(|(_, b)| {
-                    now.duration_since(b.last).as_secs_f64() * self.per_second >= self.per_second
-                })
-                .map(|(ip, _)| *ip)
-                .collect();
-            for ip in idle {
-                buckets.remove(&ip);
+        // Bounded map: evict the oldest-inserted IP when a NEW IP arrives at
+        // capacity. The while-loop amortizes to O(1): each pop_front removes
+        // one entry from the ring even when the corresponding bucket was
+        // already gone.
+        if !inner.buckets.contains_key(&ip) && inner.buckets.len() >= self.max_buckets {
+            while let Some(oldest) = inner.order.pop_front() {
+                if inner.buckets.remove(&oldest).is_some() {
+                    break;
+                }
             }
         }
 
-        let bucket = buckets.entry(ip).or_insert(Bucket {
+        // All map/ring mutations happen BEFORE the entry borrow, so the
+        // HashMap entry never conflicts with the FIFO ring's borrow.
+        let is_new = !inner.buckets.contains_key(&ip);
+        if is_new {
+            inner.order.push_back(ip);
+        }
+        let bucket = inner.buckets.entry(ip).or_insert_with(|| Bucket {
             tokens: self.per_second,
             last: now,
         });
@@ -117,13 +143,18 @@ impl RateLimiter {
 }
 
 /// Constant-time string comparison (prevents timing-based API-key probing).
+///
+/// Both inputs are hashed to fixed 32-byte SHA-256 digests BEFORE comparison
+/// so the LENGTH of the expected key is never leaked: an early `len != len`
+/// return (the previous implementation) let a remote attacker measure key
+/// length through response timing. Comparing only the digests runs in
+/// constant time regardless of input length.
 fn ct_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.as_bytes()
-        .iter()
-        .zip(b.as_bytes())
+    use sha2::{Digest, Sha256};
+    let da = Sha256::digest(a.as_bytes());
+    let db = Sha256::digest(b.as_bytes());
+    da.iter()
+        .zip(db.iter())
         .fold(0u8, |acc, (x, y)| acc | (x ^ y))
         == 0
 }
@@ -588,4 +619,53 @@ async fn manifests_handler(
 
 fn tracing_log(msg: &str) {
     eprintln!("[graphite] {}", msg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// FIFO eviction must keep the bucket map bounded: with a cap of 3,
+    /// inserting a 4th distinct IP evicts the oldest-inserted one (O(1), no
+    /// full-map sweep).
+    #[test]
+    fn rate_limiter_evicts_oldest_at_capacity() {
+        let rl = RateLimiter::with_capacity(3, 1000.0); // huge refill rate: never tokens-starved
+        let ips: Vec<IpAddr> = (0..6).map(|i| IpAddr::from([10, 0, 0, i as u8])).collect();
+
+        for ip in &ips {
+            assert!(
+                rl.check(*ip),
+                "all requests allowed under a huge refill rate"
+            );
+        }
+
+        let inner = rl.buckets.lock().unwrap();
+        assert!(
+            inner.buckets.len() <= 3,
+            "bucket map must stay bounded at the cap, got {}",
+            inner.buckets.len()
+        );
+        // The first two IPs inserted must have been evicted (FIFO); the last
+        // three remain.
+        assert!(inner.buckets.contains_key(&ips[3]));
+        assert!(inner.buckets.contains_key(&ips[4]));
+        assert!(inner.buckets.contains_key(&ips[5]));
+        assert!(!inner.buckets.contains_key(&ips[0]));
+        assert!(!inner.buckets.contains_key(&ips[1]));
+    }
+
+    /// Per-IP limiting still holds with the FIFO ring in place: a client that
+    /// exhausts its bucket is denied until the refill window passes.
+    #[test]
+    fn rate_limiter_denies_after_bucket_exhausted() {
+        let rl = RateLimiter::with_capacity(8, 2.0); // 2 tokens/s
+        let ip = IpAddr::from([10, 0, 0, 9]);
+        // 2 allowed immediately (bucket starts full at 2 tokens), 3rd denied.
+        assert!(rl.check(ip));
+        assert!(rl.check(ip));
+        assert!(!rl.check(ip));
+        // A different IP is unaffected.
+        assert!(rl.check(IpAddr::from([10, 0, 0, 10])));
+    }
 }

@@ -152,7 +152,8 @@ fn run_seeded(
     baseline: ComputeBaseline,
 ) -> graphite_core::VerificationResult {
     let core = GraphiteCore::new();
-    core.seed_simulation_baseline(program_id, baseline);
+    core.seed_simulation_baseline(program_id, baseline)
+        .expect("seeded baseline must be valid");
     core.verify(&input)
         .unwrap_or_else(|_| fail_closed_result(&input))
 }

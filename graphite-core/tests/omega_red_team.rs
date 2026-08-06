@@ -449,19 +449,26 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
         ComputeBaseline {
             mean_compute_units: 150.0,
             std_compute_units: 20.0,
-            sample_count: 9, // Below threshold — check skipped!
+            sample_count: 9, // Below MIN_SAMPLES — check skipped!
             mean_account_writes: 0.0,
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
         },
-    );
+    )
+    .unwrap();
     let result = core.verify(&input).unwrap();
-    // NOTE: sample_count < 10 skips the simulation check — by design, because
-    // there is insufficient data for statistical significance. The confidence
-    // engine handles unknowns via the trust tier ceiling.
-    assert!(
-        result.simulation_flagged.is_none() || !result.simulation_flagged.unwrap(),
-        "L22 ACCEPTED: Low sample count skips sim check (insufficient data for statistics)."
+    // PINNED (P5/P12): with the trusted-baseline model the caller can no
+    // longer supply a low-sample baseline at all (seed_simulation_baseline is
+    // operator-only). A baseline below MIN_SAMPLES yields NO statistical
+    // verdict — `simulation_flagged` must be exactly None, never a false
+    // Some(false) "clean" (and never Some(true): insufficient data is not
+    // evidence of divergence — it is absence of evidence, per the 5-Response
+    // Framework's response 2/1, not response 4). The old assertion
+    // `is_none() || !unwrap()` was weakened by the second branch.
+    assert_eq!(
+        result.simulation_flagged, None,
+        "<MIN_SAMPLES baseline must produce no simulation verdict (None), got {:?}",
+        result.simulation_flagged
     );
 }

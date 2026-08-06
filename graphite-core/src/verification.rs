@@ -157,6 +157,31 @@ pub struct PipelineLayerResult {
     pub reason: String,
 }
 
+/// File name of the semantic-graph snapshot inside the data directory.
+const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
+
+/// Atomically write `json` to `path` via a uniquely-named temp file + rename.
+/// Never fatal — failures are logged. A unique temp name (`pid` + monotonic
+/// counter) means concurrent writers can't clobber each other's temp files;
+/// the rename is atomic, so readers only ever see complete documents.
+fn persist_json_atomic(path: &std::path::Path, json: &str) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let tmp = path.with_extension(format!(
+        "json.tmp.{}.{}",
+        std::process::id(),
+        TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    if let Err(e) = std::fs::write(&tmp, json) {
+        tracing::warn!("failed to persist semantic graph: {}", e);
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        tracing::warn!("failed to commit semantic graph snapshot: {}", e);
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
 /// The main Graphite verification engine.
 ///
 /// `semantic_graph` is `Arc<Mutex<..>>` so that cloned core instances (axum
@@ -212,6 +237,17 @@ impl GraphiteCore {
         if let Err(e) = std::fs::create_dir_all(&data_dir) {
             tracing::warn!("failed to create data dir {}: {}", data_dir.display(), e);
         }
+        // Clean up stale temp files left by a crash mid-snapshot (they are
+        // uniquely named per write; only the atomic rename commits).
+        if let Ok(entries) = std::fs::read_dir(&data_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with("semantic_graph.json.tmp.") {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
         let path = data_dir.join("semantic_graph.json");
         match std::fs::read_to_string(&path) {
             Ok(json) => match SemanticGraphStore::from_json(&json) {
@@ -240,6 +276,12 @@ impl GraphiteCore {
     }
 
     /// Snapshot graph state to disk (best-effort; never fatal).
+    ///
+    /// Uses a UNIQUE temp file per call (`semantic_graph.json.tmp.<pid>.<n>`)
+    /// so concurrent snapshots can never overwrite each other's in-flight temp
+    /// files — the final rename is atomic, so the committed snapshot is always
+    /// one complete JSON document. The static `.tmp` path this replaces meant
+    /// two racing writers could interleave on the same temp file.
     fn persist_state(&self) {
         let Some(dir) = self.data_dir.as_ref() else {
             return;
@@ -248,15 +290,26 @@ impl GraphiteCore {
             tracing::warn!("failed to serialize semantic graph");
             return;
         };
-        let path = dir.join("semantic_graph.json");
-        let tmp = dir.join("semantic_graph.json.tmp");
-        if let Err(e) = std::fs::write(&tmp, json) {
-            tracing::warn!("failed to persist semantic graph: {}", e);
+        let path = dir.join(SEMANTIC_GRAPH_FILENAME);
+        persist_json_atomic(&path, &json);
+    }
+
+    /// Async variant for use inside `verify_async` (rpc feature only — the
+    /// only path that records baselines during a request): the blocking fs
+    /// write is moved off the Tokio worker thread via `spawn_blocking` so a
+    /// busy data directory can never stall the async runtime (no blocking I/O
+    /// under the runtime worker — a starvation vector when under load).
+    #[cfg(feature = "rpc")]
+    async fn persist_state_async(&self) {
+        let Some(dir) = self.data_dir.clone() else {
             return;
-        }
-        if let Err(e) = std::fs::rename(&tmp, &path) {
-            tracing::warn!("failed to commit semantic graph snapshot: {}", e);
-        }
+        };
+        let Ok(json) = self.graph().to_json() else {
+            tracing::warn!("failed to serialize semantic graph");
+            return;
+        };
+        let path = dir.join(SEMANTIC_GRAPH_FILENAME);
+        let _ = tokio::task::spawn_blocking(move || persist_json_atomic(&path, &json)).await;
     }
 
     /// Attach an RPC client for Phase 2 features (simulation, on-chain checks).
@@ -265,9 +318,14 @@ impl GraphiteCore {
         self.rpc_client = Some(client);
     }
 
-    /// Synchronous wrapper around the async verification API.
-    /// This preserves the original synchronous `verify()` surface so existing
-    /// call sites and tests continue to work. It blocks on a new Tokio runtime.
+    /// Synchronous wrapper around the async verification API. Blocks on a
+    /// fresh Tokio runtime. Available whenever an async runtime is compiled in
+    /// (rpc / server / cli features). A library build with NO features gets
+    /// the fail-closed stub below instead of failing to compile — the library
+    /// core itself never needs a runtime (only the RPC path does), so
+    /// embedding Graphite as a verification library must not force an async
+    /// dependency.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     pub fn verify(
         &self,
         input: &VerificationInput,
@@ -275,6 +333,20 @@ impl GraphiteCore {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
         rt.block_on(self.verify_async(input))
+    }
+
+    /// Fail-closed synchronous fallback for minimal library builds (no
+    /// features): returns a clear error instead of silently skipping
+    /// verification. `verify_async` is always available and requires no
+    /// runtime unless an RPC client is attached.
+    #[cfg(not(any(feature = "rpc", feature = "server", feature = "cli")))]
+    pub fn verify(
+        &self,
+        _input: &VerificationInput,
+    ) -> Result<VerificationResult, VerificationError> {
+        Err(VerificationError::InvalidInput(
+            "async runtime not compiled in: build with the 'rpc', 'server', or 'cli' feature to verify synchronously".to_string(),
+        ))
     }
 
     /// Load an additional protocol manifest at runtime.
@@ -306,13 +378,18 @@ impl GraphiteCore {
     /// Trusted operator API: seed or override a program's simulation baseline
     /// (e.g. restoring a previous deployment's export). Never reachable from a
     /// request body — baselines are earned (RPC-verified usage) or seeded here.
+    /// Returns an error for invalid baselines (NaN/Infinity/negative values)
+    /// so a corrupt seed can never poison the accumulator.
     pub fn seed_simulation_baseline(
         &self,
         program_id: &str,
         baseline: crate::simulation_integrity::ComputeBaseline,
-    ) {
-        self.graph().seed_simulation_baseline(program_id, baseline);
+    ) -> Result<(), VerificationError> {
+        self.graph()
+            .seed_simulation_baseline(program_id, baseline)
+            .map_err(VerificationError::SemanticGraph)?;
         self.persist_state();
+        Ok(())
     }
 
     // L2: Instruction Verification
@@ -335,29 +412,16 @@ impl GraphiteCore {
             }
         };
 
-        // Support both exact match and prefix match:
-        // - Anchor programs: 8-byte discriminators, exact match
-        // - Non-Anchor programs (System, SPL Token, Raydium): shorter discriminators (1-4 bytes)
-        //   that should match as a prefix of the input discriminator
-        let input_disc_lower = input.instruction_discriminator.to_lowercase();
+        // Discriminator matching is delegated to the single hardened helper
+        // in manifest.rs (SECURITY: exact-or-input-starts-with-manifest only —
+        // the old inline matchers also accepted a truncated input that was a
+        // 4-char prefix of a known discriminator, minting a false
+        // InstructionMatch on a different instruction).
         let matching_ix = manifest.instructions.iter().find(|ix| {
-            let manifest_disc = ix.discriminator.to_lowercase();
-            if manifest_disc.is_empty() {
-                return false; // skip empty discriminators (e.g., Memo)
-            }
-            // Exact match
-            if manifest_disc == input_disc_lower {
-                return true;
-            }
-            // Prefix match: manifest disc is a prefix of input (handles short manifest discriminators)
-            if input_disc_lower.starts_with(&manifest_disc) {
-                return true;
-            }
-            // Reverse prefix: input disc is a prefix of manifest (handles short input discriminators)
-            if manifest_disc.starts_with(&input_disc_lower) && input_disc_lower.len() >= 4 {
-                return true;
-            }
-            false
+            crate::manifest::discriminator_matches(
+                &ix.discriminator,
+                &input.instruction_discriminator,
+            )
         });
 
         let ix = match matching_ix {
@@ -782,22 +846,11 @@ impl GraphiteCore {
         // manifest — this ensures known protocols have their CPI lists available.
         let (expected_state_changes, allowed_cpis) = match manifest {
             Some(m) => {
-                let input_disc_lower = input.instruction_discriminator.to_lowercase();
                 let ix = m.instructions.iter().find(|i| {
-                    let manifest_disc = i.discriminator.to_lowercase();
-                    if manifest_disc.is_empty() {
-                        return false;
-                    }
-                    if manifest_disc == input_disc_lower {
-                        return true;
-                    }
-                    if input_disc_lower.starts_with(&manifest_disc) {
-                        return true;
-                    }
-                    if manifest_disc.starts_with(&input_disc_lower) && input_disc_lower.len() >= 4 {
-                        return true;
-                    }
-                    false
+                    crate::manifest::discriminator_matches(
+                        &i.discriminator,
+                        &input.instruction_discriminator,
+                    )
                 });
                 match ix {
                     Some(ix) => (ix.expected_state_changes.clone(), ix.allowed_cpis.clone()),
@@ -834,22 +887,11 @@ impl GraphiteCore {
         // Step 3: Risk Assessment
         let (expected_account_count, variable_accounts) = match manifest {
             Some(m) => {
-                let input_disc_lower = input.instruction_discriminator.to_lowercase();
                 let ix = m.instructions.iter().find(|i| {
-                    let manifest_disc = i.discriminator.to_lowercase();
-                    if manifest_disc.is_empty() {
-                        return false;
-                    }
-                    if manifest_disc == input_disc_lower {
-                        return true;
-                    }
-                    if input_disc_lower.starts_with(&manifest_disc) {
-                        return true;
-                    }
-                    if manifest_disc.starts_with(&input_disc_lower) && input_disc_lower.len() >= 4 {
-                        return true;
-                    }
-                    false
+                    crate::manifest::discriminator_matches(
+                        &i.discriminator,
+                        &input.instruction_discriminator,
+                    )
                 });
                 match ix {
                     Some(i) => (Some(i.accounts.len()), i.variable_accounts),
@@ -1012,7 +1054,14 @@ impl GraphiteCore {
             .get_simulation_baseline(&input.program_id)
             .cloned();
         let (sim_flagged, sim_divergence) = if let Some(baseline) = trusted_baseline {
-            if baseline.sample_count >= 10 && baseline.std_compute_units > 0.0 {
+            // A baseline with fewer than MIN_SAMPLES samples is statistically
+            // meaningless — the check is skipped (None = no verdict), per P12
+            // fail-open-with-explanation. Zero-variance baselines (std == 0)
+            // are handled INSIDE check_simulation_integrity (any deviation
+            // from an identical-history mean is a max-signal divergence) — the
+            // old `std > 0.0` gate here silently skipped those programs
+            // forever (a permanent spoofing bypass for uniform programs).
+            if baseline.sample_count >= crate::simulation_integrity::MIN_SAMPLES {
                 // Build a simulation usage object, preferring live RPC
                 // simulation when an RPC client is attached; fall back to
                 // caller-provided values if unavailable.
@@ -1031,6 +1080,7 @@ impl GraphiteCore {
                 // field — the merged object would still carry caller-controlled
                 // numbers, so we record NOTHING. A partial RPC result is a
                 // non-event for the accumulator.
+                #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
                 let mut rpc_sim_ok = false;
                 #[cfg(feature = "rpc")]
                 {
@@ -1067,27 +1117,75 @@ impl GraphiteCore {
                         }
                     }
                 }
-                if rpc_sim_ok {
-                    self.graph().record_simulation(&input.program_id, &usage);
-                    self.persist_state();
-                }
 
-                match crate::simulation_integrity::check_simulation_integrity(
+                // SECURITY (record-after-check): the integrity check MUST run
+                // against the CURRENT trusted baseline BEFORE any new
+                // observation is folded into it. Recording first would let a
+                // compute spike normalize the baseline before the integrity
+                // layer could flag it (baseline poisoning through the earn
+                // path). Additionally, a FLAGGED observation must never enter
+                // the accumulator.
+                //
+                // Recorded tradeoff (Constitution P14): because flagged
+                // observations are never recorded, a program whose usage
+                // LEGITIMATELY drifts (feature deploys, parameter changes)
+                // stays flagged — its baseline freezes and an operator must
+                // reseed it. This is the security-correct choice (an
+                // attacker-driven spike must never move the baseline) at the
+                // cost of operator intervention for genuinely evolving
+                // programs.
+                let check_result = match crate::simulation_integrity::check_simulation_integrity(
                     &crate::simulation_integrity::SimulationIntegrityInput {
                         program_id: input.program_id.clone(),
-                        simulation_usage: usage,
+                        // clone: `usage` is still needed below for the
+                        // record-after-check accumulator update.
+                        simulation_usage: usage.clone(),
                         baseline,
                         divergence_threshold: 2.0,
                     },
                 ) {
-                    Ok(result) => (Some(result.flagged), Some(result.divergence_score)),
-                    // Fail-closed (Constitution P12): on integrity check error,
-                    // flag the simulation rather than silently passing it.
+                    Ok(result) => result,
+                    // Fail-closed (Constitution P12): on integrity check
+                    // error (e.g. a corrupted seeded baseline), flag the
+                    // simulation rather than silently passing it.
                     Err(e) => {
                         tracing::error!("simulation integrity check error: {}", e);
-                        (Some(true), Some(f64::MAX))
+                        crate::simulation_integrity::SimulationIntegrityResult {
+                            flagged: true,
+                            divergence_score: f64::MAX,
+                            reason: None,
+                        }
                     }
+                };
+
+                // Provenance-aware verdict (Constitution P5 — simulation is
+                // evidence, never ground truth): a CLEAN verdict is certified
+                // ONLY when the usage came from a complete RPC
+                // simulateTransaction. Caller-supplied usage can flag
+                // divergence (why would anyone report divergent usage?) but can
+                // never produce a false "clean" — an attacker who controls the
+                // numbers could otherwise normalize their own z-score to 0.
+                // Unverified-but-unflagged is reported as None ("no trusted
+                // verdict"), not Some(false).
+                let sim_flagged = if check_result.flagged {
+                    Some(true)
+                } else if rpc_sim_ok {
+                    Some(false)
+                } else {
+                    None
+                };
+
+                // Record AFTER the check, and ONLY RPC-verified, un-flagged
+                // observations enter the trusted accumulator. (rpc-only: the
+                // accumulator cannot be written without a live RPC client,
+                // and `persist_state_async` is rpc-gated.)
+                #[cfg(feature = "rpc")]
+                if rpc_sim_ok && !check_result.flagged {
+                    self.graph().record_simulation(&input.program_id, &usage);
+                    self.persist_state_async().await;
                 }
+
+                (sim_flagged, Some(check_result.divergence_score))
             } else {
                 (None, None)
             }
@@ -1158,19 +1256,22 @@ impl GraphiteCore {
                 None => manifest_tier,
             }
         } else {
-            // No manifest found — query the Semantic Graph in case we have
-            // accumulated evidence from prior verifications (P7).
-            let graph_tier = self
-                .graph()
+            // No manifest found — the trust tier comes ONLY from the Semantic
+            // Graph's accumulated evidence (P7: earned, never asserted). The
+            // request-body `behavior_evidence` is ignored here exactly as on
+            // the manifest path — it is caller-controlled JSON, and honoring
+            // it would let an attacker mint an earned-looking tier for a
+            // program with no on-chain reputation (evidence-gaming, the same
+            // class of bug as the build_signals zeroing). P6's low confidence
+            // ceiling for unknown protocols still applies via
+            // apply_unknown_protocol_ceiling below. A graph entry whose tier
+            // was genuinely EARNED (operator-seeded Behavior evidence, or a
+            // quarantine downgrade) is respected — forcibly capping an earned
+            // tier at HeuristicInferred would violate P7.
+            self.graph()
                 .get(&input.program_id)
                 .map(|b| b.trust_tier)
-                .unwrap_or(TrustTier::Unknown);
-            let evidence_tier = compute_trust_tier_from_evidence(&input.behavior_evidence);
-            // Without a manifest, cap at HeuristicInferred even with evidence
-            // (P6: unknown protocol ceiling still applies via confidence cap)
-            graph_tier
-                .max(evidence_tier)
-                .min(TrustTier::HeuristicInferred)
+                .unwrap_or(TrustTier::Unknown)
         };
 
         let signals = build_signals(
@@ -1386,14 +1487,34 @@ impl GraphiteCore {
                     layer: "L3_SimulationVerification".to_string(),
                     passed: true,
                     reason: {
-                        let base = if input.compute_units > 0 {
-                            format!(
-                                "Simulation integrity checked: {} compute units, {} account writes, {} CPI hops — divergence: {}",
-                                input.compute_units, input.account_writes, input.cpi_hops,
-                                if sim_flagged == Some(true) { "FLAGGED" } else { "none" }
-                            )
-                        } else {
-                            "Phase 1: simulation skipped (no RPC connection) — simulation integrity module active when caller provides compute data".to_string()
+                        let base = match (sim_flagged, sim_divergence) {
+                            (Some(true), _) => {
+                                // Clamp the DISPLAYED divergence: zero-variance
+                                // and degenerate paths report f64::MAX (JSON-safe
+                                // in the structured field) which would otherwise
+                                // render as a ~300-digit number here.
+                                let d = sim_divergence.unwrap_or(0.0);
+                                let div = if d > 1000.0 {
+                                    ">1000σ".to_string()
+                                } else {
+                                    format!("{:.2}σ", d)
+                                };
+                                format!(
+                                    "Simulation integrity FLAGGED: {} CU / {} writes / {} hops (divergence {} vs baseline)",
+                                    input.compute_units, input.account_writes, input.cpi_hops, div
+                                )
+                            }
+                            (Some(false), _) => format!(
+                                "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops",
+                                input.compute_units, input.account_writes, input.cpi_hops
+                            ),
+                            (None, Some(_)) => format!(
+                                "Simulation integrity NOT RPC-verified: caller-supplied usage ({} CU / {} writes / {} hops) — advisory only, cannot certify clean (P5)",
+                                input.compute_units, input.account_writes, input.cpi_hops
+                            ),
+                            (None, None) => {
+                                "Phase 1: simulation not checked (no baseline or insufficient samples) — active when a trusted baseline exists".to_string()
+                            }
                         };
                         if let Some(ref info) = l3_rpc_account_info {
                             format!("{} | RPC: {}", base, info)
@@ -1505,10 +1626,6 @@ fn summarize_risk(verdict: &RiskVerdict) -> RiskVerdictSummary {
             }],
         },
     }
-}
-
-fn compute_trust_tier_from_evidence(evidence: &BehaviorEvidence) -> TrustTier {
-    crate::semantic_graph_store::compute_trust_tier(evidence)
 }
 
 fn build_signals(
@@ -1834,11 +1951,16 @@ mod tests {
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 0.1,
             },
-        );
+        )
+        .unwrap();
         let result = core.verify(&input).unwrap();
-        // Baseline is present (>=10 samples, non-zero std) → integrity ran
-        // and usage matches the baseline exactly → not flagged, divergence 0.
-        assert_eq!(result.simulation_flagged, Some(false));
+        // Baseline is present (>=10 samples) and the check RAN (usage matches
+        // the baseline → divergence 0). BUT with no RPC client attached the
+        // usage is caller-supplied, so the verdict is PROVENANCE-AWARE: a
+        // caller-controlled usage can never certify a CLEAN simulation (P5) —
+        // it is reported as None ("no trusted verdict"), not Some(false). The
+        // computed divergence is still surfaced for transparency.
+        assert_eq!(result.simulation_flagged, None);
         assert_eq!(result.simulation_divergence, Some(0.0));
         // Signed-transaction-bearing input must not corrupt the deterministic
         // content hash (the blob is not part of the verification identity).

@@ -123,7 +123,7 @@ impl ManifestRegistry {
     }
 
     /// Find an instruction definition by discriminator (hex), allowing
-    /// exact or prefix matches for short discriminators.
+    /// exact or input-starts-with-manifest matches for short discriminators.
     pub fn find_instruction<'a>(
         &'a self,
         program_id: &str,
@@ -175,23 +175,28 @@ impl ManifestRegistry {
     }
 }
 
-fn discriminator_matches(manifest_disc: &str, input_disc: &str) -> bool {
+/// Match an instruction's input discriminator against a manifest discriminator.
+///
+/// SECURITY (discriminator impersonation): the ONLY allowed matches are exact
+/// equality or "the input starts with the FULL manifest discriminator". The
+/// manifest discriminator is the authoritative prefix of the instruction
+/// selector (e.g. Raydium's 1-byte "09" matches input "09aabbcc"), and the
+/// input MUST contain the complete manifest discriminator.
+///
+/// An input that is merely a PREFIX of the manifest discriminator — truncated
+/// or malformed instruction data — NEVER matches. The previous implementation
+/// accepted `manifest_disc.starts_with(&input_disc) && input_disc.len() >= 4`,
+/// which let an attacker craft a 4-char prefix of a known 8-byte Anchor
+/// discriminator (e.g. "bb64" of Jupiter's "bb64facc31c4af14") to mint a
+/// false `InstructionMatch` confidence signal on a DIFFERENT instruction.
+pub fn discriminator_matches(manifest_disc: &str, input_disc: &str) -> bool {
     let manifest_disc = manifest_disc.to_lowercase();
     let input_disc = input_disc.to_lowercase();
 
     if manifest_disc.is_empty() {
         return false;
     }
-    if manifest_disc == input_disc {
-        return true;
-    }
-    if input_disc.starts_with(&manifest_disc) {
-        return true;
-    }
-    if manifest_disc.starts_with(&input_disc) && input_disc.len() >= 4 {
-        return true;
-    }
-    false
+    input_disc.starts_with(&manifest_disc)
 }
 
 /// Load the built-in seed protocol manifests.
@@ -303,6 +308,145 @@ mod tests {
             !set_auth.risk_rules.is_empty(),
             "SetAuthority should have risk rules"
         );
+    }
+
+    /// Pins every seed manifest's program_id to its on-chain-verified
+    /// canonical value (mainnet `getAccountInfo` → executable=true, checked
+    /// 2026-08-06). A previous edit corrupted the Raydium manifest ID to a
+    /// non-existent address; a manifest whose program_id doesn't match the
+    /// real on-chain program silently fails every legitimate verification for
+    /// that protocol — the highest-impact data bug class in this codebase.
+    #[test]
+    fn test_all_seed_manifest_program_ids_are_canonical() {
+        let canonical = [
+            ("System Program", "11111111111111111111111111111111"),
+            (
+                "SPL Token Program",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            ),
+            (
+                "Token-2022 Program",
+                "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            ),
+            (
+                "Stake Program",
+                "Stake11111111111111111111111111111111111111",
+            ),
+            (
+                "Memo Program",
+                "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+            ),
+            (
+                "Legacy Memo Program (SPL)",
+                "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
+            ),
+            (
+                "Raydium AMM V4",
+                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+            ),
+            (
+                "Jupiter V6 Aggregator",
+                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            ),
+            (
+                "Orca Whirlpools",
+                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            ),
+            (
+                "Meteora DLMM",
+                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+            ),
+            (
+                "Squads V4 Multisig",
+                "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
+            ),
+        ];
+        let registry = load_seed_manifests();
+        assert_eq!(registry.list().len(), canonical.len());
+        for (name, id) in canonical {
+            let m = registry
+                .get(id)
+                .unwrap_or_else(|| panic!("manifest '{name}' not found under canonical ID {id}"));
+            assert_eq!(
+                m.protocol.name, name,
+                "name mismatch under canonical ID {id}"
+            );
+        }
+    }
+
+    /// The exact regression this pin guards: a manifest whose program_id does
+    /// not exist on-chain must be caught at review/test time, not silently
+    /// accepted. Loading a manifest under the WRONG (corrupted) Raydium ID
+    /// must NOT resolve the real canonical ID.
+    #[test]
+    fn test_corrupted_raydium_id_does_not_resolve() {
+        let registry = load_seed_manifests();
+        // This was the previously-corrupted manifest ID — it is a non-program
+        // account on mainnet and must never resolve the Raydium manifest.
+        let corrupted = "675kPX9MHTjS2zt1q7PYMcjCKa5KqQ1vJXrDhJq5qoM9";
+        assert!(registry.get(corrupted).is_none());
+        // The canonical ID resolves.
+        assert!(registry
+            .get("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8")
+            .is_some());
+    }
+
+    #[test]
+    fn test_discriminator_input_prefix_of_manifest_is_rejected() {
+        // SECURITY regression: a truncated input that is only a PREFIX of a
+        // known discriminator must NOT match (previously accepted with >= 4
+        // chars — the discriminator-impersonation bypass).
+        let registry = load_seed_manifests();
+        // Jupiter route_v2's real discriminator is "bb64facc31c4af14".
+        let jup = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+        assert!(
+            registry.find_instruction(jup, "bb64facc31c4af14").is_some(),
+            "exact match must resolve"
+        );
+        assert!(
+            registry
+                .find_instruction(jup, "bb64facc31c4af14aa")
+                .is_some(),
+            "input longer than manifest disc (more data bytes) must resolve"
+        );
+        assert!(
+            registry.find_instruction(jup, "bb64").is_none(),
+            "4-char prefix of an 8-byte discriminator must NOT match"
+        );
+        assert!(
+            registry.find_instruction(jup, "bb64fa").is_none(),
+            "6-char prefix must NOT match"
+        );
+    }
+
+    #[test]
+    fn test_short_manifest_discriminator_still_matches_input() {
+        // 1-byte discriminators (SPL Token Transfer="03", Raydium
+        // SwapBaseIn="09") are authoritative prefixes — input data
+        // legitimately carries more bytes after the selector.
+        let registry = load_seed_manifests();
+        let spl = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+        assert!(registry.find_instruction(spl, "03").is_some());
+        assert!(registry.find_instruction(spl, "03aabbcc").is_some());
+        let raydium = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+        assert!(registry.find_instruction(raydium, "09").is_some());
+        assert!(registry.find_instruction(raydium, "09ffeedd").is_some());
+        // A byte with no SPL Token instruction never matches ("ff" is not a
+        // real selector; "04" would be Approve and must NOT be asserted as
+        // non-matching).
+        assert!(registry.find_instruction(spl, "ff").is_none());
+        assert!(registry.find_instruction(spl, "04").is_some()); // Approve
+                                                                 // A 4-byte-manifest discriminator requires the FULL prefix (System
+                                                                 // Program Transfer = "02000000"); truncated input does not match.
+        assert!(registry
+            .find_instruction("11111111111111111111111111111111", "02")
+            .is_none());
+        assert!(registry
+            .find_instruction("11111111111111111111111111111111", "0200")
+            .is_none());
+        assert!(registry
+            .find_instruction("11111111111111111111111111111111", "02000000")
+            .is_some());
     }
 
     #[test]
