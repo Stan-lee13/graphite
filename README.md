@@ -7,7 +7,7 @@
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-635_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-649_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-11-blue?style=flat-square)](graphite-core/protocols/)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-8-red?style=flat-square)](graphite-core/src/risk_engine.rs)
@@ -186,6 +186,23 @@ cargo run --release --bin graphite -- server --port 7331
 # Graphite Core running on port 7331
 ```
 
+### Production server configuration (all optional env vars)
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `GRAPHITE_API_KEY` | *(unset = open)* | **Set this in production.** Bearer token required on `/verify` and `/manifests` (constant-time compared). `/health` stays open for load balancers. |
+| `GRAPHITE_RATE_LIMIT` | `30` | Per-IP token bucket, requests/second. Returns `429` when exceeded. |
+| `GRAPHITE_CORS_ORIGINS` | *(denied)* | Comma-separated allowed browser origins. Default denies all cross-origin browser calls; server-to-server clients are unaffected. |
+| `GRAPHITE_DATA_DIR` | `./graphite-data` | Durability: semantic-graph snapshot (trust tiers + earned simulation baselines) and append-only `audit.jsonl` written after every verification, reloaded on restart. |
+| `GRAPHITE_RPC_URL` | *(off)* | Attaches a Solana RPC client — live L3: `simulateTransaction` runs and real compute usage feeds the trusted baseline accumulator. |
+
+```bash
+# Minimal production launch (auth + rate limit + durability)
+GRAPHITE_API_KEY=$(openssl rand -hex 32) GRAPHITE_RATE_LIMIT=100 \
+  GRAPHITE_DATA_DIR=/var/lib/graphite GRAPHITE_CORS_ORIGINS= \
+  cargo run --release --bin graphite -- server --port 7331
+```
+
 ### 2. Verify a transaction
 
 ```bash
@@ -230,6 +247,9 @@ The demo shows the full flow:
 | **AI never decides** | Python AI layer is advisory only — Core verification is deterministic (P1) |
 | **Deterministic** | `content_hash` = SHA-256 of transaction config — same input, same output (P2) |
 | **Compositional drain detection** | Both duplicate AND unique-program deep CPI chains caught |
+| **Trusted simulation baselines** | Baselines live in the semantic-graph accumulator (earned via RPC-verified usage or operator-seeded) — the request body **cannot** supply one (anti-poisoning) |
+| **API auth** | Optional Bearer API key, constant-time compared; `429` per-IP rate limiting; CORS allowlist (denied by default) |
+| **Durability** | Semantic-graph snapshot + append-only audit trail (`audit.jsonl`) persisted to `GRAPHITE_DATA_DIR`, reloaded on restart |
 
 ---
 
@@ -245,7 +265,7 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Phase 1 confidence is calibrated honestly.** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) are intentionally ZEROED in Phase 1 — they'd come from caller-controlled request JSON, which an attacker could fabricate to mint confidence (Constitution G4). Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). The achievable confidence for a known, clean, intent-aligned protocol is therefore **~0.44**. The built-in wallet profiles (TradingBot 0.80, Treasury 0.95, …) were calibrated for the Phase 2 signal set and will block everything in Phase 1 — the benchmark, and the SAK demo, therefore default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 635 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
+- 649 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
 - 8 risk patterns are real detection logic, not stubs.
 - 11 protocol manifests with program IDs verified against official on-chain sources.
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.

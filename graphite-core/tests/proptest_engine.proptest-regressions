@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6e3a488d74b35f0493b756eeb788bc5807d1e9a829261eb5f1d9f7950753ef95 # shrinks to input = VerificationInput { proposed_intent: ProposedIntent { intent_type: "transfer", raw_natural_language: "proptest input", confidence_of_parse: 0.9, extracted_parameters: None }, program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", protocol_version: "1.0.0", instruction_discriminator: "00AA00AA0A0a", account_addresses: ["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"], instruction_data: None, cpi_targets: [], wallet_profile: TradingBot, behavior_evidence: BehaviorEvidence { has_signed_manifest: false, community_verified_count: 0, battle_tested_tx_count: 0, simulation_match_count: 0 }, compute_units: 0, account_writes: 0, cpi_hops: 0, signed_transaction: None }

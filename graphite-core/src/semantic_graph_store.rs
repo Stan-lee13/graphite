@@ -17,6 +17,8 @@
 //! the trust tier computation logic. The actual storage backend is a design
 //! decision for Phase 1+.
 
+use crate::simulation_integrity::{ComputeBaseline, ComputeUsage};
+use std::collections::HashMap;
 use thiserror::Error;
 
 // Reuse the canonical `TrustTier` from `confidence_engine` rather than
@@ -43,7 +45,7 @@ pub enum SemanticGraphError {
 }
 
 /// Behavior record for a protocol or program.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Behavior {
     /// Program ID
     pub program_id: String,
@@ -133,10 +135,20 @@ pub fn compute_trust_tier(evidence: &BehaviorEvidence) -> TrustTier {
     TrustTier::HeuristicInferred
 }
 
-/// Semantic Graph store (simplified in-memory implementation).
-#[derive(Debug, Default, Clone)]
+/// Semantic Graph store — append-only Behavior history PLUS the trusted
+/// per-program simulation baselines (Constitution security fix: baselines
+/// are earned/accumulated here, never accepted from a request body).
+///
+/// The whole store is serializable so it can be snapshotted to disk
+/// (durability) and reloaded on startup.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SemanticGraphStore {
     behaviors: Vec<Behavior>,
+    /// Trusted simulation baselines keyed by program ID. Updated ONLY via
+    /// `record_simulation` (RPC-verified usage) or `seed_simulation_baseline`
+    /// (operator API). Raw request bodies can never write here.
+    #[serde(default)]
+    baselines: HashMap<String, ComputeBaseline>,
 }
 
 impl SemanticGraphStore {
@@ -229,6 +241,49 @@ impl SemanticGraphStore {
             .iter()
             .filter(|b| b.program_id == program_id)
             .collect()
+    }
+
+    /// Get the trusted simulation baseline for a program, if one exists.
+    pub fn get_simulation_baseline(&self, program_id: &str) -> Option<&ComputeBaseline> {
+        self.baselines.get(program_id)
+    }
+
+    /// Record observed simulation usage for a program (Welford update).
+    ///
+    /// SECURITY: this is the ONLY trusted write path for baselines. Call it
+    /// with RPC-verified usage (simulateTransaction results), never with
+    /// raw request-body values — otherwise an attacker who controls the
+    /// request could normalize their own divergence.
+    ///
+    /// Returns the updated baseline.
+    pub fn record_simulation(&mut self, program_id: &str, usage: &ComputeUsage) -> ComputeBaseline {
+        let entry = self.baselines.entry(program_id.to_string()).or_default();
+        crate::simulation_integrity::update_baseline(
+            entry,
+            usage.compute_units,
+            usage.account_writes,
+            usage.cpi_hops,
+        );
+        entry.clone()
+    }
+
+    /// Trusted operator API: seed or override a program's simulation
+    /// baseline (e.g. restoring a previous deployment's export). Not exposed
+    /// over the wire — server operators call this at startup.
+    pub fn seed_simulation_baseline(&mut self, program_id: &str, baseline: ComputeBaseline) {
+        self.baselines.insert(program_id.to_string(), baseline);
+    }
+
+    /// Serialize the store to JSON (durability snapshot).
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Deserialize a store snapshot. On failure, callers should start fresh
+    /// (fail-closed: a corrupt snapshot must not silently lose data, but a
+    /// fresh store is still safe — tiers and baselines are re-earned).
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
     }
 }
 

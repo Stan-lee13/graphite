@@ -19,6 +19,8 @@ use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 use crate::transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
 use crate::unknown_protocol_mode::apply_unknown_protocol_ceiling;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -71,9 +73,6 @@ pub struct VerificationInput {
     /// simulation will use `instruction_data` as a minimal payload.
     #[serde(default)]
     pub signed_transaction: Option<Vec<u8>>,
-    // Phase 1.5: Simulation Integrity (optional — if None, skip simulation check)
-    #[serde(default)]
-    pub simulation_baseline: Option<crate::simulation_integrity::ComputeBaseline>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -159,12 +158,19 @@ pub struct PipelineLayerResult {
 }
 
 /// The main Graphite verification engine.
+///
+/// `semantic_graph` is `Arc<Mutex<..>>` so that cloned core instances (axum
+/// State clones one per request) all share the same append-only history,
+/// trust tiers, and simulation baselines — and so the accumulator can be
+/// updated while `verify_async` runs on a shared `&self`.
 #[derive(Debug, Clone)]
 pub struct GraphiteCore {
     registry: ManifestRegistry,
-    semantic_graph: SemanticGraphStore,
+    semantic_graph: Arc<Mutex<SemanticGraphStore>>,
     #[cfg(feature = "rpc")]
     rpc_client: Option<SolanaRpcClient>,
+    /// Optional durability directory (snapshots + audit trail).
+    data_dir: Option<PathBuf>,
 }
 
 impl Default for GraphiteCore {
@@ -178,9 +184,10 @@ impl GraphiteCore {
     pub fn new() -> Self {
         Self {
             registry: load_seed_manifests(),
-            semantic_graph: SemanticGraphStore::new(),
+            semantic_graph: Arc::new(Mutex::new(SemanticGraphStore::new())),
             #[cfg(feature = "rpc")]
             rpc_client: None,
+            data_dir: None,
         }
     }
 
@@ -188,9 +195,67 @@ impl GraphiteCore {
     pub fn with_registry(registry: ManifestRegistry) -> Self {
         Self {
             registry,
-            semantic_graph: SemanticGraphStore::new(),
+            semantic_graph: Arc::new(Mutex::new(SemanticGraphStore::new())),
             #[cfg(feature = "rpc")]
             rpc_client: None,
+            data_dir: None,
+        }
+    }
+
+    /// Create with durability enabled: the semantic graph, trust tiers, and
+    /// simulation baselines are snapshotted to `data_dir` on every mutation
+    /// and reloaded on startup. Fail-closed: a corrupt snapshot logs an error
+    /// and starts fresh (state is re-earned) rather than panicking.
+    pub fn with_data_dir(data_dir: PathBuf) -> Self {
+        let mut core = Self::new();
+        core.data_dir = Some(data_dir.clone());
+        if let Err(e) = std::fs::create_dir_all(&data_dir) {
+            tracing::warn!("failed to create data dir {}: {}", data_dir.display(), e);
+        }
+        let path = data_dir.join("semantic_graph.json");
+        match std::fs::read_to_string(&path) {
+            Ok(json) => match SemanticGraphStore::from_json(&json) {
+                Ok(store) => {
+                    core.semantic_graph = Arc::new(Mutex::new(store));
+                    tracing::info!("restored semantic graph from {}", path.display());
+                }
+                Err(e) => tracing::error!(
+                    "corrupt semantic graph snapshot at {} — starting fresh: {}",
+                    path.display(),
+                    e
+                ),
+            },
+            Err(_) => { /* no snapshot yet — fresh store */ }
+        }
+        core
+    }
+
+    /// Interior-mutable handle to the semantic graph, shared across clones.
+    /// Poisoned mutexes are recovered (fail-open) so a panic elsewhere can
+    /// never wedge verification permanently.
+    fn graph(&self) -> std::sync::MutexGuard<'_, SemanticGraphStore> {
+        self.semantic_graph
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Snapshot graph state to disk (best-effort; never fatal).
+    fn persist_state(&self) {
+        let Some(dir) = self.data_dir.as_ref() else {
+            return;
+        };
+        let Ok(json) = self.graph().to_json() else {
+            tracing::warn!("failed to serialize semantic graph");
+            return;
+        };
+        let path = dir.join("semantic_graph.json");
+        let tmp = dir.join("semantic_graph.json.tmp");
+        if let Err(e) = std::fs::write(&tmp, json) {
+            tracing::warn!("failed to persist semantic graph: {}", e);
+            return;
+        }
+        if let Err(e) = std::fs::rename(&tmp, &path) {
+            tracing::warn!("failed to commit semantic graph snapshot: {}", e);
         }
     }
 
@@ -230,10 +295,24 @@ impl GraphiteCore {
         &self.registry
     }
 
-    /// Seed a behavior record into the semantic graph.
+    /// Seed a behavior record into the semantic graph (persisted if durability
+    /// is enabled).
     pub fn seed_behavior(&mut self, behavior: Behavior) -> Result<(), VerificationError> {
-        self.semantic_graph.append(behavior)?;
+        self.graph().append(behavior)?;
+        self.persist_state();
         Ok(())
+    }
+
+    /// Trusted operator API: seed or override a program's simulation baseline
+    /// (e.g. restoring a previous deployment's export). Never reachable from a
+    /// request body — baselines are earned (RPC-verified usage) or seeded here.
+    pub fn seed_simulation_baseline(
+        &self,
+        program_id: &str,
+        baseline: crate::simulation_integrity::ComputeBaseline,
+    ) {
+        self.graph().seed_simulation_baseline(program_id, baseline);
+        self.persist_state();
     }
 
     // L2: Instruction Verification
@@ -921,16 +1000,22 @@ impl GraphiteCore {
         };
 
         // Step 3.5: Simulation Integrity Check (Phase 1.5)
-        let (sim_flagged, sim_divergence) = if let Some(ref baseline) = input.simulation_baseline {
+        //
+        // SECURITY (baseline trust model): the baseline is read from the
+        // TRUSTED semantic-graph accumulator — earned via `record_simulation`
+        // from RPC-verified usage, or seeded by an operator. The request body
+        // can NO LONGER supply a baseline; the `simulation_baseline` field was
+        // removed from VerificationInput because it was caller-controlled JSON
+        // that let an attacker normalize their own divergence.
+        let trusted_baseline = self
+            .graph()
+            .get_simulation_baseline(&input.program_id)
+            .cloned();
+        let (sim_flagged, sim_divergence) = if let Some(baseline) = trusted_baseline {
             if baseline.sample_count >= 10 && baseline.std_compute_units > 0.0 {
-                // Build a simulation usage object, preferring live RPC simulation
-                // when an RPC client is attached. Fall back to caller-provided
-                // `input.compute_units` etc. if RPC simulation fails or is
-                // unavailable.
-                // NOTE: must be `mut` — the `#[cfg(feature = "rpc")]` block
-                // below mutates these fields. (Compile error under `--features
-                // rpc` without this.) Under default features the block compiles
-                // out and rustc's `unused_mut` would fire, so silence it there.
+                // Build a simulation usage object, preferring live RPC
+                // simulation when an RPC client is attached; fall back to
+                // caller-provided values if unavailable.
                 #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
                 let mut usage = crate::simulation_integrity::ComputeUsage {
                     compute_units: input.compute_units,
@@ -938,12 +1023,21 @@ impl GraphiteCore {
                     cpi_hops: input.cpi_hops,
                 };
 
+                // Usage is recorded into the trusted accumulator ONLY when it
+                // came ENTIRELY from a real simulateTransaction. Raw
+                // request-body values must never feed the baseline (poisoning
+                // vector): if the RPC result is partial — units_consumed == 0
+                // (failed/budget-rejected simulation) or a missing optional
+                // field — the merged object would still carry caller-controlled
+                // numbers, so we record NOTHING. A partial RPC result is a
+                // non-event for the accumulator.
+                let mut rpc_sim_ok = false;
                 #[cfg(feature = "rpc")]
                 {
                     if let Some(client) = &self.rpc_client {
-                        // Try to construct a best-effort transaction payload.
-                        // Prefer a fully-signed transaction blob when provided by caller;
-                        // otherwise fall back to `instruction_data` as a minimal payload.
+                        // Prefer a fully-signed transaction blob when provided;
+                        // otherwise fall back to instruction_data as a minimal
+                        // payload.
                         let tx_bytes = input
                             .signed_transaction
                             .as_ref()
@@ -951,14 +1045,19 @@ impl GraphiteCore {
                             .unwrap_or_else(|| input.instruction_data.clone().unwrap_or_default());
                         match client.simulate_transaction(&tx_bytes).await {
                             Ok(sim_res) => {
-                                if sim_res.units_consumed > 0 {
+                                // Only a COMPLETE RPC result may enter the
+                                // accumulator: nonzero units AND both optional
+                                // fields present. Anything less leaves the
+                                // caller's numbers in `usage`, so it must not
+                                // be recorded (anti-poisoning).
+                                if sim_res.units_consumed > 0
+                                    && sim_res.account_writes.is_some()
+                                    && sim_res.cpi_hops.is_some()
+                                {
                                     usage.compute_units = sim_res.units_consumed;
-                                }
-                                if let Some(writes) = sim_res.account_writes {
-                                    usage.account_writes = writes;
-                                }
-                                if let Some(hops) = sim_res.cpi_hops {
-                                    usage.cpi_hops = hops;
+                                    usage.account_writes = sim_res.account_writes.unwrap_or(0);
+                                    usage.cpi_hops = sim_res.cpi_hops.unwrap_or(0);
+                                    rpc_sim_ok = true;
                                 }
                             }
                             Err(e) => {
@@ -968,12 +1067,16 @@ impl GraphiteCore {
                         }
                     }
                 }
+                if rpc_sim_ok {
+                    self.graph().record_simulation(&input.program_id, &usage);
+                    self.persist_state();
+                }
 
                 match crate::simulation_integrity::check_simulation_integrity(
                     &crate::simulation_integrity::SimulationIntegrityInput {
                         program_id: input.program_id.clone(),
                         simulation_usage: usage,
-                        baseline: baseline.clone(),
+                        baseline,
                         divergence_threshold: 2.0,
                     },
                 ) {
@@ -1050,7 +1153,7 @@ impl GraphiteCore {
             // inflating the TrustTierLevel signal. The Semantic Graph's
             // internally-accumulated tier (earned, never asserted) is still
             // honored; request-body evidence is ignored on the manifest path.
-            match self.semantic_graph.get(&input.program_id) {
+            match self.graph().get(&input.program_id) {
                 Some(b) => b.trust_tier.max(manifest_tier),
                 None => manifest_tier,
             }
@@ -1058,7 +1161,7 @@ impl GraphiteCore {
             // No manifest found — query the Semantic Graph in case we have
             // accumulated evidence from prior verifications (P7).
             let graph_tier = self
-                .semantic_graph
+                .graph()
                 .get(&input.program_id)
                 .map(|b| b.trust_tier)
                 .unwrap_or(TrustTier::Unknown);
@@ -1086,8 +1189,27 @@ impl GraphiteCore {
         // accidentally removes the ceiling from compute_confidence(). The second cap
         // is always a no-op given the first cap is in place — it exists as a safety net.
         let confidence = apply_unknown_protocol_ceiling(trust_tier, confidence_result.confidence);
-        let confidence =
-            (confidence - semantic_penalty - instruction_penalty - state_penalty).max(0.0);
+        // Penalties must never push confidence below zero — AND the breakdown must
+        // still explain the final score (Constitution P3). If the L2/L4/L5 penalties
+        // exceed the available score, scale them down so their contributions sum
+        // EXACTLY to the applied penalty and confidence floors at 0. Without this,
+        // a heavily-penalized result reported confidence 0.0 while the breakdown
+        // summed to a negative value (found by the proptest invariant suite).
+        let total_penalty: f64 = semantic_penalty + instruction_penalty + state_penalty;
+        let applied_penalty = if total_penalty > 0.0 {
+            total_penalty.min(confidence)
+        } else {
+            0.0
+        };
+        let scale = if total_penalty > 0.0 {
+            applied_penalty / total_penalty
+        } else {
+            1.0
+        };
+        let semantic_penalty = semantic_penalty * scale;
+        let instruction_penalty = instruction_penalty * scale;
+        let state_penalty = state_penalty * scale;
+        let confidence = confidence - applied_penalty;
 
         // Step 5: Policy Evaluation
         let policy_input = PolicyInput {
@@ -1592,7 +1714,6 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
-            simulation_baseline: None,
         }
     }
 
@@ -1659,7 +1780,6 @@ mod tests {
             account_writes: 2,
             cpi_hops: 1,
             signed_transaction: None,
-            simulation_baseline: None,
         };
         let result = core.verify(&input).unwrap();
         // Should be blocked due to unverified CPI or authority-related patterns
@@ -1687,7 +1807,9 @@ mod tests {
         // Phase 1.5: a caller-supplied signed transaction blob is the preferred
         // L3 simulation payload. With no RPC client attached the blob is not
         // transmitted anywhere, but the pipeline must accept it and the
-        // simulation-integrity check must still run when a baseline exists.
+        // simulation-integrity check must still run when a trusted baseline
+        // exists (seeded via the operator API — request bodies can no longer
+        // supply baselines).
         let core = GraphiteCore::new();
         let mut input = make_input(
             "11111111111111111111111111111111",
@@ -1701,15 +1823,18 @@ mod tests {
         input.compute_units = 150;
         input.account_writes = 2;
         input.cpi_hops = 0;
-        input.simulation_baseline = Some(crate::simulation_integrity::ComputeBaseline {
-            mean_compute_units: 150.0,
-            std_compute_units: 1.0,
-            sample_count: 50,
-            mean_account_writes: 2.0,
-            std_account_writes: 0.5,
-            mean_cpi_hops: 0.0,
-            std_cpi_hops: 0.1,
-        });
+        core.seed_simulation_baseline(
+            "11111111111111111111111111111111",
+            crate::simulation_integrity::ComputeBaseline {
+                mean_compute_units: 150.0,
+                std_compute_units: 1.0,
+                sample_count: 50,
+                mean_account_writes: 2.0,
+                std_account_writes: 0.5,
+                mean_cpi_hops: 0.0,
+                std_cpi_hops: 0.1,
+            },
+        );
         let result = core.verify(&input).unwrap();
         // Baseline is present (>=10 samples, non-zero std) → integrity ran
         // and usage matches the baseline exactly → not flagged, divergence 0.
@@ -1772,7 +1897,6 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
-            simulation_baseline: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -1833,7 +1957,6 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
-            simulation_baseline: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -1926,7 +2049,6 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
-            simulation_baseline: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -2067,7 +2189,6 @@ mod tests {
             account_writes: 2,
             cpi_hops: 1,
             signed_transaction: None,
-            simulation_baseline: None,
         };
 
         let result = core.verify(&input).unwrap();

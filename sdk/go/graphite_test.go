@@ -90,7 +90,10 @@ func TestVerificationInputSerialization(t *testing.T) {
 	}
 }
 
-func TestVerificationInputWithSimulationBaseline(t *testing.T) {
+func TestVerificationInputRejectsClientSuppliedSimulationBaseline(t *testing.T) {
+	// Trust model (P7): simulation baselines are accumulated server-side by the
+	// semantic graph and are NEVER accepted from the request body. The Go SDK
+	// must not expose a simulation_baseline field at all.
 	input := &VerificationInput{
 		ProposedIntent: ProposedIntent{
 			IntentType:         "swap",
@@ -110,11 +113,6 @@ func TestVerificationInputWithSimulationBaseline(t *testing.T) {
 		ComputeUnits: 200000,
 		AccountWrites: 5,
 		CPIHops:       3,
-		SimulationBaseline: &SimulationBaseline{
-			MeanComputeUnits: 150000,
-			StdComputeUnits:  20000,
-			SampleCount:      500,
-		},
 	}
 
 	data, err := json.Marshal(input)
@@ -123,25 +121,28 @@ func TestVerificationInputWithSimulationBaseline(t *testing.T) {
 	}
 
 	var raw map[string]interface{}
-	json.Unmarshal(data, &raw)
-
-	simBase, ok := raw["simulation_baseline"].(map[string]interface{})
-	if !ok {
-		t.Fatal("expected simulation_baseline to be present as JSON object")
-	}
-	if simBase["sample_count"] != float64(500) {
-		t.Errorf("expected sample_count=500, got %v", simBase["sample_count"])
-	}
-
-	var roundtrip VerificationInput
-	if err := json.Unmarshal(data, &roundtrip); err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if roundtrip.SimulationBaseline == nil {
-		t.Fatal("expected SimulationBaseline after roundtrip")
+
+	// Even if a hostile caller injects a simulation_baseline field into the raw
+	// JSON, the SDK type has no such field, so it is structurally dropped.
+	hostile := string(data[:len(data)-1]) + `,"simulation_baseline":{"mean_compute_units":99999,"std_compute_units":1,"sample_count":1000000}}`
+	var roundtrip VerificationInput
+	if err := json.Unmarshal([]byte(hostile), &roundtrip); err != nil {
+		t.Fatalf("unmarshal with injected field failed: %v", err)
 	}
-	if roundtrip.SimulationBaseline.SampleCount != 500 {
-		t.Errorf("expected sample_count=500, got %d", roundtrip.SimulationBaseline.SampleCount)
+
+	// Roundtrip of the legitimate input must succeed and carry no baseline.
+	var clean VerificationInput
+	if err := json.Unmarshal(data, &clean); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if _, present := raw["simulation_baseline"]; present {
+		t.Error("VerificationInput must not serialize a simulation_baseline field")
+	}
+	if clean.ComputeUnits != 200000 {
+		t.Errorf("expected compute_units=200000, got %d", clean.ComputeUnits)
 	}
 }
 

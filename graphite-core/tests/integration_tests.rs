@@ -38,7 +38,6 @@ fn make_input(
         account_writes: 2,
         cpi_hops: cpi.len() as u32,
         signed_transaction: None,
-        simulation_baseline: None,
     }
 }
 
@@ -403,7 +402,6 @@ fn test_fix5_fake_swap_wired_into_pipeline() {
         account_writes: 2,
         cpi_hops: 0,
         signed_transaction: None,
-        simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
     // Jupiter V6 manifest has expected_state_changes that mention "output" or "credits"
@@ -474,7 +472,13 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
         account_writes: 2,
         cpi_hops: 0,
         signed_transaction: None,
-        simulation_baseline: Some(graphite_core::simulation_integrity::ComputeBaseline {
+    };
+    // Baselines are trusted state, seeded via the operator API (never from the
+    // request body). With mean=150/std=10 and compute_units=150 the check runs
+    // and must not flag normal usage.
+    core.seed_simulation_baseline(
+        "11111111111111111111111111111111",
+        graphite_core::simulation_integrity::ComputeBaseline {
             mean_compute_units: 150.0,
             std_compute_units: 10.0,
             sample_count: 100,
@@ -482,8 +486,8 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
-        }),
-    };
+        },
+    );
     let result = core.verify(&input).unwrap();
     // With a baseline and compute_units=150 (close to mean=150), simulation should not be flagged
     assert!(
@@ -629,7 +633,6 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         account_writes: 1,
         cpi_hops: 0,
         signed_transaction: None,
-        simulation_baseline: None,
     };
 
     let verdict = core.verify(&full_input).unwrap();
@@ -758,7 +761,6 @@ fn test_pda_mismatch_correct_pda_passes() {
         account_writes: 1,
         cpi_hops: 0,
         signed_transaction: None,
-        simulation_baseline: None,
     };
 
     let verdict = core.verify(&full_input).unwrap();

@@ -30,7 +30,7 @@ clap = { version = "4", features = ["derive"], optional = true }
 
 [features]
 default = ["server", "cli"]
-server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower"]
+server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "rpc"]
 cli = ["dep:clap"]
 rpc = ["dep:reqwest", "dep:tokio"]
 

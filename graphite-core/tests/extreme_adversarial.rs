@@ -58,7 +58,12 @@ fn make_input(
     evidence: BehaviorEvidence,
     intent: &str,
     confidence_of_parse: f64,
-    sim_baseline: Option<ComputeBaseline>,
+    // SECURITY (baseline trust model): request bodies can no longer supply
+    // simulation baselines — the field was removed from VerificationInput.
+    // This parameter is retained only to keep the adversarial corpus call
+    // sites readable and is a documented NO-OP; baselines are seeded via
+    // GraphiteCore::seed_simulation_baseline (see t24 for the pattern).
+    _sim_baseline: Option<ComputeBaseline>,
 ) -> VerificationInput {
     VerificationInput {
         proposed_intent: ProposedIntent {
@@ -79,7 +84,6 @@ fn make_input(
         account_writes: 0,
         cpi_hops: 0,
         signed_transaction: None,
-        simulation_baseline: sim_baseline,
     }
 }
 
@@ -92,46 +96,65 @@ fn max_evidence() -> BehaviorEvidence {
     }
 }
 
-fn run(input: VerificationInput) -> graphite_core::VerificationResult {
-    GraphiteCore::new().verify(&input).unwrap_or_else(|_| {
-        graphite_core::verification::VerificationResult {
-            approved: false,
-            confidence: 0.0,
-            breakdown: vec![],
-            trust_tier: "Unknown".to_string(),
-            risk_verdict: graphite_core::verification::RiskVerdictSummary {
-                status: "Blocked".to_string(),
-                findings: vec![],
-            },
-            policy_verdict: "Rejected".to_string(),
-            audit_trail_id: "gr-error".to_string(),
-            content_hash: "error".to_string(),
-            transaction: graphite_core::transaction_builder::BuiltTransaction {
-                program_id: input.program_id.clone(),
-                protocol_version: input.protocol_version.clone(),
-                instruction_name: "Error".to_string(),
-                instruction_discriminator: input.instruction_discriminator.clone(),
-                instruction_count: 0,
-                account_count: input.account_addresses.len(),
-                signer_count: 0,
-                writable_count: 0,
-                compute_budget_units: 0,
-                accounts: vec![],
-                data_hex: String::new(),
-                data_len: 0,
-            },
-            resolved_accounts: vec![],
-            protocol_name: "Error".to_string(),
+/// Fail-closed fallback: any verification error is a block, never an approval
+/// (Constitution P12). Shared by `run` and `run_seeded`.
+fn fail_closed_result(input: &VerificationInput) -> graphite_core::VerificationResult {
+    graphite_core::verification::VerificationResult {
+        approved: false,
+        confidence: 0.0,
+        breakdown: vec![],
+        trust_tier: "Unknown".to_string(),
+        risk_verdict: graphite_core::verification::RiskVerdictSummary {
+            status: "Blocked".to_string(),
+            findings: vec![],
+        },
+        policy_verdict: "Rejected".to_string(),
+        audit_trail_id: "gr-error".to_string(),
+        content_hash: "error".to_string(),
+        transaction: graphite_core::transaction_builder::BuiltTransaction {
+            program_id: input.program_id.clone(),
+            protocol_version: input.protocol_version.clone(),
             instruction_name: "Error".to_string(),
-            manifest_found: false,
-            unknown_protocol: true,
-            manifest_version: None,
-            summary: "BLOCKED | verification error".to_string(),
-            simulation_flagged: None,
-            simulation_divergence: None,
-            layers: vec![],
-        }
-    })
+            instruction_discriminator: input.instruction_discriminator.clone(),
+            instruction_count: 0,
+            account_count: input.account_addresses.len(),
+            signer_count: 0,
+            writable_count: 0,
+            compute_budget_units: 0,
+            accounts: vec![],
+            data_hex: String::new(),
+            data_len: 0,
+        },
+        resolved_accounts: vec![],
+        protocol_name: "Error".to_string(),
+        instruction_name: "Error".to_string(),
+        manifest_found: false,
+        unknown_protocol: true,
+        manifest_version: None,
+        summary: "BLOCKED | verification error".to_string(),
+        simulation_flagged: None,
+        simulation_divergence: None,
+        layers: vec![],
+    }
+}
+
+fn run(input: VerificationInput) -> graphite_core::VerificationResult {
+    GraphiteCore::new()
+        .verify(&input)
+        .unwrap_or_else(|_| fail_closed_result(&input))
+}
+
+/// Run verification with a trusted, operator-seeded simulation baseline
+/// (baseline trust model — baselines are server state, never request input).
+fn run_seeded(
+    input: VerificationInput,
+    program_id: &str,
+    baseline: ComputeBaseline,
+) -> graphite_core::VerificationResult {
+    let core = GraphiteCore::new();
+    core.seed_simulation_baseline(program_id, baseline);
+    core.verify(&input)
+        .unwrap_or_else(|_| fail_closed_result(&input))
 }
 
 // Victim and attacker addresses
@@ -671,6 +694,10 @@ fn t23_trust_tier_manipulation_signed_manifest_drainer() {
 
 #[test]
 fn t24_simulation_baseline_manipulation() {
+    // SECURITY (baseline trust model): a baseline can no longer be smuggled in
+    // via the request body. It is seeded through the trusted operator API. The
+    // property under test is unchanged: even a seeded baseline cannot flip an
+    // unknown-protocol block into an approval.
     let baseline = ComputeBaseline {
         mean_compute_units: 100000.0,
         std_compute_units: 1000.0,
@@ -690,9 +717,9 @@ fn t24_simulation_baseline_manipulation() {
         BehaviorEvidence::default(),
         "Claim airdrop",
         0.9,
-        Some(baseline),
+        None, // request-body baseline is a no-op — seed below instead
     );
-    let r = run(input);
+    let r = run_seeded(input, DRAINER_CLINKSINK, baseline);
     assert!(
         !r.approved,
         "Simulation baseline cannot override unknown protocol block"

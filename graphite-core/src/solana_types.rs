@@ -143,6 +143,14 @@ pub fn find_program_address(
 
 /// Check if a pubkey is on the ed25519 curve (i.e., could be a keypair pubkey,
 /// NOT a PDA). PDAs are off-curve by construction.
+/// Decode an arbitrary-length base58 string (e.g. instruction data in RPC
+/// `getBlock`/`getTransaction` JSON, which is base58-encoded). Returns None
+/// for invalid base58. Used by the live real-transaction corpus tests and
+/// Phase-2 on-chain verification.
+pub fn base58_decode(s: &str) -> Option<Vec<u8>> {
+    bs58::decode(s).into_vec().ok()
+}
+
 pub fn is_on_curve(pubkey: &Pubkey) -> bool {
     let compressed = match CompressedEdwardsY::from_slice(pubkey.as_bytes()) {
         Ok(c) => c,

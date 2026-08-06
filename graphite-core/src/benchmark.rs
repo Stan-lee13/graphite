@@ -27,6 +27,22 @@ pub fn run_benchmark() {
     let cases = build_benchmark_cases();
     let core = GraphiteCore::new();
 
+    // Baselines are trusted state (baseline trust model): seed the System
+    // Program baseline used by the Phase 1.5 benchmark cases here, as an
+    // operator would, instead of letting request bodies supply it.
+    core.seed_simulation_baseline(
+        "11111111111111111111111111111111",
+        crate::simulation_integrity::ComputeBaseline {
+            mean_compute_units: 150.0,
+            std_compute_units: 20.0,
+            sample_count: 100,
+            mean_account_writes: 0.0,
+            std_account_writes: 0.0,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.0,
+        },
+    );
+
     let mut true_positives = 0; // malicious correctly blocked
     let mut true_negatives = 0; // safe correctly approved
     let mut false_positives = 0; // safe incorrectly blocked
@@ -292,7 +308,6 @@ fn make_input_with_intent(
         account_writes: 2,
         cpi_hops: cpi_targets.len() as u32,
         signed_transaction: None,
-        simulation_baseline: None,
     }
 }
 
@@ -523,15 +538,6 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     good_evidence(),
                 );
                 inp.compute_units = 50000;
-                inp.simulation_baseline = Some(crate::simulation_integrity::ComputeBaseline {
-                    mean_compute_units: 150.0,
-                    std_compute_units: 20.0,
-                    sample_count: 100,
-                    mean_account_writes: 0.0,
-                    std_account_writes: 0.0,
-                    mean_cpi_hops: 0.0,
-                    std_cpi_hops: 0.0,
-                });
                 inp
             },
         },
@@ -555,15 +561,6 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     good_evidence(),
                 );
                 inp.compute_units = 160;
-                inp.simulation_baseline = Some(crate::simulation_integrity::ComputeBaseline {
-                    mean_compute_units: 150.0,
-                    std_compute_units: 20.0,
-                    sample_count: 100,
-                    mean_account_writes: 0.0,
-                    std_account_writes: 0.0,
-                    mean_cpi_hops: 0.0,
-                    std_cpi_hops: 0.0,
-                });
                 inp
             },
         },

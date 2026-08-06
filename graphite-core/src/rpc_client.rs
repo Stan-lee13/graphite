@@ -454,6 +454,33 @@ impl SolanaRpcClient {
         }
     }
 
+    /// Fetch a block's full transaction list as JSON (encoding: json, full
+    /// transaction details, versioned transactions included). Used by the live
+    /// real-transaction corpus tests and Phase-2 on-chain verification.
+    pub async fn get_block(&self, slot: u64) -> Result<serde_json::Value, RpcError> {
+        let client = self
+            .http_client
+            .as_ref()
+            .ok_or_else(|| RpcError::RequestFailed("http client not initialized".to_string()))?;
+        let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getBlock","params":[slot,{"encoding":"json","transactionDetails":"full","maxSupportedTransactionVersion":0,"rewards":false}]});
+        let res = client
+            .post(&self.config.endpoint)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| RpcError::RequestFailed(e.to_string()))?;
+        let json: serde_json::Value = res
+            .json()
+            .await
+            .map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
+        if json.get("error").is_some() {
+            return Err(RpcError::RequestFailed(json.to_string()));
+        }
+        json.get("result")
+            .cloned()
+            .ok_or_else(|| RpcError::InvalidResponse("missing block result".to_string()))
+    }
+
     /// Get recent blockhash
     pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
         {

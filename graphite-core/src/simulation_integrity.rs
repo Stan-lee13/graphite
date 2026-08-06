@@ -31,7 +31,10 @@ pub struct ComputeUsage {
 }
 
 /// Historical baseline for a program — now tracks all three signals.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+///
+/// `Default` is the empty baseline (sample_count = 0) used when a program's
+/// accumulator starts; `update_baseline` grows it from there.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 pub struct ComputeBaseline {
     pub mean_compute_units: f64,
     pub std_compute_units: f64,

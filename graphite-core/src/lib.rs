@@ -9,6 +9,7 @@
 
 pub mod account_resolution;
 pub mod confidence_engine;
+pub mod durable;
 pub mod manifest;
 pub mod policy_engine;
 pub mod risk_engine;

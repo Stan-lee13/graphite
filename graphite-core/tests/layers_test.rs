@@ -27,7 +27,6 @@ fn verify_8_layers_tracked() {
         wallet_profile: WalletProfile::TradingBot,
         protocol_version: "".to_string(),
         signed_transaction: None,
-        simulation_baseline: None,
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,

@@ -369,7 +369,6 @@ fn exploit_l19_unknown_protocol_permissive_bypass() {
         account_writes: 2,
         cpi_hops: 0,
         signed_transaction: None,
-        simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
     // Unknown tier capped at 0.55. Gaming threshold is 0.50.
@@ -439,7 +438,15 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
         account_writes: 2,
         cpi_hops: 0,
         signed_transaction: None,
-        simulation_baseline: Some(ComputeBaseline {
+    };
+    // SECURITY (baseline trust model): baselines are trusted state seeded via
+    // the operator API — an attacker can no longer supply a low-sample-count
+    // baseline from the request body to skip the check. This test pins the
+    // (intentional) behavior that a baseline with sample_count < 10 skips the
+    // statistical check for lack of significance.
+    core.seed_simulation_baseline(
+        "11111111111111111111111111111111",
+        ComputeBaseline {
             mean_compute_units: 150.0,
             std_compute_units: 20.0,
             sample_count: 9, // Below threshold — check skipped!
@@ -447,15 +454,12 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
-        }),
-    };
+        },
+    );
     let result = core.verify(&input).unwrap();
-    // VULNERABILITY: With sample_count = 9, the simulation check is skipped.
-    // 999999 compute units vs 150 baseline should be flagged, but isn't.
-    // L22 NOTE: sample_count < 10 skips simulation check. This is by design — insufficient
-    // data for statistical significance. The confidence engine handles unknowns via
-    // trust tier ceiling. The proper fix is requiring minimum sample count in the pipeline,
-    // which is a Phase 1.5 improvement. Accepted for Phase 1.
+    // NOTE: sample_count < 10 skips the simulation check — by design, because
+    // there is insufficient data for statistical significance. The confidence
+    // engine handles unknowns via the trust tier ceiling.
     assert!(
         result.simulation_flagged.is_none() || !result.simulation_flagged.unwrap(),
         "L22 ACCEPTED: Low sample count skips sim check (insufficient data for statistics)."

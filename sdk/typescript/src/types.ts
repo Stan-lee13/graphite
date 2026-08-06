@@ -40,21 +40,6 @@ export interface BehaviorEvidence {
   simulation_match_count: number;
 }
 
-/**
- * Historical compute usage baseline for simulation integrity checking.
- * If omitted, the simulation integrity check is skipped.
- * Required: sample_count >= 10 and std_compute_units > 0 for the check to run.
- */
-export interface SimulationBaseline {
-  mean_compute_units: number;
-  std_compute_units: number;
-  sample_count: number;
-  mean_account_writes: number;
-  std_account_writes: number;
-  mean_cpi_hops: number;
-  std_cpi_hops: number;
-}
-
 export interface VerificationInput {
   proposed_intent: ProposedIntent;
   program_id: string;
@@ -68,9 +53,9 @@ export interface VerificationInput {
   compute_units?: number;
   account_writes?: number;
   cpi_hops?: number;
-  /** Phase 1.5: Simulation Integrity — if provided, the pipeline checks
-   *  compute usage divergence against this historical baseline. */
-  simulation_baseline?: SimulationBaseline;
+  /** Phase 1.5 simulation baselines are TRUSTED SERVER STATE (earned via
+   *  RPC-verified usage or seeded by the operator) — never sent from the
+   *  client. See GRAPHITE_RPC_URL and GraphiteCore::seed_simulation_baseline. */
 }
 
 export type TrustTier =

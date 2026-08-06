@@ -61,18 +61,6 @@ type BehaviorEvidence struct {
 	SimulationMatchCount   int  `json:"simulation_match_count"`
 }
 
-// SimulationBaseline is the historical compute usage baseline for a program.
-// All three signal baselines (compute, writes, hops) are checked for divergence.
-type SimulationBaseline struct {
-	MeanComputeUnits  float64 `json:"mean_compute_units"`
-	StdComputeUnits   float64 `json:"std_compute_units"`
-	SampleCount       uint64  `json:"sample_count"`
-	MeanAccountWrites float64 `json:"mean_account_writes"`
-	StdAccountWrites  float64 `json:"std_account_writes"`
-	MeanCPIHops       float64 `json:"mean_cpi_hops"`
-	StdCPIHops        float64 `json:"std_cpi_hops"`
-}
-
 // ByteArray is a []byte that marshals as a JSON array of integers, NOT base64.
 // This is critical: Rust's serde expects Vec<u8> as [0, 1, 2, ...], not as a base64 string.
 type ByteArray []byte
@@ -140,7 +128,8 @@ type VerificationInput struct {
 	ComputeUnits            uint64               `json:"compute_units"`
 	AccountWrites           uint32               `json:"account_writes"`
 	CPIHops                 uint32               `json:"cpi_hops"`
-	SimulationBaseline      *SimulationBaseline  `json:"simulation_baseline,omitempty"`
+	// Simulation baselines are TRUSTED SERVER STATE (earned via RPC-verified
+	// usage or seeded by the operator) — never sent from the client.
 }
 
 // ─── Result types (must match Rust VerificationResult exactly) ───
