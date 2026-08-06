@@ -31,6 +31,7 @@ fn verify_manifest_trust_tier_used() {
         compute_units: 200,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
 
@@ -85,6 +86,7 @@ fn verify_unknown_protocol_still_capped() {
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
 

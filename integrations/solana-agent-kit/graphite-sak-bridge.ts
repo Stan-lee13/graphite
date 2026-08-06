@@ -6,10 +6,19 @@
  *
  * v2 improvements:
  *   1. RPC SIMULATION — calls simulateTransaction BEFORE verification to get real compute_units,
- *      account_writes, and cpi_hops. Activates the SimulationMatch confidence signal (weight 0.20),
- *      raising max confidence from 0.50 to 0.70 (Gaming profile becomes operational).
- *   2. AUDITBIND MIDDLEWARE — after Graphite approves, re-hashes the actual transaction's key fields
- *      and compares against content_hash. Blocks execution if mutated (TOCTOU prevention).
+ *      account_writes, and cpi_hops, which feed the Simulation Integrity check (L3) and the
+ *      audit trail. NOTE: these do NOT boost the confidence score in Phase 1 — the Core
+ *      intentionally zeroes the SimulationMatch/HistoricalVolume/CommunityVerification signal
+ *      values (Constitution G4: request-body evidence is attacker-controlled) and caps trust
+ *      tiers at the manifest's declared tier (P7). The achievable Phase 1 confidence for a
+ *      known, clean, intent-aligned protocol is ~0.44, which is why the default wallet profile
+ *      below is a Custom profile calibrated to that ceiling.
+ *   2. AUDITBIND MIDDLEWARE — after Graphite approves, re-computes the SAME deterministic
+ *      content_hash the Rust Core produces (byte-for-byte: SHA-256 over programId, discriminator,
+ *      account addresses, raw instruction-data bytes, and CPI targets, truncated to 16 hex chars)
+ *      and compares against the verified content_hash. Blocks execution if the transaction was
+ *      mutated in the TOCTOU window. The earlier "|"-joined/commas encoding never matched the
+ *      Rust side and always aborted — this version mirrors the Core exactly.
  *   3. SAK plugins are loaded statically (rpc-websockets exports patched for compatibility).
  *      Runtime fallback to raw web3.js if plugin initialization fails.
  */
@@ -22,7 +31,11 @@ import TokenPlugin from "@solana-agent-kit/plugin-token";
 import DefiPlugin from "@solana-agent-kit/plugin-defi";
 import { Keypair, Connection, SystemProgram, Transaction, PublicKey, TransactionInstruction, sendAndConfirmTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
-import * as crypto from "crypto";
+
+// AuditBind lives in ./auditbind.ts — a dependency-free module (Node crypto
+// only) so its cross-language pinned-vector tests run without the SAK tree.
+import { AuditBind } from "./auditbind.js";
+export { AuditBind };
 
 // Graphite TS SDK
 import { GraphiteClient } from "../../sdk/typescript/src/client.js";
@@ -37,55 +50,11 @@ import type {
 export type { VerificationResult, VerificationInput, ProposedIntent, WalletProfile };
 
 /**
- * AuditBind — TOCTOU prevention middleware.
- *
- * After Graphite approves, re-hashes transaction key fields and compares
- * against Graphite's content_hash. Blocks execution if mismatch.
- */
-export class AuditBind {
-  static computeHash(params: {
-    programId: string;
-    instructionDiscriminator: string;
-    accountAddresses: string[];
-    instructionData?: number[];
-    cpiTargets?: string[];
-  }): string {
-    const data = [
-      params.programId,
-      params.instructionDiscriminator,
-      params.accountAddresses.join(","),
-      (params.instructionData ?? []).join(","),
-      (params.cpiTargets ?? []).join(","),
-    ].join("|");
-    return crypto.createHash("sha256").update(data).digest("hex").slice(0, 16);
-  }
-
-  static verify(params: {
-    transaction: { programId: string; instructionDiscriminator: string; accountAddresses: string[]; instructionData?: number[]; cpiTargets?: string[] };
-    contentHash: string;
-  }): void {
-    // SECURITY FIX: If contentHash starts with "gr-", it means we received
-    // audit_trail_id instead of content_hash — fail-closed (throw, not skip).
-    if (params.contentHash.startsWith("gr-")) {
-      throw new Error(
-        `[AuditBind] content_hash not available from API (got audit_trail_id). ` +
-        `TOCTOU check cannot be performed — ABORTING.`
-      );
-    }
-    const computed = AuditBind.computeHash(params.transaction);
-    if (computed !== params.contentHash) {
-      throw new Error(
-        `AuditBind FAILED: hash mismatch (computed: ${computed}, expected: ${params.contentHash}). ` +
-        `Transaction may have been mutated. ABORTING.`
-      );
-    }
-    console.log(`[AuditBind] Hash verified: ${computed}`);
-  }
-}
-
-/**
  * RPC Simulation helper — calls simulateTransaction to get real resource usage.
- * Activates the SimulationMatch confidence signal (weight 0.20).
+ * The compute/writes/hops feed the Core's Simulation Integrity check (L3) and
+ * the audit trail. NOTE: in Phase 1 they do NOT boost the confidence score (the
+ * Core zeroes the SimulationMatch signal value — Constitution G4); the trusted
+ * simulation signal arrives in Phase 2 via the Core's own RPC client.
  */
 export class RpcSimulator {
   private connection: Connection;
@@ -162,8 +131,20 @@ export class VerifiedSakAgent {
     const rpcUrl = config?.rpcUrl ?? process.env.SOLANA_RPC_URL;
     const openAiApiKey = config?.openAiApiKey ?? process.env.OPENAI_API_KEY;
     const graphiteCoreUrl = config?.graphiteCoreUrl ?? process.env.GRAPHITE_CORE_URL ?? "http://localhost:7331";
-    const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://localhost:7332";
-    const walletProfile = config?.walletProfile ?? (process.env.GRAPHITE_WALLET_PROFILE as WalletProfile) ?? "TradingBot";
+    // The Python AI Layer listens on 8081 by default (intent_parser.py --serve).
+    const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://localhost:8081";
+    // Phase 1 calibration: with the three evidence-derived confidence signals
+    // intentionally zeroed (Constitution G4 — request-body evidence is
+    // attacker-controlled) and trust tiers capped at OfficialManifest (P7), the
+    // achievable confidence for a known, clean, intent-aligned protocol is
+    // ~0.44. The built-in profiles (TradingBot 0.80, etc.) were tuned for the
+    // Phase 2 signal set and would block EVERYTHING in Phase 1 — so the demo
+    // default is a Custom profile that a genuinely-known protocol can satisfy.
+    // Override with GRAPHITE_WALLET_PROFILE (or config.walletProfile) for a
+    // stricter operator policy.
+    const walletProfile: WalletProfile = config?.walletProfile
+      ?? (process.env.GRAPHITE_WALLET_PROFILE as WalletProfile)
+      ?? { Custom: { min_confidence: 0.40, min_trust_tier: "OfficialManifest" } };
 
     if (!privateKey) throw new Error("SOLANA_PRIVATE_KEY is required");
     if (!rpcUrl) throw new Error("SOLANA_RPC_URL is required");
@@ -216,15 +197,18 @@ export class VerifiedSakAgent {
   }): Promise<VerificationResult> {
     let computeUnits = 0, accountWrites = 0, cpiHops = 0;
     if (params.instructions && params.instructions.length > 0) {
-      console.log("[Graphite] Running RPC simulation to activate SimulationMatch signal...");
+      console.log("[Graphite] Running RPC simulation to feed the Simulation Integrity check...");
       const sim = await this.simulator.simulate({ instructions: params.instructions, signers: [this.walletKeypair] });
       computeUnits = sim.computeUnits; accountWrites = sim.accountWrites; cpiHops = sim.cpiHops;
       console.log(`[Graphite] Simulation: CU=${computeUnits}, writes=${accountWrites}, CPI=${cpiHops}, success=${sim.success}`);
     }
-    // Build behavior evidence: when RPC simulation succeeds (CU>0 or writes>0),
-    // report simulation_match_count=3 (threshold for SimulationValidated tier).
-    // This activates the SimulationMatch confidence signal (weight 0.20),
-    // raising max confidence from 0.50 to 0.70.
+    // Behavior evidence is advisory only: the Core deliberately ZEROES the
+    // SimulationMatch/HistoricalVolume/CommunityVerification signal values
+    // (Constitution G4 — request-body evidence is attacker-controlled) and caps
+    // the trust tier at the manifest's declared tier (P7). Reporting
+    // simulation_match_count here therefore CANNOT boost confidence in Phase 1;
+    // it only documents the real RPC simulation in the audit trail. The trusted
+    // simulation signal arrives in Phase 2 via the Core's own RPC client.
     const behavior_evidence = {
       has_signed_manifest: false,
       community_verified_count: 0,

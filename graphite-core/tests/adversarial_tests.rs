@@ -53,6 +53,7 @@ fn make_input(
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     }
 }

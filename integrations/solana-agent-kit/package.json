@@ -6,7 +6,8 @@
   "scripts": {
     "demo": "tsx demo.ts",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node scripts/patch-rpc-websockets.js"
+    "test:auditbind": "tsx --test auditbind.test.ts",
+    "postinstall": "node scripts/patch-rpc-websockets.cjs"
   },
   "dependencies": {
     "solana-agent-kit": "^2.0.10",

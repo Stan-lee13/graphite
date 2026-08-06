@@ -161,6 +161,10 @@ type VerificationResult struct {
 	InstructionName      string                     `json:"instruction_name"`
 	ManifestFound        bool                       `json:"manifest_found"`
 	UnknownProtocol      bool                       `json:"unknown_protocol"`
+	// ManifestVersion is the version label of the protocol manifest this result
+	// was checked against (nil for unknown protocols). Constitution G7 — lets a
+	// consumer confirm which manifest version produced the verification.
+	ManifestVersion      *string                    `json:"manifest_version,omitempty"`
 	SimulationFlagged    *bool                      `json:"simulation_flagged,omitempty"`
 	SimulationDivergence *float64                   `json:"simulation_divergence,omitempty"`
 	Summary              string                     `json:"summary"`

@@ -216,7 +216,6 @@ pub fn load_seed_manifests() -> ManifestRegistry {
     ];
 
     for p in &seed_paths {
-        let json = include_str!("../protocols/system-program.json");
         // include_str! requires a string literal; map path to literal explicitly
         let res = match *p {
             "../protocols/system-program.json" => {
@@ -259,7 +258,6 @@ pub fn load_seed_manifests() -> ManifestRegistry {
             tracing::error!(path = %p, error = %e, "Failed to load seed manifest");
             std::process::exit(1);
         }
-        let _ = json; // silence unused variable in branches where it's unused
     }
 
     registry

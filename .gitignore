@@ -25,3 +25,6 @@ __pycache__/
 devnet-keypair.json
 .env
 .env.local
+
+# Freebuff app scratch + local build toolchains (never commit)
+.freebuff/

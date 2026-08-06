@@ -54,6 +54,7 @@ fn make(
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     }
 }
@@ -114,6 +115,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
             instruction_name: "Error".to_string(),
             manifest_found: false,
             unknown_protocol: true,
+            manifest_version: None,
             summary: format!("BLOCKED | error: {:?}", e),
             simulation_flagged: None,
             simulation_divergence: None,

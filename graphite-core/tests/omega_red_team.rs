@@ -368,6 +368,7 @@ fn exploit_l19_unknown_protocol_permissive_bypass() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
@@ -437,6 +438,7 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
         compute_units: 999999, // Massive compute — should be flagged
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: Some(ComputeBaseline {
             mean_compute_units: 150.0,
             std_compute_units: 20.0,

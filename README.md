@@ -194,6 +194,12 @@ curl -X POST http://localhost:7331/verify \
   -d @../examples/verify-input.json | jq .
 ```
 
+> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold). In Phase 1 the achievable confidence for a known protocol is ~0.44 (see *Honest Status* below), so this example returns **BLOCKED** — that is the engine being honest, not a bug. To see an approval, set a Phase-1-calibrated profile:
+>
+> ```bash
+> jq '.wallet_profile = {"Custom": {"min_confidence": 0.40, "min_trust_tier": "OfficialManifest"}}' ../examples/verify-input.json | curl -X POST http://localhost:7331/verify -H "Content-Type: application/json" -d @- | jq .approved
+> ```
+
 ### 3. Run the SAK integration demo
 
 ```bash
@@ -238,6 +244,7 @@ What we **do not** claim:
 
 What we **do** claim:
 
+- **Phase 1 confidence is calibrated honestly.** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) are intentionally ZEROED in Phase 1 — they'd come from caller-controlled request JSON, which an attacker could fabricate to mint confidence (Constitution G4). Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). The achievable confidence for a known, clean, intent-aligned protocol is therefore **~0.44**. The built-in wallet profiles (TradingBot 0.80, Treasury 0.95, …) were calibrated for the Phase 2 signal set and will block everything in Phase 1 — the benchmark, and the SAK demo, therefore default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile. Raise or lower the profile to change policy; the engine's score itself is the honest number.
 - 635 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
 - 8 risk patterns are real detection logic, not stubs.
 - 11 protocol manifests with program IDs verified against official on-chain sources.

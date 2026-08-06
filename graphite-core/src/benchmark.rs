@@ -74,6 +74,7 @@ pub fn run_benchmark() {
                 instruction_name: "Error".to_string(),
                 manifest_found: false,
                 unknown_protocol: true,
+                manifest_version: None,
                 summary: "BLOCKED | verification error".to_string(),
                 simulation_flagged: None,
                 simulation_divergence: None,

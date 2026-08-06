@@ -12,6 +12,8 @@ pub mod confidence_engine;
 pub mod manifest;
 pub mod policy_engine;
 pub mod risk_engine;
+#[cfg(feature = "rpc")]
+pub mod rpc_client;
 pub mod semantic_graph_store;
 pub mod simulation_integrity;
 pub mod solana_types;
@@ -28,7 +30,10 @@ pub use confidence_engine::{
 };
 pub use manifest::{load_seed_manifests, ManifestRegistry, ProtocolManifest};
 pub use policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict, WalletProfile};
-pub use risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
+pub use risk_engine::{
+    assess, assess_with_warnings, RiskAssessmentDetail, RiskAssessmentInput, RiskPattern,
+    RiskVerdict,
+};
 pub use semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 pub use solana_types::{find_program_address, is_on_curve, AccountMeta, Instruction, Pubkey};
 pub use transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};

@@ -1,5 +1,11 @@
 //! Solana RPC client for Graphite Core.
 //!
+//! NOTE: this module is only compiled with the `rpc` feature (lib.rs gates
+//! `pub mod rpc_client` on `#[cfg(feature = "rpc")]`). Callers must guard any
+//! import with `#[cfg(feature = "rpc")]`. There is intentionally NO fallback
+//! placeholder path — without the feature the module does not exist, so any
+//! accidental use is a compile error (fail-closed, Constitution P12).
+//!
 //! Provides real-time access to on-chain data for:
 //! - Account state verification
 //! - Transaction simulation
@@ -8,12 +14,11 @@
 //! - Oracle price validation
 
 use crate::solana_types::Pubkey;
+use base64::Engine;
+use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::time::Duration;
 use thiserror::Error;
-#[cfg(feature = "rpc")]
-use reqwest::Client as HttpClient;
 
 #[derive(Debug, Error, Clone)]
 pub enum RpcError {
@@ -89,54 +94,49 @@ impl Default for RpcConfig {
 #[derive(Debug, Clone)]
 pub struct SolanaRpcClient {
     config: RpcConfig,
-    // In a real implementation, this would hold an HTTP client
-    #[cfg(feature = "rpc")]
     http_client: Option<HttpClient>,
 }
 
 impl SolanaRpcClient {
     /// Create new RPC client with given configuration
     pub fn new(config: RpcConfig) -> Self {
+        // Build the HTTP client BEFORE moving `config` into the struct
+        // (field init uses the value first — a use-after-move otherwise).
+        let http_client = HttpClient::builder().timeout(config.timeout).build().ok();
         Self {
             config,
-            #[cfg(feature = "rpc")]
-            http_client: HttpClient::builder()
-                .timeout(config.timeout)
-                .build()
-                .ok(),
-            #[cfg(not(feature = "rpc"))]
-            http_client: None,
+            http_client,
         }
     }
 
     /// Create client for Devnet
     pub fn devnet() -> Self {
-        let mut config = RpcConfig::default();
-        config.endpoint = "https://api.devnet.solana.com".to_string();
-        Self::new(config)
+        Self::new(RpcConfig {
+            endpoint: "https://api.devnet.solana.com".to_string(),
+            ..Default::default()
+        })
     }
 
     /// Create client for Mainnet
     pub fn mainnet() -> Self {
-        let mut config = RpcConfig::default();
-        config.endpoint = "https://api.mainnet-beta.solana.com".to_string();
-        Self::new(config)
+        Self::new(RpcConfig {
+            endpoint: "https://api.mainnet-beta.solana.com".to_string(),
+            ..Default::default()
+        })
     }
 
     /// Fetch account state from RPC
-    /// 
+    ///
     /// # Errors
     /// - `RpcError::AccountNotFound` if account doesn't exist
     /// - `RpcError::RequestFailed` for network/connection issues
     pub async fn get_account(&self, pubkey: &Pubkey) -> Result<AccountState, RpcError> {
         // In production, this makes a real HTTP POST request to Solana RPC.
         tracing::info!("RPC: get_account called for {}", pubkey.to_base58());
-        #[cfg(feature = "rpc")]
         {
-            let client = self
-                .http_client
-                .as_ref()
-                .ok_or_else(|| RpcError::RequestFailed("http client not initialized".to_string()))?;
+            let client = self.http_client.as_ref().ok_or_else(|| {
+                RpcError::RequestFailed("http client not initialized".to_string())
+            })?;
             let params = serde_json::json!([pubkey.to_base58(),{"encoding":"base64","commitment":self.config.commitment}]);
             let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getAccountInfo","params":params});
             let res = client
@@ -145,21 +145,34 @@ impl SolanaRpcClient {
                 .send()
                 .await
                 .map_err(|e| RpcError::RequestFailed(e.to_string()))?;
-            let json: serde_json::Value = res.json().await.map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
             // Parse result.value
             if json.get("error").is_some() {
                 return Err(RpcError::RequestFailed(json.to_string()));
             }
-            let value = json.get("result").and_then(|r| r.get("value")).ok_or_else(|| RpcError::AccountNotFound(pubkey.to_base58()))?;
+            let value = json
+                .get("result")
+                .and_then(|r| r.get("value"))
+                .ok_or_else(|| RpcError::AccountNotFound(pubkey.to_base58()))?;
             let lamports = value.get("lamports").and_then(|v| v.as_u64()).unwrap_or(0);
-            let owner = value.get("owner").and_then(|v| v.as_str()).unwrap_or("11111111111111111111111111111111").to_string();
-            let executable = value.get("executable").and_then(|v| v.as_bool()).unwrap_or(false);
+            let owner = value
+                .get("owner")
+                .and_then(|v| v.as_str())
+                .unwrap_or("11111111111111111111111111111111")
+                .to_string();
+            let executable = value
+                .get("executable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let rent_epoch = value.get("rentEpoch").and_then(|v| v.as_u64()).unwrap_or(0);
             let data_base64 = value
                 .get("data")
                 .and_then(|d| {
                     if let Some(arr) = d.as_array() {
-                        arr.get(0).and_then(|s| s.as_str())
+                        arr.first().and_then(|s| s.as_str())
                     } else {
                         d.as_str()
                     }
@@ -168,28 +181,25 @@ impl SolanaRpcClient {
             let data = if data_base64.is_empty() {
                 Vec::new()
             } else {
-                base64::decode(data_base64)
-                    .map_err(|e| RpcError::InvalidResponse(format!("invalid base64 account data: {}", e)))?
+                base64::engine::general_purpose::STANDARD
+                    .decode(data_base64)
+                    .map_err(|e| {
+                        RpcError::InvalidResponse(format!("invalid base64 account data: {}", e))
+                    })?
             };
-            return Ok(AccountState { pubkey: pubkey.to_base58(), lamports, owner, executable, rent_epoch, data });
-        }
-
-        // Fallback when RPC feature is disabled: return placeholder
-        #[cfg(not(feature = "rpc"))]
-        {
             Ok(AccountState {
                 pubkey: pubkey.to_base58(),
-                lamports: 0,
-                owner: "11111111111111111111111111111111".to_string(),
-                executable: false,
-                rent_epoch: 0,
-                data: vec![],
+                lamports,
+                owner,
+                executable,
+                rent_epoch,
+                data,
             })
         }
     }
 
     /// Verify PDA derivation matches on-chain state
-    /// 
+    ///
     /// # Security
     /// This is critical for detecting PDA spoofing attacks where an attacker
     /// provides a non-derived address that looks like a PDA.
@@ -199,13 +209,22 @@ impl SolanaRpcClient {
         seeds: &[&[u8]],
         program_id: &Pubkey,
     ) -> Result<bool, RpcError> {
-        // Derive what the PDA should be
-        let (derived, _bump) = crate::solana_types::find_program_address(seeds, program_id)
-            .ok_or_else(|| RpcError::InvalidPubkey("PDA derivation failed".to_string()))?;
-        
+        // Derive what the PDA should be.
+        // NOTE: written as a `match` instead of `.ok_or_else(...)?` because the
+        // method chain hit an E0599 method-resolution failure at this call site
+        // on the GNU Windows toolchain while identical calls elsewhere in this
+        // file compile — the match is semantically identical and portable.
+        // Don't "simplify" it back without testing on that toolchain.
+        let (derived, _bump) = match crate::solana_types::find_program_address(seeds, program_id) {
+            Ok(pair) => pair,
+            Err(_) => {
+                return Err(RpcError::InvalidPubkey("PDA derivation failed".to_string()));
+            }
+        };
+
         // Check if it matches
         let matches = derived.as_bytes() == expected_pda.as_bytes();
-        
+
         if !matches {
             tracing::warn!(
                 "PDA mismatch: expected={}, derived={}",
@@ -213,12 +232,12 @@ impl SolanaRpcClient {
                 derived.to_base58()
             );
         }
-        
+
         Ok(matches)
     }
 
     /// Simulate a transaction without executing it
-    /// 
+    ///
     /// # Use Cases
     /// - Compute unit estimation
     /// - Error detection before execution
@@ -227,15 +246,16 @@ impl SolanaRpcClient {
         &self,
         transaction_data: &[u8],
     ) -> Result<SimulationResult, RpcError> {
-        tracing::info!("RPC: simulate_transaction called with {} bytes", transaction_data.len());
+        tracing::info!(
+            "RPC: simulate_transaction called with {} bytes",
+            transaction_data.len()
+        );
 
-        #[cfg(feature = "rpc")]
         {
-            let client = self
-                .http_client
-                .as_ref()
-                .ok_or_else(|| RpcError::RequestFailed("http client not initialized".to_string()))?;
-            let tx_b64 = base64::encode(transaction_data);
+            let client = self.http_client.as_ref().ok_or_else(|| {
+                RpcError::RequestFailed("http client not initialized".to_string())
+            })?;
+            let tx_b64 = base64::engine::general_purpose::STANDARD.encode(transaction_data);
             let params = serde_json::json!([tx_b64, {"encoding":"base64"}]);
             let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":params});
             let res = client
@@ -244,11 +264,17 @@ impl SolanaRpcClient {
                 .send()
                 .await
                 .map_err(|e| RpcError::RequestFailed(e.to_string()))?;
-            let json: serde_json::Value = res.json().await.map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
             if json.get("error").is_some() {
                 return Err(RpcError::RequestFailed(json.to_string()));
             }
-            let value = json.get("result").and_then(|r| r.get("value")).ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
+            let value = json
+                .get("result")
+                .and_then(|r| r.get("value"))
+                .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
 
             // logs
             let logs: Vec<String> = value
@@ -265,23 +291,60 @@ impl SolanaRpcClient {
             let units_consumed = value
                 .get("unitsConsumed")
                 .and_then(|u| u.as_u64())
-                .or_else(|| value.get("meta").and_then(|m| m.get("unitsConsumed")).and_then(|u| u.as_u64()))
+                .or_else(|| {
+                    value
+                        .get("meta")
+                        .and_then(|m| m.get("unitsConsumed"))
+                        .and_then(|u| u.as_u64())
+                })
                 .unwrap_or(0);
 
             // Attempt to extract account_writes and cpi_hops from common keys
             let account_writes = value
                 .get("accountWrites")
                 .and_then(|v| v.as_u64())
-                .or_else(|| value.get("meta").and_then(|m| m.get("accountWrites")).and_then(|v| v.as_u64()))
-                .or_else(|| value.get("meta").and_then(|m| m.get("numAccountWrites")).and_then(|v| v.as_u64()))
-                .and_then(|v| if v <= u64::from(u32::MAX) { Some(v as u32) } else { None });
+                .or_else(|| {
+                    value
+                        .get("meta")
+                        .and_then(|m| m.get("accountWrites"))
+                        .and_then(|v| v.as_u64())
+                })
+                .or_else(|| {
+                    value
+                        .get("meta")
+                        .and_then(|m| m.get("numAccountWrites"))
+                        .and_then(|v| v.as_u64())
+                })
+                .and_then(|v| {
+                    if v <= u64::from(u32::MAX) {
+                        Some(v as u32)
+                    } else {
+                        None
+                    }
+                });
 
             let cpi_hops = value
                 .get("cpiHops")
                 .and_then(|v| v.as_u64())
-                .or_else(|| value.get("meta").and_then(|m| m.get("cpiHops")).and_then(|v| v.as_u64()))
-                .or_else(|| value.get("meta").and_then(|m| m.get("cpi_hops")).and_then(|v| v.as_u64()))
-                .and_then(|v| if v <= u64::from(u32::MAX) { Some(v as u32) } else { None });
+                .or_else(|| {
+                    value
+                        .get("meta")
+                        .and_then(|m| m.get("cpiHops"))
+                        .and_then(|v| v.as_u64())
+                })
+                .or_else(|| {
+                    value
+                        .get("meta")
+                        .and_then(|m| m.get("cpi_hops"))
+                        .and_then(|v| v.as_u64())
+                })
+                .and_then(|v| {
+                    if v <= u64::from(u32::MAX) {
+                        Some(v as u32)
+                    } else {
+                        None
+                    }
+                });
 
             // return data: optional field
             let return_data = value
@@ -289,11 +352,11 @@ impl SolanaRpcClient {
                 .and_then(|rd| rd.get("data"))
                 .and_then(|d| {
                     if let Some(s) = d.as_str() {
-                        base64::decode(s).ok()
+                        base64::engine::general_purpose::STANDARD.decode(s).ok()
                     } else if let Some(arr) = d.as_array() {
-                        arr.get(0)
+                        arr.first()
                             .and_then(|inner| inner.as_str())
-                            .and_then(|s| base64::decode(s).ok())
+                            .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
                     } else {
                         None
                     }
@@ -307,40 +370,27 @@ impl SolanaRpcClient {
                 }
             });
 
-            return Ok(SimulationResult {
+            Ok(SimulationResult {
                 logs,
                 units_consumed,
                 return_data,
                 err,
                 account_writes,
                 cpi_hops,
-            });
-        }
-
-        // Fallback when RPC feature disabled: placeholder
-        #[cfg(not(feature = "rpc"))]
-        {
-            Ok(SimulationResult {
-                logs: vec![],
-                units_consumed: 0,
-                return_data: None,
-                err: None,
-                account_writes: None,
-                cpi_hops: None,
             })
         }
     }
 
     /// Fetch oracle price from Pyth or Switchboard
-    /// 
+    ///
     /// # Security
     /// Used to detect price oracle manipulation attacks.
     pub async fn get_oracle_price(&self, feed_id: &str) -> Result<OraclePrice, RpcError> {
         // In production, this would decode Pyth/Switchboard account data
         // to extract the current price, confidence, and timestamp
-        
+
         tracing::info!("RPC: get_oracle_price called for feed {}", feed_id);
-        
+
         // Placeholder return
         Ok(OraclePrice {
             feed_id: feed_id.to_string(),
@@ -352,17 +402,17 @@ impl SolanaRpcClient {
     }
 
     /// Verify account is not frozen (for token accounts)
-    /// 
+    ///
     /// # Security
     /// Prevents transactions that would fail due to frozen accounts.
     pub async fn is_account_frozen(&self, token_account: &Pubkey) -> Result<bool, RpcError> {
         let account = self.get_account(token_account).await?;
-        
+
         // Check if this is a token account (owned by Tokenkeg...)
         if account.owner != "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" {
             return Ok(false); // Not a token account, can't be frozen
         }
-        
+
         // Token account state is at byte 46 (after mint, owner, amount, delegate)
         // The state byte has bit 1 set if frozen
         if account.data.len() > 46 {
@@ -375,12 +425,10 @@ impl SolanaRpcClient {
 
     /// Get the current slot
     pub async fn get_slot(&self) -> Result<u64, RpcError> {
-        #[cfg(feature = "rpc")]
         {
-            let client = self
-                .http_client
-                .as_ref()
-                .ok_or_else(|| RpcError::RequestFailed("http client not initialized".to_string()))?;
+            let client = self.http_client.as_ref().ok_or_else(|| {
+                RpcError::RequestFailed("http client not initialized".to_string())
+            })?;
             let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getSlot","params":[{"commitment":self.config.commitment}]});
             let res = client
                 .post(&self.config.endpoint)
@@ -388,7 +436,10 @@ impl SolanaRpcClient {
                 .send()
                 .await
                 .map_err(|e| RpcError::RequestFailed(e.to_string()))?;
-            let json: serde_json::Value = res.json().await.map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
             if json.get("error").is_some() {
                 return Err(RpcError::RequestFailed(json.to_string()));
             }
@@ -396,24 +447,19 @@ impl SolanaRpcClient {
                 .get("result")
                 .and_then(|r| r.get("value"))
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| RpcError::InvalidResponse("missing or invalid slot result".to_string()))?;
+                .ok_or_else(|| {
+                    RpcError::InvalidResponse("missing or invalid slot result".to_string())
+                })?;
             Ok(slot)
-        }
-
-        #[cfg(not(feature = "rpc"))]
-        {
-            Ok(0)
         }
     }
 
     /// Get recent blockhash
     pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
-        #[cfg(feature = "rpc")]
         {
-            let client = self
-                .http_client
-                .as_ref()
-                .ok_or_else(|| RpcError::RequestFailed("http client not initialized".to_string()))?;
+            let client = self.http_client.as_ref().ok_or_else(|| {
+                RpcError::RequestFailed("http client not initialized".to_string())
+            })?;
             let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash","params":[{"commitment":self.config.commitment}]});
             let res = client
                 .post(&self.config.endpoint)
@@ -421,7 +467,10 @@ impl SolanaRpcClient {
                 .send()
                 .await
                 .map_err(|e| RpcError::RequestFailed(e.to_string()))?;
-            let json: serde_json::Value = res.json().await.map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
+            let json: serde_json::Value = res
+                .json()
+                .await
+                .map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
             if json.get("error").is_some() {
                 return Err(RpcError::RequestFailed(json.to_string()));
             }
@@ -433,11 +482,6 @@ impl SolanaRpcClient {
                 .ok_or_else(|| RpcError::InvalidResponse("missing blockhash".to_string()))?
                 .to_string();
             Ok(blockhash)
-        }
-
-        #[cfg(not(feature = "rpc"))]
-        {
-            Ok("11111111111111111111111111111111".to_string())
         }
     }
 }
@@ -453,7 +497,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_account_placeholder() {
+    async fn test_get_account_without_http_client_errors_cleanly() {
+        // Deterministic (no network): covers the uninitialized-client error path.
+        let client = SolanaRpcClient {
+            config: RpcConfig::default(),
+            http_client: None,
+        };
+        let pubkey = Pubkey::from_base58("11111111111111111111111111111111").unwrap();
+        let err = client.get_account(&pubkey).await.unwrap_err();
+        assert!(matches!(err, RpcError::RequestFailed(_)));
+    }
+
+    #[tokio::test]
+    #[ignore = "makes a live devnet RPC call — run explicitly: cargo test --all-features -- --ignored"]
+    async fn test_get_account_live_devnet() {
         let client = SolanaRpcClient::devnet();
         let pubkey = Pubkey::from_base58("11111111111111111111111111111111").unwrap();
         let account = client.get_account(&pubkey).await.unwrap();

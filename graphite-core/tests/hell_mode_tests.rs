@@ -83,6 +83,7 @@ fn make_input(
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     }
 }
@@ -260,6 +261,7 @@ fn h4_transfer_intent_with_closeaccount_disc() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input);
@@ -296,6 +298,7 @@ fn h4_swap_intent_with_setauthority_disc() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
@@ -901,6 +904,7 @@ fn h19_large_instruction_data_does_not_crash() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input);
@@ -987,6 +991,7 @@ fn h21_custom_profile_zero_threshold_still_checks_risk() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
@@ -1088,6 +1093,7 @@ fn h23_unknown_program_cpi_many_accounts_safe_intent_permissive() {
         compute_units: 150,
         account_writes: 7,
         cpi_hops: 1,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
@@ -1130,6 +1136,7 @@ fn h23_known_program_wrong_disc_cpi_many_accounts() {
         compute_units: 150,
         account_writes: 7,
         cpi_hops: 1,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input);

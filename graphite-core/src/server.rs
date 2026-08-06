@@ -176,6 +176,7 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
         Confidence(msg) => {
             VerificationHttpError::Internal(format!("Confidence engine error: {}", msg))
         }
+        InvalidInput(msg) => VerificationHttpError::BadRequest(msg.clone()),
         RiskAssessment(msg) => {
             VerificationHttpError::Internal(format!("Risk engine error: {}", msg))
         }
@@ -192,7 +193,7 @@ async fn verify_handler(
     State(core): State<GraphiteCore>,
     Json(input): Json<VerificationInput>,
 ) -> Result<Json<VerificationResult>, (StatusCode, Json<serde_json::Value>)> {
-    match core.verify(&input) {
+    match core.verify_async(&input).await {
         Ok(result) => {
             tracing_log(&format!(
                 "verify: {} | {} | confidence={:.2} | {}",

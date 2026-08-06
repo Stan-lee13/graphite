@@ -93,3 +93,5 @@ Graphite enforces different confidence thresholds per wallet profile:
 | Enterprise | 99% | BattleTested |
 
 Set via `GRAPHITE_WALLET_PROFILE` environment variable.
+
+**Phase 1 calibration (important):** the built-in profiles above were tuned for the Phase 2 signal set. In Phase 1 the Core intentionally zeroes the three evidence-derived confidence signals (G4 — request-body evidence is attacker-controlled) and caps trust tiers at `OfficialManifest` (P7), so the achievable confidence for a known, clean, intent-aligned protocol is **~0.44** — meaning `TradingBot` (0.80) and higher block everything in Phase 1. The bridge therefore defaults to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile (override via `GRAPHITE_WALLET_PROFILE` or `config.walletProfile`) so that genuinely-known transactions can be approved. The engine's confidence score is always the honest number; the profile is the operator's policy choice.

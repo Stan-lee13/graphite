@@ -13,7 +13,7 @@ use crate::confidence_engine::{
 };
 use crate::manifest::{load_seed_manifests, ManifestRegistry};
 use crate::policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict, WalletProfile};
-use crate::risk_engine::{assess, RiskAssessmentInput, RiskVerdict};
+use crate::risk_engine::{assess_with_warnings, RiskAssessmentInput, RiskVerdict};
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
@@ -115,6 +115,13 @@ pub struct VerificationResult {
     pub instruction_name: String,
     pub manifest_found: bool,
     pub unknown_protocol: bool,
+    /// Version label of the protocol manifest this verification was checked
+    /// against (None when no manifest exists). This lets a consumer
+    /// programmatically confirm WHICH manifest version produced the result —
+    /// the Constitution G7 gap (cross-version replay confusion) requires this
+    /// field to exist on the result, not just in the audit log.
+    #[serde(default)]
+    pub manifest_version: Option<String>,
     pub summary: String,
     // Phase 1.5: Simulation integrity result (None if not checked)
     #[serde(default)]
@@ -139,6 +146,8 @@ pub enum VerificationError {
     SemanticGraph(#[from] crate::semantic_graph_store::SemanticGraphError),
     #[error("confidence computation failed: {0}")]
     Confidence(String),
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
 }
 
 /// Result of a single pipeline layer verification.
@@ -570,6 +579,29 @@ impl GraphiteCore {
             ));
         }
 
+        // Input validation: cap instruction_data and CPI target list sizes.
+        // The HTTP server enforces a 1 MB body limit, but in-process callers
+        // (library users, tests) have no such ceiling — cap here so a huge
+        // payload can never waste unbounded CPU/memory in the pipeline.
+        const MAX_INSTRUCTION_DATA: usize = 64 * 1024; // 64 KiB
+        const MAX_CPI_TARGETS: usize = 32;
+        if let Some(ref data) = input.instruction_data {
+            if data.len() > MAX_INSTRUCTION_DATA {
+                return Err(VerificationError::InvalidInput(format!(
+                    "instruction_data exceeds maximum of {} bytes (got {})",
+                    MAX_INSTRUCTION_DATA,
+                    data.len()
+                )));
+            }
+        }
+        if input.cpi_targets.len() > MAX_CPI_TARGETS {
+            return Err(VerificationError::InvalidInput(format!(
+                "cpi_targets exceeds maximum of {} entries (got {})",
+                MAX_CPI_TARGETS,
+                input.cpi_targets.len()
+            )));
+        }
+
         // Step 1: Account Resolution
         // Fail-closed (P12): If the manifest is found but the instruction discriminator
         // is not in the manifest, BLOCK the transaction instead of returning an error.
@@ -748,7 +780,7 @@ impl GraphiteCore {
             None => (None, false),
         };
 
-        let risk_verdict = assess(&RiskAssessmentInput {
+        let risk_detail = assess_with_warnings(&RiskAssessmentInput {
             program_id: input.program_id.clone(),
             accounts: input.account_addresses.clone(),
             cpi_targets: input.cpi_targets.clone(),
@@ -764,16 +796,27 @@ impl GraphiteCore {
                 .as_ref()
                 .and_then(|p| p.output_token.clone()),
         })?;
+        // `assess_with_warnings` returns non-blocking warnings (e.g. an
+        // out-of-manifest CPI on a known protocol) alongside the binary verdict.
+        // These are surfaced in the L7 layer report and the summary below so the
+        // signal is never silently dropped (Constitution P3 explainability).
+        let risk_verdict = risk_detail.verdict;
+        let risk_warnings = risk_detail.warnings;
 
         // Phase 2 (best-effort): if an RPC client is attached, fetch the first
         // account to provide additional context for L3 (simulation) layer.
         // This is intentionally best-effort and will not hard-fail verification
         // if the RPC call errors — it enriches the report when available.
-        let l3_rpc_account_info: Option<String> = None;
+        // NOTE: must be `mut` — the `#[cfg(feature = "rpc")]` block below
+        // assigns to it. (Compile error under `--features rpc` without this.)
+        // Under default features the block compiles out and rustc's
+        // `unused_mut` would fire, so silence it there.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut l3_rpc_account_info: Option<String> = None;
         #[cfg(feature = "rpc")]
         {
             if let Some(client) = &self.rpc_client {
-                if let Some(first_addr) = input.account_addresses.get(0) {
+                if let Some(first_addr) = input.account_addresses.first() {
                     if let Ok(pk) = crate::solana_types::Pubkey::from_base58(first_addr) {
                         match client.get_account(&pk).await {
                             Ok(acc) => {
@@ -884,7 +927,12 @@ impl GraphiteCore {
                 // when an RPC client is attached. Fall back to caller-provided
                 // `input.compute_units` etc. if RPC simulation fails or is
                 // unavailable.
-                let usage = crate::simulation_integrity::ComputeUsage {
+                // NOTE: must be `mut` — the `#[cfg(feature = "rpc")]` block
+                // below mutates these fields. (Compile error under `--features
+                // rpc` without this.) Under default features the block compiles
+                // out and rustc's `unused_mut` would fire, so silence it there.
+                #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+                let mut usage = crate::simulation_integrity::ComputeUsage {
                     compute_units: input.compute_units,
                     account_writes: input.account_writes,
                     cpi_hops: input.cpi_hops,
@@ -992,24 +1040,19 @@ impl GraphiteCore {
                 .map(|m| TrustTier::from_manifest_str(&m.trust_tier))
                 .unwrap_or(TrustTier::HeuristicInferred)
                 .min(TrustTier::OfficialManifest); // P7: cap self-asserted tiers
-            let evidence_tier = compute_trust_tier_from_evidence(&input.behavior_evidence);
 
+            // SECURITY (G4 / P7): caller-provided `behavior_evidence` is
+            // request-body JSON — it must NEVER raise the trust tier above what
+            // the protocol's own compile-time-baked, reviewed manifest declares.
+            // Previously a caller could fabricate `has_signed_manifest: true`
+            // (or fake community/battle-test counts) to mint OfficialManifest on
+            // a low-tier manifest, escaping that tier's 0.55 P6 ceiling and
+            // inflating the TrustTierLevel signal. The Semantic Graph's
+            // internally-accumulated tier (earned, never asserted) is still
+            // honored; request-body evidence is ignored on the manifest path.
             match self.semantic_graph.get(&input.program_id) {
-                Some(b) => {
-                    // Graph has accumulated behavior — use the highest
-                    // of manifest tier (capped), graph tier, and evidence tier
-                    // (also capped at OfficialManifest — caller-provided evidence
-                    // cannot mint a tier higher than what a manifest declares).
-                    b.trust_tier
-                        .max(manifest_tier)
-                        .max(evidence_tier.min(TrustTier::OfficialManifest))
-                }
-                None => {
-                    // No graph behavior — use the higher of manifest
-                    // declared tier (capped) and caller-provided evidence tier
-                    // (also capped at OfficialManifest).
-                    manifest_tier.max(evidence_tier.min(TrustTier::OfficialManifest))
-                }
+                Some(b) => b.trust_tier.max(manifest_tier),
+                None => manifest_tier,
             }
         } else {
             // No manifest found — query the Semantic Graph in case we have
@@ -1083,7 +1126,7 @@ impl GraphiteCore {
             matches!(policy_verdict, PolicyVerdict::Approved) && risk_summary.status == "Clear";
 
         // Generate summary
-        let summary = generate_summary(
+        let mut summary = generate_summary(
             approved,
             confidence,
             &risk_summary,
@@ -1092,6 +1135,11 @@ impl GraphiteCore {
             &instruction_name,
             unknown_protocol,
         );
+        // Surface non-blocking risk warnings in the human-readable summary so
+        // they are visible to anyone consuming the result, not just the L7 layer.
+        if !risk_warnings.is_empty() {
+            summary.push_str(&format!(" | warnings: {}", risk_warnings.join("; ")));
+        }
 
         let mut breakdown: Vec<VerificationBreakdownItem> = confidence_result
             .breakdown
@@ -1181,6 +1229,7 @@ impl GraphiteCore {
             instruction_name,
             manifest_found,
             unknown_protocol,
+            manifest_version: manifest.map(|m| m.version.label.clone()),
             summary,
             simulation_flagged: sim_flagged,
             simulation_divergence: sim_divergence,
@@ -1291,7 +1340,14 @@ impl GraphiteCore {
                     layer: "L7_RiskVerification".to_string(),
                     passed: risk_summary.status == "Clear",
                     reason: if risk_summary.status == "Clear" {
-                        "No risk patterns detected (8 patterns checked)".to_string()
+                        if risk_warnings.is_empty() {
+                            "No risk patterns detected (8 patterns checked)".to_string()
+                        } else {
+                            format!(
+                                "No risk patterns detected (8 patterns checked) — warnings: {}",
+                                risk_warnings.join("; ")
+                            )
+                        }
                     } else {
                         format!("Blocked: {} finding(s) — {:?}", risk_summary.findings.len(), risk_summary.findings.iter().map(|f| &f.pattern).collect::<Vec<_>>())
                     },
@@ -1535,6 +1591,7 @@ mod tests {
             compute_units: 150,
             account_writes: 2,
             cpi_hops: 0,
+            signed_transaction: None,
             simulation_baseline: None,
         }
     }
@@ -1601,6 +1658,7 @@ mod tests {
             compute_units: 150,
             account_writes: 2,
             cpi_hops: 1,
+            signed_transaction: None,
             simulation_baseline: None,
         };
         let result = core.verify(&input).unwrap();
@@ -1622,6 +1680,44 @@ mod tests {
         );
         let result = core.verify(&input).unwrap();
         assert!(result.audit_trail_id.starts_with("gr-"));
+    }
+
+    #[test]
+    fn test_signed_transaction_flows_to_simulation_input() {
+        // Phase 1.5: a caller-supplied signed transaction blob is the preferred
+        // L3 simulation payload. With no RPC client attached the blob is not
+        // transmitted anywhere, but the pipeline must accept it and the
+        // simulation-integrity check must still run when a baseline exists.
+        let core = GraphiteCore::new();
+        let mut input = make_input(
+            "11111111111111111111111111111111",
+            "02000000",
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            ],
+        );
+        input.signed_transaction = Some(vec![1u8, 2, 3, 4, 5]);
+        input.compute_units = 150;
+        input.account_writes = 2;
+        input.cpi_hops = 0;
+        input.simulation_baseline = Some(crate::simulation_integrity::ComputeBaseline {
+            mean_compute_units: 150.0,
+            std_compute_units: 1.0,
+            sample_count: 50,
+            mean_account_writes: 2.0,
+            std_account_writes: 0.5,
+            mean_cpi_hops: 0.0,
+            std_cpi_hops: 0.1,
+        });
+        let result = core.verify(&input).unwrap();
+        // Baseline is present (>=10 samples, non-zero std) → integrity ran
+        // and usage matches the baseline exactly → not flagged, divergence 0.
+        assert_eq!(result.simulation_flagged, Some(false));
+        assert_eq!(result.simulation_divergence, Some(0.0));
+        // Signed-transaction-bearing input must not corrupt the deterministic
+        // content hash (the blob is not part of the verification identity).
+        assert_eq!(result.content_hash, "afb61d8865b4cb68");
     }
 
     #[test]
@@ -1675,6 +1771,7 @@ mod tests {
             compute_units: 150,
             account_writes: 2,
             cpi_hops: 0,
+            signed_transaction: None,
             simulation_baseline: None,
         };
 
@@ -1735,6 +1832,7 @@ mod tests {
             compute_units: 150,
             account_writes: 2,
             cpi_hops: 0,
+            signed_transaction: None,
             simulation_baseline: None,
         };
 
@@ -1768,5 +1866,232 @@ mod tests {
         // If ceiling_item is None, it means the raw confidence was already <= 0.55
         // (the signals didn't produce a high enough raw score). This is also OK —
         // the ceiling is still enforced, just not triggered.
+    }
+
+    #[test]
+    fn test_caller_evidence_cannot_raise_tier_above_manifest_declared() {
+        // G4 regression: fabricated request-body evidence (has_signed_manifest,
+        // community/battle counts) must never raise the trust tier above what the
+        // protocol's manifest itself declares. Before the fix, a caller could mint
+        // OfficialManifest on a HeuristicInferred-tier manifest, escaping that
+        // tier's 0.55 P6 ceiling and inflating the TrustTierLevel signal.
+        let mut core = GraphiteCore::new();
+        let program_id = "DezXAZ8z7PnrnRJjz3vX2k7BtZbJ2k2cRgZ7HzXADc1";
+        let manifest = serde_json::json!({
+            "graphite_manifest_version": "1.0",
+            "protocol": { "name": "LowTierTest", "program_id": program_id, "website": "", "github": "" },
+            "version": { "label": "1.0.0", "effective_from_slot": 0, "previous_version_ref": null },
+            "trust_tier": "HeuristicInferred",
+            "instructions": [{
+                "name": "Transfer",
+                "discriminator": "02000000",
+                "accounts": [
+                    { "name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] },
+                    { "name": "to", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+                ],
+                "expected_state_changes": ["debits accounts.from", "credits accounts.to"],
+                "allowed_cpis": [],
+                "risk_rules": [],
+                "variable_accounts": false
+            }]
+        });
+        core.load_manifest(&manifest.to_string()).unwrap();
+
+        let input = VerificationInput {
+            proposed_intent: ProposedIntent {
+                intent_type: "transfer".to_string(),
+                raw_natural_language: "Transfer 1 SOL".to_string(),
+                confidence_of_parse: 0.95,
+                extracted_parameters: None,
+            },
+            program_id: program_id.to_string(),
+            protocol_version: "1.0.0".to_string(),
+            instruction_discriminator: "02000000".to_string(),
+            account_addresses: vec![
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+            ],
+            instruction_data: None,
+            cpi_targets: vec![],
+            wallet_profile: WalletProfile::Gaming,
+            // Fabricated "battle-tested" evidence — must be ignored on the
+            // manifest-found path.
+            behavior_evidence: BehaviorEvidence {
+                has_signed_manifest: true,
+                community_verified_count: 999,
+                battle_tested_tx_count: 10_000_000,
+                simulation_match_count: 1000,
+            },
+            compute_units: 150,
+            account_writes: 2,
+            cpi_hops: 0,
+            signed_transaction: None,
+            simulation_baseline: None,
+        };
+
+        let result = core.verify(&input).unwrap();
+        // The manifest declares HeuristicInferred — fabricated evidence must not
+        // raise it. (TrustTier ordering: HeuristicInferred < OfficialManifest.)
+        assert_eq!(
+            result.trust_tier, "HeuristicInferred",
+            "caller evidence must not raise tier above the manifest's declared tier"
+        );
+        assert!(
+            result.confidence <= 0.55,
+            "P6 ceiling must hold for the manifest-declared tier"
+        );
+    }
+
+    #[test]
+    fn test_manifest_version_reported_in_result() {
+        // G7: the verification result must report WHICH manifest version was
+        // checked so consumers can detect cross-version replay confusion.
+        let core = GraphiteCore::new();
+        let input = make_input(
+            "11111111111111111111111111111111",
+            "02000000",
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            ],
+        );
+        let result = core.verify(&input).unwrap();
+        assert_eq!(result.manifest_version.as_deref(), Some("1.0.0"));
+
+        // Unknown protocol → None
+        let unknown = make_input(
+            "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+            "03000000",
+            &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
+        );
+        let result = core.verify(&unknown).unwrap();
+        assert_eq!(result.manifest_version, None);
+    }
+
+    #[test]
+    fn test_content_hash_matches_ts_auditbind_reference_vector() {
+        // Cross-language contract lock: the TS AuditBind tests
+        // (integrations/solana-agent-kit/auditbind.test.ts) pin the same value —
+        // sha256(program||disc||from||to)[0..16] = "afb61d8865b4cb68". If either
+        // side changes the hashed field set or ordering, BOTH pinned tests must
+        // be regenerated together or the TOCTOU check silently breaks.
+        let risk = RiskVerdictSummary {
+            status: "Clear".to_string(),
+            findings: vec![],
+        };
+        let (_, content_hash) = generate_audit_id(
+            "11111111111111111111111111111111",
+            "02000000",
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+            ],
+            &None,
+            &[],
+            0.44,
+            &risk,
+        );
+        assert_eq!(content_hash, "afb61d8865b4cb68");
+    }
+
+    #[test]
+    fn test_oversized_instruction_data_rejected() {
+        let core = GraphiteCore::new();
+        let mut input = make_input(
+            "11111111111111111111111111111111",
+            "02000000",
+            &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
+        );
+        input.instruction_data = Some(vec![0u8; 64 * 1024 + 1]);
+        assert!(matches!(
+            core.verify(&input),
+            Err(VerificationError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn test_unexpected_cpi_warning_surfaced_in_l7_and_summary() {
+        // P3 explainability: an out-of-manifest CPI on a known protocol used to
+        // be silently dropped. It must now appear in the L7 layer report and the
+        // result summary while the verdict stays Clear (fail open with
+        // explanation — Constitution P12, response 2).
+        let mut core = GraphiteCore::new();
+        let program_id = "DezXAZ8z7PnrnRJjz3vX2k7BtZbJ2k2cRgZ7HzXADc1";
+        let manifest = serde_json::json!({
+            "graphite_manifest_version": "1.0",
+            "protocol": { "name": "CpiWarningTest", "program_id": program_id, "website": "", "github": "" },
+            "version": { "label": "1.0.0", "effective_from_slot": 0, "previous_version_ref": null },
+            "trust_tier": "OfficialManifest",
+            "instructions": [{
+                "name": "Transfer",
+                "discriminator": "02000000",
+                "accounts": [
+                    { "name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] },
+                    { "name": "to", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+                ],
+                "expected_state_changes": ["debits accounts.from", "credits accounts.to"],
+                "allowed_cpis": ["SomeAllowedProgram"],
+                "risk_rules": [],
+                "variable_accounts": false
+            }]
+        });
+        core.load_manifest(&manifest.to_string()).unwrap();
+
+        let input = VerificationInput {
+            proposed_intent: ProposedIntent {
+                intent_type: "transfer".to_string(),
+                raw_natural_language: "Transfer 1 SOL".to_string(),
+                confidence_of_parse: 0.9,
+                extracted_parameters: None,
+            },
+            program_id: program_id.to_string(),
+            protocol_version: "1.0.0".to_string(),
+            instruction_discriminator: "02000000".to_string(),
+            account_addresses: vec![
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+            ],
+            instruction_data: None,
+            cpi_targets: vec!["unlisted_program_xyz".to_string()],
+            wallet_profile: WalletProfile::Custom {
+                min_confidence: 0.40,
+                min_trust_tier: TrustTier::OfficialManifest,
+            },
+            behavior_evidence: BehaviorEvidence {
+                has_signed_manifest: false,
+                community_verified_count: 0,
+                battle_tested_tx_count: 0,
+                simulation_match_count: 0,
+            },
+            compute_units: 150,
+            account_writes: 2,
+            cpi_hops: 1,
+            signed_transaction: None,
+            simulation_baseline: None,
+        };
+
+        let result = core.verify(&input).unwrap();
+        let l7 = result
+            .layers
+            .iter()
+            .find(|l| l.layer == "L7_RiskVerification")
+            .expect("L7 layer must be present");
+        assert!(
+            l7.passed,
+            "known-protocol unexpected CPI is a warning, not a hard block"
+        );
+        assert!(
+            l7.reason
+                .contains("warnings: CPI target 'unlisted_program_xyz'"),
+            "L7 reason must surface the warning, got: {}",
+            l7.reason
+        );
+        assert!(
+            result
+                .summary
+                .contains("warnings: CPI target 'unlisted_program_xyz'"),
+            "summary must surface the warning, got: {}",
+            result.summary
+        );
     }
 }

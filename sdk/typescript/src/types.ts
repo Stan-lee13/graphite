@@ -17,7 +17,17 @@ export interface ProposedIntent {
   extracted_parameters?: ExtractedParameters;
 }
 
-export type WalletProfile = "Treasury" | "TradingBot" | "Gaming" | "Enterprise" | "Custom";
+/**
+ * Wallet profile. The four built-in names map to fixed thresholds; Custom uses
+ * the externally-tagged serde shape the Rust Core expects:
+ * `{ "Custom": { "min_confidence": 0.40, "min_trust_tier": "OfficialManifest" } }`.
+ */
+export type WalletProfile =
+  | "Treasury"
+  | "TradingBot"
+  | "Gaming"
+  | "Enterprise"
+  | { Custom: CustomProfile };
 export interface CustomProfile {
   min_confidence: number;
   min_trust_tier: TrustTier;
@@ -137,6 +147,10 @@ export interface VerificationResult {
   instruction_name: string;
   manifest_found: boolean;
   unknown_protocol: boolean;
+  /** Version label of the protocol manifest this result was checked against
+   *  (null/absent for unknown protocols). Constitution G7 — lets a consumer
+   *  confirm which manifest version produced the verification. */
+  manifest_version?: string | null;
   summary: string;
   /** Phase 1.5: Simulation integrity result (null if not checked) */
   simulation_flagged?: boolean | null;

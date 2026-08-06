@@ -46,7 +46,12 @@ if (!fs.existsSync(distLib)) {
     fs.mkdirSync(distLib, { recursive: true });
     fs.mkdirSync(path.join(distLib, "client"), { recursive: true });
     for (const file of fs.readdirSync(source)) {
-      fs.copyFileSync(path.join(source, file), path.join(distLib, file));
+      const srcPath = path.join(source, file);
+      // Skip directories (e.g. the `client` subdir — it is copied below
+      // recursively). copyFileSync on a directory fails (EPERM on Windows).
+      if (!fs.statSync(srcPath).isDirectory()) {
+        fs.copyFileSync(srcPath, path.join(distLib, file));
+      }
     }
     const clientSource = path.join(source, "client");
     if (fs.existsSync(clientSource)) {

@@ -171,14 +171,14 @@ fn is_universal_cpi(cpi_target: &str) -> bool {
 pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // P0 Check 1: Unexpected CPI targets (G6 mitigation)
     // Universal CPI whitelist (System, Token, Compute Budget) is always allowed.
-    // For known protocols: unexpected CPI targets reduce confidence, NOT hard-block.
-    // Per Constitution P12 and 5-Response Framework:
-    //   - Unknown CPI is NOT active harm — it's "protocol/instruction genuinely unknown"
-    //   - Response 2 (fail open with explanation) applies
-    //   - Hard-block (Response 4) is reserved for ACTIVE HARM patterns only
-    //     (drainer, authority hijack, permission escalation, etc.)
-    // For unknown protocols: unexpected CPI is suspicious — still fail-closed.
-    let mut cpi_warnings: Vec<String> = Vec::new();
+    // For known protocols: unexpected CPI targets are NON-BLOCKING warnings
+    // (Per Constitution P12 and the 5-Response Framework, an out-of-manifest CPI
+    // is "protocol/instruction genuinely unknown", not active harm — response 2,
+    // fail open with explanation). The warnings are computed by
+    // `collect_cpi_warnings` and surfaced via `assess_with_warnings` so they are
+    // never silently dropped (Constitution P3).
+    // For unknown protocols (no allowed CPI list): unexpected CPI is suspicious
+    // and still fail-closed (response 4).
     if !input.cpi_targets.is_empty() {
         let non_universal_cpis: Vec<&String> = input
             .cpi_targets
@@ -186,20 +186,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
             .filter(|cpi| !is_universal_cpi(cpi))
             .collect();
 
-        if !non_universal_cpis.is_empty() && !input.allowed_cpis.is_empty() {
-            for cpi_target in &non_universal_cpis {
-                if !input
-                    .allowed_cpis
-                    .iter()
-                    .any(|allowed| allowed == cpi_target.as_str())
-                {
-                    cpi_warnings.push(format!(
-                        "CPI target '{}' is not in manifest's allowed CPI list",
-                        cpi_target
-                    ));
-                }
-            }
-        } else if !non_universal_cpis.is_empty() && input.allowed_cpis.is_empty() {
+        if !non_universal_cpis.is_empty() && input.allowed_cpis.is_empty() {
             // No manifest data at all — unknown protocol, fail-closed (P12)
             if let Some(cpi_target) = non_universal_cpis.first() {
                 return Ok(RiskVerdict::Blocked {
@@ -421,6 +408,65 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     Ok(RiskVerdict::Passed)
 }
 
+/// Detailed risk assessment: the binary verdict plus non-blocking warnings.
+///
+/// The binary `RiskVerdict` is the hard gate; `warnings` carry explainability
+/// signals (Constitution P3) that must not silently vanish — currently the only
+/// source is an out-of-manifest CPI target on a KNOWN protocol (response 2 of
+/// the 5-Response Framework: fail open with explanation).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RiskAssessmentDetail {
+    pub verdict: RiskVerdict,
+    pub warnings: Vec<String>,
+}
+
+/// Collect non-blocking CPI warnings for a known protocol.
+///
+/// Only the "known protocol with an allowed-CPI list" branch can produce
+/// warnings. The unknown-protocol branch (empty `allowed_cpis`) is fail-closed
+/// inside `assess` and short-circuits before this is consulted, so it returns
+/// no warnings for that path.
+fn collect_cpi_warnings(input: &RiskAssessmentInput) -> Vec<String> {
+    let mut warnings: Vec<String> = Vec::new();
+    if input.cpi_targets.is_empty() {
+        return warnings;
+    }
+    let non_universal_cpis: Vec<&String> = input
+        .cpi_targets
+        .iter()
+        .filter(|cpi| !is_universal_cpi(cpi))
+        .collect();
+    if !non_universal_cpis.is_empty() && !input.allowed_cpis.is_empty() {
+        for cpi_target in &non_universal_cpis {
+            if !input
+                .allowed_cpis
+                .iter()
+                .any(|allowed| allowed == cpi_target.as_str())
+            {
+                warnings.push(format!(
+                    "CPI target '{}' is not in manifest's allowed CPI list",
+                    cpi_target
+                ));
+            }
+        }
+    }
+    warnings
+}
+
+/// Assess a transaction and also return non-blocking warnings.
+///
+/// The verification orchestrator uses this so that out-of-manifest CPI warnings
+/// on known protocols are surfaced in the L7 layer report and the result summary
+/// instead of being discarded. Deterministic and pure (Constitution P2);
+/// `assess` is a thin wrapper returning only the binary verdict.
+pub fn assess_with_warnings(
+    input: &RiskAssessmentInput,
+) -> Result<RiskAssessmentDetail, RiskError> {
+    let verdict = assess(input)?;
+    let warnings = collect_cpi_warnings(input);
+    Ok(RiskAssessmentDetail { verdict, warnings })
+}
+
 /// Detect drainer patterns: many accounts + minimal state changes.
 ///
 /// Tightened from original:
@@ -595,6 +641,35 @@ pub fn detect_intent_program_mismatch(program_id: &str, intent_type: &str) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_assess_with_warnings_surfaces_unexpected_cpi_warning() {
+        // A known protocol (allowed_cpis present) with an out-of-manifest CPI
+        // must NOT be silently dropped: assess_with_warnings returns the warning
+        // while keeping the binary verdict Passed (response 2, fail open with
+        // explanation — Constitution P12/P3).
+        let input = RiskAssessmentInput {
+            program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
+            accounts: vec!["a1".to_string(), "a2".to_string()],
+            cpi_targets: vec!["unlisted_program_xyz".to_string()],
+            expected_state_changes: vec!["credits accounts.destination".to_string()],
+            allowed_cpis: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
+            instruction_discriminator: "e517cb97".to_string(),
+            expected_account_count: Some(5),
+            proposed_intent_type: "swap".to_string(),
+            variable_accounts: false,
+            extracted_output_token: None,
+        };
+        let detail = assess_with_warnings(&input).unwrap();
+        assert_eq!(detail.verdict, RiskVerdict::Passed);
+        assert_eq!(
+            detail.warnings,
+            vec!["CPI target 'unlisted_program_xyz' is not in manifest's allowed CPI list"]
+        );
+
+        // The legacy binary entry point returns only the verdict.
+        assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
+    }
 
     #[test]
     fn test_risk_engine_block_overrides_perfect_confidence_on_most_permissive_profile() {

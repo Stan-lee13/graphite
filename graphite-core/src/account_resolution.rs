@@ -231,8 +231,8 @@ fn resolve_pda_seed_template(
                 .unwrap_or_else(|| seed.as_bytes().to_vec());
         }
         seed.as_bytes().to_vec()
-    } else if seed.starts_with("0x") {
-        hex::decode(&seed[2..]).unwrap_or_else(|_| seed.as_bytes().to_vec())
+    } else if let Some(stripped) = seed.strip_prefix("0x") {
+        hex::decode(stripped).unwrap_or_else(|_| seed.as_bytes().to_vec())
     } else {
         seed.as_bytes().to_vec()
     }
@@ -273,7 +273,10 @@ pub fn derive_pda(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::load_seed_manifests;
+    use crate::manifest::{
+        load_seed_manifests, AccountRoleDef, InstructionDef, ManifestVersion, ProtocolInfo,
+        ProtocolManifest,
+    };
 
     fn make_input(program: &str, disc: &str, accounts: &[&str]) -> AccountResolutionInput {
         AccountResolutionInput {

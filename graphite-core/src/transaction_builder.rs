@@ -223,6 +223,9 @@ mod tests {
             allowed_cpis: vec![],
             instruction_data: vec![],
         };
-        assert!(matches!(build_transaction(&plan), Err(TransactionBuilderError::InvalidPubkey(_))));
+        assert!(matches!(
+            build_transaction(&plan),
+            Err(TransactionBuilderError::InvalidPubkey(_))
+        ));
     }
 }

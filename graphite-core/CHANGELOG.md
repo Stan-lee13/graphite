@@ -3,6 +3,25 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Production Readiness Pass] — 2026-08-06
+
+### Security Fixes
+- **G4: caller evidence can no longer raise the trust tier above the manifest's declared tier.** `behavior_evidence` is request-body JSON; fabricated `has_signed_manifest`/community/battle counts could previously mint `OfficialManifest` on a low-tier manifest, escaping that tier's 0.55 P6 ceiling and inflating the `TrustTierLevel` signal. The manifest-found path now ignores caller evidence entirely (the Semantic Graph's internally-earned tier is still honored). Regression test: `test_caller_evidence_cannot_raise_tier_above_manifest_declared`.
+- **TS AuditBind TOCTOU check fixed.** `AuditBind.computeHash` encoded fields with `|`/`,` separators, which never matched the Rust `content_hash` byte stream — the check always aborted. It now mirrors the Core byte-for-byte (SHA-256 over programId, discriminator, account addresses, raw data bytes, CPI targets, truncated to 16 hex chars) with cross-language pinned vectors in `integrations/solana-agent-kit/auditbind.test.ts`.
+- **Out-of-manifest CPI warnings are no longer silently dropped.** `assess()` computed CPI warnings for known protocols then discarded them. New `assess_with_warnings()` returns `RiskAssessmentDetail { verdict, warnings }`; the orchestrator surfaces warnings in the L7 layer report and the result summary (Constitution P3), while keeping the binary verdict fail-open (P12 response 2).
+
+### Correctness / Compile Fixes
+- **`--features rpc` now compiles.** Two non-`mut` bindings (`l3_rpc_account_info`, `usage`) were assigned inside `#[cfg(feature = "rpc")]` blocks — a hard compile error for the RPC feature.
+- **G7: `VerificationResult.manifest_version` added** — the version label of the manifest the result was checked against (`None` for unknown protocols), letting consumers detect cross-version replay confusion. Populated in the result and mirrored in the TS + Go SDKs.
+- **Input size caps added** — `instruction_data` ≤ 64 KiB and `cpi_targets` ≤ 32, via new `VerificationError::InvalidInput` (HTTP 400). Prevents unbounded CPU/memory from in-process callers.
+- **Server no longer spawns a Tokio runtime per request.** The axum handler now calls `verify_async` directly instead of the synchronous `verify()` wrapper (which created a full runtime + threads per request).
+- **Removed dead code** in `manifest::load_seed_manifests` (orphan `include_str!` binding).
+
+### Integration / Docs
+- **SAK bridge defaults fixed** — AI layer URL default `7332` → `8081` (matches `intent_parser.py --serve`); default wallet profile is now a Phase-1-calibrated `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` (the built-in profiles — TradingBot 0.80 etc. — were tuned for the Phase 2 signal set and block everything in Phase 1); misleading "simulation raises confidence" comments corrected.
+- **TS SDK `WalletProfile` now models the `Custom` object form** the Rust serde enum expects (`{ "Custom": { ... } }`).
+- **CI added** — `.github/workflows/ci.yml` runs Rust fmt/clippy (all features)/tests, TS SDK typecheck + SAK typecheck + AuditBind cross-language tests, Go vet/tests, Python pytest.
+
 ## [Phase 1.5 — Audit Fixes Round 4] — 2026-07-30
 
 ### SAK Bridge

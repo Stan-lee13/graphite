@@ -37,6 +37,7 @@ fn make_input(
         compute_units: 150,
         account_writes: 2,
         cpi_hops: cpi.len() as u32,
+        signed_transaction: None,
         simulation_baseline: None,
     }
 }
@@ -401,6 +402,7 @@ fn test_fix5_fake_swap_wired_into_pipeline() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
     let result = core.verify(&input).unwrap();
@@ -471,6 +473,7 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: Some(graphite_core::simulation_integrity::ComputeBaseline {
             mean_compute_units: 150.0,
             std_compute_units: 10.0,
@@ -625,6 +628,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         compute_units: 500,
         account_writes: 1,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
 
@@ -753,6 +757,7 @@ fn test_pda_mismatch_correct_pda_passes() {
         compute_units: 500,
         account_writes: 1,
         cpi_hops: 0,
+        signed_transaction: None,
         simulation_baseline: None,
     };
 

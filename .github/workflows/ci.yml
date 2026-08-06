@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust core — fmt, clippy, tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: graphite-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: graphite-core
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy (all targets, all features — includes the rpc feature)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Tests
+        run: cargo test --release
+
+  typescript:
+    name: TypeScript SDK + SAK integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: SDK typecheck
+        working-directory: sdk/typescript
+        run: |
+          npm install
+          npm run check
+      - name: SAK integration typecheck + AuditBind cross-language tests
+        working-directory: integrations/solana-agent-kit
+        run: |
+          npm install
+          npx tsc --noEmit -p tsconfig.json
+          npx tsx --test auditbind.test.ts
+
+  go:
+    name: Go SDK — vet + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Vet
+        run: go vet ./...
+      - name: Tests
+        run: go test ./...
+
+  python:
+    name: Python AI layer — tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python-ai-layer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test deps
+        run: pip install pytest
+      - name: Tests
+        run: pytest -q
