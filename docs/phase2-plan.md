@@ -1,7 +1,25 @@
 # Graphite Phase 2 — Public Beta Build Plan
 
-**Branch:** `phase2-development` (created from `main` @ `0991d01`, tag `v0.1.0-alpha`)
+**Branch:** `phase2-development` (created from `main` @ `0a143fe`, tag `v0.1.0-alpha`)
 **Target release:** `v0.2.0-beta`
+
+---
+
+## Phase 1.5 Completion Summary (2026-08-07)
+
+Phase 1.5 is **closed and devnet-verified** before Phase 2 development begins:
+
+- **680 Rust tests**, 0 failures (682 with `--include-ignored`); clippy 0 warnings; fmt clean; no-default-features builds
+- **RPC client live-verified** against Helius mainnet + devnet — 6 parsing/retry defects fixed (`get_slot` u64 parse, `get_account` null check, `get_oracle_price` placeholder removed, `is_account_frozen` byte 108, `post_rpc` exponential backoff, `max_retries` honored)
+- **Server hardening shipped**: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log (approved/blocked/400/500), graceful shutdown
+- **L3/L8 honest states**: L3 provenance-aware tri-state (`Passed`/`Failed`/`Inconclusive`); L8 honestly "not yet verified" with audit-trail event
+- **Novel instruction fail-closed (P12)**: unknown discriminator on known protocol with high-risk intent → BLOCKED
+- **Validation & determinism**: whitespace-only `program_id` rejection; proptest suite (512 cases); PDA known-answer tests vs `@solana/web3.js`; all-11 manifest ID pin test
+- **SAK integration verified on Solana devnet**: 5 finalized transactions (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`), pipeline confirmed end-to-end
+- **CI 4/4 jobs green** (Rust, TypeScript+SAK, Go, Python)
+- **Benchmark**: 16 scored cases, 100% precision/recall, ~850μs avg latency (release, all features)
+
+**Phase 2 prerequisite status:** all Phase 1.5 exit criteria met (see ROADMAP). Phase 2 proceeds on `phase2-development`; `main` receives Phase 2 work only via PR after Phase 2 certification.
 
 ---
 
@@ -40,7 +58,7 @@ These principles mechanically constrain HOW Phase 2 features must be built:
 | Manifest Registry | Yes — ManifestRegistry | — | No sig verification, no PR workflow, no G5 |
 | Self-Healing | Yes — quarantine works | 342 | No production data volume yet |
 | Dashboard | No | 0 | Everything |
-| Go SDK | Yes — 7/7 tests | — | 3 missing types |
+| Go SDK | Yes — 9/9 tests | — | ✅ Parity complete (ResolvedAccount, BuiltTransaction, VerificationBreakdownItem added) |
 
 ---
 
@@ -244,7 +262,7 @@ Week 4:  feature/dashboard (needs all data sources)
 
 ## Phase 2 Certification Checklist
 
-- [ ] All 646 existing tests pass (no regressions)
+- [ ] All 680 existing tests pass (no regressions)
 - [ ] New tests for each Phase 2 feature pass
 - [ ] cargo clippy — 0 warnings
 - [ ] cargo fmt --check — clean

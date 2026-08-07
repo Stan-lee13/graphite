@@ -7,7 +7,7 @@
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-649_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-680_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-11-blue?style=flat-square)](graphite-core/protocols/)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-8-red?style=flat-square)](graphite-core/src/risk_engine.rs)
@@ -61,14 +61,14 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 635 tests — zero setup
+# Run 680 tests — zero setup
 cargo test --release
 
 # Output:
-# running 635 tests
-# test result: ok. 635 passed; 0 failed; 0 ignored
+# running 680 tests
+# test result: ok. 680 passed; 0 failed; 0 ignored
 
-# Run the benchmark (18 cases, P16 compliant)
+# Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
 ```
 
@@ -89,7 +89,7 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 | L7 | Risk Verification | Run Risk Engine — forbidden patterns, compositional risk | Forbidden pattern → block |
 | L8 | Execution Verification | Post-submission: confirm on-chain result matches prediction | Mismatch → audit trail flag |
 
-**Phase 1.5 status:** L1-L2, L4-L7 active. L3 requires RPC (Phase 2). L8 requires live execution (Phase 2).
+**Phase 1.5 status:** L1-L2, L4-L7 active. L3 is active whenever an RPC client is attached (`GRAPHITE_RPC_URL`) — verified end-to-end on Solana devnet. L8 reports an honest **"not yet verified"** state until live execution is wired (Phase 2).
 
 ---
 
@@ -148,7 +148,7 @@ graphite/
 │   │   ├── benchmark.rs         ← P16-compliant benchmark suite
 │   │   └── cli.rs               ← CLI (clap)
 │   ├── protocols/               ← 11 JSON protocol manifests
-│   └── tests/                   ← 635 tests (unit + adversarial + exploit)
+│   └── tests/                   ← 680 tests (unit + adversarial + exploit)
 │
 ├── sdk/
 │   ├── typescript/              ← TS SDK (GraphiteClient)
@@ -257,20 +257,20 @@ The demo shows the full flow:
 
 What we **do not** claim:
 
-- The benchmark is 18 handcrafted test cases — NOT a statistical evaluation on unseen data. "100% pass rate on handcrafted tests" is the honest claim.
+- The benchmark is 16 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a statistical evaluation on unseen data. "100% precision / 100% recall on the scored benchmark cases" is the honest claim.
 - 5 exploit reconstructions use real program IDs but fabricated account structures. They are labeled "SYNTHETIC" per P16, not "real mainnet data."
-- L3 (Simulation) and L8 (Execution Verification) are not yet active — they require live RPC and execution infrastructure (Phase 2).
+- L3 (Simulation) is active when an RPC client is attached and was verified against real Solana devnet transactions (Aug 7, 2026). L8 (Execution Verification) still requires live execution infrastructure and honestly reports **"not yet verified"** until then (Phase 2).
 - No instruction data semantic parsing beyond discriminator matching (Phase 2).
 
 What we **do** claim:
 
 - **Phase 1 confidence is calibrated honestly.** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) are intentionally ZEROED in Phase 1 — they'd come from caller-controlled request JSON, which an attacker could fabricate to mint confidence (Constitution G4). Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). The achievable confidence for a known, clean, intent-aligned protocol is therefore **~0.44**. The built-in wallet profiles (TradingBot 0.80, Treasury 0.95, …) were calibrated for the Phase 2 signal set and will block everything in Phase 1 — the benchmark, and the SAK demo, therefore default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 649 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
+- 680 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
 - 8 risk patterns are real detection logic, not stubs.
 - 11 protocol manifests with program IDs verified against official on-chain sources.
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm.
-- The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods.
+- The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).
 
 ---
 

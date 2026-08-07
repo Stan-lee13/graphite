@@ -15,14 +15,14 @@ The Rust verification engine — the heart of Graphite.
 | `semantic_graph_store` | Trust tier computation, append-only storage | L5 |
 | `unknown_protocol_mode` | 0.55 confidence ceiling for unknown protocols (P6/P12) | — |
 | `server` | HTTP API (axum) on port 7331 | — |
-| `benchmark` | P16-compliant benchmark suite (18 cases) | — |
+| `benchmark` | P16-compliant benchmark suite (16 scored cases + 2 baseline comparisons) | — |
 | `cli` | CLI interface (clap) | — |
 
 ## Build
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 635 tests
+cargo test --release     # 680 tests (682 with --include-ignored)
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 
@@ -43,4 +43,15 @@ cargo run --release --bin graphite -- benchmark
 
 11 JSON manifests in `protocols/`. Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets.
 
-All program IDs verified against official on-chain sources. See `CONTRIBUTING.md` for how to add a new manifest.
+All program IDs verified against official on-chain sources (pinned by `test_all_seed_manifest_program_ids_are_canonical`). See `CONTRIBUTING.md` for how to add a new manifest.
+
+## Server Features
+
+When run via `cargo run --release --bin graphite -- server --port 7331`, the HTTP server includes:
+
+- **Bearer API key auth** (constant-time SHA-256 comparison) via `GRAPHITE_API_KEY` — required on `/verify` and `/manifests` when set; `/health` stays open
+- **Per-IP token-bucket rate limiting** (`GRAPHITE_RATE_LIMIT`, returns 429, FIFO eviction)
+- **CORS denied by default**, allowlist via `GRAPHITE_CORS_ORIGINS`
+- **Audit log** — append-only JSONL (`audit.jsonl` in `GRAPHITE_DATA_DIR`) covering approved/blocked/400/500 paths
+- **Graceful shutdown**; `X-Forwarded-For` only honored behind an explicit trusted-proxy flag
+- **Live L3** when `GRAPHITE_RPC_URL` is set — `simulateTransaction` runs with real compute feeding the trusted baseline accumulator (verified on Solana devnet)

@@ -1,7 +1,7 @@
 # Graphite v0.1.0-alpha — Release Evaluation Report
 
-**Date:** 2026-07-23  
-**Version:** v0.1.0-alpha (frozen, tagged)  
+**Date:** 2026-08-07 (v0.1.0-alpha frozen 2026-07-23; Phase 1.5 completion update)  
+**Version:** v0.1.0-alpha → Phase 1.5 complete (branch: phase2-development)  
 **Repository:** github.com/Stan-lee13/graphite  
 **Constitution Principle:** P16 — No public performance claim without a linked, reproducible benchmark run backing the exact number.
 
@@ -12,14 +12,15 @@
 Graphite v0.1.0-alpha is the first frozen release of a transaction intent verification engine for Solana AI agents. It verifies that constructed transactions actually do what was declared, produces a falsifiable confidence score, and fails closed on unknown protocols.
 
 **Key results:**
-- **630 Rust tests** (83 unit + 563 integration/adversarial), **0 failures**
+- **680 Rust tests** (108 unit + 572 integration/adversarial), **0 failures** (682 with `--include-ignored`)
 - **7 Python AI layer tests**, 0 failures
-- **7 Go SDK tests**, 0 failures
+- **9 Go SDK tests**, 0 failures
 - **TypeScript SDK**: clean compile (tsc --noEmit)
-- **18 benchmark cases** (13 synthetic + 5 real mainnet exploits), **100% precision, 100% recall**
-- **~62μs average latency** (release build, in-process)
-- **0 clippy warnings**
+- **16 scored benchmark cases** (safe + malicious) + 2 baseline comparisons, **100% precision, 100% recall**
+- **~850μs average latency** (release build, all features, live-measured 2026-08-07)
+- **0 clippy warnings**, fmt clean, no-default-features builds
 - **11 seed protocol manifests (10 original + legacy Memo)**, all program IDs verified from official sources
+- **SAK integration verified on Solana devnet** — 5 finalized transactions (Aug 7, 2026)
 
 ---
 
@@ -29,26 +30,29 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 
 | Category | Test File | Tests | Status |
 |---|---|---|---|
-| **Unit** | `src/*.rs` (lib tests) | 83 | ✅ Pass |
+| **Unit** | `src/*.rs` (lib tests) | 108 | ✅ Pass |
 | **Integration** | `tests/integration_tests.rs` | 16 | ✅ Pass |
 | **Confidence** | `tests/confidence_engine_tests.rs` | 13 | ✅ Pass |
-| **Self-Healing** | Removed (Phase 2+ reference code, not wired into pipeline) | — | — |
+| **Layer Honesty** | `tests/layers_test.rs` | 5 | ✅ Pass |
 | **Adversarial** | `tests/adversarial_tests.rs` | 45 | ✅ Pass |
-| **Deep Extreme** | `tests/deep_extreme_tests.rs` | 43 | ✅ Pass |
+| **Deep Extreme** | `tests/deep_extreme_tests.rs` | 44 | ✅ Pass |
 | **Extreme Adversarial** | `tests/extreme_adversarial.rs` | 50 | ✅ Pass |
 | **Hell Mode** | `tests/hell_mode_tests.rs` | 37 | ✅ Pass |
 | **Omega Red Team** | `tests/omega_red_team.rs` | 15 | ✅ Pass |
 | **Omega Regression** | `tests/omega_red_team_regression.rs` | 11 | ✅ Pass |
+| **Proptest** | `tests/proptest_engine.rs` (512 cases) | 4 | ✅ Pass |
+| **Trust Tier** | `tests/trust_tier_verify.rs` | 2 | ✅ Pass |
 | **Real-World Attacks** | `tests/real_world_attacks.rs` | 100 | ✅ Pass |
 | **Novel Attacks** | `tests/novel_attacks.rs` | 100 | ✅ Pass |
 | **Handcrafted Adversarial** | `tests/adversarial_handcrafted.rs` | 100 | ✅ Pass |
 | **Real Exploit Tests** | `tests/real_exploit_tests.rs` | 15 | ✅ Pass |
 | **Real On-Chain Exploits** | `tests/real_onchain_exploits.rs` | 15 | ✅ Pass |
-| **Total** | | **630** | **0 failures** |
+| **Live Devnet Corpus** | `tests/live_transactions.rs` (RPC; ignored by default) | 1 (ignored) | ✅ Pass with RPC |
+| **Total** | | **680** | **0 failures** |
 
 ### 2.2 Adversarial Test Categories
 
-The 380 adversarial/exploit tests cover 9 attack categories:
+The adversarial/exploit test suites cover 9 attack categories:
 
 1. **Protocol impersonation** — real program IDs with fake data, hidden drainer CPI, wrong discriminators
 2. **PDA spoofing & account substitution** — wrong seeds, address poisoning, empty/zero PDAs
@@ -80,7 +84,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 | Go SDK | 9 (`go test ./...`) | ✅ Pass |
 | Python AI Layer | 7 (`pytest test_intent_parser.py`) | ✅ Pass |
 | TypeScript SDK | — | ✅ Clean compile (`tsc --noEmit`) |
-| Solana Agent Kit | — | ✅ TypeScript typecheck, end-to-end demo verified |
+| Solana Agent Kit | — | ✅ TypeScript typecheck, AuditBind cross-language tests, **end-to-end verified on Solana devnet** (5 finalized transactions) |
 
 ---
 
@@ -92,7 +96,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 
 | Metric | Value |
 |---|---|
-| Total cases | 18 (13 synthetic + 5 real mainnet) |
+| Total cases | 18 (16 scored + 2 baseline comparisons) |
 | Scored cases | 16 (safe + malicious only) |
 | Accuracy | 100.0% |
 | Precision | 100.0% |
@@ -101,7 +105,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 | True Negatives | 4 (safe → approved) |
 | False Positives | 0 |
 | False Negatives | 0 |
-| Avg Latency | ~62μs (release build, in-process) |
+| Avg Latency | ~850μs (release, all features, 2026-08-07) |
 
 ### 3.2 Benchmark Cases
 
@@ -120,11 +124,11 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 | 11 | Simulation spoofing (50000 vs 150 compute) | malicious | Blocked | Blocked ✓ |
 | 12 | Normal compute with baseline | safe | Approved | Approved ✓ |
 | 13 | SPL Token SetAuthority hijack | malicious | Blocked | Blocked ✓ |
-| 14 | REAL: CLINKSINK STMT Drainer (mainnet) | malicious | Blocked | Blocked ✓ |
-| 15 | REAL: AAT Drainer — Approve + assign ($3M+) | malicious | Blocked | Blocked ✓ |
-| 16 | REAL: Wormhole Hack ($320M, Feb 2022) | malicious | Blocked | Blocked ✓ |
-| 17 | REAL: AAT Mass Drain (25 accts) | malicious | Blocked | Blocked ✓ |
-| 18 | REAL: CLINKSINK Token Drain (co-signed) | malicious | Blocked | Blocked ✓ |
+| 14 | SYNTHETIC: CLINKSINK STMT Drainer (real program ID, synthetic accounts) | malicious | Blocked | Blocked ✓ |
+| 15 | SYNTHETIC: AAT Drainer — Approve + assign (real program ID, synthetic accounts) | malicious | Blocked | Blocked ✓ |
+| 16 | SYNTHETIC: Wormhole Hack ($320M, Feb 2022) (real program ID, synthetic accounts) | malicious | Blocked | Blocked ✓ |
+| 17 | SYNTHETIC: AAT Mass Drain (25 accts) (real program ID, synthetic accounts) | malicious | Blocked | Blocked ✓ |
+| 18 | SYNTHETIC: CLINKSINK Token Drain (real program ID, synthetic accounts) | malicious | Blocked | Blocked ✓ |
 
 ---
 
@@ -181,9 +185,9 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 
 ## 7. Known Limitations
 
-1. **Synthetic benchmark corpus** — The 13 synthetic benchmark cases are hand-crafted. The 5 real mainnet cases use program identity and account structure but do not include full instruction data bytes. Real on-chain instruction-level verification requires protocol manifests for unknown drainer programs (Phase 2).
+1. **Synthetic benchmark corpus** — 11 of the 16 scored benchmark cases use hand-crafted accounts (the 5 exploit reconstructions use real program IDs and are labeled SYNTHETIC per P16). Live on-chain verification is now exercised separately via `tests/live_transactions.rs` (real devnet corpus through the full pipeline) and the SAK devnet integration. Real on-chain instruction-level verification for drainer programs requires protocol manifests (Phase 2).
 
-2. **Protocol expansion** — 10 seed protocols are included. Phase 2 will expand to 15-20 with community-contributed manifests.
+2. **Protocol expansion** — 11 seed protocols are included. Phase 2 will expand to 15-20 with community-contributed manifests.
 
 3. **FakeSwap detection requires simulation integrity** — The FakeSwap pattern is detected by checking if swap intent routes to a swap program but expected state changes don't include output/credit. Full FakeSwap detection requires simulation integrity (Phase 2).
 
@@ -199,7 +203,7 @@ The 380 adversarial/exploit tests cover 9 attack categories:
 
 | Check | Result |
 |---|---|
-| `cargo test` | 630 passed, 0 failed |
+| `cargo test` | 680 passed, 0 failed (682 with `--include-ignored`) |
 | `cargo clippy` | 0 warnings |
 | `cargo fmt` | Clean |
 | `cargo build --release` | ~3.1MB binary |
@@ -235,5 +239,5 @@ cd sdk/typescript && npx tsc --noEmit
 
 ---
 
-**Phase 1 + 1.5: COMPLETE (frozen v0.1.0-alpha, 2026-07-23)**  
-**Phase 2 (Public Beta): READY TO BEGIN**
+**Phase 1 + 1.5: COMPLETE (frozen v0.1.0-alpha; Phase 1.5 verified on devnet 2026-08-07)**  
+**Phase 2 (Public Beta): READY TO BEGIN — all Phase 2 work on `phase2-development`**

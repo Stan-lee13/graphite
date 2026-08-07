@@ -1,5 +1,14 @@
 # Phase 2 — Public Beta Development Branch
 
+## Phase 2 Branch Rules (non-negotiable)
+
+1. **ALL Phase 2 work happens on `phase2-development`.** Feature branches (`feature/*`) merge into `phase2-development`; no direct commits to `main`.
+2. **No direct pushes to `main` during Phase 2.** `main` is frozen at the v0.1.0-alpha + Phase 1.5 state unless a critical hotfix (`hotfix/*`) is required.
+3. **`main` only receives Phase 2 work via PR after Phase 2 certification** — i.e., all Phase 2 exit criteria met, tagged as `v0.2.0-beta`.
+4. **Before starting work:** `git checkout phase2-development && git pull origin phase2-development`. If it is behind `main`, rebase: `git rebase main`.
+5. **After committing:** `git push origin phase2-development` (never `main`).
+6. **Every merge to `phase2-development` must pass the full Testing Discipline gate below** (fmt, clippy, all test suites, SDKs, benchmark) and keep all existing tests green.
+
 ## Branch Strategy
 
 ```
@@ -60,4 +69,4 @@ Every feature merge to phase2-development must pass:
 - TypeScript SDK (`tsc --noEmit`)
 - Python AI Layer (`pytest`)
 - Benchmark (`cargo run --release --bin graphite benchmark`)
-- No regressions in existing 646 tests
+- No regressions in existing 680 tests

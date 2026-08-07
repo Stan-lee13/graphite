@@ -8,6 +8,12 @@ Graphite is a transaction verification engine for Solana AI agents. Every contri
 2. Read the [Roadmap](ROADMAP.md) — understand what's in scope for the current phase
 3. Check the [Engineering Skill](https://github.com/Stan-lee13/graphite-engineering-skill) — the canonical source for layer names, personas, and checklists
 
+## Branch Rules
+
+- **Phase 1 / 1.5 maintenance:** fixes go to `main` only via `hotfix/*` branches (critical bugs).
+- **All Phase 2 work goes to `phase2-development`** (feature branches `feature/*` merge into it). **No direct pushes to `main` during Phase 2** — `main` receives Phase 2 work only via PR after Phase 2 certification.
+- Start from `phase2-development` (`git checkout phase2-development && git pull origin phase2-development`); if it is behind `main`, rebase first.
+
 ## Development Setup
 
 ```bash
@@ -42,8 +48,15 @@ Every PR must satisfy all 16 Constitution principles. The most commonly violated
 
 ## PR Checklist
 
-- [ ] `cargo test --release` passes (0 failures)
-- [ ] `cargo clippy --release -- -D warnings` passes (0 warnings)
+Every merge to `phase2-development` (and every `hotfix/*` to `main`) must pass the full CI gate. CI runs these on every push — a red CI blocks the merge:
+
+- [ ] `cargo fmt --all -- --check` clean (0 diffs)
+- [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)
+- [ ] `cargo test --release` passes (0 failures — currently 680 tests; `--include-ignored` for the live devnet corpus)
+- [ ] `cargo check --no-default-features` builds (embedded-use contract; async code is gated behind `--features rpc`)
+- [ ] TypeScript SDK `npm run build` / `tsc --noEmit` clean
+- [ ] Go SDK `go test ./...` passes
+- [ ] Python AI layer `pytest` passes
 - [ ] No new `unwrap()` or `panic!()` in the verification hot path
 - [ ] Constitution principles checked (P1-P16)
 - [ ] No public performance claim without reproducible benchmark (P16)

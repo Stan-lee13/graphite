@@ -3,6 +3,42 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Phase 1.5 Completion — Devnet Verified] — 2026-08-07
+
+### RPC Client (live-verified against Helius mainnet + devnet)
+- **`get_slot` u64 parse fix** — the live `getSlot` response is a plain `u64`; the client parsed `result.value`, so every call failed `InvalidResponse`. This silently broke the live-corpus test and L3 wiring.
+- **`get_account` null check** — a `value: null` response now returns `AccountNotFound` instead of fabricating a zeroed account that flowed through typed as real state.
+- **`get_oracle_price` placeholder removed** — was a hardcoded zeroed `OraclePrice` fake (dead code, unused repo-wide).
+- **`is_account_frozen` byte 108 fix** — the SPL token account `state` field sits at byte **108**; the client read byte 46 (the mint field), so freeze state was read from the wrong offset.
+- **`post_rpc` exponential backoff** — retry-aware RPC helper with exponential backoff on `429`/`5xx`; `max_retries` config is now actually honored. New `RpcError::RateLimited` surfaced correctly.
+- **9 new unit tests** for the RPC client (mock server, no network dependency).
+
+### Server Hardening
+- **Bearer API key auth** — constant-time SHA-256 comparison; `/verify` and `/manifests` protected, `/health` open for load balancers.
+- **Per-IP token-bucket rate limiting** — configurable (`GRAPHITE_RATE_LIMIT`), FIFO eviction, returns `429`.
+- **CORS denied by default** — configurable allowlist (`GRAPHITE_CORS_ORIGINS`); server-to-server clients unaffected.
+- **Audit log persistence** — append-only JSONL (`audit.jsonl`) covering all 4 paths: approved / blocked / 400 / 500.
+- **Graceful shutdown** and **`X-Forwarded-For` trusted only behind an explicit proxy flag**.
+
+### L3/L8 Honest Layer States
+- **L3 provenance-aware tri-state** — `Passed` / `Failed` / `Inconclusive`; the real simulation verdict is now reported (no more phantom `passed: true`).
+- **L8 honestly reports "not yet verified"** with an audit-trail event until live execution is wired (Phase 2).
+- Audit trail records `l3_status` / `l8_status`; verdict math unchanged (penalties key off `Failed` only) — 671 → 680 tests all green.
+
+### Novel Instruction Fail-Closed (P12)
+- **Unknown discriminator on a known protocol with a high-risk intent → BLOCKED**; a non-blocking warning is surfaced in the L7 layer report and the summary for novel instructions on known protocols (GAP-1).
+
+### Validation & Determinism
+- **Whitespace-only `program_id` rejection** in `seed_simulation_baseline` (GAP-9) — empty check extended to whitespace-only strings (poison key that survives snapshot restore).
+- **Proptest invariant suite** — `proptest_engine.rs`: 512 cases, pinned regression.
+- **PDA known-answer tests** — cross-validated against `@solana/web3.js` (Raydium AMM V4 `amm_authority`, CPMM `vault_and_lp_mint_auth_seed`), pinned 2026-08-06.
+- **Manifest ID regression test** — `test_all_seed_manifest_program_ids_are_canonical` pins all 11 program IDs.
+
+### Integration & CI
+- **SAK integration verified on Solana devnet** — 5 finalized transactions (2 faucet airdrops + 3 SAK test transfers), wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized.
+- **CI: 4/4 jobs green** — Rust (fmt/clippy/tests + no-default-features gates), TypeScript SDK + SAK, Go SDK, Python AI layer.
+- **Final state: 680 tests, 0 failures, 0 clippy warnings, fmt clean, ~850μs avg benchmark latency** (16 scored cases, 100% precision/recall).
+
 ## [Production Readiness Pass] — 2026-08-06
 
 ### Security Fixes

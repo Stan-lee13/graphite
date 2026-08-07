@@ -43,6 +43,13 @@ The `confidence_of_parse` field measures how confident the parser is that it
 understood the user — this is NOT the same as Graphite Core's verification
 confidence score. Conflating these two numbers is a Constitution P1 violation.
 
+## Status (verified Aug 7, 2026)
+
+The parser is unchanged in scope: advisory intent parsing only — it never
+verifies, approves, or executes. The end-to-end SAK → Graphite pipeline
+(which consumes this parser's `ProposedIntent` JSON) was verified on Solana
+devnet with 5 finalized transactions. 7/7 parser tests pass.
+
 ## Tests
 
 ```bash

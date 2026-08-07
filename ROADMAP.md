@@ -13,12 +13,12 @@
 - [x] Python advisory layer (separate process — P1 compliance)
 - [x] HTTP server (axum) + CLI (clap)
 - [x] Dockerfile + .dockerignore
-- [x] 635 unit/integration tests passing, 0 clippy warnings
+- [x] 680 unit/integration tests passing, 0 clippy warnings
 
 ### Phase 1 Honest Status
 
-The benchmark is 18 handcrafted test cases with hardcoded expected outcomes — NOT a
-statistical evaluation on unseen data. "100% pass rate on handcrafted tests" is
+The benchmark is 16 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a
+statistical evaluation on unseen data. "100% precision / 100% recall on scored cases" is
 the honest claim. The 5 exploit reconstructions (CLINKSINK, AAT, Wormhole) use real
 program IDs but fabricated account structures and no instruction data bytes.
 They are labeled "SYNTHETIC" per P16.
@@ -29,11 +29,11 @@ The `content_hash` field is a SHA-256 hash of the transaction configuration — 
 
 **Phase 1.5 limitation:** Graphite verifies the transaction structure but does not re-hash the final signed transaction against the approved `content_hash` before execution. Full TOCTOU prevention requires the executor (SAK integration) to verify that the executed transaction matches the verified one — Phase 2 AuditBind middleware.
 
-## Phase 1.5 (COMPLETE — pending live devnet test)
+## Phase 1.5 (COMPLETE — devnet verified Aug 7, 2026)
 
 - [x] Extreme adversarial test suite (50+ tests)
 - [x] Real exploit pattern reconstructions (5 classes, honestly labeled SYNTHETIC)
-- [x] SAK integration rebuilt with real solana-agent-kit v2 imports
+- [x] SAK integration rebuilt with real solana-agent-kit v2 imports — **VERIFIED ON DEVNET**
 - [x] Pre-flight account reconstruction (wallet authority always present)
 - [x] Case-sensitive intent parsing (Solana addresses are case-sensitive)
 - [x] content_hash field for deterministic verification (P2)
@@ -42,7 +42,7 @@ The `content_hash` field is a SHA-256 hash of the transaction configuration — 
 
 ### Phase 1.5 Honest Status
 
-The SAK integration is code-complete with real imports:
+The SAK integration is code-complete with real imports and **verified on Solana devnet (Aug 7, 2026)**:
 - Imports `solana-agent-kit` v2 (real npm package, not an HTTP wrapper)
 - Imports `@solana-agent-kit/plugin-token` and `@solana-agent-kit/plugin-defi`
 - Uses real SAK API: `SolanaAgentKit`, `KeypairWallet`, `.use()`, `.methods.swap()`
@@ -50,9 +50,25 @@ The SAK integration is code-complete with real imports:
 - Every transaction goes through Graphite verification before SAK execution
 - Pre-flight account reconstruction: wallet authority + program IDs always present
 - If Graphite blocks, the transaction is NOT submitted to the network
+- **5 finalized transactions on Solana devnet** (2 faucet airdrops + 3 SAK test transfers),
+  wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR` — latest signature
+  `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ`
+  confirmed and finalized. SAK → Graphite pipeline confirmed end-to-end.
 
-**Not yet tested on devnet** — requires `npm install` + Solana RPC + wallet key.
-Code is production-ready but needs live integration testing (Phase 2 exit criterion).
+### Phase 1.5 Exit Criteria (all checked)
+
+- [x] Extreme adversarial test suite (50+ tests)
+- [x] Real exploit pattern reconstructions (5 classes, honestly labeled SYNTHETIC)
+- [x] SAK integration rebuilt with real solana-agent-kit v2 imports
+- [x] SAK integration verified on Solana devnet (5 finalized transactions, Aug 7 2026)
+- [x] Pre-flight account reconstruction (wallet authority always present)
+- [x] Case-sensitive intent parsing (Solana addresses are case-sensitive)
+- [x] content_hash field for deterministic verification (P2)
+- [x] .github CI templates + issue templates
+- [x] LICENSE, SECURITY.md, CONTRIBUTING.md
+- [x] 680 tests passing, 0 clippy warnings, fmt clean
+- [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
+- [x] RPC client live-verified against Helius (mainnet + devnet)
 
 ## Phase 2 (PLANNED — branch: phase2-development)
 
@@ -76,8 +92,8 @@ Code is production-ready but needs live integration testing (Phase 2 exit criter
 - [ ] AuditBind middleware (TOCTOU prevention — re-hash signed tx vs approved content_hash)
 
 ### Month 3: Live Integration + Dashboard
-- [ ] Live SAK integration on devnet (code exists, needs npm install + RPC + wallet)
-- [ ] L3 Simulation Verification active (requires RPC connection)
+- [x] Live SAK integration on devnet — **COMPLETE (devnet verified Aug 7, 2026)**
+- [ ] L3 Simulation Verification fully active in production (RPC wiring exists; production activation is Phase 2 exit)
 - [ ] L8 Execution Verification active (requires live execution)
 - [ ] React dashboard showing live verification state
 - [ ] Phase 2 certification
