@@ -28,6 +28,10 @@ pub enum RiskPattern {
     PermissionEscalation,
     MaliciousAccountChange,
     CompositionalDrainPattern,
+    /// Fund movement to/from an address that vanity-impersonates an official
+    /// system account (trailing 11111 or Compu prefix) — SolPhishHunter
+    /// arXiv:2505.04094 attack class.
+    Impersonation,
 }
 
 /// Verdict from risk assessment.
@@ -409,6 +413,33 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         });
     }
 
+    // P0 Check 10: System-account impersonation (ISA) — a fund-movement
+    // instruction whose counterparty vanity-impersonates an official account.
+    //
+    // Grounding: SolPhishHunter (arXiv:2505.04094) documents this as a real
+    // attack class — phishers grind addresses that end in 5+ '1' chars or start
+    // with "Compu" (e.g. `...DxbLhV11111`, `CompuV3LmCTW7AG...`) so wallet UIs
+    // that truncate addresses display them as official system accounts.
+    // Random 32-byte keys almost never end in 5+ zero bytes (~1 in 2^40), so a
+    // transfer counterparty with this shape is deliberately ground.
+    //
+    // Only applied to known fund-movement discriminators (System transfer 0x02,
+    // Token/Token-2022 transfer 0x03 and transferChecked 0x0c) to avoid flagging
+    // legitimate program-authority usage of similar-looking PDAs.
+    if let Some(impersonator) = detect_system_account_impersonation(
+        &input.program_id,
+        &input.instruction_discriminator,
+        &input.accounts,
+    ) {
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::Impersonation,
+            reason: format!(
+                "System-account impersonation: fund movement to/from {} whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)",
+                impersonator
+            ),
+        });
+    }
+
     Ok(RiskVerdict::Passed)
 }
 
@@ -603,6 +634,7 @@ impl RiskPattern {
             RiskPattern::PermissionEscalation => "PermissionEscalation",
             RiskPattern::MaliciousAccountChange => "MaliciousAccountChange",
             RiskPattern::CompositionalDrainPattern => "CompositionalDrainPattern",
+            RiskPattern::Impersonation => "Impersonation",
         }
     }
 }
@@ -646,9 +678,189 @@ pub fn detect_intent_program_mismatch(program_id: &str, intent_type: &str) -> Op
     None
 }
 
+/// Detect fund movement to/from an address that impersonates an official system
+/// account (ISA attack class, SolPhishHunter arXiv:2505.04094).
+///
+/// The heuristic mirrors the paper's own detector: a counterparty whose base58
+/// address ends in 5+ '1' characters (vanity-ground trailing zero bytes) or
+/// starts with "Compu" (mimicking ComputeBudget1111...) is treated as
+/// impersonating an official account. Official programs themselves are excluded
+/// by exact match so legitimate interactions with the real system/ComputeBudget
+/// programs are never flagged.
+///
+/// Only fund-movement instructions are considered: System transfer (0x02) and
+/// SPL Token/Token-2022 transfer (0x03) / transferChecked (0x0c). Non-fund
+/// instructions (assign, approve, mint, ...) are out of scope — those have
+/// their own P0 checks.
+fn detect_system_account_impersonation(
+    program_id: &str,
+    discriminator: &str,
+    accounts: &[String],
+) -> Option<String> {
+    const SYSTEM: &str = "11111111111111111111111111111111";
+    const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+    const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+
+    let is_fund_movement = match program_id {
+        p if p == SYSTEM => discriminator.to_lowercase().starts_with("02"),
+        p if p == TOKEN || p == TOKEN_2022 => {
+            let d = discriminator.to_lowercase();
+            d.starts_with("03") || d.starts_with("0c")
+        }
+        _ => false,
+    };
+    if !is_fund_movement {
+        return None;
+    }
+
+    // Official accounts that legitimately appear in transfers (excluded by
+    // exact match — the vanity check only applies to non-official addresses).
+    const OFFICIAL: &[&str] = &[
+        SYSTEM,
+        TOKEN,
+        TOKEN_2022,
+        "ComputeBudget111111111111111111111111111111",
+        "SysvarRent111111111111111111111111111111111",
+        "SysvarC1ock11111111111111111111111111111111",
+        "SysvarRecentB1ockHashes11111111111111111111",
+        "Stake11111111111111111111111111111111111111",
+        "Vote111111111111111111111111111111111111111",
+        "BPFLoader2111111111111111111111111111111111",
+        "BPFLoaderUpgradeab1e11111111111111111111111",
+        "NativeLoader111111111111111111111111111111",
+    ];
+
+    for acc in accounts {
+        if acc.len() < 32 {
+            continue; // not a plausible pubkey — ignore garbage inputs
+        }
+        if OFFICIAL.contains(&acc.as_str()) {
+            continue;
+        }
+        let ends_vanity = acc.ends_with("11111");
+        let compu_prefix = acc.starts_with("Compu");
+        if ends_vanity || compu_prefix {
+            return Some(acc.clone());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ISA: a System transfer whose destination ends in a vanity 11111 suffix
+    /// (a real documented phishing address shape) must be blocked with the
+    /// Impersonation pattern — not merely fail on low confidence.
+    #[test]
+    fn test_system_transfer_to_vanity_11111_address_is_blocked() {
+        let input = RiskAssessmentInput {
+            program_id: "11111111111111111111111111111111".to_string(),
+            accounts: vec![
+                "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(),
+                // Shape documented in SolPhishHunter TABLE V
+                "iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111".to_string(),
+            ],
+            cpi_targets: vec![],
+            expected_state_changes: vec!["debits accounts.source by amount".to_string()],
+            allowed_cpis: vec![],
+            instruction_discriminator: "0200000000000000".to_string(),
+            expected_account_count: Some(2),
+            variable_accounts: false,
+            proposed_intent_type: "transfer".to_string(),
+            extracted_output_token: None,
+        };
+        assert_eq!(
+            assess(&input).unwrap(),
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Impersonation,
+                reason: "System-account impersonation: fund movement to/from iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111 whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)".to_string(),
+            }
+        );
+    }
+
+    /// ISA variant: a transfer to a "Compu..."-prefixed vanity address must
+    /// also be blocked (mimics ComputeBudget1111...).
+    #[test]
+    fn test_token_transfer_to_compu_prefixed_address_is_blocked() {
+        let input = RiskAssessmentInput {
+            program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+            accounts: vec![
+                "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP".to_string(),
+                "CompuV3LmCTW7AGGnM6YBftCJkKP3ZKkK1fCAY8L7eM1".to_string(),
+            ],
+            cpi_targets: vec![],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            instruction_discriminator: "0c00000000000000".to_string(), // transferChecked
+            expected_account_count: None,
+            variable_accounts: false,
+            proposed_intent_type: "transfer".to_string(),
+            extracted_output_token: None,
+        };
+        assert_eq!(
+            assess(&input).unwrap(),
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Impersonation,
+                reason: "System-account impersonation: fund movement to/from CompuV3LmCTW7AGGnM6YBftCJkKP3ZKkK1fCAY8L7eM1 whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)".to_string(),
+            }
+        );
+    }
+
+    /// The rule must NOT fire for legitimate transfers: real program IDs and
+    /// normal counterparties stay Clear.
+    #[test]
+    fn test_transfer_to_official_and_normal_addresses_not_flagged() {
+        let input = RiskAssessmentInput {
+            program_id: "11111111111111111111111111111111".to_string(),
+            accounts: vec![
+                "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(),
+                "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP".to_string(),
+            ],
+            cpi_targets: vec![],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            instruction_discriminator: "0200000000000000".to_string(),
+            expected_account_count: Some(2),
+            variable_accounts: false,
+            proposed_intent_type: "transfer".to_string(),
+            extracted_output_token: None,
+        };
+        assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
+    }
+
+    /// The rule must NOT fire on non-fund instructions (e.g. System Assign to a
+    /// program whose address ends in 11111 is a different check's concern).
+    #[test]
+    fn test_impersonation_rule_only_fires_on_fund_movement() {
+        let input = RiskAssessmentInput {
+            program_id: "11111111111111111111111111111111".to_string(),
+            accounts: vec![
+                "walletToAssign11111111111111111111111".to_string(),
+                "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD".to_string(),
+            ],
+            cpi_targets: vec![],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            instruction_discriminator: "0100000000000000".to_string(), // assign
+            expected_account_count: None,
+            variable_accounts: false,
+            proposed_intent_type: "unknown".to_string(),
+            extracted_output_token: None,
+        };
+        // Assign is not fund movement — the impersonation rule stays silent.
+        // (The AuthorityHijack rule for assign fires on the empty-discriminator
+        // path only; with a real discriminator this is left to the pipeline.)
+        assert_eq!(
+            detect_system_account_impersonation(
+                &input.program_id,
+                &input.instruction_discriminator,
+                &input.accounts
+            ),
+            None
+        );
+    }
 
     #[test]
     fn test_assess_with_warnings_surfaces_unexpected_cpi_warning() {

@@ -993,8 +993,18 @@ impl GraphiteCore {
         &self,
         input: &VerificationInput,
     ) -> Result<VerificationResult, VerificationError> {
-        // Input validation: cap account count to prevent DoS
-        const MAX_ACCOUNTS: usize = 64;
+        // Input validation: cap account count to prevent DoS.
+        //
+        // The cap is set to Solana's own protocol limit (256 keys in a
+        // transaction message; v0 messages can reference more via address
+        // lookup tables, but the static key list is bounded at 256). The
+        // previous 64-account cap rejected LEGITIMATE modern transactions —
+        // real Jupiter V6 route instructions routinely carry 70+ accounts
+        // (one per route step), and the P16 mainnet benchmark surfaced a
+        // 72-account route being rejected with a misleading "expected 64"
+        // error. Bounding at the protocol limit still prevents unbounded
+        // memory/CPU waste while never rejecting valid traffic.
+        const MAX_ACCOUNTS: usize = 256;
         if input.account_addresses.len() > MAX_ACCOUNTS {
             return Err(VerificationError::AccountResolution(
                 crate::account_resolution::AccountResolutionError::AccountCountMismatch {
@@ -2358,6 +2368,94 @@ mod tests {
             cpi_hops: 0,
             signed_transaction: None,
         }
+    }
+
+    /// P16 finding: the previous 64-account DoS cap rejected legitimate modern
+    /// transactions — a real Jupiter V6 route on mainnet carries 72 accounts
+    /// (one per route step). The cap now matches Solana's protocol limit (256),
+    /// so a 72-account route must verify rather than hit a misleading
+    /// "expected 64" account-count error.
+    #[test]
+    fn test_large_legitimate_route_account_list_is_not_rejected_by_cap() {
+        let mut core = GraphiteCore::new();
+        // Steady-state node: Jupiter has earned evidence (battle-tested volume)
+        // and a simulation baseline, so a matched route can exceed the
+        // TradingBot 0.80 confidence threshold. Without this, the fresh-node
+        // cold-start ceiling (0.44) blocks everything — a documented P7
+        // earned-evidence property, not a cap bug.
+        use crate::semantic_graph_store::{Behavior, BehaviorEvidence};
+        use crate::simulation_integrity::ComputeBaseline;
+        let jup = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+        core.seed_behavior(Behavior {
+            program_id: jup.to_string(),
+            version: "1.0.0".to_string(),
+            expected_state_changes: vec!["Jupiter V6 aggregator instruction".to_string()],
+            allowed_cpis: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
+            trust_tier: crate::TrustTier::BattleTested,
+            evidence: BehaviorEvidence {
+                has_signed_manifest: true,
+                community_verified_count: 5,
+                battle_tested_tx_count: 50000,
+                simulation_match_count: 100,
+            },
+            quarantined: false,
+            quarantine_reason: None,
+        })
+        .unwrap();
+        core.seed_simulation_baseline(
+            jup,
+            ComputeBaseline {
+                mean_compute_units: 150.0,
+                std_compute_units: 1.0,
+                sample_count: 50,
+                mean_account_writes: 2.0,
+                std_account_writes: 0.5,
+                mean_cpi_hops: 0.0,
+                std_cpi_hops: 0.1,
+            },
+        )
+        .unwrap();
+        // 72 distinct valid pubkeys (the shape of a real Jupiter route tx).
+        let mut accounts: Vec<String> = Vec::new();
+        for i in 0..72u8 {
+            let mut bytes = [0u8; 32];
+            bytes[0] = 1;
+            bytes[1] = i;
+            let addr = crate::solana_types::Pubkey(bytes).to_base58();
+            accounts.push(addr);
+        }
+        let input = VerificationInput {
+            proposed_intent: ProposedIntent {
+                intent_type: "swap".to_string(),
+                raw_natural_language: "Swap tokens".to_string(),
+                confidence_of_parse: 0.9,
+                extracted_parameters: None,
+            },
+            program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
+            protocol_version: "1.0.0".to_string(),
+            instruction_discriminator: "bb64facc31c4af14".to_string(), // route_v2
+            account_addresses: accounts,
+            instruction_data: None,
+            cpi_targets: vec![],
+            wallet_profile: WalletProfile::TradingBot,
+            behavior_evidence: BehaviorEvidence {
+                has_signed_manifest: true,
+                community_verified_count: 5,
+                battle_tested_tx_count: 50000,
+                simulation_match_count: 100,
+            },
+            compute_units: 150,
+            account_writes: 2,
+            cpi_hops: 0,
+            signed_transaction: None,
+        };
+        let result = core
+            .verify(&input)
+            .expect("72-account route must not be rejected by the cap");
+        assert!(
+            result.approved,
+            "known Jupiter route with earned evidence must approve"
+        );
     }
 
     #[test]

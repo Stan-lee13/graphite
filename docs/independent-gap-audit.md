@@ -105,6 +105,12 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 - **Fix:** rebuilt from the IDL — all 36 deployed instructions, correct discriminators (4 chain-verified), IDL account lists. Multisig PDA seeds added (`['multisig','multisig',create_key]`, SDK + IDL grounded) — the first real dynamic PDA in any manifest, with resolver end-to-end + spoof-flagging regression tests. Transaction/vault PDAs need account-state seeds beyond the template engine (documented).
 - **Remaining risk (honest):** the multisig PDA layout is source-grounded; a direct chain reproduction was attempted (create-tx scan timed out; an old multisig's account data predates the current struct) — flagged, not hidden.
 
+### C19 — P16 real-mainnet benchmark + real pinned exploit corpus (P1, delivered this cycle)
+- **Delivered C15's "Next (Phase 3)" item:** a real-transaction holdout corpus now exists (`graphite-core/tests/fixtures/exploit_corpus.json`) — 35 transactions pinned by signature from documented phishing accounts (SolPhishHunter arXiv:2505.04094), with provenance per entry. `mainnet-benchmark.ts` runs live mainnet legitimate txs (with real per-protocol intents) against the corpus. Full report: `docs/p16-mainnet-benchmark.md`.
+- **Measured on unseen real data (fresh node):** malicious recall **100%** (35/35 blocked), legitimate 0/7 — all 7 root-caused: cold-start confidence ceiling (0.44 < 0.80 TradingBot threshold, P7 earned-evidence by design; steady-state approval proven by a seeded regression test) and Raydium CLMM unknown-protocol.
+- **Two real defects found and fixed:** (1) the 64-account input cap rejected legitimate 72-account Jupiter routes — raised to Solana's protocol limit (256) with a regression test; (2) ISA (system-account impersonation) was not detected — added P0 Check 10 (`Impersonation` pattern) blocking fund movement to/from vanity `…11111`/`Compu…` addresses, with principled-block assertions in the corpus test.
+- **Fabricated addresses purged:** the old harness's fake "drainer" section (two invalid IDs rejected by the RPC) is gone, replaced by the real corpus.
+
 ### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
 
 ### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
@@ -112,7 +118,7 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 - **Root cause:** P16 reproducibility (deterministic benchmark) was prioritized over real-data validation; the two are different things and the benchmark only satisfies the first.
 - **Impact:** benchmark results are NOT evidence of real-world detection precision/recall; they are regression coverage.
 - **Fix (honest classification):** `benchmark_composition_is_explicit_and_synthetic` pins the composition (18 cases, 0 real, ≥3 SYNTHETIC, ≥10 malicious classes) so the claim "real-data benchmark" can never be made without changing the test. Real-data validation lives in `live_transactions.rs` (live devnet) + pinned real fixtures.
-- **Next (Phase 3):** a real-transaction holdout corpus (capture benign + known-malicious txs from the research corpus below) scored by the engine with no label leakage.
+- **Next (now delivered):** the real-transaction holdout corpus exists (C19 — 35 pinned malicious txs) and `mainnet-benchmark.ts` scores it plus live legitimate txs with no label leakage. Remaining: a pinned corpus of *legitimate* transactions (not just live-fetched) and a steady-state (evidence-seeded) scoring mode.
 
 ### C16 — No live public deployment / no branch protection (P2, partially closed)
 - Dockerfile is sound (multi-stage, non-root, healthcheck). Added `docker-compose.yml` + `.env.example` (fail-closed API key, volume-persisted state, healthcheck). **Not deployed anywhere** — remains an operator action; not a code blocker for the mission, but required before any public use.

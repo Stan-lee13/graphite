@@ -28,3 +28,7 @@ devnet-keypair.json
 
 # Freebuff app scratch + local build toolchains (never commit)
 .freebuff/
+
+# Graphite runtime data (created by the local server)
+graphite-core/graphite-data/
+graphite-data/

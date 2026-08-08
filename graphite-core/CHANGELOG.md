@@ -3,6 +3,20 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [P16 Real-Mainnet Benchmark — C19: Real Exploit Corpus + Two Real Defects Fixed] — 2026-08-08
+
+### First P16 run on unseen real data
+- **Real pinned exploit corpus (35 entries):** `tests/fixtures/exploit_corpus.json` — transactions pinned by signature from documented phishing accounts (SolPhishHunter arXiv:2505.04094; STMT/AAT/ISA attack classes), reproducible via `integrations/solana-agent-kit/build_exploit_corpus.mts`. `tests/exploit_corpus_tests.rs` enforces: every entry blocked, ISA blocks principled (`Impersonation` pattern).
+- **`mainnet-benchmark.ts` rewritten honestly:** per-protocol real intents (DEX → swap; Squads → empty intent, reported honestly), real pinned corpus for the malicious half, JSON report output. Old fake "drainer" section (two invalid addresses rejected by the RPC: fabricated Marinade/Drift IDs) removed.
+- **Result (fresh node):** malicious recall **100%** (35/35 blocked, 0 missed); legitimate 0/7 — all root-caused: cold-start confidence ceiling (0.44 < 0.80 TradingBot threshold, P7 earned evidence by design; steady-state approval proven by a seeded regression test) and Raydium CLMM unknown-protocol.
+
+### Two real defects found and fixed
+- **64-account input cap rejected legitimate modern transactions (C19.1):** a real 72-account Jupiter V6 route tx was rejected with `Account count mismatch: expected 64, got 72`. Cap raised to Solana's protocol limit (**256**); regression test proves the exact 72-account route verifies and approves with earned evidence.
+- **ISA (system-account impersonation) not detected (C19.2):** added **P0 Check 10** — fund movement (System transfer 0x02, Token transfer 0x03 / transferChecked 0x0c) to/from an address impersonating an official system account (vanity `…11111` suffix or `Compu` prefix) is blocked with the new `Impersonation` risk pattern. Grounded in the paper's own detection criteria; corpus test asserts the blocks are principled (risk = Impersonation), not incidental low-confidence rejections.
+
+### Honest cold-start finding (documented, by design)
+- On a fresh node, earned-evidence signals (HistoricalVolume, CommunityVerification) are zero (P7), so max confidence for a manifest-matched tx is 0.44 — below every production profile threshold. Not a regression; a live deployment accrues evidence and attaches an RPC client for L3 simulation. Full numbers and reproducibility in `docs/p16-mainnet-benchmark.md`.
+
 ## [Independent Gap Audit — C18 Squads Rebuild + Dynamic PDA Grounded] — 2026-08-08
 
 ### Squads V4 Manifest Rebuilt from the Official IDL (C18)
