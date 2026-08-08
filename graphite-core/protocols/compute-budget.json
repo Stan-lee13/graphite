@@ -1,0 +1,50 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Compute Budget Program",
+    "program_id": "ComputeBudget111111111111111111111111111111",
+    "note": "Tier-0 foundational native program (added 2026-08-08): sets per-transaction compute limits, priority fees, and heap/account-data sizes. Present in almost every modern mainnet transaction (0x02/0x03/0x04 observed live in all three pinned fixtures 2026-08-08). No accounts; pure instruction-data instructions.",
+    "website": "https://docs.solana.com/transaction-optimization/priority-fees",
+    "github": "https://github.com/anza-xyz/agave/blob/master/sdk/program/src/compute_budget.rs"
+  },
+  "version": {
+    "label": "native",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "RequestHeapFrame",
+      "discriminator": "01",
+      "accounts": [],
+      "expected_state_changes": ["requests an additional heap frame for the transaction"],
+      "allowed_cpis": [],
+      "risk_rules": ["no accounts touched; transaction-level setting"]
+    },
+    {
+      "name": "SetComputeUnitLimit",
+      "discriminator": "02",
+      "accounts": [],
+      "expected_state_changes": ["sets the transaction's compute unit limit"],
+      "allowed_cpis": [],
+      "risk_rules": ["no accounts touched; transaction-level setting", "observed live in pinned fixtures (data_len 6 = tag + u32)"]
+    },
+    {
+      "name": "SetComputeUnitPrice",
+      "discriminator": "03",
+      "accounts": [],
+      "expected_state_changes": ["sets the transaction's priority fee (micro-lamports per CU)"],
+      "allowed_cpis": [],
+      "risk_rules": ["no accounts touched; transaction-level setting", "observed live in pinned fixtures (data_len 12 = tag + u64)"]
+    },
+    {
+      "name": "SetLoadedAccountsDataSizeLimit",
+      "discriminator": "04",
+      "accounts": [],
+      "expected_state_changes": ["sets the transaction's loaded-accounts data size limit"],
+      "allowed_cpis": [],
+      "risk_rules": ["no accounts touched; transaction-level setting", "observed live in pinned system fixture (data_len 6)"]
+    }
+  ],
+  "trust_tier": "OfficialManifest"
+}

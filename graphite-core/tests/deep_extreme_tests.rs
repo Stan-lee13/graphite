@@ -77,13 +77,13 @@ fn no_evidence() -> BehaviorEvidence {
 // ============================================================
 
 #[test]
-fn test_all_16_manifests_load_with_valid_pubkeys() {
+fn test_all_20_manifests_load_with_valid_pubkeys() {
     let registry = load_seed_manifests();
     let manifests = registry.list();
     assert_eq!(
         manifests.len(),
-        16,
-        "expected exactly 16 seed manifests (11 Phase 1 + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata + classic SPL memo restored C16)"
+        20,
+        "expected exactly 20 seed manifests (16 + Tier-0: ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable)"
     );
 
     for m in &manifests {
@@ -116,6 +116,17 @@ fn test_every_instruction_has_accounts() {
     let registry = load_seed_manifests();
     for m in registry.list() {
         for ix in &m.instructions {
+            // Compute Budget instructions take NO accounts by design (Solana
+            // source: sdk/program/src/compute_budget.rs) — they are tx-level
+            // settings attached to other instructions, never standalone.
+            if m.protocol.program_id == "ComputeBudget111111111111111111111111111111" {
+                assert!(
+                    ix.accounts.is_empty(),
+                    "Compute Budget instruction '{}' unexpectedly declares accounts",
+                    ix.name
+                );
+                continue;
+            }
             assert!(
                 !ix.accounts.is_empty(),
                 "instruction '{}' in '{}' has no accounts",
@@ -910,6 +921,26 @@ fn test_all_protocols_verifiable() {
     let dummy_accounts: Vec<&str> = vec![dummy; 20];
 
     for m in registry.list() {
+        // Compute Budget instructions carry zero accounts by design and never
+        // appear standalone; the pipeline (transaction_builder) requires >=1
+        // account for a meaningful plan. Its discriminators are instead
+        // grounded against real on-chain fixture bytes by
+        // test_tier0_manifest_discriminators_match_real_mainnet_fixtures.
+        if m.protocol.program_id == "ComputeBudget111111111111111111111111111111" {
+            assert!(
+                core.verify(&make_input(
+                    &m.protocol.program_id,
+                    &m.instructions[0].discriminator,
+                    &[],
+                    &[],
+                    WalletProfile::TradingBot,
+                    good_evidence(),
+                ))
+                .is_err(),
+                "Compute Budget alone should be rejected as an empty plan"
+            );
+            continue;
+        }
         let ix = &m.instructions[0];
         let n_accounts = ix.accounts.len();
         let accounts = &dummy_accounts[..n_accounts];

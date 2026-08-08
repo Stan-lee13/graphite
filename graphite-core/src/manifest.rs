@@ -219,6 +219,10 @@ pub fn load_seed_manifests() -> ManifestRegistry {
         "../protocols/memo-program.json",
         "../protocols/legacy-memo-program.json",
         "../protocols/spl-memo-program.json",
+        "../protocols/ata-program.json",
+        "../protocols/compute-budget.json",
+        "../protocols/bpf-loader.json",
+        "../protocols/bpf-loader-upgradeable.json",
         "../protocols/pump-fun.json",
         "../protocols/jupiter-dca.json",
         "../protocols/wormhole-core.json",
@@ -227,57 +231,68 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 
     for p in &seed_paths {
         // include_str! requires a string literal; map path to literal explicitly
-        let res = match *p {
-            "../protocols/system-program.json" => {
-                registry.load_from_json(include_str!("../protocols/system-program.json"))
-            }
-            "../protocols/spl-token.json" => {
-                registry.load_from_json(include_str!("../protocols/spl-token.json"))
-            }
-            "../protocols/token-2022.json" => {
-                registry.load_from_json(include_str!("../protocols/token-2022.json"))
-            }
-            "../protocols/stake-program.json" => {
-                registry.load_from_json(include_str!("../protocols/stake-program.json"))
-            }
-            "../protocols/raydium-amm-v4.json" => {
-                registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
-            }
-            "../protocols/squads-v4.json" => {
-                registry.load_from_json(include_str!("../protocols/squads-v4.json"))
-            }
-            "../protocols/jupiter-v6.json" => {
-                registry.load_from_json(include_str!("../protocols/jupiter-v6.json"))
-            }
-            "../protocols/orca-whirlpools.json" => {
-                registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"))
-            }
-            "../protocols/meteora-dlmm.json" => {
-                registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"))
-            }
-            "../protocols/memo-program.json" => {
-                registry.load_from_json(include_str!("../protocols/memo-program.json"))
-            }
-            "../protocols/legacy-memo-program.json" => {
-                registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
-            }
-            "../protocols/spl-memo-program.json" => {
-                registry.load_from_json(include_str!("../protocols/spl-memo-program.json"))
-            }
-            "../protocols/pump-fun.json" => {
-                registry.load_from_json(include_str!("../protocols/pump-fun.json"))
-            }
-            "../protocols/jupiter-dca.json" => {
-                registry.load_from_json(include_str!("../protocols/jupiter-dca.json"))
-            }
-            "../protocols/wormhole-core.json" => {
-                registry.load_from_json(include_str!("../protocols/wormhole-core.json"))
-            }
-            "../protocols/metaplex-token-metadata.json" => {
-                registry.load_from_json(include_str!("../protocols/metaplex-token-metadata.json"))
-            }
-            _ => unreachable!(),
-        };
+        let res =
+            match *p {
+                "../protocols/system-program.json" => {
+                    registry.load_from_json(include_str!("../protocols/system-program.json"))
+                }
+                "../protocols/spl-token.json" => {
+                    registry.load_from_json(include_str!("../protocols/spl-token.json"))
+                }
+                "../protocols/token-2022.json" => {
+                    registry.load_from_json(include_str!("../protocols/token-2022.json"))
+                }
+                "../protocols/stake-program.json" => {
+                    registry.load_from_json(include_str!("../protocols/stake-program.json"))
+                }
+                "../protocols/raydium-amm-v4.json" => {
+                    registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
+                }
+                "../protocols/squads-v4.json" => {
+                    registry.load_from_json(include_str!("../protocols/squads-v4.json"))
+                }
+                "../protocols/jupiter-v6.json" => {
+                    registry.load_from_json(include_str!("../protocols/jupiter-v6.json"))
+                }
+                "../protocols/orca-whirlpools.json" => {
+                    registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"))
+                }
+                "../protocols/meteora-dlmm.json" => {
+                    registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"))
+                }
+                "../protocols/memo-program.json" => {
+                    registry.load_from_json(include_str!("../protocols/memo-program.json"))
+                }
+                "../protocols/legacy-memo-program.json" => {
+                    registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
+                }
+                "../protocols/spl-memo-program.json" => {
+                    registry.load_from_json(include_str!("../protocols/spl-memo-program.json"))
+                }
+                "../protocols/ata-program.json" => {
+                    registry.load_from_json(include_str!("../protocols/ata-program.json"))
+                }
+                "../protocols/compute-budget.json" => {
+                    registry.load_from_json(include_str!("../protocols/compute-budget.json"))
+                }
+                "../protocols/bpf-loader.json" => {
+                    registry.load_from_json(include_str!("../protocols/bpf-loader.json"))
+                }
+                "../protocols/bpf-loader-upgradeable.json" => registry
+                    .load_from_json(include_str!("../protocols/bpf-loader-upgradeable.json")),
+                "../protocols/pump-fun.json" => {
+                    registry.load_from_json(include_str!("../protocols/pump-fun.json"))
+                }
+                "../protocols/jupiter-dca.json" => {
+                    registry.load_from_json(include_str!("../protocols/jupiter-dca.json"))
+                }
+                "../protocols/wormhole-core.json" => {
+                    registry.load_from_json(include_str!("../protocols/wormhole-core.json"))
+                }
+                "../protocols/metaplex-token-metadata.json" => registry
+                    .load_from_json(include_str!("../protocols/metaplex-token-metadata.json")),
+                _ => unreachable!(),
+            };
 
         if let Err(e) = res {
             tracing::error!(path = %p, error = %e, "Failed to load seed manifest");
@@ -392,6 +407,79 @@ mod tests {
         assert!(!post.risk_rules.is_empty());
     }
 
+    /// Grounds the Tier-0 manifests (Compute Budget, Associated Token Account)
+    /// in real on-chain data instead of self-reference (the C1 lesson): every
+    /// ComputeBudget/ATA instruction in the pinned mainnet fixtures must
+    /// resolve to a manifest instruction whose discriminator EQUALS the
+    /// observed first data byte of the real instruction.
+    #[test]
+    fn test_tier0_manifest_discriminators_match_real_mainnet_fixtures() {
+        let registry = load_seed_manifests();
+        let tier0 = [
+            "ComputeBudget111111111111111111111111111111",
+            "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        ];
+        for (fixture, raw_json) in [
+            (
+                "real_mainnet_jup.json",
+                include_str!("../tests/fixtures/real_mainnet_jup.json"),
+            ),
+            (
+                "real_mainnet_system.json",
+                include_str!("../tests/fixtures/real_mainnet_system.json"),
+            ),
+        ] {
+            let raw: serde_json::Value =
+                serde_json::from_str(raw_json).expect("fixture must be valid JSON");
+            // Fixtures are stored as the raw getTransaction result body.
+            let msg = &raw["transaction"]["message"];
+            let static_keys: Vec<String> = msg["accountKeys"]
+                .as_array()
+                .expect("accountKeys array")
+                .iter()
+                .map(|k| {
+                    k.as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| k["pubkey"].as_str().unwrap().to_string())
+                })
+                .collect();
+            let mut observed = 0;
+            for ix in msg["instructions"].as_array().expect("instructions array") {
+                let idx = ix["programIdIndex"].as_u64().expect("programIdIndex") as usize;
+                if idx >= static_keys.len() {
+                    continue; // ALT-resolved key; not a top-level program
+                }
+                let pid = &static_keys[idx];
+                if !tier0.contains(&pid.as_str()) {
+                    continue;
+                }
+                let data_b58 = ix["data"].as_str().unwrap_or("");
+                let Some(bytes) = crate::solana_types::base58_decode(data_b58) else {
+                    continue;
+                };
+                if bytes.is_empty() {
+                    continue;
+                }
+                observed += 1;
+                let hex = format!("{:02x}", bytes[0]);
+                let found = registry
+                    .find_instruction(pid, &hex)
+                    .unwrap_or_else(|| {
+                        panic!("{fixture}: {pid} observed discriminator {hex} not resolved by any manifest")
+                    });
+                assert_eq!(
+                    found.discriminator, hex,
+                    "{fixture}: {pid} manifest discriminator {} != observed {hex} for {}",
+                    found.discriminator, found.name
+                );
+            }
+            assert!(
+                observed >= 2,
+                "{fixture}: expected >=2 observed Tier-0 instructions, saw {observed}"
+            );
+        }
+    }
+
     #[test]
     fn test_metaplex_token_metadata_manifest_has_create() {
         let registry = load_seed_manifests();
@@ -438,8 +526,8 @@ mod tests {
         let programs = verified["programs"].as_array().expect("programs array");
         assert_eq!(
             programs.len(),
-            16,
-            "verified registry must list exactly the 16 seed programs"
+            20,
+            "verified registry must list exactly the 20 seed programs"
         );
 
         let mut verified_by_id: std::collections::BTreeMap<&str, &str> =
@@ -531,6 +619,22 @@ mod tests {
             (
                 "SPL Memo (legacy)",
                 "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
+            ),
+            (
+                "Associated Token Account",
+                "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+            ),
+            (
+                "Compute Budget",
+                "ComputeBudget111111111111111111111111111111",
+            ),
+            (
+                "BPF Loader (classic)",
+                "BPFLoader2111111111111111111111111111111111",
+            ),
+            (
+                "BPF Loader Upgradeable",
+                "BPFLoaderUpgradeab1e11111111111111111111111",
             ),
         ];
         let verified: serde_json::Value =

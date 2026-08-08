@@ -25,14 +25,35 @@ DEVNET = "https://api.devnet.solana.com"
 SAK_SIG = "xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ"
 
 
-def rpc(url, method, params):
-    req = urllib.request.Request(
-        url,
-        data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.load(r)
+def rpc(url, method, params, retries=3):
+    """JSON-RPC call with retry+backoff on 429 (rate limit) and 5xx.
+    Public RPCs rate-limit aggressively; a 429 is a transient signal, not a
+    code bug, so the check retries before declaring a program absent."""
+    import time
+
+    last_err = None
+    for attempt in range(1, retries + 1):
+        req = urllib.request.Request(
+            url,
+            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            last_err = e
+            if e.code in (429, 500, 502, 503, 504) and attempt < retries:
+                time.sleep(1.5 * attempt)  # backoff: 1.5s, 3s
+                continue
+            raise
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            last_err = e
+            if attempt < retries:
+                time.sleep(1.5 * attempt)
+                continue
+            raise
+    raise last_err
 
 
 def load_manifest_ids():

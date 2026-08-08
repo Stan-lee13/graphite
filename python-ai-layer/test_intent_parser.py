@@ -3,7 +3,7 @@
 
 Includes a cross-check test that verifies all manifest program IDs are valid
 base58 and that the AI layer's canonical intent→program suggestions are backed
-by a real manifest, covering all 16 manifests.
+by a real manifest, covering all 20 manifests.
 """
 
 import sys
@@ -86,14 +86,18 @@ def test_program_ids_match_manifests():
         "meteora-dlmm.json": "swap",
         "memo-program.json": None,         # memo v4.0.0 (upgradeable), no direct intent
         "legacy-memo-program.json": None,  # legacy memo (Memo1Uhk), no direct intent
-        "spl-memo-program.json": None,     # classic SPL memo (MemoSq4gq, restored C15), no direct intent
+        "spl-memo-program.json": None,     # classic SPL memo (MemoSq4gq, restored C16), no direct intent
+"ata-program.json": None,           # ATA creation, no AI intent
+"compute-budget.json": None,        # tx-level settings, no AI intent
+"bpf-loader.json": None,            # program deployment, no AI intent
+"bpf-loader-upgradeable.json": None,# program deployment/upgrade, no AI intent
         "pump-fun.json": None,      # bonding-curve mint/buy/sell, no AI intent
         "jupiter-dca.json": None,   # escrow scheduling, no AI intent
         "wormhole-core.json": None, # bridging, no AI intent
         "metaplex-token-metadata.json": None,  # NFT metadata, no AI intent
     }
     expected_manifests = set(manifest_to_intent.keys())
-    assert len(expected_manifests) == 16, f"expected 16 manifests, map has {len(expected_manifests)}"
+    assert len(expected_manifests) == 20, f"expected 20 manifests, map has {len(expected_manifests)}"
 
     all_manifests = sorted(glob.glob(os.path.join(manifest_dir, "*.json")))
     # verified_program_ids.json is the ID registry, not a protocol manifest.

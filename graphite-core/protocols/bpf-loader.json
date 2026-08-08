@@ -1,0 +1,38 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "BPF Loader (classic)",
+    "program_id": "BPFLoader2111111111111111111111111111111111",
+    "note": "Tier-0 foundational native program (added 2026-08-08): deploys and finalizes non-upgradeable BPF programs (owns the classic memo MemoSq4gq and legacy memo Memo1Uhk accounts). Discriminators from the Solana/Agave bpf_loader source. Deploy instructions are rare in everyday traffic but security-relevant (program deployment).",
+    "website": "https://docs.solana.com",
+    "github": "https://github.com/anza-xyz/agave/blob/master/runtime/src/loader.rs"
+  },
+  "version": {
+    "label": "native",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Write",
+      "discriminator": "00",
+      "accounts": [
+        { "name": "program", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+      ],
+      "expected_state_changes": ["writes a chunk of program ELF bytes into the program account during deployment"],
+      "allowed_cpis": [],
+      "risk_rules": ["program deployment primitive — deployer must be trusted"]
+    },
+    {
+      "name": "Finalize",
+      "discriminator": "01",
+      "accounts": [
+        { "name": "program", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+      ],
+      "expected_state_changes": ["finalizes a deployed program, making it executable"],
+      "allowed_cpis": [],
+      "risk_rules": ["program deployment primitive — deployer must be trusted"]
+    }
+  ],
+  "trust_tier": "OfficialManifest"
+}

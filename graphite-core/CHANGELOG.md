@@ -3,6 +3,14 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Independent Gap Audit — C17 Tier-0 Protocol Surface] — 2026-08-08
+
+### Tier-0 Foundational Programs Added (C17)
+- **4 new seed manifests** (16 → 20): Associated Token Account (`ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL`), Compute Budget (`ComputeBudget111111111111111111111111111111`), BPF Loader classic (`BPFLoader2111…`), BPF Loader Upgradeable (`BPFLoaderUpgradeab1e…`). All four IDs verified executable on mainnet 2026-08-08 and added to `verified_program_ids.json`, the blessed-canonical-set test, `load_seed_manifests`, and the Python cross-check.
+- **Grounded, not self-referential:** `test_tier0_manifest_discriminators_match_real_mainnet_fixtures` parses the pinned real mainnet fixtures and asserts every observed ComputeBudget/ATA instruction byte resolves to a manifest discriminator with an EQUAL value (0x02/0x03/0x04 ComputeBudget and 0x01 ATA observed live). Compute Budget instructions take zero accounts by design (Solana source) — documented, and the pipeline's rejection of a standalone empty plan is asserted as correct behavior.
+- **`scripts/live_revalidate.py` retry+backoff** for 429/5xx: a transient public-RPC rate limit is retried (1.5s/3s) instead of being misreported as "program absent". Run result: registry 20/20 EXEC, manifests 20/20 EXEC, SAK Ok, exit 0.
+- **Instruction surface total: 201 across 20 manifests.**
+
 ## [Independent Gap Audit — C16 Memo Restoration] — 2026-08-08
 
 ### Classic SPL Memo Restored (C16)

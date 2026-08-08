@@ -10,7 +10,7 @@
 
 | Signal | Result |
 |---|---|
-| Full Rust test suite | **840 passed / 0 failed** (23 binaries) |
+| Full Rust test suite | **841 passed / 0 failed** (23 binaries) |
 | clippy `--all-targets --all-features -D warnings` | 0 warnings |
 | `cargo fmt --check` | clean |
 | `cargo check --no-default-features` (CI gate) | clean |
@@ -42,6 +42,7 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 7. **Adversarial suites on the expanded trusted roots:** H25 hell-mode tests pin that the Pump.fun/Jupiter-DCA `DEX_PROGRAMS` relaxations stay scoped (repeated-CPI compositional drains still block on pump.fun; DCA token CPIs from the trusted root pass; Wormhole is NOT exempt); omega_red_team exercises both roots.
 8. **Full live re-validation (2026-08-08, second cycle):** all 15 manifest IDs re-checked on mainnet — **15/15 executable** (the legacy memo `Memo1UhkJRf…` is EXEC on mainnet AND devnet, owner BPFLoader — the previous "retired" label was wrong, see C10). SAK devnet signature re-fetched again: status Ok, slot 481727834, fee 5000 — the claim still holds. Reproducible via `scripts/live_revalidate.py`.
 9. **Third-cycle live re-validation (2026-08-08):** all **16** manifest IDs + the 16-ID registry checked on mainnet — **16/16 executable**, including the restored classic memo `MemoSq4gq…` (99,736 B ELF, owner BPFLoader2111; EXEC on both clusters). The C1 "never existed" conclusion is retracted — see C16.
+10. **Fourth-cycle live re-validation (2026-08-08, Tier-0 expansion):** all **20** registry IDs + 20 manifests checked on mainnet — **20/20 executable** (ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable verified; ComputeBudget/ATA discriminators additionally grounded against the real pinned fixture bytes). `live_revalidate.py` gained retry+backoff for 429/5xx (public RPC rate-limits) so a transient rate-limit is never misread as "absent". Reproducible via `scripts/live_revalidate.py` — exit 0.
 
 ---
 
@@ -61,6 +62,13 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 - **Impact:** for two audit cycles Graphite could not match transactions using the most common memo program ID — a silent precision regression on a huge fraction of SPL transfers; worse, the docs asserted a false fact about the chain.
 - **Fix:** (1) restored `MemoSq4gq…` as the 16th seed manifest (`spl-memo-program.json`) and 16th registry entry with honest provenance; (2) fixed `live_revalidate.py` to skip non-manifest JSON files and to verify the registry's own IDs on-chain (exit non-zero on any absence); (3) added the blessed-canonical-set test (`test_registry_contains_blessed_canonical_programs`) — the core programs (incl. all three memo IDs) can never silently vanish from the registry again; (4) corrected every doc that repeated the false claim.
 - **Regression protection:** registry completeness is now anchored offline (blessed-set test), on-chain (fixed revalidation script, runnable in CI/ops), and bidirectionally (pin test + Python cross-check) — the memo class of bug (C1 → C10 → C16) has no remaining silent path.
+
+### C17. TIER-0 PROTOCOL SURFACE COMPLETED — ATA, COMPUTE BUDGET, BPF LOADERS (fixed)
+- **Problem:** the gap audit's Tier-0 list (ATA, ComputeBudget, BPFLoader) was explicitly missing — the foundational programs present in nearly every modern mainnet transaction were unpinned (unknown-protocol mode at 0.55 confidence instead of manifest matching).
+- **Root cause:** protocol expansion had targeted DEX/DeFi protocols; the boring-but-ubiquitous system programs were never covered.
+- **Impact:** ComputeBudget instructions (priority fees, compute limits — present in all three pinned fixtures) and ATA creates (present in the Jupiter fixture) fell to unknown-protocol handling; BPF Loader Upgrade/SetAuthority — the program-upgrade / authority-abuse attack surface — were unmodeled.
+- **Fix:** 4 new Tier-0 manifests with discriminator surfaces from the official sources, each ID verified EXEC on mainnet 2026-08-08: ATA (0x00/0x01/0x02 — 0x01 observed live), Compute Budget (0x01–0x04 — 0x02/0x03/0x04 observed live), BPF Loader classic (0x00/0x01), BPF Loader Upgradeable (0x00–0x05). Added to registry, blessed set, seed loader, and both cross-checks (16 → 20 manifests).
+- **Regression test:** `test_tier0_manifest_discriminators_match_real_mainnet_fixtures` parses the pinned mainnet fixtures and asserts every observed ComputeBudget/ATA discriminator byte resolves to a manifest instruction with an EQUAL discriminator — grounded in real chain data, not self-reference. Compute Budget's zero-account instructions are documented (they take no accounts by design; the pipeline correctly rejects a standalone empty plan).
 
 ### C2. AUDITBIND SWAP-PATH TOCTOU COVERAGE (hardened)
 - **Finding:** `executeSwap` originally verified only `programId + discriminator + wallet` — the SAK-built swap's instruction data and full account list were not part of the checked projection.
@@ -126,7 +134,7 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 
 | Requirement (roadmap) | Status | Evidence | Missing work |
 |---|---|---|---|
-| 16 manifests, IDs on-chain verified | **Implemented** (corrected) | live getAccountInfo 16/16 EXEC re-verified 2026-08-08; memo swap fixed; C10 corrected the "retired" prose; C16 restored the classic SPL memo | — |
+| 20 manifests, IDs on-chain verified | **Implemented** (corrected) | live getAccountInfo 20/20 EXEC re-verified 2026-08-08; memo swap fixed; C10 corrected the "retired" prose; C16 restored the classic SPL memo; C17 added Tier-0 (ATA, Compute Budget, BPF Loaders) | — |
 | Feed actual transaction data through Graphite | **Implemented** (new) | `live_corpus.rs`, `regression seed-live`, 30 live devnet verifies, 3 pinned real mainnet fixtures | — |
 | Regression Engine corpus + replay + P10 gate | **Implemented** | 20 real fixtures replayed 100%, PROMOTE; deterministic replay | 1,000-fixture volume (data acquisition), 10k cost model |
 | Manifest Registry: signed submissions, G5, P7/P10/P11 | **Implemented** (operator path, new CLI) | register-reviewer / submit / reviewers live-verified ACCEPT/REJECT | PR-based community workflow + on-chain stake lookup (Phase 3 by design) |
