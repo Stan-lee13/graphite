@@ -28,7 +28,7 @@ The pipeline executes in order. Each layer is tracked in the verification result
 2. **L2 Instruction Verification** — Confirms the instruction discriminator and account count match the manifest's declared shape
 3. **L3 Simulation Verification** — Runs `simulateTransaction` and checks compute/account-write/CPI divergence. Active whenever an RPC client is attached (`GRAPHITE_RPC_URL`); the simulation-integrity module runs a 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm against earned baselines. Verified end-to-end against real Solana devnet transactions (2026-08-07). Without an RPC client the layer reports an honest `Inconclusive` state, never a phantom pass.
 4. **L4 State Verification** — Diffs pre/post account state against the manifest's expected state changes
-5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program
+5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program. The intent vocabulary is exactly: `swap|trade|exchange`, `transfer|send`, `stake|delegate`, `close|close_account`, `create|create_account`, `approve|revoke` (anything else fails closed). The advisory labeler (v2, C21) emits only this vocabulary.
 6. **L6 Policy Verification** — Computes confidence (0.0–1.0 from weighted signals + tier ceilings) and applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Gaming 60%, Enterprise 99%) and trust tier requirements
 7. **L7 Risk Verification** — Pattern-matches against 9 known attack patterns (hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack, FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, and Impersonation (system-account impersonation — P0 Check 10, grounded in SolPhishHunter arXiv:2505.04094). Runs early for fail-fast but is reported at L7 per architecture spec.
 8. **L8 Execution Verification** — Post-submission: confirm finalized on-chain result matches prediction. Until live execution is wired (Phase 2), L8 reports an honest **"not yet verified"** state with an audit-trail event.
@@ -66,6 +66,7 @@ The axum-based HTTP server exposes `POST /verify`, `GET /manifests` (listing), `
 - Does NOT parse instruction data semantics beyond the discriminator (instruction bytes are not analyzed for meaning)
 - Does NOT detect novel attack patterns (only the 9 known patterns are matched)
 - Does NOT use AI/ML in the verification path (deterministic pattern matching only; the Python layer is an advisory labeler)
+- Does NOT treat the advisory labeler's suggestions as decisions — a wrong suggestion simply fails to match and the verification blocks (P1)
 - Does NOT verify intent semantically (intent is a label, not a semantic constraint)
 - Does NOT work on chains other than Solana (SVM-specific, complete rewrite needed)
 - Does NOT hold wallet private keys — the Rust core never receives signing material; keys live at the wallet/SAK boundary (the integration bridge holds them to execute, like any self-custody agent wallet)

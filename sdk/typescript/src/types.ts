@@ -1,6 +1,17 @@
 // Graphite Verification SDK — TypeScript types
 
-export type IntentType = "swap" | "transfer" | "stake" | "lend" | "unknown";
+// Must stay aligned with the Rust Core's semantic-layer vocabulary
+// (verification.rs L5). Anything outside this set fails closed as
+// "unknown intent type". `lend` is intentionally absent: the Core has no
+// lending semantic class, so labeling an intent `lend` would fail closed.
+export type IntentType =
+  | "swap" | "trade" | "exchange"
+  | "transfer" | "send"
+  | "stake" | "delegate"
+  | "close" | "close_account"
+  | "create" | "create_account"
+  | "approve" | "revoke"
+  | "unknown";
 
 export interface ExtractedParameters {
   input_token?: string;

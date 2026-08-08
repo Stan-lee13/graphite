@@ -111,7 +111,12 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 - **Two real defects found and fixed:** (1) the 64-account input cap rejected legitimate 72-account Jupiter routes — raised to Solana's protocol limit (256) with a regression test; (2) ISA (system-account impersonation) was not detected — added P0 Check 10 (`Impersonation` pattern) blocking fund movement to/from vanity `…11111`/`Compu…` addresses, with principled-block assertions in the corpus test.
 - **Fabricated addresses purged:** the old harness's fake "drainer" section (two invalid IDs rejected by the RPC) is gone, replaced by the real corpus.
 
-### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
+### C21 — Advisory labeler v2 + intent-vocabulary alignment (P1, delivered this cycle)
+- **Problem:** the advisory labeler was thin by design (4 intent classes, hardcoded confidence, no protocol grounding) AND the risk engine contradicted the semantic layer: `program_supports_intent` returned false for `create`/`approve`/`revoke`, so every legitimate create/approve/revoke was blocked by P0 Check 9 despite Check 6b/7 explicitly allowing those intents.
+- **Fix (labeler, no LLM):** v2 emits the full Core semantic vocabulary, derives suggestions from the verified manifest registry at load time, adds risk-hint warnings (impersonation-vanity destinations, authority changes, approve escalation, unmodeled mint/bridge/lend → advisory + fail-closed `unknown`), per-signal confidence, and a benchmark mode — **~47k parses/sec, p50 ~21 µs**.
+- **Fix (core):** `program_supports_intent` expanded to the L5 vocabulary (create/approve/revoke + aliases) with correct program sets; unknown intents stay fail-closed. Live probes confirm create/revoke now pass the risk engine while approve still hard-blocks by design (risky-pattern PermissionEscalation).
+- **Surface fixes:** bridge swap default corrected from legacy `route` (`e517cb97…`) to deployed `route_v2` (`bb64facc…`); TS SDK `IntentType` removed unsupported `lend` and added close/create/approve/revoke.
+- **Validation:** 856 Rust tests / 0 failed (+4), 27/27 Python (+19), 8/8 AuditBind, clippy/fmt/gates green, TS/SAK clean, on-chain program IDs re-verified.
 
 ### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
 - **Problem:** all 18 cases are hand-constructed `VerificationInput`s with manually-encoded `expected_approved` labels; 16 scored (4 safe, ~10–12 malicious), 2 unknown; three cases are labeled `SYNTHETIC:` (real program IDs, synthetic accounts). Zero cases come from real transactions. The "100% precision/recall" substantially measures the rules agreeing with the cases built from the rules.

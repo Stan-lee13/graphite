@@ -290,7 +290,12 @@ export class VerifiedSakAgent {
     if (!params?.input_token || !params?.output_token || !params?.amount) throw new Error("Swap requires input_token, output_token, amount");
 
     const JUPITER_V6_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
-    const JUPITER_SWAP_DISCRIMINATOR = "e517cb977ae3ad2a";
+    // Deployed Jupiter V6 entrypoint is route_v2 (bb64facc31c4af14) — verified
+    // against live mainnet route transactions in the C19 P16 benchmark. The
+    // legacy `route` discriminator (e517cb977ae3ad2a) is still listed in the
+    // manifest for historical coverage but is NOT what live txs carry, so it
+    // must never be the default here.
+    const JUPITER_SWAP_DISCRIMINATOR = "bb64facc31c4af14";
     const strict = process.env.GRAPHITE_SWAP_STRICT === "1";
     if (strict && !payload) {
       throw new Error(

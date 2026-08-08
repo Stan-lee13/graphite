@@ -241,3 +241,130 @@ fn pump_fun_repeated_cpi_chain_still_blocked_as_compositional_drain() {
         }
     ));
 }
+
+// ---------------------------------------------------------------------------
+// C21: full L5 intent vocabulary must be supported by the risk engine.
+// ---------------------------------------------------------------------------
+
+const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
+const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const ATA_PROGRAM: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+
+#[test]
+fn create_intent_is_supported_on_account_creating_programs() {
+    // L5 vocabulary: create/create_account must not be flagged as
+    // PermissionEscalation on programs that can create accounts (System
+    // CreateAccount/Allocate, ATA CreateAssociatedTokenAccount, SPL Token
+    // InitializeAccount/InitializeMint). Before C21 these were always
+    // blocked by Check 9, contradicting Check 6b and the semantic layer.
+    assert!(
+        detect_intent_program_mismatch(SYSTEM_PROGRAM, "create").is_none(),
+        "System program must support create intent"
+    );
+    assert!(
+        detect_intent_program_mismatch(ATA_PROGRAM, "create").is_none(),
+        "ATA program must support create intent"
+    );
+    assert!(
+        detect_intent_program_mismatch(SPL_TOKEN, "create_account").is_none(),
+        "SPL Token must support create_account intent"
+    );
+    // But create intent on a non-creating program is still fail-closed
+    // (Wormhole is a bridge, not an account factory).
+    assert!(matches!(
+        detect_intent_program_mismatch(WORMHOLE, "create"),
+        Some(RiskPattern::PermissionEscalation)
+    ));
+}
+
+#[test]
+fn approve_revoke_intents_are_supported_on_token_programs() {
+    // L5 vocabulary + P0 Check 7: Approve/Revoke with a matching declared
+    // intent must not be flagged as PermissionEscalation. Before C21, Check 9
+    // blocked every approve/revoke even when Check 7 explicitly allowed it.
+    assert!(
+        detect_intent_program_mismatch(SPL_TOKEN, "approve").is_none(),
+        "SPL Token must support approve intent"
+    );
+    assert!(
+        detect_intent_program_mismatch(SPL_TOKEN, "revoke").is_none(),
+        "SPL Token must support revoke intent"
+    );
+    // approve intent on a non-token program remains fail-closed.
+    assert!(matches!(
+        detect_intent_program_mismatch(SYSTEM_PROGRAM, "approve"),
+        Some(RiskPattern::PermissionEscalation)
+    ));
+}
+
+#[test]
+fn full_l5_vocabulary_passes_pipeline_with_matching_instruction() {
+    // End-to-end: create/approve/revoke declared intents with MATCHING
+    // instructions must flow through the pipeline without a hard risk block.
+    let core = GraphiteCore::new();
+
+    // System CreateAccount (00000000) with create intent. The manifest
+    // declares 2 accounts (funding + new account), so use a matching short
+    // account list — a 5-account fixture legitimately trips the drain check.
+    let mut create = base_input(SYSTEM_PROGRAM, "00000000", "create");
+    create.account_addresses = vec![
+        create.account_addresses[0].clone(),
+        create.account_addresses[1].clone(),
+    ];
+    let r = core.verify(&create).expect("verify should not fail");
+    assert_ne!(
+        r.risk_verdict.status, "Blocked",
+        "create on System blocked: {:?}",
+        r.risk_verdict
+    );
+
+    // SPL Token Approve (04): still blocked, but by the DESIGNED risky-pattern
+    // rule (Approve grants delegate authority), not by the intent-mismatch
+    // contradiction that C21 removed. The reason must be the risky pattern.
+    let approve = base_input(SPL_TOKEN, "04", "approve");
+    let r = core.verify(&approve).expect("verify should not fail");
+    assert_eq!(
+        r.risk_verdict.status, "Blocked",
+        "approve on SPL Token must block: {:?}",
+        r.risk_verdict
+    );
+    assert!(
+        r.risk_verdict.findings.iter().all(|f| f.pattern != "PermissionEscalation"
+            || !f.reason.contains("does not support this intent type")),
+        "approve must be blocked by the risky-pattern rule, not the intent-mismatch contradiction: {:?}",
+        r.risk_verdict
+    );
+
+    // SPL Token Revoke (05) with revoke intent — revoke REMOVES delegate
+    // authority; it must not be blocked (before C21, Check 9's mismatch
+    // contradiction blocked every revoke). The manifest declares 2 accounts,
+    // so trim the fixture to match (a 5-account list trips the drain check).
+    let mut revoke = base_input(SPL_TOKEN, "05", "revoke");
+    revoke.account_addresses = vec![
+        revoke.account_addresses[0].clone(),
+        revoke.account_addresses[1].clone(),
+    ];
+    let r = core.verify(&revoke).expect("verify should not fail");
+    assert_ne!(
+        r.risk_verdict.status, "Blocked",
+        "revoke on SPL Token blocked: {:?}",
+        r.risk_verdict
+    );
+}
+
+#[test]
+fn create_intent_with_undeclared_approve_instruction_still_blocks() {
+    // Sanity: the expanded vocabulary must NOT weaken detection. A create
+    // intent carrying an Approve instruction (04) on the token program is
+    // still caught by Check 7 (approve not declared) or the risky-pattern
+    // rule — fail-closed preserved.
+    let core = GraphiteCore::new();
+    let input = base_input(SPL_TOKEN, "04", "create");
+    let r = core.verify(&input).expect("verify should not fail");
+    // Approve instruction with a non-approve/revoke declared intent must block.
+    assert_eq!(
+        r.risk_verdict.status, "Blocked",
+        "approve with undeclared intent must block: {:?}",
+        r.risk_verdict
+    );
+}

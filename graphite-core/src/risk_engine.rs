@@ -639,9 +639,19 @@ impl RiskPattern {
     }
 }
 
+/// Whether `program_id` can legitimately serve `intent_type`.
+///
+/// This must stay ALIGNED with the semantic layer's intent vocabulary
+/// (verification.rs L5) and with the sibling P0 checks (6a/6b/7). In C21 the
+/// list was expanded to the full L5 vocabulary — `create`/`create_account`,
+/// `approve`, `revoke` — because the previous version returned `false` for
+/// them, so P0 Check 9 contradicted Check 6b/7 and blocked every legitimate
+/// create/approve/revoke transaction even when the instruction matched the
+/// intent exactly. The fail-closed default for genuinely unknown intents is
+/// unchanged.
 fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
     match intent_type {
-        "swap" => {
+        "swap" | "trade" | "exchange" => {
             const SWAP_PROGRAMS: &[&str] = &[
                 "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
                 "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
@@ -652,17 +662,42 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
             ];
             SWAP_PROGRAMS.contains(&program_id)
         }
-        "stake" => program_id == "Stake11111111111111111111111111111111111111",
-        "close" => {
+        "stake" | "delegate" => program_id == "Stake11111111111111111111111111111111111111",
+        "close" | "close_account" => {
             program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
                 || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
                 // Jupiter DCA positions are opened AND closed on-chain (closeDca).
                 || program_id == "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
         }
-        "transfer" => true,
+        "transfer" | "send" => true,
+        // L5 vocabulary: create/initialize/allocate/assign on account-creating
+        // programs. Matches Check 6b's expectation that CreateAccount/
+        // Allocate with intent "create" is the DECLARED case.
+        "create" | "create_account" => {
+            const CREATE_PROGRAMS: &[&str] = &[
+                "11111111111111111111111111111111", // System (CreateAccount/Allocate/Assign)
+                "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // ATA (CreateAssociatedTokenAccount)
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // SPL Token (InitializeAccount/InitializeMint)
+                "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", // Token-2022
+                "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s", // Metaplex (CreateMetadataAccountV3)
+                "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (create)
+            ];
+            CREATE_PROGRAMS.contains(&program_id)
+        }
+        // L5 vocabulary: Approve/ApproveChecked (Check 7's declared case).
+        "approve" => {
+            program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+        // L5 vocabulary: Revoke (Check 7's declared case).
+        "revoke" => {
+            program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
         // SECURITY FIX: Default to false for unknown intent types.
         // Previously returned true, meaning any intent type outside
         // swap/stake/close/transfer would never trigger PermissionEscalation.
+        // Unknown intents remain fail-closed.
         _ => false,
     }
 }

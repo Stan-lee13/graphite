@@ -3,6 +3,26 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Final Forensic Re-run — C21: Advisory Labeler v2 + Intent-Vocabulary Alignment] — 2026-08-08
+
+### Advisory labeler expanded without an LLM (C21.2)
+- `python-ai-layer/intent_parser.py` v2: emits the FULL Core semantic vocabulary (`swap|trade|exchange`, `transfer|send`, `stake|delegate`, `close|close_account`, `create|create_account`, `approve|revoke`) instead of 4 hardcoded classes. `mint`/`bridge`/`lend` are detected and surfaced as advisory warnings but labeled `unknown` (fail-closed) because the Core has no semantic class for them.
+- `suggested_program_id`/`suggested_discriminator`/`protocol_candidates` are now **derived from the verified manifest registry** at load time (embedded fallback for standalone deployments) — swap → Jupiter `route_v2` `bb64facc31c4af14` (deployed entrypoint), transfer → System `02000000`, stake → `DelegateStake`, close → SPL Token `09`, create → ATA `00`, approve → `04`, revoke → `05`.
+- Risk-hint warnings (advisory): impersonation-vanity destinations (`…11111`, `Compu…` — validated against the real exploit corpus), authority changes, approve-delegate escalation, close rent recovery, unknown token symbols, large amounts.
+- Per-signal confidence (`confidence_components`: phrase/parameters/token/protocol) replaces the hardcoded 0.9. Deterministic, pure stdlib, no network — **~47k parses/sec, p50 ~21 µs** (50k-parse benchmark). 27 Python tests (was 8).
+
+### Root-level risk-engine contradiction fixed (C21.1)
+- `program_supports_intent` (P0 Check 9) returned `false` for `create`/`approve`/`revoke` — the L5 semantic layer's own vocabulary — so every legitimate create/approve/revoke transaction was blocked as `PermissionEscalation` even when the instruction matched the intent, contradicting Check 6b/7. Expanded to the full L5 vocabulary with correct program sets (create → System/ATA/Token/Token-2022/Metaplex/Pump.fun; approve/revoke → Token/Token-2022; aliases trade/exchange/send/delegate/close_account). Unknown intents remain fail-closed. 4 regression tests (`protocol_expansion_tests.rs`).
+
+### Integration-surface fixes
+- **Bridge default discriminator corrected (C21.3):** `executeSwap` defaulted to the LEGACY `route` (`e517cb97…`); live txs carry `route_v2` (`bb64facc…`) — default now `bb64facc31c4af14`.
+- **TS SDK `IntentType` aligned (C21.4):** removed `lend` (no Core semantic class — would fail closed), added close/create/approve/revoke + aliases to match L5.
+
+### Validation
+- **856 Rust tests / 0 failed** (was 852), clippy `-D warnings`, fmt clean, no-default-features + cli gates green, 27/27 Python, 8/8 AuditBind, TS SDK + SAK typecheck clean.
+- Live-server probes: create/revoke intents now pass the risk engine (Clear); approve still hard-blocks by design (risky-pattern PermissionEscalation); 2 MB body → 413; malformed Content-Length → 413; trailing-JSON → 422.
+- On-chain: all manifest IDs involved (Jupiter V6, System, SPL Token, ATA, Stake) re-verified executable on mainnet.
+
 ## [P16 Real-Mainnet Benchmark — C19: Real Exploit Corpus + Two Real Defects Fixed] — 2026-08-08
 
 ### First P16 run on unseen real data

@@ -13,7 +13,7 @@
 | Phase 1 (core verification) | ✅ **STRONG** — deterministic 8-layer pipeline, fail-closed, genuinely tested |
 | Phase 1.5 (server/SAK/hardening) | ✅ **STRONG** — server hardening verified by live attack probes; AuditBind parity proven cross-language |
 | Phase 2 (protocols/registry/PDA/plugins) | 🟡 **PARTIAL→STRONG** — registry single-source-of-truth real; PDA grounded in one manifest; Tier-1 surface still thin |
-| AI/Python layer | ✅ **CORRECT BY DESIGN (thin)** — advisory labeler per ARCHITECTURE.md's own honest framing; cannot weaken security |
+| AI/Python layer | ✅ **CORRECT BY DESIGN + EXPANDED (v2, C21)** — advisory labeler, no LLM; full Core intent vocabulary, manifest-grounded suggestions, risk hints, per-signal confidence; structurally cannot weaken security |
 | Overall | 🟡 **CONDITIONALLY READY** (see §12) |
 
 **The system behaves as intended between an AI agent and a wallet.** The Rust core is a deterministic, keyless, fail-closed verification engine. The AI layer is advisory-only and structurally unable to weaken a decision. Real-world evidence: 35 pinned real exploit transactions → 100% recall; real mainnet legitimate transactions blocked only for documented cold-start/coverage reasons.
@@ -100,7 +100,7 @@ Source: `ARCHITECTURE.md` (the canonical skill) + `SECURITY.md`.
 
 ## 7. AI/Python Layer — Deep Forensic Verdict
 
-**What it is:** one file (`intent_parser.py`) — a regex-based natural-language → `ProposedIntent` labeler, running as a separate HTTP process. No model calls, no context, no risk reasoning.
+**What it is (v2, C21):** one file (`intent_parser.py`) — a deterministic, pure-stdlib, **no-LLM** natural-language → `ProposedIntent` labeler, running as a separate HTTP process. No model calls, no network, no context retention.
 
 **What it is supposed to be:** per ARCHITECTURE.md's own honest framing — "the AI layer (Python, separate process) parses natural language into a JSON label; the Rust core makes all security decisions deterministically." **It fulfills exactly that documented role.**
 
@@ -108,9 +108,10 @@ Source: `ARCHITECTURE.md` (the canonical skill) + `SECURITY.md`.
 - It is wired (bridge → :8081 → ProposedIntent) but **structurally cannot weaken a decision**: its output is a label; L6/L7 deterministic gates decide; the bridge never feeds its `suggested_*` fields into verification.
 - It receives **only text** — never keys, never verification results it could game, never signing material.
 - Its failure modes are safe: wrong/stale suggestions → verify mismatch → block (fail-closed).
-- **Fixed this cycle:** unbounded request-body read (no cap — memory DoS on a public host) and unhandled `Content-Length` ValueError → 64 KiB cap + robust parsing + 413 + regression test. Stale advisory swap discriminator (`route` → `route_v2`) corrected.
+- **v2 expansion (C21, this cycle):** the labeler now emits the FULL Core semantic vocabulary (`swap|trade|exchange`, `transfer|send`, `stake|delegate`, `close|close_account`, `create|create_account`, `approve|revoke`) instead of 4 hardcoded classes; suggestions (`suggested_program_id`/`discriminator`/`protocol_candidates`) are **derived from the verified manifest registry at load time** (embedded fallback), so they can never drift from what the Core actually ships; adds risk-hint warnings (impersonation-vanity destinations from the real exploit corpus, authority changes, approve-delegate escalation, unmodeled mint/bridge/lend → advisory + fail-closed `unknown` label); per-signal confidence components replace the hardcoded 0.9; deterministic and fast (**~47k parses/sec, p50 ~21 µs** measured). Unmodeled intents are honestly labeled `unknown` (fail-closed) rather than guessed.
+- **Fixed this cycle:** unbounded request-body read (no cap — memory DoS on a public host) and unhandled `Content-Length` ValueError → 64 KiB cap + robust parsing + 413 + regression test (C20.1, retained).
 
-**Verdict: CORRECT BY DESIGN, THIN BY DESIGN.** The user's instinct ("too thin") is right in the sense that there is no semantic intent verification — but that is the documented architecture, and adding an LLM into the decision path would be a security regression, not an improvement. Real semantic verification (if ever wanted) belongs in Phase 3 as a *pre-parse* enrichment that still feeds the deterministic core.
+**Verdict: CORRECT BY DESIGN AND NOW SUBSTANTIVE.** The user's instinct ("too thin") was right — and v2 addresses it without an LLM: richer vocabulary, manifest-grounded suggestions, risk hints, explainable confidence, all still structurally unable to weaken a decision. Adding an LLM into the decision path would remain a security regression, not an improvement; real semantic verification (if ever wanted) belongs in Phase 3 as a *pre-parse* enrichment that still feeds the deterministic core.
 
 ---
 
@@ -157,14 +158,14 @@ Source: `ARCHITECTURE.md` (the canonical skill) + `SECURITY.md`.
 
 ## 13. Testing & Performance (measured this cycle)
 
-- **852 Rust tests / 0 failed**, including 470 adversarial/attack tests across 9 suites (adversarial, handcrafted, extreme, hell-mode, omega red-team ×2, novel attacks, property-based, real-world) — all green.
-- **8/8 Python** (incl. new body-limit regression), **TS SDK + SAK clean**, **Go SDK green in CI**, **Dashboard builds**, clippy `-D warnings`, fmt, all feature gates.
+- **856 Rust tests / 0 failed**, including 470 adversarial/attack tests across 9 suites (adversarial, handcrafted, extreme, hell-mode, omega red-team ×2, novel attacks, property-based, real-world) — all green.
+- **27/27 Python** (v2 labeler: intent classes, extraction, risk hints, confidence components, manifest grounding, determinism, perf smoke) + **8/8 AuditBind**, **TS SDK + SAK clean**, **Go SDK green in CI**, **Dashboard builds**, clippy `-D warnings`, fmt, all feature gates.
 - **On-chain:** 35/35 real exploits blocked; 20/20 program IDs executable on mainnet; 4 Squads discriminators chain-verified.
-- **Latency (release build, HTTP round-trip, Windows):** sequential p50 **11.2 ms**, p95 **17.6 ms**, p99 **66.2 ms**; core verification itself sub-ms (benchmark ~600 µs). Concurrent ceiling **~244 req/s** single-node (audit-log mutex convoy — acceptable for a wallet guard; async audit writer is a Phase 3 perf item).
+- **Latency (release build, HTTP round-trip, Windows):** sequential p50 **15.6 ms**, p95 **32.0 ms**, p99 **33.6 ms**; concurrent **~291 req/s** at C=32 (rate-limit raised to 1000 req/s for the measurement). Advisory labeler: **~47,000 parses/sec, p50 20.7 µs, p99 56 µs** (50k-parse benchmark). Core verification itself sub-ms.
 
 ---
 
-## 14. Changes Made This Cycle (C20)
+## 14. Changes Made This Cycle (C20 → C21)
 
 | # | Finding | Class | Fix |
 |---|---|---|---|
@@ -176,9 +177,20 @@ Source: `ARCHITECTURE.md` (the canonical skill) + `SECURITY.md`.
 
 **No regression introduced:** full suite green after every change (per change-safety protocol §15).
 
+### C21 (this cycle) — Advisory labeler v2 + intent-vocabulary alignment
+
+| # | Finding | Class | Fix |
+|---|---|---|---|
+| C21.1 | **Risk engine contradicted the semantic layer**: `program_supports_intent` returned false for `create`/`approve`/`revoke` (L5 vocabulary), so P0 Check 9 blocked every legitimate create/approve/revoke transaction even when the instruction matched the intent — while Check 6b/7 explicitly allowed those intents | Root (inconsistent trust model) | Expanded `program_supports_intent` to the full L5 vocabulary with correct program sets (create→System/ATA/Token/Token-2022/Metaplex/Pump.fun, approve/revoke→Token/Token-2022, plus trade/exchange/send/delegate/close_account aliases). Unknown intents stay fail-closed. 4 regression tests |
+| C21.2 | Advisory labeler too thin (4 intent classes, hardcoded confidence, no protocol grounding, stale advisory discriminator) | Root (capability gap, by design) | v2 rewrite: full Core vocabulary, manifest-registry-grounded suggestions, risk-hint warnings, per-signal confidence, benchmark mode, deterministic + fast (~47k/s). 19 new Python tests (27 total) |
+| C21.3 | SAK bridge defaulted swap verification to the LEGACY `route` discriminator (`e517cb97…`) — live txs carry `route_v2` (`bb64facc…`) | Surface (stale constant) | Default corrected to `route_v2`; comment documents the deployed surface |
+| C21.4 | TS SDK `IntentType` listed `lend` (no Core semantic class — would fail closed) and omitted close/create/approve/revoke | Surface (type drift) | Aligned with the Core's L5 vocabulary; `lend` removed |
+| C21.5 | Live-server probes this cycle: create/revoke now pass risk engine (Clear), approve still hard-blocked by design (PermissionEscalation risky pattern), 2MB→413, malformed CL→413, trailing-JSON→422 | Verification | No code change needed — behavior contract confirmed end-to-end |
+
 ## 15. Remaining Risks (honest, unresolved)
 
 - Swap-path TOCTOU (blocker, §12.1) — requires integration-level change, not core.
 - A direct chain reproduction of the Squads multisig PDA from a create tx is still open (public-RPC scan timeouts) — layout is SDK/IDL-grounded.
+- The advisory labeler still labels by keyword heuristics; ambiguous phrasing that hits no pattern is honestly `unknown` (fail-closed). Token symbols are advisory — mint addresses are not resolved by the labeler.
 - The `audit.jsonl` file mode on Linux deployments should be 0600 (operator hardening item).
 - Concurrent throughput ceiling ~244 req/s single-node (fine for wallet-guard, not for high-TPS serving).
