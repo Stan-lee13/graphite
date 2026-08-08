@@ -1,0 +1,288 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Jupiter DCA",
+    "program_id": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+    "website": "https://jup.ag",
+    "github": "https://github.com/jup-ag/dca-cpi",
+    "idl_source": "https://raw.githubusercontent.com/jup-ag/dca-cpi/master/idl.json"
+  },
+  "version": {
+    "label": "2.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "openDca",
+      "discriminator": "ee26b3c80e7dc30b",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "input_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "output_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "creates a new DCA account with the schedule parameters from instruction data",
+        "transfers the input_amount from user_ata into the DCA escrow"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "user must be signer and the owner of user_ata",
+        "escrow transfer amount must equal data.input_amount",
+        "RISK: if escrow recipient is not the DCA program PDA, flag MaliciousAccountChange"
+      ]
+    },
+    {
+      "name": "openDcaV2",
+      "discriminator": "459dd6ddd29d32ea",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "creates a new DCA account (v2 params: flexible interval configuration)",
+        "transfers the input_amount from user_ata into the DCA escrow"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "user must be signer and the owner of user_ata",
+        "escrow transfer amount must equal data.input_amount"
+      ]
+    },
+    {
+      "name": "closeDca",
+      "discriminator": "131cb5dbd74f7e19",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "closes the DCA account",
+        "returns escrow funds to accounts.user"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "only the DCA owner may close",
+        "RISK: refund recipient must be accounts.user — if funds go elsewhere, flag CompositionalDrain"
+      ]
+    },
+    {
+      "name": "deposit",
+      "discriminator": "478de837bcb934f6",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "adds funds to the DCA escrow",
+        "debits accounts.user_ata by data.amount"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "only the DCA owner may deposit",
+        "deposit amount must match data.amount"
+      ]
+    },
+    {
+      "name": "withdraw",
+      "discriminator": "1444d06d0075b0ab",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "withdraws unswapped input tokens from the DCA escrow",
+        "credits accounts.user_ata by data.amount"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "only the DCA owner may withdraw",
+        "RISK: withdrawal recipient must be user_ata owned by accounts.user — flag if diverted"
+      ]
+    },
+    {
+      "name": "endAndClose",
+      "discriminator": "2a54d7277fa6589b",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "ends the DCA schedule",
+        "closes the DCA account and returns remaining escrow to the owner"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "only the DCA owner may end the schedule",
+        "RISK: refund recipient must be accounts.user"
+      ]
+    },
+    {
+      "name": "withdrawFees",
+      "discriminator": "f4eba28483c2ce7d",
+      "accounts": [
+        {
+          "name": "admin",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_vault",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "transfers accumulated protocol fees from the fee vault to admin"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "admin-only instruction",
+        "RISK: unexpected fee withdrawal — flag PermissionEscalation"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest",
+  "verification": {
+    "program_id_verified_on_chain": true,
+    "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07",
+    "discriminators_source": "live mainnet transaction instruction bytes (observed via getTransaction, json encoding, 2026-08-07)",
+    "verified_at": "2026-08-07",
+    "notes": "Program ID confirmed executable on mainnet. Discriminators observed from live transactions: 459dd6ddd29d32ea (len16, 8 metas), 131cb5dbd74f7e19 (len8), ee26b3c80e7dc30b (len206), 478de837bcb934f6 (len8), 1444d06d0075b0ab (len16). The deployed program uses explicit discriminators that differ from the archived dca-cpi v1 IDL sighashes; names are mapped from the official instruction surface with payload-size evidence. openDca (len 206) carries the full schedule config."
+  }
+}

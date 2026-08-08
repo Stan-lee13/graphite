@@ -1172,3 +1172,81 @@ fn h24_risk_block_overrides_perfect_confidence_zero_threshold() {
         "Risk block must override perfect confidence + max tier + zero-threshold custom profile"
     );
 }
+
+// ═══════════════════════════════════════════════════════════
+// H25: PROTOCOL EXPANSION — TRUSTED DEX ROOT ATTACK SURFACE
+//
+// Pump.fun + Jupiter DCA joined DEX_PROGRAMS/TRUSTED_CPI_ROOTS (2026-08-07).
+// These pin that the relaxations stay scoped: compositional drains still
+// block, token CPIs are allowed only from the trusted roots, and non-DEX
+// expansion roots (Wormhole) still hit the drainer heuristic.
+// ═══════════════════════════════════════════════════════════
+
+#[test]
+fn h25_pumpfun_repeated_cpi_drain_still_blocked() {
+    let drainer = "DrainerProgram111111111111111111111111111";
+    let input = risk_input(
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        &["curve", "user"],
+        &[drainer, drainer, drainer, drainer],
+        &["credits accounts.curve"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        "66063d1201daebea",
+    );
+    let result = assess(&input).unwrap();
+    assert!(
+        matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            }
+        ),
+        "H25: DEX_PROGRAMS entry must NOT mask a repeated-program CPI drain on pump.fun"
+    );
+}
+
+#[test]
+fn h25_dca_token_cpi_from_trusted_root_is_allowed() {
+    // DCA escrow CPIs to SPL Token are legitimate — a trusted root must not
+    // be flagged as AuthorityHijack for the CPI it is designed to make.
+    let input = risk_input(
+        "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+        &["user", "escrow"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        &["debits accounts.escrow", "credits accounts.user"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        "131cb5dbd74f7e19",
+    );
+    let result = assess(&input).unwrap();
+    assert_eq!(
+        result,
+        RiskVerdict::Passed,
+        "H25: Jupiter DCA (trusted root) token CPI must pass, not AuthorityHijack"
+    );
+}
+
+#[test]
+fn h25_wormhole_not_exempt_from_drainer() {
+    // Wormhole Core is a new manifest but NOT in DEX_PROGRAMS — a drainer
+    // shape on it must still be blocked, proving the relaxation is scoped.
+    let input = risk_input(
+        "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+        &["a1", "a2", "a3", "a4", "a5", "a6"],
+        &[],
+        &[],
+        &[],
+        "01",
+    );
+    let result = assess(&input).unwrap();
+    assert!(
+        matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Drainer,
+                ..
+            }
+        ),
+        "H25: Wormhole must NOT inherit the DEX_PROGRAMS drainer relaxation"
+    );
+}

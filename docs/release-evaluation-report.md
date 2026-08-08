@@ -12,14 +12,14 @@
 Graphite v0.1.0-alpha is the first frozen release of a transaction intent verification engine for Solana AI agents. It verifies that constructed transactions actually do what was declared, produces a falsifiable confidence score, and fails closed on unknown protocols.
 
 **Key results:**
-- **680 Rust tests** (108 unit + 572 integration/adversarial), **0 failures** (682 with `--include-ignored`)
+- **818 Rust tests** (175 unit + 618 integration/adversarial), **0 failures** (820 with `--include-ignored`)
 - **7 Python AI layer tests**, 0 failures
-- **9 Go SDK tests**, 0 failures
+- **10 Go SDK tests**, 0 failures (verified in CI)
 - **TypeScript SDK**: clean compile (tsc --noEmit)
 - **16 scored benchmark cases** (safe + malicious) + 2 baseline comparisons, **100% precision, 100% recall**
 - **~850μs average latency** (release build, all features, live-measured 2026-08-07)
 - **0 clippy warnings**, fmt clean, no-default-features builds
-- **11 seed protocol manifests (10 original + legacy Memo)**, all program IDs verified from official sources
+- **15 protocol manifests** (11 Phase 1 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata), all program IDs verified from official sources (confirmed executable on mainnet 2026-08-07)
 - **SAK integration verified on Solana devnet** — 5 finalized transactions (Aug 7, 2026)
 
 ---
@@ -30,15 +30,15 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 
 | Category | Test File | Tests | Status |
 |---|---|---|---|
-| **Unit** | `src/*.rs` (lib tests) | 108 | ✅ Pass |
+| **Unit** | `src/*.rs` (lib tests) | 143 | ✅ Pass |
 | **Integration** | `tests/integration_tests.rs` | 16 | ✅ Pass |
 | **Confidence** | `tests/confidence_engine_tests.rs` | 13 | ✅ Pass |
 | **Layer Honesty** | `tests/layers_test.rs` | 5 | ✅ Pass |
 | **Adversarial** | `tests/adversarial_tests.rs` | 45 | ✅ Pass |
 | **Deep Extreme** | `tests/deep_extreme_tests.rs` | 44 | ✅ Pass |
 | **Extreme Adversarial** | `tests/extreme_adversarial.rs` | 50 | ✅ Pass |
-| **Hell Mode** | `tests/hell_mode_tests.rs` | 37 | ✅ Pass |
-| **Omega Red Team** | `tests/omega_red_team.rs` | 15 | ✅ Pass |
+| **Hell Mode** | `tests/hell_mode_tests.rs` | 40 | ✅ Pass |
+| **Omega Red Team** | `tests/omega_red_team.rs` | 20 | ✅ Pass |
 | **Omega Regression** | `tests/omega_red_team_regression.rs` | 11 | ✅ Pass |
 | **Proptest** | `tests/proptest_engine.rs` (512 cases) | 4 | ✅ Pass |
 | **Trust Tier** | `tests/trust_tier_verify.rs` | 2 | ✅ Pass |
@@ -48,7 +48,8 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 | **Real Exploit Tests** | `tests/real_exploit_tests.rs` | 15 | ✅ Pass |
 | **Real On-Chain Exploits** | `tests/real_onchain_exploits.rs` | 15 | ✅ Pass |
 | **Live Devnet Corpus** | `tests/live_transactions.rs` (RPC; ignored by default) | 1 (ignored) | ✅ Pass with RPC |
-| **Total** | | **680** | **0 failures** |
+| **Protocol Expansion** | `tests/protocol_expansion_tests.rs` | 11 | ✅ Pass |
+| **Total** | | **818** | **0 failures** |
 
 ### 2.2 Adversarial Test Categories
 
@@ -81,7 +82,7 @@ The adversarial/exploit test suites cover 9 attack categories:
 
 | Surface | Tests | Status |
 |---|---|---|
-| Go SDK | 9 (`go test ./...`) | ✅ Pass |
+| Go SDK | 10 (`go test ./...`, verified in CI) | ✅ Pass |
 | Python AI Layer | 7 (`pytest test_intent_parser.py`) | ✅ Pass |
 | TypeScript SDK | — | ✅ Clean compile (`tsc --noEmit`) |
 | Solana Agent Kit | — | ✅ TypeScript typecheck, AuditBind cross-language tests, **end-to-end verified on Solana devnet** (5 finalized transactions) |
@@ -134,7 +135,7 @@ The adversarial/exploit test suites cover 9 attack categories:
 
 ## 4. Protocol Coverage
 
-11 seed protocol manifests (10 original + legacy Memo), all program IDs verified from official sources:
+15 protocol manifests (11 Phase 1 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata), all program IDs verified from official sources:
 
 | Protocol | Program ID | Source |
 |---|---|---|
@@ -148,6 +149,10 @@ The adversarial/exploit test suites cover 9 attack categories:
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Meteora docs |
 | Squads V4 | `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` | Squads-Protocol/v4 GitHub |
 | Memo Program | `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` | Solana docs |
+| Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | pump-fun/pump-public-docs (on-chain verified) |
+| Jupiter DCA | `DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M` | Jupiter docs (on-chain verified) |
+| Wormhole Core | `worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth` | Wormhole docs (on-chain verified) |
+| Metaplex Token Metadata | `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s` | Metaplex docs (on-chain verified) |
 
 ---
 
@@ -187,7 +192,7 @@ The adversarial/exploit test suites cover 9 attack categories:
 
 1. **Synthetic benchmark corpus** — 11 of the 16 scored benchmark cases use hand-crafted accounts (the 5 exploit reconstructions use real program IDs and are labeled SYNTHETIC per P16). Live on-chain verification is now exercised separately via `tests/live_transactions.rs` (real devnet corpus through the full pipeline) and the SAK devnet integration. Real on-chain instruction-level verification for drainer programs requires protocol manifests (Phase 2).
 
-2. **Protocol expansion** — 11 seed protocols are included. Phase 2 will expand to 15-20 with community-contributed manifests.
+2. **Protocol expansion** — 15 protocol manifests are included (11 Phase 1 seed + 4 added in Phase 2 Month 1). Expansion to 20 continues with community-contributed manifests.
 
 3. **FakeSwap detection requires simulation integrity** — The FakeSwap pattern is detected by checking if swap intent routes to a swap program but expected state changes don't include output/credit. Full FakeSwap detection requires simulation integrity (Phase 2).
 
@@ -203,7 +208,7 @@ The adversarial/exploit test suites cover 9 attack categories:
 
 | Check | Result |
 |---|---|
-| `cargo test` | 680 passed, 0 failed (682 with `--include-ignored`) |
+| `cargo test` | 818 passed, 0 failed (820 with `--include-ignored`) |
 | `cargo clippy` | 0 warnings |
 | `cargo fmt` | Clean |
 | `cargo build --release` | ~3.1MB binary |

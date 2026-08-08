@@ -1,0 +1,216 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Metaplex Token Metadata",
+    "program_id": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+    "website": "https://developers.metaplex.com/token-metadata",
+    "github": "https://github.com/metaplex-foundation/mpl-token-metadata",
+    "idl_source": "https://github.com/metaplex-foundation/mpl-token-metadata/tree/main/clients/rust/src/generated/instructions"
+  },
+  "version": {
+    "label": "1.13.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "CreateMetadataAccountV3",
+      "discriminator": "0fd902b83e0f4ee4",
+      "accounts": [
+        {
+          "name": "metadata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "mint_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "payer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "update_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "creates a metadata account at PDA ['metadata', program_id, mint]",
+        "records name, symbol, uri from instruction data"
+      ],
+      "allowed_cpis": [
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "metadata PDA must derive from ['metadata', program_id, mint]",
+        "mint_authority must be signer",
+        "RISK: metadata for an attacker-controlled mint can carry phishing URI — flag unknown mints"
+      ]
+    },
+    {
+      "name": "UpdateMetadataAccountV2",
+      "discriminator": "1ec413bd20e86291",
+      "accounts": [
+        {
+          "name": "metadata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "update_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates metadata name/symbol/uri fields",
+        "may transfer update authority"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "update_authority must be signer — only current authority may update",
+        "RISK: URI swap to phishing content is invisible to the chain — flag high-value metadata updates",
+        "RISK: authority transfer to attacker — flag PermissionEscalation"
+      ]
+    },
+    {
+      "name": "SignMetadata",
+      "discriminator": "2eb5af436b292665",
+      "accounts": [
+        {
+          "name": "metadata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "creator",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "marks the creator as verified on the metadata"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "creator must be a declared creator on the metadata",
+        "RISK: creator verification is reputation-bearing — flag unverified-creator signatures"
+      ]
+    },
+    {
+      "name": "VerifyCollection",
+      "discriminator": "941686a3459e71c9",
+      "accounts": [
+        {
+          "name": "metadata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collection_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "collection_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "verifies the NFT belongs to the collection"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "collection_authority must be the verified delegate",
+        "RISK: fake collection verification — flag if collection PDA mismatches declared authority"
+      ]
+    },
+    {
+      "name": "BurnNft",
+      "discriminator": "8fa1f495a95dbfae",
+      "accounts": [
+        {
+          "name": "metadata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "burns the NFT token and closes the metadata"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "owner must be signer and own the token_account",
+        "token_account must be owned by accounts.owner",
+        "RISK: burning someone else's NFT via authority confusion — flag if owner ≠ token account owner"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest",
+  "verification": {
+    "program_id_verified_on_chain": true,
+    "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07 + official mpl-token-metadata repo",
+    "discriminators_source": "live mainnet transaction instruction bytes observed 2026-08-07 (0fd902b83e0f4ee4 x5, 1ec413bd20e86291 x1); other values from official generated clients (shank hardcoded constants)",
+    "verified_at": "2026-08-07",
+    "notes": "Program ID confirmed executable on mainnet: metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s. The task-list ID metaqbxxUerdq28cj1RbyVSURYkx4j7p2nQELpNk6m is FABRICATED (invalid pubkey) — rejected per P11. MPL uses hardcoded shank discriminator constants (not anchor sighash); the two most-common discriminators were confirmed from live transactions."
+  }
+}

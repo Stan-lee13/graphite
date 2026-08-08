@@ -1,0 +1,190 @@
+{
+ "transaction": {
+  "message": {
+   "accountKeys": [
+    "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU",
+    "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP",
+    "12TcEygMYKNaXhPL7pNM9pB8xVq5ynpqURG7rXXJ8ULy",
+    "Coxid3BVrSNeMjBNuR2h1JCXBUKvERNMpuDrBk6J1ksw",
+    "BfQo77gHmKxUmbMXbZ9avLJuNQXDtUQ7DAf53SZFATeZ",
+    "2dYfyhfoSoEApQL3iNqhHQso6waZjfH2rNtb9SiYS2FW",
+    "FK2CGUw85tEpoPEdgrtT4E9txB3E4jNdrTcwCxb7GYKa",
+    "11111111111111111111111111111111",
+    "SysvarRecentB1ockHashes11111111111111111111",
+    "ComputeBudget111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+    "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf"
+   ],
+   "addressTableLookups": [
+    {
+     "accountKey": "2KvpKUv4gGv6Dv1wMok3SRTMH8Cg6JNJTmoDeVr2xmZX",
+     "readonlyIndexes": [
+      45,
+      13,
+      11,
+      12,
+      9,
+      30,
+      10,
+      16,
+      21,
+      0,
+      19,
+      1
+     ],
+     "writableIndexes": [
+      4,
+      67,
+      2,
+      25,
+      7,
+      17,
+      18
+     ]
+    }
+   ],
+   "header": {
+    "numReadonlySignedAccounts": 1,
+    "numReadonlyUnsignedAccounts": 7,
+    "numRequiredSignatures": 2
+   },
+   "instructions": [
+    {
+     "accounts": [
+      2,
+      8,
+      1
+     ],
+     "data": "6vx8P",
+     "programIdIndex": 7,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [],
+     "data": "K1FDJ7",
+     "programIdIndex": 9,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [],
+     "data": "3J4j8N9Ebq2f",
+     "programIdIndex": 9,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [
+      0,
+      3,
+      0,
+      21,
+      7,
+      11
+     ],
+     "data": "2",
+     "programIdIndex": 10,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [
+      0,
+      3
+     ],
+     "data": "3Bxs3zuvZVJoUB9H",
+     "programIdIndex": 7,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [
+      3
+     ],
+     "data": "J",
+     "programIdIndex": 11,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [
+      0,
+      4,
+      0,
+      22,
+      7,
+      23
+     ],
+     "data": "2",
+     "programIdIndex": 10,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [
+      0,
+      3,
+      4,
+      21,
+      22,
+      11,
+      23,
+      12,
+      13,
+      12,
+      5,
+      24,
+      14,
+      0,
+      25,
+      22,
+      21,
+      4,
+      3,
+      15,
+      16,
+      26,
+      17,
+      23,
+      11,
+      7,
+      10,
+      27,
+      24,
+      18,
+      28,
+      19,
+      6,
+      29,
+      30,
+      0,
+      31,
+      32,
+      20,
+      12
+     ],
+     "data": "37MZM8vwf4KDwyg3sEi3fcBKB37guMXxGSaaVDFnsKdq1vnmNCh4v4",
+     "programIdIndex": 12,
+     "stackHeight": 1
+    },
+    {
+     "accounts": [
+      3,
+      0,
+      0
+     ],
+     "data": "A",
+     "programIdIndex": 11,
+     "stackHeight": 1
+    }
+   ],
+   "recentBlockhash": "3CqSqNyyfY286Uurc5cxc14KAWQHUQaykcVTtdgSxC12"
+  },
+  "signatures": [
+   "57TAjPZXt49F9rSVZNEuyTPGHDJEHEgFbDkEzTXXjVh71cxZa75FFch5XJzpW88z1ZqHko6Fn7BMj2LLzWNiHcd9",
+   "4oPpSNSSn6B62wk2mKsqBbnqmZwad1yj5myfatjzuwg2kLjDdDAtWGtfUE8Q5YUuMV43BzvieNSUxPjnVNzzxtHn"
+  ]
+ },
+ "slot": 438012579,
+ "blockTime": 1786200417,
+ "meta": {
+  "computeUnitsConsumed": 136406,
+  "err": null
+ }
+}

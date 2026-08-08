@@ -41,6 +41,12 @@ const MAX_BODY_SIZE: usize = 1024 * 1024;
 /// generous and prevents slow-loris style attacks.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Dashboard series caps: the confidence chart and the violations list only
+/// ever materialize this many points per request (memory stays bounded as
+/// the audit log grows); the response still reports the true totals.
+const CONFIDENCE_SERIES_CAP: usize = 500;
+const VIOLATIONS_CAP: usize = 200;
+
 /// Shared application state.
 #[derive(Clone)]
 struct AppState {
@@ -48,6 +54,8 @@ struct AppState {
     /// Bearer API key; `None` = unauthenticated (dev only).
     api_key: Option<Arc<String>>,
     audit: Option<AuditLog>,
+    /// Community Manifest Registry engine (read-only dashboard view — P4).
+    registry_engine: crate::manifest_registry::ManifestRegistryEngine,
     rate: RateLimiter,
     /// Only honor `X-Forwarded-For` when behind a trusted proxy.
     trust_proxy: bool,
@@ -192,6 +200,33 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     let mut core = GraphiteCore::with_data_dir(data_dir.clone());
 
+    // Plugin framework (Constitution P8): activate approved third-party plugin
+    // manifests from GRAPHITE_PLUGINS_DIR (review gate — pending/rejected
+    // manifests are skipped), and optionally mirror every verification event
+    // to a JSON-lines file for production observability.
+    if let Ok(dir) = std::env::var("GRAPHITE_PLUGINS_DIR") {
+        if !dir.is_empty() {
+            match core.attach_plugins_dir(std::path::Path::new(&dir)) {
+                Ok(summary) => tracing_log(&format!(
+                    "plugins: {} registered, {} pending (skipped), {} rejected (skipped) from {}",
+                    summary.registered, summary.skipped_pending, summary.skipped_rejected, dir
+                )),
+                Err(e) => tracing_log(&format!("plugins: FAILED to load {}: {}", dir, e)),
+            }
+        }
+    }
+    if let Ok(events_file) = std::env::var("GRAPHITE_PLUGIN_EVENTS_FILE") {
+        if !events_file.is_empty() {
+            match core.attach_event_file_sink(std::path::Path::new(&events_file)) {
+                Ok(()) => tracing_log(&format!(
+                    "plugins: verification events appended to {}",
+                    events_file
+                )),
+                Err(e) => tracing_log(&format!("plugins: event file sink not attached: {}", e)),
+            }
+        }
+    }
+
     if let Ok(endpoint) = std::env::var("GRAPHITE_RPC_URL") {
         if !endpoint.is_empty() {
             let client = crate::rpc_client::SolanaRpcClient::new(crate::rpc_client::RpcConfig {
@@ -243,6 +278,12 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         core,
         api_key: api_key.clone(),
         audit,
+        // Fresh engine per process: submissions and reviewer registrations are
+        // operator/PR-flow writes (Phase 2/3); the dashboard reads current
+        // state. Persistence is intentionally deferred to the PR workflow
+        // milestone — nothing is lost because nothing is writable over HTTP
+        // yet (read-only surface, P4).
+        registry_engine: crate::manifest_registry::ManifestRegistryEngine::new(),
         rate: RateLimiter::new(rate_per_sec),
         trust_proxy,
     };
@@ -323,6 +364,12 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         .route("/verify", post(verify_handler))
         .route("/health", get(health_handler))
         .route("/manifests", get(manifests_handler))
+        // Dashboard read-only API (Constitution P4 — no mutation).
+        .route("/api/graph", get(graph_handler))
+        .route("/api/confidence-history", get(confidence_history_handler))
+        .route("/api/policy-violations", get(policy_violations_handler))
+        .route("/api/protocols/top", get(top_protocols_handler))
+        .route("/api/registry", get(registry_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -630,6 +677,179 @@ async fn manifests_handler(
     Json(manifests)
 }
 
+/// Dashboard: Semantic Graph read-only snapshot (P4 — never mutates).
+async fn graph_handler(State(state): State<AppState>) -> Json<crate::verification::GraphSnapshot> {
+    Json(state.core.graph_snapshot())
+}
+
+/// Dashboard: confidence scores over time, from the audit log
+/// (most recent first; the dashboard polls this for the time series).
+async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Bounded read: the chart needs the most recent points; memory stays
+    // bounded by the cap while `count` reports the exact total (P4 — the
+    // dashboard is observability). The scan is O(log) per poll, which is
+    // fine at the dashboard's cadence on a single core node.
+    let (records, _, total, _) = match &state.audit {
+        Some(log) => log.read_tail_filtered(CONFIDENCE_SERIES_CAP, |_| true),
+        None => (Vec::new(), Vec::new(), 0, 0),
+    };
+    let series: Vec<serde_json::Value> = records
+        .iter()
+        .rev()
+        .map(|r| {
+            serde_json::json!({
+                "timestamp": r.timestamp,
+                "confidence": r.confidence,
+                "approved": r.approved,
+                "program_id": r.program_id,
+                "audit_trail_id": r.audit_trail_id,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({ "series": series, "count": total }))
+}
+
+/// Dashboard: policy-engine blocked transactions from the audit log
+/// (most recent first). A violation is any record where the policy or risk
+/// layer rejected the transaction.
+async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Bounded read: only the most recent violations are surfaced; memory
+    // stays bounded by the cap while `count` reports the exact total.
+    let (records, errors, total_violations, _) = match &state.audit {
+        Some(log) => log.read_tail_filtered(VIOLATIONS_CAP, |r| !r.approved),
+        None => (Vec::new(), Vec::new(), 0, 0),
+    };
+    let violations: Vec<serde_json::Value> = records
+        .iter()
+        .rev()
+        .map(|r| {
+            serde_json::json!({
+                "timestamp": r.timestamp,
+                "program_id": r.program_id,
+                "protocol_name": r.protocol_name,
+                "instruction_name": r.instruction_name,
+                "confidence": r.confidence,
+                "policy_verdict": r.policy_verdict,
+                "risk_status": r.risk_status,
+                "audit_trail_id": r.audit_trail_id,
+            })
+        })
+        .collect();
+    // Error-path probes (malformed/oversized/bad-input requests) are
+    // violations of the protocol contract too — surface them so blocked
+    // traffic is fully observable.
+    let error_violations: Vec<serde_json::Value> = errors
+        .iter()
+        .rev()
+        .map(|e| {
+            serde_json::json!({
+                "timestamp": e.timestamp,
+                "program_id": e.program_id,
+                "instruction_name": e.instruction_name,
+                "error": e.error,
+                "error_type": e.error_type,
+                "status": e.status,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({
+        "violations": violations,
+        "error_violations": error_violations,
+        "count": total_violations + error_violations.len(),
+    }))
+}
+
+/// Dashboard: top 5 protocols by battle-tested volume (earned evidence, P7)
+/// plus verified observation count from the audit log. Sorted descending by
+/// volume; ties broken deterministically by program id.
+async fn top_protocols_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    // Streaming per-program counts: memory is bounded by distinct programs,
+    // never by log size.
+    let observed = match &state.audit {
+        Some(log) => log.observations_by_program(),
+        None => std::collections::HashMap::new(),
+    };
+    // One graph lock per request: the snapshot is owned data, so the guard
+    // drops before the audit-log reads below (no nested locking).
+    let snapshot = state.core.graph_snapshot();
+    let mut rows: Vec<serde_json::Value> = snapshot
+        .nodes
+        .iter()
+        .map(|n| {
+            serde_json::json!({
+                "program_id": n.program_id,
+                "name": n.name,
+                "trust_tier": n.trust_tier,
+                "battle_tested_tx_count": n.battle_tested_tx_count,
+                "observed_verifications": observed.get(&n.program_id).copied().unwrap_or(0),
+                "quarantined": n.quarantined,
+            })
+        })
+        .collect();
+    // Include programs observed via the audit log that have no graph node
+    // (e.g. unknown programs that were verified and rejected).
+    for (program_id, count) in &observed {
+        if !snapshot.nodes.iter().any(|n| &n.program_id == program_id) {
+            rows.push(serde_json::json!({
+                "program_id": program_id,
+                "name": program_id,
+                "trust_tier": "Unknown",
+                "battle_tested_tx_count": 0,
+                "observed_verifications": count,
+                "quarantined": false,
+            }));
+        }
+    }
+    // Descending by total volume (earned battle-tested tx + observed
+    // verifications); ties broken by program id for determinism (P2).
+    rows.sort_by(|a, b| {
+        let total = |v: &serde_json::Value| -> u64 {
+            v["battle_tested_tx_count"].as_u64().unwrap_or(0)
+                + v["observed_verifications"].as_u64().unwrap_or(0)
+        };
+        total(b)
+            .cmp(&total(a))
+            .then_with(|| a["program_id"].as_str().cmp(&b["program_id"].as_str()))
+    });
+    rows.truncate(5);
+    Json(serde_json::json!({ "top": rows }))
+}
+
+/// Dashboard: Manifest Registry state — accepted submissions with version
+/// lineage, and registered reviewers (read-only view of the engine).
+async fn registry_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let engine = &state.registry_engine;
+    let records: Vec<serde_json::Value> = engine
+        .records()
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "program_id": r.program_id,
+                "version_label": r.version_label,
+                "previous_version_ref": r.previous_version_ref,
+                "content_hash": r.content_hash,
+                "trust_tier": r.trust_tier.as_str(),
+                "source": r.source,
+            })
+        })
+        .collect();
+    let reviewers: Vec<serde_json::Value> = engine
+        .reviewers()
+        .iter()
+        .map(|(pubkey, r)| {
+            serde_json::json!({
+                "pubkey": pubkey,
+                "reputation_score": r.reputation_score,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({
+        "records": records,
+        "reviewers": reviewers,
+        "record_count": records.len(),
+    }))
+}
+
 fn tracing_log(msg: &str) {
     eprintln!("[graphite] {}", msg);
 }
@@ -680,5 +900,274 @@ mod tests {
         assert!(!rl.check(ip));
         // A different IP is unaffected.
         assert!(rl.check(IpAddr::from([10, 0, 0, 10])));
+    }
+    // ─── Dashboard read-only API (P4) ────────────────────────────────────────
+
+    /// Build an app state with a seeded core + an audit log in a temp dir.
+    /// Each call gets a unique dir (parallel tests must never share the audit
+    /// file — appends from one test would leak into another's readout).
+    fn test_state() -> (AppState, std::path::PathBuf) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-dash-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut core = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        // Earned evidence for the System Program (battle-tested tier + baseline).
+        use crate::semantic_graph_store::{Behavior, BehaviorEvidence};
+        use crate::simulation_integrity::ComputeBaseline;
+        core.seed_behavior(Behavior {
+            program_id: "11111111111111111111111111111111".to_string(),
+            version: "1.0.0".to_string(),
+            expected_state_changes: vec!["debits accounts.from by amount".to_string()],
+            allowed_cpis: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
+            trust_tier: crate::TrustTier::Unknown,
+            evidence: BehaviorEvidence {
+                has_signed_manifest: true,
+                community_verified_count: 2,
+                battle_tested_tx_count: 1500,
+                simulation_match_count: 100,
+            },
+            quarantined: false,
+            quarantine_reason: None,
+        })
+        .unwrap();
+        core.seed_simulation_baseline(
+            "11111111111111111111111111111111",
+            ComputeBaseline {
+                mean_compute_units: 150.0,
+                std_compute_units: 1.0,
+                sample_count: 50,
+                mean_account_writes: 2.0,
+                std_account_writes: 0.5,
+                mean_cpi_hops: 0.0,
+                std_cpi_hops: 0.1,
+            },
+        )
+        .unwrap();
+        let audit = AuditLog::open(audit_path(&dir)).unwrap();
+        let state = AppState {
+            core,
+            api_key: None,
+            audit: Some(audit),
+            registry_engine: crate::manifest_registry::ManifestRegistryEngine::new(),
+            rate: RateLimiter::new(1000.0),
+            trust_proxy: false,
+        };
+        (state, dir)
+    }
+
+    async fn get_json(app: &Router, path: &str) -> (axum::http::StatusCode, serde_json::Value) {
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let mut req = axum::http::Request::builder()
+            .uri(path)
+            .body(Body::empty())
+            .unwrap();
+        // The rate-limit middleware reads ConnectInfo (provided by the real
+        // listener via into_make_service_with_connect_info); oneshot tests
+        // must inject it explicitly.
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        (status, value)
+    }
+
+    #[tokio::test]
+    async fn dashboard_graph_endpoint_is_read_only_snapshot() {
+        let (state, _dir) = test_state();
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/graph").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        let nodes = json["nodes"].as_array().expect("nodes array");
+        assert!(!nodes.is_empty(), "seed manifests must appear as nodes");
+        // System Program node carries earned evidence.
+        let sys = nodes
+            .iter()
+            .find(|n| n["program_id"] == "11111111111111111111111111111111")
+            .expect("system node");
+        assert_eq!(sys["battle_tested_tx_count"], 1500);
+        assert_eq!(sys["baseline_samples"], 50);
+        assert_eq!(sys["trust_tier"], "BattleTested");
+        // CPI edges derived from allowed_cpis.
+        let edges = json["edges"].as_array().unwrap();
+        assert!(
+            edges.iter().any(|e| {
+                e["from"] == "11111111111111111111111111111111"
+                    && e["to"] == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            }),
+            "CPI edge System -> Token must exist"
+        );
+    }
+
+    #[tokio::test]
+    async fn dashboard_confidence_history_reads_audit_log() {
+        let (state, dir) = test_state();
+        // Append two audit records directly (verification happened over HTTP).
+        let log = state.audit.as_ref().unwrap();
+        let ts = crate::durable::now_utc_rfc3339();
+        log.append(&AuditRecord {
+            timestamp: ts.clone(),
+            audit_trail_id: "gr-a".to_string(),
+            content_hash: "h1".to_string(),
+            program_id: "11111111111111111111111111111111".to_string(),
+            instruction_name: "transfer".to_string(),
+            protocol_name: "System Program".to_string(),
+            manifest_version: Some("1.0.0".to_string()),
+            approved: true,
+            confidence: 0.9,
+            risk_status: "Clear".to_string(),
+            policy_verdict: "Approved".to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+        });
+        log.append(&AuditRecord {
+            timestamp: ts,
+            audit_trail_id: "gr-b".to_string(),
+            content_hash: "h2".to_string(),
+            program_id: "11111111111111111111111111111111".to_string(),
+            instruction_name: "transfer".to_string(),
+            protocol_name: "System Program".to_string(),
+            manifest_version: Some("1.0.0".to_string()),
+            approved: false,
+            confidence: 0.3,
+            risk_status: "Blocked".to_string(),
+            policy_verdict: "RejectedBelowThreshold".to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+        });
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/confidence-history").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert_eq!(json["count"], 2);
+        let series = json["series"].as_array().unwrap();
+        assert_eq!(series[0]["confidence"], 0.3, "most recent first");
+        let _ = dir;
+    }
+
+    #[tokio::test]
+    async fn dashboard_policy_violations_lists_blocked_records() {
+        let (state, dir) = test_state();
+        let log = state.audit.as_ref().unwrap();
+        log.append(&AuditRecord {
+            timestamp: crate::durable::now_utc_rfc3339(),
+            audit_trail_id: "gr-blocked".to_string(),
+            content_hash: "h3".to_string(),
+            program_id: "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M".to_string(),
+            instruction_name: "openDca".to_string(),
+            protocol_name: "Jupiter DCA".to_string(),
+            manifest_version: None,
+            approved: false,
+            confidence: 0.4,
+            risk_status: "Blocked".to_string(),
+            policy_verdict: "RejectedRiskEngineBlock".to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+        });
+        // Error-path probe (malformed request) must surface as a violation too.
+        log.append_error(&crate::durable::AuditErrorRecord {
+            timestamp: crate::durable::now_utc_rfc3339(),
+            program_id: "probe".to_string(),
+            instruction_name: "n/a".to_string(),
+            error: "missing proposed_intent".to_string(),
+            error_type: "bad_input".to_string(),
+            status: 400,
+        });
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/policy-violations").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        // count = blocked verifications + error-path probes (both surfaced).
+        assert_eq!(json["count"], 2);
+        assert_eq!(
+            json["violations"][0]["program_id"],
+            "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
+        );
+        assert_eq!(
+            json["violations"][0]["policy_verdict"],
+            "RejectedRiskEngineBlock"
+        );
+        // The error-path probe is surfaced separately, most recent first.
+        assert_eq!(json["error_violations"][0]["program_id"], "probe");
+        assert_eq!(json["error_violations"][0]["error_type"], "bad_input");
+        let _ = dir;
+    }
+
+    #[tokio::test]
+    async fn dashboard_top_protocols_ranks_by_volume() {
+        let (state, dir) = test_state();
+        let log = state.audit.as_ref().unwrap();
+        // 3 verifications of the System program.
+        for i in 0..3 {
+            log.append(&AuditRecord {
+                timestamp: crate::durable::now_utc_rfc3339(),
+                audit_trail_id: format!("gr-top-{i}"),
+                content_hash: format!("h{i}"),
+                program_id: "11111111111111111111111111111111".to_string(),
+                instruction_name: "transfer".to_string(),
+                protocol_name: "System Program".to_string(),
+                manifest_version: None,
+                approved: true,
+                confidence: 0.9,
+                risk_status: "Clear".to_string(),
+                policy_verdict: "Approved".to_string(),
+                l3_status: "inconclusive".to_string(),
+                l8_status: "inconclusive".to_string(),
+            });
+        }
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/protocols/top").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        let top = json["top"].as_array().unwrap();
+        assert!(!top.is_empty() && top.len() <= 5, "top 5 protocols");
+        // System Program (1500 battle-tested + 3 observed) must rank first.
+        assert_eq!(top[0]["program_id"], "11111111111111111111111111111111");
+        assert_eq!(top[0]["observed_verifications"], 3);
+        let _ = dir;
+    }
+
+    #[tokio::test]
+    async fn dashboard_registry_returns_records_and_reviewers() {
+        let (state, dir) = test_state();
+        let mut engine = crate::manifest_registry::ManifestRegistryEngine::new();
+        engine.register_reviewer("reviewerPubkey1", 1000).unwrap();
+        let mut state = state;
+        state.registry_engine = engine;
+        let app = build_app(state, vec![]);
+        let (status, json) = get_json(&app, "/api/registry").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert_eq!(json["record_count"], 0, "no submissions yet (read-only)");
+        assert_eq!(json["reviewers"][0]["pubkey"], "reviewerPubkey1");
+        assert_eq!(json["reviewers"][0]["reputation_score"], 1000);
+        let _ = dir;
+    }
+
+    #[tokio::test]
+    async fn dashboard_endpoints_respect_api_key_auth() {
+        let (state, dir) = test_state();
+        let state = AppState {
+            api_key: Some(std::sync::Arc::new("sekret".to_string())),
+            ..state
+        };
+        let app = build_app(state, vec![]);
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let mut req = axum::http::Request::builder()
+            .uri("/api/graph")
+            .body(Body::empty())
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let _ = dir;
     }
 }

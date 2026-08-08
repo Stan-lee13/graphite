@@ -410,4 +410,168 @@ mod tests {
         assert!(result.resolved_accounts[1].is_pda);
         assert!(!result.resolved_accounts[1].pda_mismatch);
     }
+
+    /// Build a manifest whose `derived` account is a PDA seeded from
+    /// instruction data, then resolve with real data bytes.
+    fn resolve_data_seeded(
+        program_id: &str,
+        seed_templates: &[&str],
+        data: Vec<u8>,
+        derived_address: &str,
+    ) -> AccountResolutionResult {
+        let program_pk = Pubkey::from_base58(program_id).unwrap();
+        let manifest = ProtocolManifest {
+            graphite_manifest_version: "1.0".to_string(),
+            protocol: ProtocolInfo {
+                name: "DataSeededPda".to_string(),
+                program_id: program_id.to_string(),
+                website: String::new(),
+                github: String::new(),
+            },
+            version: ManifestVersion {
+                label: "1.0".to_string(),
+                effective_from_slot: 0,
+                previous_version_ref: None,
+            },
+            instructions: vec![InstructionDef {
+                name: "DynamicData".to_string(),
+                discriminator: "deadbeef".to_string(),
+                accounts: vec![
+                    AccountRoleDef {
+                        name: "authority".to_string(),
+                        role: "signer".to_string(),
+                        is_writable: false,
+                        is_signer: true,
+                        pda_seeds: vec![],
+                    },
+                    AccountRoleDef {
+                        name: "derived".to_string(),
+                        role: "pda".to_string(),
+                        is_writable: true,
+                        is_signer: false,
+                        pda_seeds: seed_templates.iter().map(|s| s.to_string()).collect(),
+                    },
+                ],
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                risk_rules: vec![],
+                variable_accounts: false,
+            }],
+            trust_tier: String::new(),
+        };
+        let mut registry = ManifestRegistry::new();
+        registry
+            .load_from_json(&serde_json::to_string(&manifest).unwrap())
+            .unwrap();
+        let input = AccountResolutionInput {
+            program_id: program_id.to_string(),
+            instruction_discriminator: "deadbeef".to_string(),
+            account_addresses: vec![
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+                derived_address.to_string(),
+            ],
+            instruction_data: Some(data.clone()),
+        };
+        let _ = program_pk;
+        resolve_accounts(&input, &registry).unwrap()
+    }
+
+    /// Program ID used for the pinned vectors: the REAL Pump.fun program
+    /// (verified executable on mainnet 2026-08-08) — never a fabricated key.
+    const DATA_SEED_PROGRAM: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+    /// Pinned PDAs computed with the OFFICIAL Solana JS SDK
+    /// (`@solana/web3.js` PublicKey.findProgramAddressSync) — an independent
+    /// implementation of the canonical derivation. Verified to equal the Rust
+    /// `find_program_address` result (the static+prefix test asserts it).
+    /// Seed [0xde,0xad,0xbe,0xef] under DATA_SEED_PROGRAM:
+    const DEADBEEF_PDA: &str = "EyRyjhh8yQDgt7R2CZ4admNJgCaganGp1kwi8eCghZnP";
+    /// Seeds [b"prefix", 0xdeadbeef] under DATA_SEED_PROGRAM:
+    const PREFIX_DEADBEEF_PDA: &str = "UnoGavuCdb13po8gKXpjdj6833NHsw4vXHoi8aq7W71";
+
+    /// The `{instruction_data:start:end}` slice template must extract the
+    /// EXACT bytes the manifest declares and derive the correct PDA — the
+    /// roadmap's "dynamic PDA seed resolution" (seeds that depend on
+    /// instruction arguments).
+    #[test]
+    fn test_instruction_data_slice_template_derives_known_pda() {
+        // data = [0,0,0,0] + 0xdeadbeef — the seed lives at bytes 4..8.
+        let data = vec![0u8, 0, 0, 0, 0xde, 0xad, 0xbe, 0xef];
+        let result = resolve_data_seeded(
+            DATA_SEED_PROGRAM,
+            &["{instruction_data:4:8}"],
+            data,
+            DEADBEEF_PDA,
+        );
+        assert!(!result.resolved_accounts[1].pda_mismatch);
+    }
+
+    /// The suffix template `{instruction_data:start}` extracts from start to
+    /// end of the data (Squads-style trailing-argument seeds).
+    #[test]
+    fn test_instruction_data_suffix_template_derives_known_pda() {
+        let data = vec![0u8, 0, 0, 0, 0xde, 0xad, 0xbe, 0xef];
+        let result = resolve_data_seeded(
+            DATA_SEED_PROGRAM,
+            &["{instruction_data:4}"],
+            data,
+            DEADBEEF_PDA,
+        );
+        assert!(!result.resolved_accounts[1].pda_mismatch);
+    }
+
+    /// The whole-data template `{instruction_data}` (raw-UTF-8-style programs
+    /// that seed a PDA with the full instruction payload).
+    #[test]
+    fn test_instruction_data_whole_template_derives_known_pda() {
+        let data = vec![0xde, 0xad, 0xbe, 0xef];
+        let result = resolve_data_seeded(
+            DATA_SEED_PROGRAM,
+            &["{instruction_data}"],
+            data,
+            DEADBEEF_PDA,
+        );
+        assert!(!result.resolved_accounts[1].pda_mismatch);
+    }
+
+    /// A static seed + instruction-data slice (e.g. ["{program_id}",
+    /// "{instruction_data:8:16}"] style layouts).
+    #[test]
+    fn test_static_plus_instruction_data_template_derives_known_pda() {
+        // seed = b"prefix" || 0xdeadbeef.
+        let data = vec![0u8, 0, 0, 0, 0xde, 0xad, 0xbe, 0xef];
+        let program_pk = Pubkey::from_base58(DATA_SEED_PROGRAM).unwrap();
+        let (expected, _bump) =
+            solana_types::find_program_address(&[b"prefix", &data[4..8]], &program_pk).unwrap();
+        assert_eq!(
+            expected.to_base58(),
+            PREFIX_DEADBEEF_PDA,
+            "independently computed known answer must match the canonical derivation"
+        );
+        // The template list can mix static literals with data slices.
+        let result = resolve_data_seeded(
+            DATA_SEED_PROGRAM,
+            &["prefix", "{instruction_data:4:8}"],
+            data,
+            &expected.to_base58(),
+        );
+        assert!(!result.resolved_accounts[1].pda_mismatch);
+    }
+
+    /// A DIFFERENT data payload must resolve to a DIFFERENT PDA — the seed
+    /// really comes from the instruction arguments (false-positive guard).
+    #[test]
+    fn test_instruction_data_change_changes_derived_pda() {
+        // Same manifest template, but different data bytes → different PDA.
+        let data = vec![0u8, 0, 0, 0, 0xca, 0xfe, 0xba, 0xbe];
+        let result = resolve_data_seeded(
+            DATA_SEED_PROGRAM,
+            &["{instruction_data:4:8}"],
+            data,
+            DEADBEEF_PDA,
+        );
+        assert!(
+            result.resolved_accounts[1].pda_mismatch,
+            "mutated instruction data must yield a different PDA (mismatch detected)"
+        );
+    }
 }

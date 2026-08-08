@@ -74,9 +74,9 @@ The axum-based HTTP server exposes `POST /verify`, `POST /manifests` (listing), 
 ```
 graphite/
 ├── graphite-core/          # Rust verification engine
-│   ├── src/                # 16 source modules (all active, no dead code)
-│   ├── protocols/          # 11 JSON protocol manifests
-│   ├── tests/              # 680 tests (unit + adversarial + exploit)
+│   ├── src/                # 16 core modules + plugins/ + feature-gated server/cli/rpc (no dead code)
+│   ├── protocols/          # 15 JSON protocol manifests
+│   ├── tests/              # 819 tests (unit + adversarial + exploit)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)

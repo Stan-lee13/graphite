@@ -7,9 +7,9 @@
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-680_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-829_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
-[![Protocols](https://img.shields.io/badge/Protocol_Manifests-11-blue?style=flat-square)](graphite-core/protocols/)
+[![Protocols](https://img.shields.io/badge/Protocol_Manifests-15-blue?style=flat-square)](graphite-core/protocols/)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-8-red?style=flat-square)](graphite-core/src/risk_engine.rs)
 [![Version](https://img.shields.io/badge/Version-v0.1.1--alpha-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
 
@@ -61,12 +61,12 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 680 tests — zero setup
+# Run 829 tests — zero setup
 cargo test --release
 
 # Output:
-# running 680 tests
-# test result: ok. 680 passed; 0 failed; 0 ignored
+# running 829 tests
+# test result: ok. 829 passed; 0 failed; 2 ignored
 
 # Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
@@ -119,7 +119,7 @@ All 8 patterns are real detection logic — not stubs, not placeholders.
 | Token-2022 | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | Official Manifest |
 | Stake Program | `Stake11111111111111111111111111111111111111` | Battle Tested |
 | Memo (p-memo) | `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` | Official Manifest |
-| Memo (legacy SPL) | `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` | Official Manifest |
+| Memo (legacy SPL, retired) | `Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo` | Official Manifest |
 | Jupiter V6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | Battle Tested |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | Battle Tested |
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Battle Tested |
@@ -145,10 +145,17 @@ graphite/
 │   │   ├── transaction_builder.rs  ← Canonical serialization
 │   │   ├── unknown_protocol_mode.rs ← 0.55 confidence cap (P6/P12)
 │   │   ├── server.rs            ← HTTP API (axum)
+│   │   ├── regression_engine.rs ← P10 promotion gate + fixture corpus
+│   │   ├── manifest_registry.rs ← Signed community manifests (G5/P7/P10/P11)
+│   │   ├── plugin_orchestrator.rs ← P8 plugin framework (sole plugin caller)
+│   │   ├── plugins/             ← Built-in plugins: FakeRewardsDrainer (L7),
+│   │   │                          VerificationEventLogger (analytics)
 │   │   ├── benchmark.rs         ← P16-compliant benchmark suite
 │   │   └── cli.rs               ← CLI (clap)
-│   ├── protocols/               ← 11 JSON protocol manifests
-│   └── tests/                   ← 680 tests (unit + adversarial + exploit)
+│   ├── protocols/               ← 15 JSON protocol manifests
+│   └── tests/                   ← 829 tests (unit + adversarial + exploit)
+│
+├── dashboard/                   ← React + TS dashboard (5 views, polls /api/*)
 │
 ├── sdk/
 │   ├── typescript/              ← TS SDK (GraphiteClient)
@@ -209,10 +216,8 @@ GRAPHITE_API_KEY=$(openssl rand -hex 32) GRAPHITE_RATE_LIMIT=100 \
 curl -X POST http://localhost:7331/verify \
   -H "Content-Type: application/json" \
   -d @../examples/verify-input.json | jq .
-```
-
-> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold). In Phase 1 the achievable confidence for a known protocol is ~0.44 (see *Honest Status* below), so this example returns **BLOCKED** — that is the engine being honest, not a bug. To see an approval, set a Phase-1-calibrated profile:
->
+```> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold). On a fresh Core (no earned evidence) the achievable confidence for a known protocol is ~0.44, so this example returns **BLOCKED** — that is the engine being honest, not a bug. The confidence signals are *earned*, not asserted: `SimulationMatch`, `HistoricalVolume`, and `CommunityVerification` read from the Semantic Graph's internal accumulator (RPC-verified baselines and Behavior evidence), so the presets become satisfiable as the graph accumulates verified history. To see an immediate approval on a fresh core, set a calibrated profile:
+> 
 > ```bash
 > jq '.wallet_profile = {"Custom": {"min_confidence": 0.40, "min_trust_tier": "OfficialManifest"}}' ../examples/verify-input.json | curl -X POST http://localhost:7331/verify -H "Content-Type: application/json" -d @- | jq .approved
 > ```
@@ -236,6 +241,26 @@ The demo shows the full flow:
 4. If approved → SAK executes. If blocked → transaction is NOT submitted.
 
 ---
+
+## Dashboard
+
+The read-only dashboard (`dashboard/`) visualizes live Core state — protocol
+overview with trust tiers, a Semantic Graph view with directed CPI edges, a
+confidence time series, policy violations, and the Manifest Registry.
+
+```bash
+cd dashboard
+npm install
+npm run dev          # dev: proxies /api to http://localhost:7331
+npm run build        # production build → dist/
+```
+
+It polls the read-only endpoints (`/api/graph`, `/api/confidence-history`,
+`/api/policy-violations`, `/api/protocols/top`, `/api/registry`) that the
+Core server exposes behind the same Bearer auth and rate limiting as
+`/verify`. Point a browser at the dev server (or serve `dist/` statically)
+and set `VITE_GRAPHITE_API` if Core lives elsewhere. Read-only by
+construction (Constitution P4) — the dashboard never mutates graph state.
 
 ## Security Properties
 
@@ -264,10 +289,10 @@ What we **do not** claim:
 
 What we **do** claim:
 
-- **Phase 1 confidence is calibrated honestly.** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) are intentionally ZEROED in Phase 1 — they'd come from caller-controlled request JSON, which an attacker could fabricate to mint confidence (Constitution G4). Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). The achievable confidence for a known, clean, intent-aligned protocol is therefore **~0.44**. The built-in wallet profiles (TradingBot 0.80, Treasury 0.95, …) were calibrated for the Phase 2 signal set and will block everything in Phase 1 — the benchmark, and the SAK demo, therefore default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 680 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
+- **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.60, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming unlocks at simulation-validated evidence (≈ 0.66), Treasury at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
+- 829 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
 - 8 risk patterns are real detection logic, not stubs.
-- 11 protocol manifests with program IDs verified against official on-chain sources.
+- 15 protocol manifests with program IDs verified against official on-chain sources (11 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — all confirmed executable on mainnet 2026-08-07).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm.
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).

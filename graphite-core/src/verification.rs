@@ -12,8 +12,9 @@ use crate::confidence_engine::{
     compute_confidence, ConfidenceResult, SignalKind, TrustTier, WeightedSignal,
 };
 use crate::manifest::{load_seed_manifests, ManifestRegistry};
+use crate::plugin_orchestrator::{LayerId, PluginContext, PluginVerdict};
 use crate::policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict, WalletProfile};
-use crate::risk_engine::{assess_with_warnings, RiskAssessmentInput, RiskVerdict};
+use crate::risk_engine::{assess_with_warnings, RiskAssessmentInput, RiskPattern, RiskVerdict};
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
@@ -93,6 +94,41 @@ pub struct RiskFinding {
 pub struct RiskVerdictSummary {
     pub status: String, // "Clear" | "Blocked"
     pub findings: Vec<RiskFinding>,
+}
+
+/// Read-only dashboard snapshot of the Semantic Graph (Constitution P4 —
+/// never mutates state). Nodes are programs with merged manifest + earned
+/// behavior + baseline state; edges are directed CPI relationships.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct GraphSnapshot {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct GraphNode {
+    pub program_id: String,
+    /// Protocol name from the manifest, or the program id when unknown.
+    pub name: String,
+    pub manifest_version: Option<String>,
+    /// Trust tier: manifest-declared tier (P7-capped on the verify path) or
+    /// the graph's earned tier when a behavior record exists.
+    pub trust_tier: String,
+    pub instruction_count: usize,
+    /// Simulation baseline sample count (None when never observed/seeded).
+    pub baseline_samples: Option<u64>,
+    pub battle_tested_tx_count: u64,
+    pub community_verified_count: u32,
+    pub quarantined: bool,
+    pub quarantine_reason: Option<String>,
+    /// Direct CPI targets reachable from this program's instructions.
+    pub cpi_targets: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct GraphEdge {
+    pub from: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -241,13 +277,38 @@ fn persist_json_atomic(path: &std::path::Path, json: &str) {
     }
 }
 
+/// Phase 2 evidence-derived confidence signals, read from the Semantic Graph's
+/// INTERNAL accumulator (Constitution G4) — never from the request body.
+///
+/// - `simulation_matches`: RPC-verified simulation count (the program's
+///   baseline `sample_count`) — recorded only from real `simulateTransaction`
+///   results (anti-poisoning), never from caller JSON.
+/// - `historical_volume`: earned/verified transaction volume (Behavior
+///   evidence `battle_tested_tx_count`), seeded only via the trusted operator
+///   API or the manifest registry.
+/// - `community_verified`: independent community verifications (Behavior
+///   evidence `community_verified_count`), earned via the registry/review
+///   process — never self-asserted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GraphSignalEvidence {
+    pub simulation_matches: u64,
+    pub historical_volume: u64,
+    pub community_verified: u32,
+}
+
 /// The main Graphite verification engine.
 ///
 /// `semantic_graph` is `Arc<Mutex<..>>` so that cloned core instances (axum
 /// State clones one per request) all share the same append-only history,
 /// trust tiers, and simulation baselines — and so the accumulator can be
 /// updated while `verify_async` runs on a shared `&self`.
-#[derive(Debug, Clone)]
+///
+/// `plugins` (Constitution P8): layer-scoped plugins fold into their own
+/// layer's result; analytics observe completed results. Clones share the same
+/// registered plugin instances (`Arc`), so server per-request clones see the
+/// same plugin set and the same analytics sink state. Register plugins at
+/// startup, before cloning.
+#[derive(Clone)]
 pub struct GraphiteCore {
     registry: ManifestRegistry,
     semantic_graph: Arc<Mutex<SemanticGraphStore>>,
@@ -255,6 +316,19 @@ pub struct GraphiteCore {
     rpc_client: Option<SolanaRpcClient>,
     /// Optional durability directory (snapshots + audit trail).
     data_dir: Option<PathBuf>,
+    /// P8 plugin orchestrator (sole caller of every plugin).
+    plugins: crate::plugin_orchestrator::PluginOrchestrator,
+}
+
+impl std::fmt::Debug for GraphiteCore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Plugin trait objects are not `Debug`; report what is structurally
+        // knowable (registry + registered plugins) rather than internals.
+        f.debug_struct("GraphiteCore")
+            .field("registry", &self.registry)
+            .field("plugins", &self.plugins)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for GraphiteCore {
@@ -264,7 +338,9 @@ impl Default for GraphiteCore {
 }
 
 impl GraphiteCore {
-    /// Create a new GraphiteCore with built-in seed protocol manifests.
+    /// Create a new GraphiteCore with built-in seed protocol manifests and the
+    /// built-in first-party plugins registered (reviewed in-tree): the
+    /// FakeRewardsDrainer L7 risk plugin and the verification event logger.
     pub fn new() -> Self {
         Self {
             registry: load_seed_manifests(),
@@ -272,10 +348,26 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
 
-    /// Create with a custom manifest registry.
+    /// Create a GraphiteCore with NO plugins registered — a pristine core for
+    /// embedding/benchmarking minimal footprints. The built-in plugins are
+    /// reviewed and safe; this is an explicit opt-out for embedders that want
+    /// zero plugin overhead.
+    pub fn new_without_plugins() -> Self {
+        Self {
+            registry: load_seed_manifests(),
+            semantic_graph: Arc::new(Mutex::new(SemanticGraphStore::new())),
+            #[cfg(feature = "rpc")]
+            rpc_client: None,
+            data_dir: None,
+            plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
+        }
+    }
+
+    /// Create with a custom manifest registry (built-in plugins registered).
     pub fn with_registry(registry: ManifestRegistry) -> Self {
         Self {
             registry,
@@ -283,6 +375,7 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
 
@@ -332,6 +425,97 @@ impl GraphiteCore {
         self.semantic_graph
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Read-only dashboard view of the Semantic Graph (Constitution P4 —
+    /// never mutates). Returns protocol nodes (merged manifest + graph
+    /// behavior + baseline state) and CPI edges derived from manifest
+    /// `allowed_cpis` and graph behavior records.
+    pub fn graph_snapshot(&self) -> GraphSnapshot {
+        let registry = self.registry();
+        let graph = self.graph();
+
+        // Merge manifest + graph data per program id.
+        let mut by_program: std::collections::HashMap<String, GraphNode> =
+            std::collections::HashMap::new();
+        for m in registry.list() {
+            let node = by_program
+                .entry(m.protocol.program_id.clone())
+                .or_insert_with(|| GraphNode {
+                    program_id: m.protocol.program_id.clone(),
+                    name: m.protocol.name.clone(),
+                    manifest_version: Some(m.version.label.clone()),
+                    trust_tier: m.trust_tier.clone(),
+                    instruction_count: m.instructions.len(),
+                    baseline_samples: None,
+                    battle_tested_tx_count: 0,
+                    community_verified_count: 0,
+                    quarantined: false,
+                    quarantine_reason: None,
+                    cpi_targets: Vec::new(),
+                });
+            node.instruction_count = m.instructions.len();
+            // CPI edges from the manifest's instruction definitions.
+            for ix in &m.instructions {
+                for cpi in &ix.allowed_cpis {
+                    if !node.cpi_targets.contains(cpi) {
+                        node.cpi_targets.push(cpi.clone());
+                    }
+                }
+            }
+        }
+        // Graph behavior evidence (earned tiers/volume) overlays the manifest.
+        for b in graph.behaviors() {
+            let node = by_program
+                .entry(b.program_id.clone())
+                .or_insert_with(|| GraphNode {
+                    program_id: b.program_id.clone(),
+                    name: b.program_id.clone(),
+                    manifest_version: None,
+                    trust_tier: b.trust_tier.as_str().to_string(),
+                    instruction_count: 0,
+                    baseline_samples: None,
+                    battle_tested_tx_count: 0,
+                    community_verified_count: 0,
+                    quarantined: b.quarantined,
+                    quarantine_reason: b.quarantine_reason.clone(),
+                    cpi_targets: Vec::new(),
+                });
+            node.trust_tier = b.trust_tier.as_str().to_string();
+            node.battle_tested_tx_count = b.evidence.battle_tested_tx_count;
+            node.community_verified_count = b.evidence.community_verified_count;
+            node.quarantined = b.quarantined;
+            node.quarantine_reason = b.quarantine_reason.clone();
+            for cpi in &b.allowed_cpis {
+                if !node.cpi_targets.contains(cpi) {
+                    node.cpi_targets.push(cpi.clone());
+                }
+            }
+        }
+        // Baselines (simulation accumulator samples) keyed by program.
+        for (program_id, baseline) in graph.baselines() {
+            if let Some(node) = by_program.get_mut(program_id) {
+                node.baseline_samples = Some(baseline.sample_count);
+            }
+        }
+
+        // Edges: every CPI target of every node is a directed edge
+        // node → target.
+        let mut edges = Vec::new();
+        for node in by_program.values() {
+            for target in &node.cpi_targets {
+                edges.push(GraphEdge {
+                    from: node.program_id.clone(),
+                    to: target.clone(),
+                });
+            }
+        }
+        edges.sort();
+        edges.dedup();
+
+        let mut nodes: Vec<GraphNode> = by_program.into_values().collect();
+        nodes.sort_by(|a, b| a.program_id.cmp(&b.program_id));
+        GraphSnapshot { nodes, edges }
     }
 
     /// Snapshot graph state to disk (best-effort; never fatal).
@@ -424,6 +608,41 @@ impl GraphiteCore {
     /// Get the manifest registry.
     pub fn registry(&self) -> &ManifestRegistry {
         &self.registry
+    }
+
+    /// Access the plugin orchestrator (P8 surface).
+    pub fn plugins(&self) -> &crate::plugin_orchestrator::PluginOrchestrator {
+        &self.plugins
+    }
+
+    /// Register a plugin programmatically (startup only).
+    pub fn register_plugin(&mut self, plugin: crate::plugin_orchestrator::PluginKind) {
+        self.plugins.register_plugin(plugin);
+    }
+
+    /// Discover + register plugin manifests from a directory through the
+    /// review gate (only `approved` manifests activate). Fail-closed on
+    /// malformed manifests or unknown built-in names.
+    pub fn attach_plugins_dir(
+        &mut self,
+        dir: &std::path::Path,
+    ) -> Result<
+        crate::plugin_orchestrator::RegistrationSummary,
+        crate::plugin_orchestrator::PluginError,
+    > {
+        let manifests = crate::plugin_orchestrator::PluginOrchestrator::discover_from_dir(dir)?;
+        self.plugins.register_discovered(&manifests)
+    }
+
+    /// Attach a JSON-lines event file to the built-in event-logger plugin so
+    /// every completed verification is appended (production observability).
+    /// `&self` because the underlying operation uses interior mutability and
+    /// is thread-safe (shared across server clones).
+    pub fn attach_event_file_sink(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<(), crate::plugin_orchestrator::PluginError> {
+        self.plugins.attach_event_file_sink(path)
     }
 
     /// Seed a behavior record into the semantic graph (persisted if durability
@@ -564,16 +783,20 @@ impl GraphiteCore {
         &self,
         expected_state_changes: &[String],
         resolved_accounts: &[ResolvedAccount],
-        manifest_found: bool,
+        _manifest_found: bool,
     ) -> PipelineLayerResult {
         let layer_name = "L4_StateVerification";
 
-        if !manifest_found || expected_state_changes.is_empty() {
-            // GAP-2026-08-06-3: a SKIPPED check is Inconclusive, never a pass.
+        // GAP-2026-08-06-3: a SKIPPED check is Inconclusive, never a pass. The
+        // check runs when there is evidence to verify against: a manifest with
+        // state changes, or reviewed ProtocolPlugin rules for a manifest-less
+        // program (evidence only — never a verdict or tier, P7/P8). With no
+        // evidence at all, the layer is Inconclusive.
+        if expected_state_changes.is_empty() {
             return PipelineLayerResult::new(
                 layer_name,
                 LayerStatus::Inconclusive,
-                "No manifest or no expected state changes - state check skipped",
+                "No expected state changes (manifest or plugin rules) - state check skipped",
             );
         }
 
@@ -903,7 +1126,7 @@ impl GraphiteCore {
         // When the instruction is NOT found (P12 unknown instruction path),
         // use the UNION of all allowed_cpis from all instructions in the protocol's
         // manifest — this ensures known protocols have their CPI lists available.
-        let (expected_state_changes, allowed_cpis) = match manifest {
+        let (mut expected_state_changes, allowed_cpis) = match manifest {
             Some(m) => {
                 let ix = m.instructions.iter().find(|i| {
                     crate::manifest::discriminator_matches(
@@ -930,6 +1153,45 @@ impl GraphiteCore {
             None => (vec![], vec![]),
         };
 
+        // ProtocolPlugin knowledge (P8): for a program with no manifest yet, a
+        // reviewed ProtocolPlugin may supply raw state-change rules so the
+        // core's own L4 check can run against them. Exact program_id match
+        // only (P11); a plugin never supplies verdicts or tiers (P7) — only
+        // evidence. The risk CPI allowlist is deliberately NOT extended: an
+        // allowlist is an authorization decision, not evidence.
+        if !manifest_found {
+            let (plugin_rules, _plugin_cpis) = self
+                .plugins
+                .protocol_rules(&input.program_id, &input.instruction_discriminator);
+            expected_state_changes.extend(plugin_rules);
+        }
+
+        // Plugin execution context (P8 surface): borrows ONLY this
+        // transaction's data. Plugins cannot reach the audit trail, the
+        // orchestrator, or any other layer's result.
+        let ctx = PluginContext {
+            program_id: &input.program_id,
+            protocol_name: &protocol_name,
+            instruction_discriminator: &input.instruction_discriminator,
+            instruction_name: &instruction_name,
+            proposed_intent: &input.proposed_intent,
+            account_addresses: &input.account_addresses,
+            cpi_targets: &input.cpi_targets,
+            expected_state_changes: &expected_state_changes,
+            allowed_cpis: &allowed_cpis,
+            manifest_found,
+            compute_units: input.compute_units,
+            account_writes: input.account_writes,
+            cpi_hops: input.cpi_hops,
+        };
+
+        // L2: plugin folds run after the core's own L2 check. A plugin Block
+        // fails the layer (and its 0.2 confidence penalty below); a Note is
+        // appended to the report; NoFinding leaves the core verdict intact.
+        let l2_result =
+            self.plugins
+                .fold_verifier(LayerId::L2InstructionVerification, l2_result, &ctx);
+
         // Step 2: Transaction Construction
         let transaction = build_transaction(&TransactionPlan {
             program_id: input.program_id.clone(),
@@ -942,7 +1204,6 @@ impl GraphiteCore {
             instruction_data: input.instruction_data.clone().unwrap_or_default(),
         })
         .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
-
         // Step 3: Risk Assessment
         let (expected_account_count, variable_accounts) = match manifest {
             Some(m) => {
@@ -1075,6 +1336,29 @@ impl GraphiteCore {
                         reason: format!("{} | PDA mismatch detected", mismatch_reason),
                     }
                 }
+            }
+        } else {
+            risk_verdict
+        };
+
+        // L7: Risk plugin findings (Constitution P8). A `Block` verdict is a
+        // binary-and-blocking hard gate regardless of confidence; a `Note` is
+        // a non-blocking warning. Plugins can never clear a core block — they
+        // only add evidence. A panicking plugin is isolated and contributes
+        // nothing (it cannot fabricate a block).
+        let plugin_risk = self.plugins.risk_outcome(&ctx);
+        let risk_verdict = if plugin_risk.blocked && matches!(risk_verdict, RiskVerdict::Passed) {
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Drainer,
+                reason: format!(
+                    "plugin block: {}",
+                    plugin_risk
+                        .findings
+                        .iter()
+                        .map(|f| f.reason.clone())
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                ),
             }
         } else {
             risk_verdict
@@ -1284,12 +1568,39 @@ impl GraphiteCore {
             risk_summary
         };
 
+        // Surface plugin findings (L7) on the final risk summary: a Block made
+        // the summary Blocked above; plugin Notes are appended as warning
+        // findings so the signal is never silently dropped (P3 explainability).
+        let risk_summary = if plugin_risk.findings.is_empty() {
+            risk_summary
+        } else {
+            RiskVerdictSummary {
+                status: risk_summary.status.clone(),
+                findings: {
+                    let mut f = risk_summary.findings.clone();
+                    f.extend(plugin_risk.findings);
+                    f
+                },
+            }
+        };
+
+        // L3: Simulation plugins run after the core's simulation-integrity
+        // verdict. They may only Note or Block — never certify a clean
+        // simulation (P5: a plugin cannot mint evidence). A Block fails the L3
+        // layer report only; it does not fabricate a risk finding (that would
+        // cross the layer boundary P8 forbids).
+        let l3_plugin_runs = self.plugins.simulation_verdicts(&ctx);
+
         // L4: State Verification
         let l4_result = self.verify_state(
             &expected_state_changes,
             &resolution.resolved_accounts,
             manifest_found,
         );
+        // L4: plugin folds (Block → layer Failed; Note → report annotation).
+        let l4_result = self
+            .plugins
+            .fold_verifier(LayerId::L4StateVerification, l4_result, &ctx);
 
         // L5: Semantic Verification
         let l5_result = self.verify_semantic(
@@ -1298,6 +1609,12 @@ impl GraphiteCore {
             &expected_state_changes,
             manifest_found,
         );
+        // L5: plugin folds run BEFORE the semantic penalty is computed so a
+        // plugin Block on L5 contributes the same 0.3 penalty as the core's
+        // own L5 failure (the plugin affects only its own layer's outcome).
+        let l5_result =
+            self.plugins
+                .fold_verifier(LayerId::L5SemanticVerification, l5_result, &ctx);
 
         // GAP-2026-08-06-3: penalties key off the tri-state — only a genuine
         // FAILED check penalizes. Inconclusive (skipped/unverified) is absence
@@ -1318,7 +1635,6 @@ impl GraphiteCore {
         } else {
             0.0
         };
-
         // Step 4: Confidence Computation
         let trust_tier = if manifest_found {
             // Manifest found — the manifest's trust_tier field is the protocol
@@ -1363,8 +1679,33 @@ impl GraphiteCore {
                 .unwrap_or(TrustTier::Unknown)
         };
 
+        // Phase 2 (G4): the three evidence-derived signals now read from the
+        // Semantic Graph's internal accumulator — the program's RPC-verified
+        // simulation baseline (`sample_count`) and its earned Behavior evidence.
+        // The request body CANNOT supply them: `input.behavior_evidence` stays
+        // ignored (caller-controlled JSON would mint confidence).
+        let ge_sim = self
+            .graph()
+            .get_simulation_baseline(&input.program_id)
+            .map(|b| b.sample_count)
+            .unwrap_or(0);
+        let ge_hist = self
+            .graph()
+            .get(&input.program_id)
+            .map(|b| b.evidence.battle_tested_tx_count)
+            .unwrap_or(0);
+        let ge_comm = self
+            .graph()
+            .get(&input.program_id)
+            .map(|b| b.evidence.community_verified_count)
+            .unwrap_or(0);
+        let graph_evidence = GraphSignalEvidence {
+            simulation_matches: ge_sim,
+            historical_volume: ge_hist,
+            community_verified: ge_comm,
+        };
         let signals = build_signals(
-            &input.behavior_evidence,
+            &graph_evidence,
             manifest_found,
             trust_tier,
             &input.proposed_intent,
@@ -1403,7 +1744,6 @@ impl GraphiteCore {
         let instruction_penalty = instruction_penalty * scale;
         let state_penalty = state_penalty * scale;
         let confidence = confidence - applied_penalty;
-
         // Step 5: Policy Evaluation
         let policy_input = PolicyInput {
             confidence_result: ConfidenceResult {
@@ -1425,6 +1765,26 @@ impl GraphiteCore {
             PolicyVerdict::RejectedRiskEngineBlock => "Rejected",
         };
 
+        // L6: Policy plugins may only veto (Block) or annotate (Note) — they
+        // can never approve what the core's policy rejected (P8: plugins
+        // affect only their own layer). A Block rejects the transaction and
+        // is reflected in the L6 layer report and `approved` below.
+        let mut l6_block: Option<(String, String)> = None;
+        for run in self.plugins.policy_verdicts(&ctx) {
+            if let PluginVerdict::Block { pattern, reason } = run.verdict {
+                if l6_block.is_none() {
+                    l6_block = Some((pattern, reason));
+                }
+            }
+        }
+        // The effective policy outcome: core verdict AND no plugin veto.
+        let l6_passed = matches!(policy_verdict, PolicyVerdict::Approved) && l6_block.is_none();
+        let policy_str = if l6_block.is_some() {
+            "Rejected"
+        } else {
+            policy_str
+        };
+
         // Build audit trail ID (deterministic hash of key fields)
         let (audit_id, content_hash) = generate_audit_id(
             &input.program_id,
@@ -1437,8 +1797,7 @@ impl GraphiteCore {
         );
 
         // Determine if approved
-        let approved =
-            matches!(policy_verdict, PolicyVerdict::Approved) && risk_summary.status == "Clear";
+        let approved = l6_passed && risk_summary.status == "Clear";
 
         // Generate summary
         let mut summary = generate_summary(
@@ -1529,7 +1888,96 @@ impl GraphiteCore {
 
         let _summary_for_layers = summary.clone();
 
-        Ok(VerificationResult {
+        // L3 layer report: the core simulation verdict folded with simulation
+        // plugin runs (a plugin Note appends; a Block fails the report only).
+        let l3_layer_result = PipelineLayerResult::new(
+            "L3_SimulationVerification",
+            match sim_flagged {
+                Some(true) => LayerStatus::Failed,
+                Some(false) => LayerStatus::Passed,
+                None => LayerStatus::Inconclusive,
+            },
+            {
+                let base = match (sim_flagged, sim_divergence) {
+                    (Some(true), _) => {
+                        // Clamp the DISPLAYED divergence: zero-variance
+                        // and degenerate paths report f64::MAX (JSON-safe
+                        // in the structured field) which would otherwise
+                        // render as a ~300-digit number here.
+                        let d = sim_divergence.unwrap_or(0.0);
+                        let div = if d > 1000.0 {
+                            ">1000σ".to_string()
+                        } else {
+                            format!("{:.2}σ", d)
+                        };
+                        format!(
+                            "Simulation integrity FLAGGED: {} CU / {} writes / {} hops (divergence {} vs baseline)",
+                            input.compute_units, input.account_writes, input.cpi_hops, div
+                        )
+                    }
+                    (Some(false), _) => format!(
+                        "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops",
+                        input.compute_units, input.account_writes, input.cpi_hops
+                    ),
+                    (None, Some(_)) => format!(
+                        "Simulation integrity NOT RPC-verified: caller-supplied usage ({} CU / {} writes / {} hops) — advisory only, cannot certify clean (P5)",
+                        input.compute_units, input.account_writes, input.cpi_hops
+                    ),
+                    (None, None) => {
+                        "Phase 1: simulation not checked (no baseline or insufficient samples) — active when a trusted baseline exists".to_string()
+                    }
+                };
+                if let Some(ref info) = l3_rpc_account_info {
+                    format!("{} | RPC: {}", base, info)
+                } else {
+                    base
+                }
+            },
+        );
+        let l3_layer_result =
+            crate::plugin_orchestrator::fold_runs_into_result(l3_layer_result, l3_plugin_runs);
+
+        // L6 layer report reason (includes any policy-plugin veto).
+        let mut l6_reason = format!(
+            "Confidence: {:.4} (tier: {:?}, ceiling: {:.2}) → Policy: {} (min_conf: {:.2}, min_tier: {:?})",
+            confidence, trust_tier, confidence_result.ceiling_applied,
+            policy_str,
+            match input.wallet_profile {
+                WalletProfile::Treasury => 0.95,
+                WalletProfile::Enterprise => 0.99,
+                WalletProfile::Gaming => 0.60,
+                WalletProfile::TradingBot => 0.80,
+                WalletProfile::Custom { min_confidence, .. } => min_confidence,
+            },
+            match input.wallet_profile {
+                WalletProfile::Treasury => TrustTier::CommunityVerified,
+                WalletProfile::Enterprise => TrustTier::BattleTested,
+                WalletProfile::Gaming => TrustTier::HeuristicInferred,
+                WalletProfile::TradingBot => TrustTier::SimulationValidated,
+                WalletProfile::Custom { min_trust_tier, .. } => min_trust_tier,
+            }
+        );
+        if let Some((pattern, reason)) = &l6_block {
+            l6_reason = format!(
+                "Rejected by policy plugin ({}): {} | {}",
+                pattern, reason, l6_reason
+            );
+        }
+
+        // L8: Execution Verification — report-only layer (post-submission). A
+        // plugin registered for L8 can only annotate or fail the report; it
+        // cannot affect `approved` (L8 is Inconclusive by design until
+        // on-chain confirmation exists).
+        let l8_layer_result = PipelineLayerResult::new(
+            "L8_ExecutionVerification",
+            LayerStatus::Inconclusive,
+            "Phase 1: execution verification not yet verified (post-submission feature) — audit_trail_id bound to transaction for future L8 replay",
+        );
+        let l8_layer_result =
+            self.plugins
+                .fold_verifier(LayerId::L8ExecutionVerification, l8_layer_result, &ctx);
+
+        let result = VerificationResult {
             approved,
             confidence,
             breakdown,
@@ -1584,47 +2032,8 @@ impl GraphiteCore {
                 //                  caller-supplied usage — P5 cannot certify)
                 PipelineLayerResult::new(
                     "L3_SimulationVerification",
-                    match sim_flagged {
-                        Some(true) => LayerStatus::Failed,
-                        Some(false) => LayerStatus::Passed,
-                        None => LayerStatus::Inconclusive,
-                    },
-                    {
-                        let base = match (sim_flagged, sim_divergence) {
-                            (Some(true), _) => {
-                                // Clamp the DISPLAYED divergence: zero-variance
-                                // and degenerate paths report f64::MAX (JSON-safe
-                                // in the structured field) which would otherwise
-                                // render as a ~300-digit number here.
-                                let d = sim_divergence.unwrap_or(0.0);
-                                let div = if d > 1000.0 {
-                                    ">1000σ".to_string()
-                                } else {
-                                    format!("{:.2}σ", d)
-                                };
-                                format!(
-                                    "Simulation integrity FLAGGED: {} CU / {} writes / {} hops (divergence {} vs baseline)",
-                                    input.compute_units, input.account_writes, input.cpi_hops, div
-                                )
-                            }
-                            (Some(false), _) => format!(
-                                "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops",
-                                input.compute_units, input.account_writes, input.cpi_hops
-                            ),
-                            (None, Some(_)) => format!(
-                                "Simulation integrity NOT RPC-verified: caller-supplied usage ({} CU / {} writes / {} hops) — advisory only, cannot certify clean (P5)",
-                                input.compute_units, input.account_writes, input.cpi_hops
-                            ),
-                            (None, None) => {
-                                "Phase 1: simulation not checked (no baseline or insufficient samples) — active when a trusted baseline exists".to_string()
-                            }
-                        };
-                        if let Some(ref info) = l3_rpc_account_info {
-                            format!("{} | RPC: {}", base, info)
-                        } else {
-                            base
-                        }
-                    },
+                    l3_layer_result.status,
+                    l3_layer_result.reason.clone(),
                 ),
                 // L4: State Verification — diff pre/post account state against declared intent
                 // ARCHITECTURE.md 3.12: "Diff pre/post account state against declared intent"
@@ -1653,30 +2062,12 @@ impl GraphiteCore {
                 // wallet profile's minimum confidence and trust tier thresholds.
                 PipelineLayerResult::new(
                     "L6_PolicyVerification",
-                    if matches!(policy_verdict, PolicyVerdict::Approved) {
+                    if l6_passed {
                         LayerStatus::Passed
                     } else {
                         LayerStatus::Failed
                     },
-                    format!(
-                        "Confidence: {:.4} (tier: {:?}, ceiling: {:.2}) → Policy: {} (min_conf: {:.2}, min_tier: {:?})",
-                        confidence, trust_tier, confidence_result.ceiling_applied,
-                        policy_str,
-                        match input.wallet_profile {
-                            WalletProfile::Treasury => 0.95,
-                            WalletProfile::Enterprise => 0.99,
-                            WalletProfile::Gaming => 0.60,
-                            WalletProfile::TradingBot => 0.80,
-                            WalletProfile::Custom { min_confidence, .. } => min_confidence,
-                        },
-                        match input.wallet_profile {
-                            WalletProfile::Treasury => TrustTier::CommunityVerified,
-                            WalletProfile::Enterprise => TrustTier::BattleTested,
-                            WalletProfile::Gaming => TrustTier::HeuristicInferred,
-                            WalletProfile::TradingBot => TrustTier::SimulationValidated,
-                            WalletProfile::Custom { min_trust_tier, .. } => min_trust_tier,
-                        }
-                    ),
+                    l6_reason.clone(),
                 ),
                 // L7: Risk Verification — runs the Risk Engine (3.21)
                 // ARCHITECTURE.md 3.12: "Forbidden patterns, allowlist/denylist, compositional risk"
@@ -1703,7 +2094,15 @@ impl GraphiteCore {
                             )
                         }
                     } else {
-                        format!("Blocked: {} finding(s) — {:?}", risk_summary.findings.len(), risk_summary.findings.iter().map(|f| &f.pattern).collect::<Vec<_>>())
+                        format!(
+                            "Blocked: {} finding(s) — {:?}",
+                            risk_summary.findings.len(),
+                            risk_summary
+                                .findings
+                                .iter()
+                                .map(|f| &f.pattern)
+                                .collect::<Vec<_>>()
+                        )
                     },
                 ),
                 // L8: Execution Verification — confirm finalized on-chain result matches prediction
@@ -1717,11 +2116,18 @@ impl GraphiteCore {
                 // verification once L8 is implemented.
                 PipelineLayerResult::new(
                     "L8_ExecutionVerification",
-                    LayerStatus::Inconclusive,
-                    "Phase 1: execution verification not yet verified (post-submission feature) — audit_trail_id bound to transaction for future L8 replay",
+                    l8_layer_result.status,
+                    l8_layer_result.reason.clone(),
                 ),
             ],
-        })
+        };
+
+        // Analytics observers (read-only, P8): record the completed result to
+        // every registered sink. Sink failures are logged, never fatal — the
+        // returned result is byte-identical either way (P2 determinism).
+        self.plugins.run_analytics(&result);
+
+        Ok(result)
     }
 }
 
@@ -1742,7 +2148,7 @@ fn summarize_risk(verdict: &RiskVerdict) -> RiskVerdictSummary {
 }
 
 fn build_signals(
-    _evidence: &BehaviorEvidence,
+    evidence: &GraphSignalEvidence,
     manifest_found: bool,
     trust_tier: TrustTier,
     intent: &ProposedIntent,
@@ -1765,16 +2171,23 @@ fn build_signals(
         TrustTier::Unknown => 0.0,
     };
 
-    // SECURITY FIX: Evidence-based signals (SimulationMatch, HistoricalVolume,
-    // CommunityVerification) are ZEROED in Phase 1 because behavior_evidence
-    // is caller-controlled JSON. An attacker could mint BattleTested tier and
-    // 50% confidence by sending fabricated values. These signals must come
-    // from the SemanticGraphStore (internal accumulator) in Phase 2, not from
-    // the request body. The TrustTierLevel signal already captures the tier
-    // level — these were double-counting AND attacker-controlled.
-    let simulation_value = 0.0;
-    let historical_value = 0.0;
-    let community_value = 0.0;
+    // SECURITY (G4): the evidence-derived signals (SimulationMatch,
+    // HistoricalVolume, CommunityVerification) read from the Semantic Graph's
+    // internal accumulator — never from the request body. `behavior_evidence`
+    // is caller-controlled JSON and stays ignored: an attacker can no longer
+    // mint confidence by sending fabricated values. Values are normalized
+    // against the trust-tier promotion thresholds so full evidence = full
+    // signal, and partial evidence = proportional signal. The TrustTierLevel
+    // signal separately captures the earned tier.
+    let simulation_value = (evidence.simulation_matches as f64
+        / crate::semantic_graph_store::thresholds::SIMULATION_MATCH as f64)
+        .min(1.0);
+    let historical_value = (evidence.historical_volume as f64
+        / crate::semantic_graph_store::thresholds::BATTLE_TESTED_TX as f64)
+        .min(1.0);
+    let community_value = (evidence.community_verified as f64
+        / crate::semantic_graph_store::thresholds::COMMUNITY_VERIFIED as f64)
+        .min(1.0);
 
     // Intent-manifest alignment: if the proposed intent type matches
     // a known instruction in the manifest, this is a positive signal.
@@ -1790,15 +2203,15 @@ fn build_signals(
     };
 
     // Signal weights must sum to exactly 1.0 (validated by compute_confidence).
-    // SECURITY FIX: Evidence signal VALUES are zeroed (caller-controlled JSON),
-    // but weights are kept at original values. This ensures confidence stays
-    // the same as before when evidence was default/zero, while preventing the
-    // vulnerability where fabricated evidence could mint 50% confidence.
+    // SECURITY (G4): the evidence signal VALUES come from the Semantic Graph's
+    // internal accumulator (GraphSignalEvidence), NEVER from caller JSON — a
+    // request body cannot mint confidence. On a fresh core (no earned state)
+    // they are 0, so confidence comes only from manifest + tier + intent.
     //   ManifestMatch (0.20): binary — was a manifest found?
-    //   TrustTierLevel (0.20): the protocol's trust tier (capped, from manifest/graph)
-    //   SimulationMatch (0.20): ZEROED VALUE — will use SemanticGraphStore in Phase 2
-    //   HistoricalVolume (0.15): ZEROED VALUE — will use SemanticGraphStore in Phase 2
-    //   CommunityVerification (0.15): ZEROED VALUE — will use SemanticGraphStore in Phase 2
+    //   TrustTierLevel (0.20): the protocol's earned trust tier (manifest/graph)
+    //   SimulationMatch (0.20): normalized RPC-verified simulation count
+    //   HistoricalVolume (0.15): normalized earned transaction volume
+    //   CommunityVerification (0.15): normalized earned community verifications
     //   IntentAlignment (0.10): intent-manifest alignment (requires L5 pass)
     vec![
         WeightedSignal {
@@ -2136,12 +2549,12 @@ mod tests {
 
         let result = core.verify(&input).unwrap();
 
-        // SECURITY FIX: Caller-provided evidence is now capped at OfficialManifest
-        // (was BattleTested before — that was the vulnerability). Evidence signal
-        // VALUES are zeroed, so confidence comes only from manifest + tier + intent.
-        // With zeroed evidence: conf = 0.44, tier = OfficialManifest (ceiling 0.75).
-        // Since 0.44 < 0.75, NO ceiling is triggered — breakdown should NOT have
-        // a TrustTierCeiling item (or it should be negligible floating-point noise).
+        // SECURITY (G4): Caller-provided evidence is ignored — the tier is capped
+        // at OfficialManifest (P7) and the evidence signals read from the Semantic
+        // Graph (empty on a fresh core). With no earned state: conf = 0.44, tier =
+        // OfficialManifest (ceiling 0.75). Since 0.44 < 0.75, NO ceiling is
+        // triggered — breakdown should NOT have a TrustTierCeiling item (or it
+        // should be negligible floating-point noise).
         assert_eq!(
             result.trust_tier, "OfficialManifest",
             "Evidence tier must be capped at OfficialManifest — got: {}",

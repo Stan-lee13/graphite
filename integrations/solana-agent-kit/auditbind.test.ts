@@ -97,3 +97,66 @@ test("verify() fail-closed when given audit_trail_id instead of content_hash", (
     /content_hash not available/
   );
 });
+
+test("projectionFromInstruction extracts discriminator from real data bytes", () => {
+  // A real System transfer: discriminator 0x02 + 4-byte padding + lamports.
+  const data = new Uint8Array([2, 0, 0, 0, 0xe8, 0x76, 0x48, 0x17, 0x00, 0x00, 0x00, 0x00]);
+  const proj = AuditBind.projectionFromInstruction({
+    programId: SYSTEM_PROGRAM,
+    data,
+    accounts: [FROM, TO],
+  });
+  assert.equal(proj.programId, SYSTEM_PROGRAM);
+  assert.equal(proj.instructionDiscriminator, "02000000e8764817");
+  assert.deepEqual(proj.instructionData, Array.from(data));
+  assert.deepEqual(proj.accountAddresses, [FROM, TO]);
+});
+
+test("verifyInstruction binds the exact instruction payload (swap TOCTOU closure)", () => {
+  const data = new Uint8Array([2, 0, 0, 0, 0xe8, 0x76, 0x48, 0x17, 0x00, 0x00, 0x00, 0x00]);
+  const hash = AuditBind.computeHash(
+    AuditBind.projectionFromInstruction({
+      programId: SYSTEM_PROGRAM,
+      data,
+      accounts: [FROM, TO],
+    }),
+  );
+  // Identical payload → passes (no throw).
+  AuditBind.verifyInstruction(
+    { programId: SYSTEM_PROGRAM, data, accounts: [FROM, TO] },
+    hash,
+  );
+  // Mutated accounts → ABORTS.
+  assert.throws(
+    () =>
+      AuditBind.verifyInstruction(
+        { programId: SYSTEM_PROGRAM, data, accounts: [FROM, TO.replace("CVfeR", "CVfeQ")] },
+        hash,
+      ),
+    /AuditBind FAILED: hash mismatch/,
+  );
+  // Mutated instruction data → ABORTS.
+  const mutated = new Uint8Array(data);
+  mutated[4] = 0xff;
+  assert.throws(
+    () =>
+      AuditBind.verifyInstruction(
+        { programId: SYSTEM_PROGRAM, data: mutated, accounts: [FROM, TO] },
+        hash,
+      ),
+    /AuditBind FAILED: hash mismatch/,
+  );
+});
+
+test("verifyInstruction with no data hashes as empty instructionData (parity with Rust)", () => {
+  const proj = AuditBind.projectionFromInstruction({
+    programId: SYSTEM_PROGRAM,
+    data: new Uint8Array(0),
+    accounts: [FROM, TO],
+  });
+  assert.equal(proj.instructionDiscriminator, "");
+  assert.equal(proj.instructionData, undefined);
+  // Matches the no-data computeHash reference contract exactly.
+  const hash = AuditBind.computeHash(proj);
+  assert.equal(hash, AuditBind.computeHash({ programId: SYSTEM_PROGRAM, instructionDiscriminator: "", accountAddresses: [FROM, TO] }));
+});

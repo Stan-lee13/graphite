@@ -19,6 +19,24 @@ struct BenchmarkCase {
     input: VerificationInput,
 }
 
+/// Regression Engine seed: the benchmark cases as (expected_approved, input)
+/// pairs (P16: the benchmark is the reproducible evidence base).
+///
+/// The two simulation-baseline-dependent cases ("Simulation spoofing",
+/// "Normal compute with baseline") are excluded — they require
+/// operator-seeded RPC baselines and are recorded at runtime, never seedable.
+/// All other cases replay deterministically on a fresh GraphiteCore.
+pub(crate) fn benchmark_fixture_seed() -> Vec<(bool, VerificationInput)> {
+    build_benchmark_cases()
+        .into_iter()
+        .filter(|c| {
+            !c.label.contains("Simulation spoofing")
+                && !c.label.contains("Normal compute with baseline")
+        })
+        .map(|c| (c.expected_approved, c.input))
+        .collect()
+}
+
 pub fn run_benchmark() {
     println!("\n╔════════════════════════════════════════════════════════╗");
     println!("║         Graphite Phase 1 Benchmark Suite               ║");
@@ -188,6 +206,42 @@ pub fn run_benchmark() {
         false_negatives
     );
     println!("  Avg Latency:      {}μs", avg_latency);
+    println!();
+
+    // ─── Plugin overhead (P16: measured, reproducible) ───
+    // The default core ships two first-party plugins (FakeRewardsDrainer L7
+    // risk + verification event logger). Quantify the per-verify cost against
+    // a pristine no-plugin core on the SAME safe input.
+    let plugin_input = cases
+        .iter()
+        .find(|c| c.category == "safe")
+        .map(|c| c.input.clone())
+        .expect("benchmark suite must include a safe case");
+    let plugin_core = GraphiteCore::new();
+    let bare_core = GraphiteCore::new_without_plugins();
+    const PLUGIN_ITERS: usize = 500;
+    let t = Instant::now();
+    for _ in 0..PLUGIN_ITERS {
+        let _ = plugin_core.verify(&plugin_input);
+    }
+    let with_plugins_us = t.elapsed().as_micros() as f64 / PLUGIN_ITERS as f64;
+    let t = Instant::now();
+    for _ in 0..PLUGIN_ITERS {
+        let _ = bare_core.verify(&plugin_input);
+    }
+    let without_plugins_us = t.elapsed().as_micros() as f64 / PLUGIN_ITERS as f64;
+    // Raw signed delta — no clamping: measurement noise can make the
+    // "with plugins" run faster, and the honest display shows that.
+    let delta_us = with_plugins_us - without_plugins_us;
+    let delta_pct = if without_plugins_us > 0.0 {
+        delta_us / without_plugins_us * 100.0
+    } else {
+        0.0
+    };
+    println!(
+        "  Plugin overhead:  {:.2}μs/verify with 2 plugins vs {:.2}μs/verify bare (Δ {:+.2}μs, {:+.1}%) — {} iterations, same input",
+        with_plugins_us, without_plugins_us, delta_us, delta_pct, PLUGIN_ITERS
+    );
     println!();
 
     // ─── Baseline Comparison (Constitution P16 requirement) ───

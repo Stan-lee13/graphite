@@ -6,17 +6,19 @@
 //! pipeline over them. This proves the engine handles real on-chain
 //! transaction shapes — not just handcrafted fixtures.
 //!
+//! The transaction→input conversion lives in the production module
+//! `graphite_core::live_corpus::tx_to_input` (unit-tested against pinned
+//! real mainnet transactions); this test exercises the full fetch → verify
+//! loop against live devnet.
+//!
 //! `#[ignore]`d by default so the deterministic suite never depends on the
 //! network. Run explicitly:
 //!
 //! ```bash
-//! cargo test --features rpc -- --ignored live_transactions
+//! cargo test --features rpc -- --ignored verify_real_devnet_transactions
 //! ```
 
 #![cfg(feature = "rpc")]
-
-use graphite_core::verification::{ProposedIntent, VerificationInput};
-use graphite_core::WalletProfile;
 
 #[tokio::test]
 #[ignore = "network test — run explicitly: cargo test --features rpc -- --ignored live_transactions"]
@@ -41,6 +43,12 @@ async fn verify_real_devnet_transactions() {
         return;
     };
 
+    let prefer: Vec<String> = core
+        .list_manifests()
+        .iter()
+        .map(|m| m.protocol.program_id.clone())
+        .collect();
+    let prefer: Vec<&str> = prefer.iter().map(|s| s.as_str()).collect();
     let mut verified = 0usize;
     let mut attempted = 0usize;
     // Devnet block production is bursty (long empty stretches), so walk back
@@ -59,7 +67,9 @@ async fn verify_real_devnet_transactions() {
             if verified >= 10 {
                 break;
             }
-            let Some(input) = tx_to_input(tx) else {
+            // Production converter: prefers known-manifest programs over the
+            // System fee-payment / ComputeBudget setup instructions.
+            let Some(input) = graphite_core::live_corpus::tx_to_input(tx, &prefer) else {
                 continue;
             };
             attempted += 1;
@@ -93,73 +103,4 @@ async fn verify_real_devnet_transactions() {
         "[live corpus] verified {} real devnet transactions (attempted {})",
         verified, attempted
     );
-}
-
-/// Convert a `getBlock` transaction object into a `VerificationInput`.
-/// Uses the transaction's first instruction (program + accounts + data).
-fn tx_to_input(tx: &serde_json::Value) -> Option<VerificationInput> {
-    let msg = tx.get("transaction")?.get("message")?;
-    let keys = msg.get("accountKeys")?.as_array()?;
-    let ixs = msg.get("instructions")?.as_array()?;
-
-    // Skip setup-only instructions (e.g. ComputeBudget with zero accounts):
-    // pick the first instruction that actually references accounts.
-    let ix = ixs.iter().find(|ix| {
-        ix.get("accounts")
-            .and_then(|a| a.as_array())
-            .map(|a| !a.is_empty())
-            .unwrap_or(false)
-    })?;
-
-    let program_idx = ix.get("programIdIndex")?.as_u64()? as usize;
-    let program_id = keys.get(program_idx)?.as_str()?;
-
-    // Instruction accounts → real account keys (deduplicate, cap at 8).
-    let mut accounts: Vec<String> = Vec::new();
-    if let Some(idx_list) = ix.get("accounts").and_then(|a| a.as_array()) {
-        for idx in idx_list.iter().filter_map(|i| i.as_u64()) {
-            if let Some(key) = keys.get(idx as usize).and_then(|k| k.as_str()) {
-                if !accounts.contains(&key.to_string()) {
-                    accounts.push(key.to_string());
-                    if accounts.len() >= 8 {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // Instruction data is base58-encoded in JSON-encoded blocks.
-    let data_b58 = ix.get("data").and_then(|d| d.as_str()).unwrap_or("");
-    let discriminator_hex = graphite_core::solana_types::base58_decode(data_b58)
-        .map(|bytes| hex::encode(&bytes[..bytes.len().min(8)]))
-        .unwrap_or_else(|| "00".to_string());
-
-    // Real compute usage from the block metadata, if reported.
-    let compute_units = tx
-        .get("meta")
-        .and_then(|m| m.get("computeUnitsConsumed"))
-        .and_then(|c| c.as_u64())
-        .unwrap_or(0);
-
-    Some(VerificationInput {
-        proposed_intent: ProposedIntent {
-            intent_type: "transfer".to_string(),
-            raw_natural_language: "live corpus".to_string(),
-            confidence_of_parse: 0.5,
-            extracted_parameters: None,
-        },
-        program_id: program_id.to_string(),
-        protocol_version: "1.0.0".to_string(),
-        instruction_discriminator: discriminator_hex,
-        account_addresses: accounts,
-        instruction_data: None,
-        cpi_targets: vec![],
-        wallet_profile: WalletProfile::TradingBot,
-        behavior_evidence: Default::default(),
-        compute_units,
-        account_writes: 0,
-        cpi_hops: 0,
-        signed_transaction: None,
-    })
 }

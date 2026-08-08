@@ -1,0 +1,178 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Wormhole Core Bridge",
+    "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+    "website": "https://wormhole.com",
+    "github": "https://github.com/wormhole-foundation/wormhole",
+    "idl_source": "https://github.com/wormhole-foundation/wormhole/tree/main/solana/program"
+  },
+  "version": {
+    "label": "2.4.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Initialize",
+      "discriminator": "00",
+      "accounts": [
+        {
+          "name": "payer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "config",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the guardian-set / bridge configuration account"
+      ],
+      "allowed_cpis": [
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "one-time bootstrap: config must be uninitialized",
+        "guardian set is fixed at deploy — changes are guarded by multi-sig"
+      ]
+    },
+    {
+      "name": "PostMessage",
+      "discriminator": "01",
+      "accounts": [
+        {
+          "name": "emitter",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "message",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "creates a signed message (VAA payload) account with the emitter's payload",
+        "fee is deducted from the emitter when configured"
+      ],
+      "allowed_cpis": [
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "emitter must be signer — only registered emitters may post",
+        "RISK: bridge messages move wrapped assets cross-chain — verify no unexpected token CPI",
+        "RISK: if message payload claims a transfer to an attacker address, flag HiddenTransfer"
+      ]
+    },
+    {
+      "name": "PostVAA",
+      "discriminator": "02",
+      "accounts": [
+        {
+          "name": "payer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "message",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "processes a signed VAA, unlocking assets on the destination chain"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": [
+        "RISK: VAA is attacker-supplied data — verify signature set is the CURRENT guardian set",
+        "RISK: if VAA unlocks assets to an attacker account, flag CompositionalDrain",
+        "FAIL-CLOSED: bridge token movement with unverifiable VAA provenance must be blocked"
+      ]
+    },
+    {
+      "name": "VerifySignatures",
+      "discriminator": "03",
+      "accounts": [
+        {
+          "name": "payer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "signature_set",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "verifies guardian signatures over the VAA hash",
+        "creates a verified signature-set account"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "signature threshold must meet the current guardian-set quorum",
+        "RISK: partial signature verification is not final — flag if used as final"
+      ]
+    },
+    {
+      "name": "PostMessageUnreliable",
+      "discriminator": "09",
+      "accounts": [
+        {
+          "name": "emitter",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "message",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "posts a message without guaranteed delivery ordering"
+      ],
+      "allowed_cpis": [
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "emitter must be signer",
+        "same payload-integrity checks as PostMessage"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest",
+  "verification": {
+    "program_id_verified_on_chain": true,
+    "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07",
+    "discriminators_source": "official Wormhole Rust program (solana/program/src/instruction.rs — native u8 variants); observed live bridge transactions on mainnet",
+    "verified_at": "2026-08-07",
+    "notes": "Program ID confirmed executable on mainnet (worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth — the canonical core-bridge ID, matching the test suite's pinned constant). Native program uses single-byte variant discriminators. Live observation of recent wormhole inner calls (len=0 data) confirms the program is active on mainnet. Task-list ID wormDTUJvAWNTwnYNi1z5kM5o4q3bN7cE2dR1sY5tK is FABRICATED — rejected per P11."
+  }
+}

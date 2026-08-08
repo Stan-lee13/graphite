@@ -1,0 +1,368 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Pump.fun",
+    "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "website": "https://pump.fun",
+    "github": "https://github.com/pump-fun/pump-public-docs",
+    "idl_source": "https://raw.githubusercontent.com/pump-fun/pump-public-docs/main/idl/pump.json"
+  },
+  "version": {
+    "label": "1.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "create",
+      "discriminator": "181ec828051c0777",
+      "accounts": [
+        {
+          "name": "mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "bonding_curve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "creates a new bonding curve account with initial virtual reserves",
+        "creates a new SPL token mint for the memecoin"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "create is mint-launch: no user funds move",
+        "mint must be a fresh uninitialized account",
+        "RISK: user-supplied mint address — verify owner is SPL Token after CPI"
+      ]
+    },
+    {
+      "name": "buy",
+      "discriminator": "66063d1201daebea",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "bonding_curve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits accounts.user by data.amount lamports",
+        "credits accounts.user_token_account with computed token amount",
+        "updates bonding curve virtual reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "swap-shaped: SOL in, tokens out — validate amount vs curve reserves",
+        "user_token_account must be owned by accounts.user",
+        "bonding_curve must be the curve PDA for the mint",
+        "RISK: if output token amount underflows expected, flag HiddenTransfer"
+      ]
+    },
+    {
+      "name": "buy_v2",
+      "discriminator": "b817ee6167c5d33d",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "bonding_curve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits accounts.user by data.amount lamports",
+        "credits accounts.user_token_account with computed token amount",
+        "updates bonding curve virtual reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "swap-shaped: SOL in, tokens out — validate amount vs curve reserves",
+        "user_token_account must be owned by accounts.user"
+      ]
+    },
+    {
+      "name": "buy_exact_sol_in",
+      "discriminator": "38fc74089edfcd5f",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "bonding_curve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits accounts.user by data.sol_amount lamports",
+        "credits accounts.user_token_account with computed token amount",
+        "updates bonding curve virtual reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "swap-shaped: exact SOL in, tokens out — validate curve math",
+        "user_token_account must be owned by accounts.user"
+      ]
+    },
+    {
+      "name": "sell",
+      "discriminator": "33e685a4017f83ad",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "bonding_curve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits accounts.user_token_account by data.amount tokens",
+        "credits accounts.user with computed lamports",
+        "updates bonding curve virtual reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "swap-shaped: tokens in, SOL out — validate curve math",
+        "user_token_account must be owned by accounts.user",
+        "RISK: if sell output is drained to an attacker address instead of accounts.user, flag CompositionalDrain"
+      ]
+    },
+    {
+      "name": "sell_v2",
+      "discriminator": "5df6823ce7e940b2",
+      "accounts": [
+        {
+          "name": "user",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "bonding_curve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_token_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits accounts.user_token_account by data.amount tokens",
+        "credits accounts.user with computed lamports",
+        "updates bonding curve virtual reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "swap-shaped: tokens in, SOL out — validate curve math",
+        "user_token_account must be owned by accounts.user"
+      ]
+    },
+    {
+      "name": "migrate",
+      "discriminator": "9beae792ec9ea21e",
+      "accounts": [
+        {
+          "name": "mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "bonding_curve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "migrates bonding curve liquidity to a DEX pool (e.g. Raydium CPMM)",
+        "closes the bonding curve account",
+        "sets mint authority / freezes bonding curve state"
+      ],
+      "allowed_cpis": [
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "RISK: migration moves LP — verify pool recipient is a known DEX program",
+        "RISK: authority is program PDA — flag if authority is a user key",
+        "RISK: if LP tokens are transferred to an attacker account, flag CompositionalDrain"
+      ]
+    },
+    {
+      "name": "initialize",
+      "discriminator": "afaf6d1f0d989bed",
+      "accounts": [
+        {
+          "name": "global_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the global program state account"
+      ],
+      "allowed_cpis": [
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "admin-only: authority must be the known deployer key",
+        "one-time: global_state must be uninitialized"
+      ]
+    },
+    {
+      "name": "set_params",
+      "discriminator": "1beab2349302bb8d",
+      "accounts": [
+        {
+          "name": "global_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates global fee / config parameters"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "admin-only: authority must be the known deployer key",
+        "RISK: parameter change by unknown authority — flag PermissionEscalation"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest",
+  "verification": {
+    "program_id_verified_on_chain": true,
+    "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true + official IDL pump-fun/pump-public-docs",
+    "discriminators_source": "official Anchor IDL (pump-fun/pump-public-docs/idl/pump.json), cross-checked against live mainnet transaction instruction bytes",
+    "verified_at": "2026-08-07",
+    "notes": "Program ID confirmed executable on mainnet 2026-08-07. Discriminators taken verbatim from the official published Anchor IDL. On-chain observation of a live pump.fun inner instruction (disc=db2b5db7c4e6b5e8, len=376) suggests newer router deployments exist; the official IDL covers the classic program."
+  }
+}

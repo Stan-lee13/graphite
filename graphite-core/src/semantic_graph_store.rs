@@ -223,6 +223,18 @@ impl SemanticGraphStore {
         Ok(())
     }
 
+    /// Read-only view of the full append-only behavior history (all programs,
+    /// all versions). Used by observability/dashboard reads — never mutated.
+    pub fn behaviors(&self) -> &[Behavior] {
+        &self.behaviors
+    }
+
+    /// Read-only view of the trusted simulation baselines. Used by
+    /// observability/dashboard reads — never mutated.
+    pub fn baselines(&self) -> &HashMap<String, ComputeBaseline> {
+        &self.baselines
+    }
+
     /// Get Behavior record for a program ID (latest version — reflects
     /// quarantine if `quarantine()` was ever called for this program, since
     /// quarantine appends a new, newer record).

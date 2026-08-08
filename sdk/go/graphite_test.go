@@ -530,6 +530,82 @@ func TestVerificationResultNoDataLoss(t *testing.T) {
 	}
 }
 
+func TestProtocolManifestTypedRoundtrip(t *testing.T) {
+	// The /manifests endpoint now decodes into a typed ProtocolManifest
+	// (parity with the TypeScript SDK) instead of map[string]interface{}.
+	jsonStr := `[
+	  {
+	    "graphite_manifest_version": "1.0",
+	    "protocol": {
+	      "name": "System Program",
+	      "program_id": "11111111111111111111111111111111",
+	      "website": "https://docs.solana.com",
+	      "github": "https://github.com/anza-xyz/agave"
+	    },
+	    "version": {
+	      "label": "1.0.0",
+	      "effective_from_slot": 0,
+	      "previous_version_ref": null
+	    },
+	    "instructions": [
+	      {
+	        "name": "Transfer",
+	        "discriminator": "02000000",
+	        "accounts": [
+	          {"name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": []}
+	        ],
+	        "expected_state_changes": ["debits accounts.from by data.amount lamports"],
+	        "allowed_cpis": [],
+	        "risk_rules": ["from must be signer"]
+	      }
+	    ],
+	    "trust_tier": "BattleTested"
+	  }
+	]`
+
+	var manifests []ProtocolManifest
+	if err := json.Unmarshal([]byte(jsonStr), &manifests); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(manifests) != 1 {
+		t.Fatalf("expected 1 manifest, got %d", len(manifests))
+	}
+	m := manifests[0]
+	if m.GraphiteManifestVersion != "1.0" {
+		t.Errorf("version mismatch: %s", m.GraphiteManifestVersion)
+	}
+	if m.Protocol.ProgramID != "11111111111111111111111111111111" {
+		t.Errorf("program_id mismatch: %s", m.Protocol.ProgramID)
+	}
+	if m.Protocol.Name != "System Program" {
+		t.Errorf("name mismatch: %s", m.Protocol.Name)
+	}
+	if len(m.Instructions) != 1 || m.Instructions[0].Discriminator != "02000000" {
+		t.Errorf("instruction mismatch: %+v", m.Instructions)
+	}
+	if len(m.Instructions[0].Accounts) != 1 || !m.Instructions[0].Accounts[0].IsSigner {
+		t.Errorf("account role mismatch: %+v", m.Instructions[0].Accounts)
+	}
+	if m.TrustTier != "BattleTested" {
+		t.Errorf("trust_tier mismatch: %s", m.TrustTier)
+	}
+	// Marshal back must be valid JSON with no data loss on key fields.
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	var roundtrip ProtocolManifest
+	if err := json.Unmarshal(data, &roundtrip); err != nil {
+		t.Fatalf("re-unmarshal failed: %v", err)
+	}
+	if roundtrip.Protocol.ProgramID != m.Protocol.ProgramID {
+		t.Error("roundtrip program_id mismatch")
+	}
+	if len(roundtrip.Instructions) != 1 {
+		t.Error("roundtrip instructions mismatch")
+	}
+}
+
 func TestHealthCheck(t *testing.T) {
 	// Test against a non-existent server — should get an error
 	client := NewClient("http://localhost:9999")

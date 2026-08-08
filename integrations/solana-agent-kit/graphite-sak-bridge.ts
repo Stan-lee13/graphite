@@ -264,8 +264,24 @@ export class VerifiedSakAgent {
     return { executed: true, verification, signature };
   }
 
+  /**
+   * Execute a swap under the Graphite verification gate.
+   *
+   * TOCTOU hardening (audit finding C2): pass `payload` — the EXACT swap
+   * instruction (programId, discriminator, full account list, raw data
+   * bytes) — to bind AuditBind to the real instruction that will be
+   * submitted. Any mutation of that instruction between verification and
+   * execution changes the content_hash and ABORTS.
+   *
+   * Without `payload` the swap check is a reduced projection
+   * (programId + discriminator + wallet). In that case, set
+   * `GRAPHITE_SWAP_STRICT=1` to FAIL CLOSED (the opaque SAK `methods.swap`
+   * path cannot be payload-bound, so a strict operator must supply a built
+   * payload via the Jupiter swap API / transaction builder).
+   */
   async executeSwap(
-    naturalLanguage: string
+    naturalLanguage: string,
+    payload?: { programId: string; discriminator: string; accounts: string[]; instructionData?: number[] },
   ): Promise<{ executed: boolean; verification: VerificationResult; signature?: string }> {
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
@@ -275,20 +291,46 @@ export class VerifiedSakAgent {
 
     const JUPITER_V6_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
     const JUPITER_SWAP_DISCRIMINATOR = "e517cb977ae3ad2a";
-    const accountAddresses = [this.walletPublicKey];
+    const strict = process.env.GRAPHITE_SWAP_STRICT === "1";
+    if (strict && !payload) {
+      throw new Error(
+        "[Graphite] GRAPHITE_SWAP_STRICT=1 requires a built swap payload (programId/discriminator/accounts/instructionData) " +
+          "so AuditBind can bind the exact instruction — the opaque SAK swap path cannot be TOCTOU-bound. ABORTING."
+      );
+    }
 
+    const accountAddresses = payload?.accounts ?? [this.walletPublicKey];
     const verification = await this.verifyTransaction({
-      programId: JUPITER_V6_PROGRAM, instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR,
+      programId: payload?.programId ?? JUPITER_V6_PROGRAM,
+      instructionDiscriminator: payload?.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
       accountAddresses, proposedIntent,
+      instructionData: payload?.instructionData,
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
     if (!verification.approved) { console.log("[Graphite] Swap BLOCKED."); return { executed: false, verification }; }
 
-    AuditBind.verify({
-      transaction: { programId: JUPITER_V6_PROGRAM, instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR, accountAddresses },
-      contentHash: verification.content_hash ?? verification.audit_trail_id,
-    });
+    if (payload) {
+      // Bind the EXACT instruction that will be submitted (full data + accounts).
+      AuditBind.verifyInstruction(
+        {
+          programId: payload.programId,
+          data: Uint8Array.from(payload.instructionData ?? []),
+          accounts: payload.accounts,
+        },
+        verification.content_hash ?? verification.audit_trail_id,
+      );
+      console.log("[Graphite] Swap payload bound to AuditBind (instruction data + full account list).");
+    } else {
+      AuditBind.verify({
+        transaction: { programId: JUPITER_V6_PROGRAM, instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR, accountAddresses },
+        contentHash: verification.content_hash ?? verification.audit_trail_id,
+      });
+      console.warn(
+        "[Graphite] WARNING: swap AuditBind is minimal-projection (no payload bound). " +
+          "Supply a built payload or set GRAPHITE_SWAP_STRICT=1 to close the TOCTOU window."
+      );
+    }
 
     if (!this.sakAgent) throw new Error("Swap requires SAK plugins. Use executeTransfer for raw web3.js mode.");
 

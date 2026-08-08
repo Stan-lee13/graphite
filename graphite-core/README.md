@@ -15,14 +15,18 @@ The Rust verification engine — the heart of Graphite.
 | `semantic_graph_store` | Trust tier computation, append-only storage | L5 |
 | `unknown_protocol_mode` | 0.55 confidence ceiling for unknown protocols (P6/P12) | — |
 | `server` | HTTP API (axum) on port 7331 | — |
-| `benchmark` | P16-compliant benchmark suite (16 scored cases + 2 baseline comparisons) | — |
+| `regression_engine` | P10 promotion gate: fixture corpus + deterministic replay (99.5%) | — |
+| `manifest_registry` | Signed community manifest submissions (G5/P7/P10/P11) | — |
+| `plugin_orchestrator` | P8 plugin framework: 6 traits, review gate, panic-isolated execution | — |
+| `plugins` | Built-in plugins: FakeRewardsDrainer (L7 risk), VerificationEventLogger (analytics) | L7/L8 |
+| `benchmark` | P16-compliant benchmark suite (16 scored cases + 2 baseline comparisons + plugin overhead) | — |
 | `cli` | CLI interface (clap) | — |
 
 ## Build
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 680 tests (682 with --include-ignored)
+cargo test --release     # 819 tests (821 with --include-ignored)
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 
@@ -41,7 +45,7 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-11 JSON manifests in `protocols/`. Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets.
+15 JSON manifests in `protocols/` (11 Phase 1 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — all confirmed executable on mainnet 2026-08-07). Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets.
 
 All program IDs verified against official on-chain sources (pinned by `test_all_seed_manifest_program_ids_are_canonical`). See `CONTRIBUTING.md` for how to add a new manifest.
 

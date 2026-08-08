@@ -224,6 +224,51 @@ type RiskFinding struct {
 	Reason  string `json:"reason"`
 }
 
+// ProtocolManifest is a protocol manifest served by Core's /manifests endpoint.
+// Field parity with the TypeScript SDK's ProtocolManifest interface and the
+// Rust ProtocolManifest struct (graphite-core/src/manifest.rs).
+type ProtocolManifest struct {
+	GraphiteManifestVersion string          `json:"graphite_manifest_version"`
+	Protocol                ManifestProtocol `json:"protocol"`
+	Version                 ManifestVersion   `json:"version"`
+	Instructions            []ManifestInstruction `json:"instructions"`
+	TrustTier               string          `json:"trust_tier"`
+}
+
+// ManifestProtocol identifies the program a manifest describes.
+type ManifestProtocol struct {
+	Name       string `json:"name"`
+	ProgramID  string `json:"program_id"`
+	Website    string `json:"website,omitempty"`
+	Github     string `json:"github,omitempty"`
+}
+
+// ManifestVersion is the version label of a protocol manifest.
+type ManifestVersion struct {
+	Label              string  `json:"label"`
+	EffectiveFromSlot  uint64  `json:"effective_from_slot"`
+	PreviousVersionRef *string `json:"previous_version_ref,omitempty"`
+}
+
+// ManifestInstruction is a single instruction definition in a manifest.
+type ManifestInstruction struct {
+	Name                string                `json:"name"`
+	Discriminator       string                `json:"discriminator"`
+	Accounts            []ManifestAccountRole `json:"accounts"`
+	ExpectedStateChanges []string              `json:"expected_state_changes"`
+	AllowedCPIs         []string              `json:"allowed_cpis"`
+	RiskRules           []string              `json:"risk_rules"`
+}
+
+// ManifestAccountRole is a single account role definition in a manifest.
+type ManifestAccountRole struct {
+	Name       string   `json:"name"`
+	Role       string   `json:"role"`
+	IsWritable bool     `json:"is_writable"`
+	IsSigner   bool     `json:"is_signer"`
+	PDASeeds   []string `json:"pda_seeds,omitempty"`
+}
+
 // ─── Client methods ───
 
 // Verify sends a verification request to the Graphite Core server.
@@ -269,15 +314,15 @@ func (c *Client) Health() error {
 	return nil
 }
 
-// ListManifests returns all loaded protocol manifests.
-func (c *Client) ListManifests() ([]map[string]interface{}, error) {
+// ListManifests returns all loaded protocol manifests, typed.
+func (c *Client) ListManifests() ([]ProtocolManifest, error) {
 	resp, err := c.HTTPClient.Get(c.BaseURL + "/manifests")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	var manifests []map[string]interface{}
+	var manifests []ProtocolManifest
 	if err := json.NewDecoder(resp.Body).Decode(&manifests); err != nil {
 		return nil, err
 	}

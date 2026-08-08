@@ -77,13 +77,13 @@ fn no_evidence() -> BehaviorEvidence {
 // ============================================================
 
 #[test]
-fn test_all_11_manifests_load_with_valid_pubkeys() {
+fn test_all_15_manifests_load_with_valid_pubkeys() {
     let registry = load_seed_manifests();
     let manifests = registry.list();
     assert_eq!(
         manifests.len(),
-        11,
-        "expected exactly 11 seed manifests (10 original + legacy Memo)"
+        15,
+        "expected exactly 15 seed manifests (11 Phase 1 + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata)"
     );
 
     for m in &manifests {
@@ -870,7 +870,7 @@ fn test_pubkey_from_base58_invalid_too_short() {
 }
 
 #[test]
-fn test_all_10_program_ids_round_trip() {
+fn test_all_program_ids_round_trip() {
     let registry = load_seed_manifests();
     for m in registry.list() {
         let pk = Pubkey::from_base58(&m.protocol.program_id).unwrap();

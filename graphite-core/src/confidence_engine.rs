@@ -66,6 +66,19 @@ impl TrustTier {
     /// Manifests declare trust tiers as strings (e.g., "BattleTested", "OfficialManifest").
     /// This converts them to the enum. Unknown strings default to HeuristicInferred
     /// (safer to under-trust than over-trust — Constitution P6/P7).
+    /// Canonical string form of a tier (matches its serde serialization —
+    /// e.g. `OfficialManifest`). Used for dashboard/registry readouts.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TrustTier::Unknown => "Unknown",
+            TrustTier::HeuristicInferred => "HeuristicInferred",
+            TrustTier::OfficialManifest => "OfficialManifest",
+            TrustTier::SimulationValidated => "SimulationValidated",
+            TrustTier::CommunityVerified => "CommunityVerified",
+            TrustTier::BattleTested => "BattleTested",
+        }
+    }
+
     pub fn from_manifest_str(s: &str) -> Self {
         match s.trim() {
             "BattleTested" => TrustTier::BattleTested,

@@ -40,7 +40,7 @@ const ORCA_WHIRLPOOL: &str = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
 const RAYDIUM_AMM: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 const SQUADS_V4: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 const STAKE: &str = "Stake11111111111111111111111111111111111111";
-const MEMO: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+const MEMO: &str = "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH";
 const COMPUTE_BUDGET: &str = "ComputeBudget111111111111111111111111111111";
 const ASSOC_TOKEN: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 

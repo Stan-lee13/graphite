@@ -129,6 +129,8 @@ const TRUSTED_CPI_ROOTS: &[&str] = &[
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
     "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads (multisig, CPIs to System)
+    "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA (escrow CPIs to Token)
+    "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (curve CPIs to Token)
 ];
 
 /// Trusted programs that naturally have high/variable account counts.
@@ -141,6 +143,8 @@ const DEX_PROGRAMS: &[&str] = &[
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
     "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads V4 (multisig)
+    "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA
+    "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (curve: many accounts)
 ];
 
 /// Assess a transaction for adversarial risk patterns.
@@ -611,6 +615,8 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
                 "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
                 "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
                 "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
+                "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA (periodic swaps)
+                "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (bonding-curve buy/sell)
             ];
             SWAP_PROGRAMS.contains(&program_id)
         }
@@ -618,6 +624,8 @@ fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
         "close" => {
             program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
                 || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+                // Jupiter DCA positions are opened AND closed on-chain (closeDca).
+                || program_id == "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
         }
         "transfer" => true,
         // SECURITY FIX: Default to false for unknown intent types.

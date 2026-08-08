@@ -69,4 +69,46 @@ export class AuditBind {
     }
     console.log(`[AuditBind] Hash verified: ${computed}`);
   }
+
+  /**
+   * Build the AuditBind projection from a REAL instruction payload (the same
+   * projection the Rust Core hashes): programId + discriminator (first 8
+   * bytes of the instruction data, hex) + account keys + raw data bytes.
+   *
+   * Accepts an already-stringified web3 instruction shape so this module
+   * stays dependency-free (the bridge adapts TransactionInstruction objects
+   * into this shape with `.programId.toBase58()` etc.).
+   */
+  static projectionFromInstruction(input: {
+    programId: string; // base58
+    data: Uint8Array; // raw instruction data bytes
+    accounts: string[]; // base58 account keys, in instruction order
+  }): AuditBindTransactionParams {
+    const dataBytes = input.data ?? new Uint8Array(0);
+    const discriminator = Buffer.from(dataBytes.subarray(0, 8)).toString("hex");
+    return {
+      programId: input.programId,
+      instructionDiscriminator: discriminator,
+      accountAddresses: input.accounts,
+      instructionData: dataBytes.length > 0 ? Array.from(dataBytes) : undefined,
+    };
+  }
+
+  /**
+   * Verify an actual instruction payload against the approved content_hash.
+   * This closes the swap-path TOCTOU gap (audit finding C2): instead of
+   * binding a reduced `programId + discriminator + wallet` projection, the
+   * caller binds the EXACT instruction (full account list + raw data) that
+   * will be submitted. Any mutation of the instruction between verification
+   * and submission changes the hash and ABORTS.
+   */
+  static verifyInstruction(
+    ix: { programId: string; data: Uint8Array; accounts: string[] },
+    contentHash: string,
+  ): void {
+    AuditBind.verify({
+      transaction: AuditBind.projectionFromInstruction(ix),
+      contentHash,
+    });
+  }
 }

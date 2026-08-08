@@ -8,7 +8,9 @@
 #![allow(clippy::all)]
 use graphite_core::confidence_engine::{compute_confidence, SignalKind, TrustTier, WeightedSignal};
 use graphite_core::policy_engine::WalletProfile;
-use graphite_core::risk_engine::{assess, RiskAssessmentInput, RiskPattern, RiskVerdict};
+use graphite_core::risk_engine::{
+    assess, assess_with_warnings, RiskAssessmentInput, RiskPattern, RiskVerdict,
+};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::simulation_integrity::{
     check_simulation_integrity, ComputeBaseline, ComputeUsage, SimulationIntegrityInput,
@@ -470,5 +472,171 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
         result.simulation_flagged, None,
         "<MIN_SAMPLES baseline must produce no simulation verdict (None), got {:?}",
         result.simulation_flagged
+    );
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROTOCOL EXPANSION (Phase 2 Month 1) — TRUSTED DEX ROOT COVERAGE
+//
+// Pump.fun and Jupiter DCA were added to DEX_PROGRAMS and TRUSTED_CPI_ROOTS
+// (2026-08-07). These tests prove the relaxations cannot mask a real drainer
+// and pin the intended trusted-root behavior, so a future edit to those
+// allowlists can't silently widen the bypass surface.
+// ═══════════════════════════════════════════════════════════
+
+const PUMP_FUN: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+const JUPITER_DCA: &str = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M";
+const WORMHOLE: &str = "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth";
+const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+// DX1/DX2: repeated-program CPI chains must STILL be blocked on both new
+// trusted roots — the DEX_PROGRAMS/TRUSTED_CPI_ROOTS relaxations apply to the
+// drainer heuristic and the token-CPI whitelist, NOT to compositional drains.
+#[test]
+fn dx1_pumpfun_repeated_cpi_drain_still_blocked() {
+    let input = RiskAssessmentInput {
+        program_id: PUMP_FUN.to_string(),
+        accounts: vec!["curve".to_string(), "user".to_string()],
+        cpi_targets: vec!["evil_drainer_program".to_string(); 4],
+        expected_state_changes: vec!["credits accounts.curve".to_string()],
+        allowed_cpis: vec![SPL_TOKEN.to_string()],
+        instruction_discriminator: "66063d1201daebea".to_string(),
+        expected_account_count: None,
+        proposed_intent_type: "swap".to_string(),
+        variable_accounts: false,
+        extracted_output_token: None,
+    };
+    assert!(
+        matches!(
+            assess(&input).unwrap(),
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            }
+        ),
+        "DX1 FIXED: repeated-program CPI chain on pump.fun root must still be blocked"
+    );
+}
+
+#[test]
+fn dx2_dca_repeated_cpi_drain_still_blocked() {
+    let input = RiskAssessmentInput {
+        program_id: JUPITER_DCA.to_string(),
+        accounts: vec!["user".to_string(), "escrow".to_string()],
+        cpi_targets: vec!["evil_drainer_program".to_string(); 4],
+        expected_state_changes: vec!["debits accounts.escrow".to_string()],
+        allowed_cpis: vec![SPL_TOKEN.to_string()],
+        instruction_discriminator: "131cb5dbd74f7e19".to_string(),
+        expected_account_count: None,
+        proposed_intent_type: "close".to_string(),
+        variable_accounts: false,
+        extracted_output_token: None,
+    };
+    assert!(
+        matches!(
+            assess(&input).unwrap(),
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            }
+        ),
+        "DX2 FIXED: repeated-program CPI chain on Jupiter DCA root must still be blocked"
+    );
+}
+
+// DX3: SPL Token CPI from a TRUSTED_CPI_ROOT is legitimate (curve transfers,
+// DCA escrow) — must NOT be flagged as AuthorityHijack.
+#[test]
+fn dx3_pumpfun_and_dca_token_cpi_from_trusted_root_is_allowed() {
+    for (program, disc, intent) in [
+        (PUMP_FUN, "66063d1201daebea", "swap"),
+        (JUPITER_DCA, "131cb5dbd74f7e19", "close"),
+    ] {
+        let input = RiskAssessmentInput {
+            program_id: program.to_string(),
+            accounts: vec!["user".to_string(), "curve_or_escrow".to_string()],
+            cpi_targets: vec![SPL_TOKEN.to_string()],
+            expected_state_changes: vec![
+                "debits accounts.user".to_string(),
+                "credits accounts.curve_or_escrow".to_string(),
+            ],
+            allowed_cpis: vec![SPL_TOKEN.to_string()],
+            instruction_discriminator: disc.to_string(),
+            expected_account_count: None,
+            proposed_intent_type: intent.to_string(),
+            variable_accounts: false,
+            extracted_output_token: None,
+        };
+        assert_eq!(
+            assess(&input).unwrap(),
+            RiskVerdict::Passed,
+            "DX3 FIXED: {} is a TRUSTED_CPI_ROOT — SPL Token CPI must not be flagged as AuthorityHijack",
+            program
+        );
+    }
+}
+
+// DX4: P12/P3 — an out-of-manifest CPI on a known trusted root is a WARNING,
+// not a silent pass and not a hard block. The warning must be surfaced by
+// assess_with_warnings, never dropped.
+#[test]
+fn dx4_pumpfun_unlisted_cpi_warning_surfaced_not_silent() {
+    let input = RiskAssessmentInput {
+        program_id: PUMP_FUN.to_string(),
+        accounts: vec!["curve".to_string(), "user".to_string()],
+        cpi_targets: vec!["some_unlisted_program".to_string()],
+        expected_state_changes: vec!["credits accounts.curve".to_string()],
+        allowed_cpis: vec![SPL_TOKEN.to_string()],
+        instruction_discriminator: "66063d1201daebea".to_string(),
+        expected_account_count: None,
+        proposed_intent_type: "swap".to_string(),
+        variable_accounts: false,
+        extracted_output_token: None,
+    };
+    let detail = assess_with_warnings(&input).unwrap();
+    assert_eq!(
+        detail.verdict,
+        RiskVerdict::Passed,
+        "DX4 VERIFIED: P12 — unlisted CPI on known protocol is a warning, not a block"
+    );
+    assert!(
+        !detail.warnings.is_empty(),
+        "DX4 FIXED: P3 — out-of-manifest CPI warning must be surfaced, never silently dropped"
+    );
+}
+
+// DX5: the drainer relaxation is PROGRAM-SCOPED. Wormhole Core and Metaplex
+// were added this cycle but are NOT in DEX_PROGRAMS — a drainer-shaped
+// transaction on Wormhole must still be blocked.
+#[test]
+fn dx5_non_dex_expansion_roots_do_not_get_drainer_relaxation() {
+    let input = RiskAssessmentInput {
+        program_id: WORMHOLE.to_string(),
+        accounts: vec![
+            "a1".to_string(),
+            "a2".to_string(),
+            "a3".to_string(),
+            "a4".to_string(),
+            "a5".to_string(),
+            "a6".to_string(),
+        ],
+        cpi_targets: vec![],
+        expected_state_changes: vec![],
+        allowed_cpis: vec![],
+        instruction_discriminator: "01".to_string(),
+        expected_account_count: None,
+        proposed_intent_type: String::new(),
+        variable_accounts: false,
+        extracted_output_token: None,
+    };
+    assert!(
+        matches!(
+            assess(&input).unwrap(),
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::Drainer,
+                ..
+            }
+        ),
+        "DX5 VERIFIED: Wormhole must NOT inherit the DEX_PROGRAMS drainer relaxation"
     );
 }

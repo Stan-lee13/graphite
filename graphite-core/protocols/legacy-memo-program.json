@@ -2,7 +2,8 @@
   "graphite_manifest_version": "1.0",
   "protocol": {
     "name": "Legacy Memo Program (SPL)",
-    "program_id": "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
+    "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
+    "retired_on_mainnet": true,
     "website": "https://spl.solana.com/memo",
     "github": "https://github.com/solana-labs/solana-program-library"
   },

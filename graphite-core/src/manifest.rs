@@ -218,6 +218,10 @@ pub fn load_seed_manifests() -> ManifestRegistry {
         "../protocols/meteora-dlmm.json",
         "../protocols/memo-program.json",
         "../protocols/legacy-memo-program.json",
+        "../protocols/pump-fun.json",
+        "../protocols/jupiter-dca.json",
+        "../protocols/wormhole-core.json",
+        "../protocols/metaplex-token-metadata.json",
     ];
 
     for p in &seed_paths {
@@ -255,6 +259,18 @@ pub fn load_seed_manifests() -> ManifestRegistry {
             }
             "../protocols/legacy-memo-program.json" => {
                 registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
+            }
+            "../protocols/pump-fun.json" => {
+                registry.load_from_json(include_str!("../protocols/pump-fun.json"))
+            }
+            "../protocols/jupiter-dca.json" => {
+                registry.load_from_json(include_str!("../protocols/jupiter-dca.json"))
+            }
+            "../protocols/wormhole-core.json" => {
+                registry.load_from_json(include_str!("../protocols/wormhole-core.json"))
+            }
+            "../protocols/metaplex-token-metadata.json" => {
+                registry.load_from_json(include_str!("../protocols/metaplex-token-metadata.json"))
             }
             _ => unreachable!(),
         };
@@ -310,6 +326,83 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_pump_fun_manifest_has_verified_discriminators() {
+        let registry = load_seed_manifests();
+        let manifest = registry
+            .get("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P")
+            .expect("Pump.fun manifest should be loaded");
+        let buy = manifest
+            .instructions
+            .iter()
+            .find(|i| i.name == "buy")
+            .expect("buy instruction should exist");
+        // Official pump-fun IDL discriminator (pump-fun/pump-public-docs).
+        assert_eq!(buy.discriminator, "66063d1201daebea");
+        let sell = manifest
+            .instructions
+            .iter()
+            .find(|i| i.name == "sell")
+            .expect("sell instruction should exist");
+        assert_eq!(sell.discriminator, "33e685a4017f83ad");
+        // Swap-shaped instructions must carry risk rules.
+        assert!(!buy.risk_rules.is_empty());
+        assert!(!sell.risk_rules.is_empty());
+    }
+
+    #[test]
+    fn test_jupiter_dca_manifest_has_escrow_instructions() {
+        let registry = load_seed_manifests();
+        let manifest = registry
+            .get("DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M")
+            .expect("Jupiter DCA manifest should be loaded");
+        assert!(manifest
+            .instructions
+            .iter()
+            .any(|i| i.name == "openDca" || i.name == "openDcaV2"));
+        assert!(manifest.instructions.iter().any(|i| i.name == "closeDca"));
+        // Escrow moves must declare allowed CPIs to SPL Token.
+        let open = manifest
+            .instructions
+            .iter()
+            .find(|i| i.name == "openDca")
+            .expect("openDca should exist");
+        assert!(open
+            .allowed_cpis
+            .contains(&"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()));
+    }
+
+    #[test]
+    fn test_wormhole_core_manifest_has_post_message() {
+        let registry = load_seed_manifests();
+        let manifest = registry
+            .get("worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth")
+            .expect("Wormhole Core manifest should be loaded");
+        let post = manifest
+            .instructions
+            .iter()
+            .find(|i| i.name == "PostMessage")
+            .expect("PostMessage instruction should exist");
+        // Native program: single-byte variant discriminator.
+        assert_eq!(post.discriminator, "01");
+        assert!(!post.risk_rules.is_empty());
+    }
+
+    #[test]
+    fn test_metaplex_token_metadata_manifest_has_create() {
+        let registry = load_seed_manifests();
+        let manifest = registry
+            .get("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+            .expect("Metaplex Token Metadata manifest should be loaded");
+        let create = manifest
+            .instructions
+            .iter()
+            .find(|i| i.name == "CreateMetadataAccountV3")
+            .expect("CreateMetadataAccountV3 should exist");
+        // Observed live on mainnet 2026-08-07 (shank hardcoded discriminator).
+        assert_eq!(create.discriminator, "0fd902b83e0f4ee4");
+    }
+
     /// Pins every seed manifest's program_id to its on-chain-verified
     /// canonical value (mainnet `getAccountInfo` → executable=true, checked
     /// 2026-08-06). A previous edit corrupted the Raydium manifest ID to a
@@ -332,13 +425,21 @@ mod tests {
                 "Stake Program",
                 "Stake11111111111111111111111111111111111111",
             ),
+            // On-chain corrected 2026-08-08: the two memo manifests had
+            // SWAPPED program IDs. The live memo program is
+            // Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH (executable on
+            // mainnet + devnet, verified live); the true legacy memo is
+            // Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo (retired — account
+            // deleted on both clusters). The previously pinned
+            // MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr never existed on
+            // any cluster.
             (
                 "Memo Program",
-                "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+                "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
             ),
             (
                 "Legacy Memo Program (SPL)",
-                "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
+                "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
             ),
             (
                 "Raydium AMM V4",
@@ -359,6 +460,19 @@ mod tests {
             (
                 "Squads V4 Multisig",
                 "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
+            ),
+            ("Pump.fun", "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"),
+            (
+                "Jupiter DCA",
+                "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+            ),
+            (
+                "Wormhole Core Bridge",
+                "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+            ),
+            (
+                "Metaplex Token Metadata",
+                "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
             ),
         ];
         let registry = load_seed_manifests();
