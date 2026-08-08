@@ -1,0 +1,22 @@
+{
+  "note": "SINGLE SOURCE OF TRUTH for seed-manifest program IDs. Every ID below was verified executable on mainnet via getAccountInfo (scripts/live_revalidate.py reproduces the check). The Rust pin test (manifest.rs test_all_seed_manifest_program_ids_are_canonical) and the Python AI-layer cross-check (python-ai-layer/test_intent_parser.py) both assert the manifests match this list EXACTLY and BIDIRECTIONALLY — a fabricated, swapped, removed, or duplicated ID fails CI. Add a new program here ONLY with on-chain evidence (executable account + provenance).",
+  "verified_on": "2026-08-08",
+  "verification_method": "getAccountInfo executable=true on api.mainnet-beta.solana.com; reproducible via graphite-core/scripts/live_revalidate.py",
+  "programs": [
+    { "name": "System Program", "program_id": "11111111111111111111111111111111", "verified": true, "network": "mainnet", "provenance": "native runtime program" },
+    { "name": "SPL Token Program", "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "verified": true, "network": "mainnet", "provenance": "spl-token official" },
+    { "name": "Token-2022 Program", "program_id": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "verified": true, "network": "mainnet", "provenance": "spl-token-2022 official" },
+    { "name": "Stake Program", "program_id": "Stake11111111111111111111111111111111111111", "verified": true, "network": "mainnet", "provenance": "native runtime program" },
+    { "name": "Memo Program", "program_id": "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", "verified": true, "network": "mainnet", "provenance": "spl-memo official; corrected 2026-08-08 (C1: previously pinned MemoSq4gq... which never existed)" },
+    { "name": "Legacy Memo Program (SPL)", "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo", "verified": true, "network": "mainnet", "provenance": "legacy spl-memo; re-verified EXEC on mainnet+devnet 2026-08-08 — superseded, NOT retired (C10)" },
+    { "name": "Raydium AMM V4", "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", "verified": true, "network": "mainnet", "provenance": "docs.raydium.io" },
+    { "name": "Jupiter V6 Aggregator", "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", "verified": true, "network": "mainnet", "provenance": "jup.ag official" },
+    { "name": "Orca Whirlpools", "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", "verified": true, "network": "mainnet", "provenance": "orca.so official" },
+    { "name": "Meteora DLMM", "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", "verified": true, "network": "mainnet", "provenance": "meteora.ag official" },
+    { "name": "Squads V4 Multisig", "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", "verified": true, "network": "mainnet", "provenance": "squads.so official" },
+    { "name": "Pump.fun", "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", "verified": true, "network": "mainnet", "provenance": "pump.fun official" },
+    { "name": "Jupiter DCA", "program_id": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", "verified": true, "network": "mainnet", "provenance": "jup.ag official" },
+    { "name": "Wormhole Core Bridge", "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth", "verified": true, "network": "mainnet", "provenance": "wormhole.com official" },
+    { "name": "Metaplex Token Metadata", "program_id": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s", "verified": true, "network": "mainnet", "provenance": "metaplex.com official" }
+  ]
+}

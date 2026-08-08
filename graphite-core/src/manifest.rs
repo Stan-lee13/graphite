@@ -411,80 +411,77 @@ mod tests {
     /// that protocol — the highest-impact data bug class in this codebase.
     #[test]
     fn test_all_seed_manifest_program_ids_are_canonical() {
-        let canonical = [
-            ("System Program", "11111111111111111111111111111111"),
-            (
-                "SPL Token Program",
-                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            ),
-            (
-                "Token-2022 Program",
-                "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-            ),
-            (
-                "Stake Program",
-                "Stake11111111111111111111111111111111111111",
-            ),
-            // On-chain corrected 2026-08-08: the two memo manifests had
-            // SWAPPED program IDs. The live memo program is
-            // Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH (executable on
-            // mainnet + devnet, verified live); the legacy memo is
-            // Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo — re-verified
-            // EXECUTABLE on BOTH clusters 2026-08-08 (superseded in ecosystem
-            // use, NOT retired; an earlier audit note mislabeled it retired).
-            // The previously pinned MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
-            // never existed on any cluster.
-            (
-                "Memo Program",
-                "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
-            ),
-            (
-                "Legacy Memo Program (SPL)",
-                "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
-            ),
-            (
-                "Raydium AMM V4",
-                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-            ),
-            (
-                "Jupiter V6 Aggregator",
-                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
-            ),
-            (
-                "Orca Whirlpools",
-                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
-            ),
-            (
-                "Meteora DLMM",
-                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
-            ),
-            (
-                "Squads V4 Multisig",
-                "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
-            ),
-            ("Pump.fun", "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"),
-            (
-                "Jupiter DCA",
-                "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
-            ),
-            (
-                "Wormhole Core Bridge",
-                "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
-            ),
-            (
-                "Metaplex Token Metadata",
-                "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-            ),
-        ];
+        // Single source of truth: protocols/verified_program_ids.json. Each ID
+        // there was verified executable on mainnet (scripts/live_revalidate.py
+        // reproduces the check). This test asserts the manifests match the
+        // registry EXACTLY and BIDIRECTIONALLY:
+        //   - any manifest program_id NOT in the verified registry fails
+        //     (fabricated/typo'd IDs — the MemoSq4gq class of bug),
+        //   - any verified program missing from the manifests fails
+        //     (accidental removal), and
+        //   - names must match (no swapped labels).
+        // The registry is checked from BOTH Rust and the Python AI layer, so
+        // an accidental identifier change cannot silently pass — it must be
+        // accompanied by on-chain evidence in the registry itself.
+        let verified: serde_json::Value =
+            serde_json::from_str(include_str!("../protocols/verified_program_ids.json"))
+                .expect("verified_program_ids.json must be valid JSON");
+        let programs = verified["programs"].as_array().expect("programs array");
+        assert_eq!(
+            programs.len(),
+            15,
+            "verified registry must list exactly the 15 seed programs"
+        );
+
+        let mut verified_by_id: std::collections::BTreeMap<&str, &str> =
+            std::collections::BTreeMap::new();
+        for p in programs {
+            let name = p["name"].as_str().expect("name");
+            let id = p["program_id"].as_str().expect("program_id");
+            assert!(
+                verified_by_id.insert(id, name).is_none(),
+                "duplicate program_id {id} in verified registry"
+            );
+        }
+
         let registry = load_seed_manifests();
-        assert_eq!(registry.list().len(), canonical.len());
-        for (name, id) in canonical {
-            let m = registry
-                .get(id)
-                .unwrap_or_else(|| panic!("manifest '{name}' not found under canonical ID {id}"));
+        let manifests: std::collections::BTreeMap<String, String> = registry
+            .list()
+            .iter()
+            .map(|m| (m.protocol.program_id.clone(), m.protocol.name.clone()))
+            .collect();
+
+        // Direction 1: every manifest ID must be verified (no fabricated IDs).
+        let missing_from_registry: Vec<_> = manifests
+            .keys()
+            .filter(|id| !verified_by_id.contains_key(id.as_str()))
+            .collect();
+        assert!(
+            missing_from_registry.is_empty(),
+            "manifests carry program IDs absent from verified_program_ids.json \
+             (fabricated/typo'd?): {missing_from_registry:?}"
+        );
+
+        // Direction 2: every verified ID must still have a manifest (no
+        // accidental removal).
+        let missing_from_manifests: Vec<_> = verified_by_id
+            .keys()
+            .filter(|id| !manifests.contains_key(**id))
+            .collect();
+        assert!(
+            missing_from_manifests.is_empty(),
+            "verified programs missing from manifests (accidental removal?): \
+             {missing_from_manifests:?}"
+        );
+
+        // Names must match (no swapped labels).
+        for (id, name) in &manifests {
+            let verified_name = verified_by_id
+                .get(id.as_str())
+                .expect("bidirectional check above");
             assert_eq!(
-                m.protocol.name, name,
-                "name mismatch under canonical ID {id}"
+                verified_name, name,
+                "name mismatch for {id}: manifest says '{name}', registry says '{verified_name}'"
             );
         }
     }

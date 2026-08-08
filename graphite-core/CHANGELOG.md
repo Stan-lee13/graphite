@@ -85,6 +85,7 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 ### Program ID Fixes
 - **5 fake program IDs in `extreme_adversarial.rs`** corrected: Jupiter V6, Orca Whirlpools, Raydium AMM V4, Squads V4, Memo. Tests were unknowingly exercising the unknown-protocol path (0.55 ceiling) instead of manifest matching.
 - **Legacy Memo program added as 11th manifest.** Both `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` (p-memo) and `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` (legacy SPL) are real on-chain programs.
+  - ⚠️ **Correction (2026-08-08, forensic audit C1):** `MemoSq4gq…` **never existed on any cluster** — it was a fabricated identifier. The real legacy SPL memo is `Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo` (re-verified executable on mainnet + devnet 2026-08-08; superseded, not retired — C10). Since 2026-08-08 the program-ID single source of truth is `graphite-core/protocols/verified_program_ids.json`, cross-checked bidirectionally by both the Rust pin test and the Python AI-layer test.
 
 ### Content Hash (P2)
 - **`content_hash` field added to `VerificationResult`.** `audit_trail_id` includes an AtomicU64 counter (unique per call) — not deterministic. Added separate `content_hash` field — pure SHA-256 of transaction config, fully deterministic.

@@ -148,7 +148,7 @@ The adversarial/exploit test suites cover 9 attack categories:
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | Orca SDK |
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Meteora docs |
 | Squads V4 | `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` | Squads-Protocol/v4 GitHub |
-| Memo Program | `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` | Solana docs |
+| Memo Program | `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` | Solana docs (⚠ corrected 2026-08-08: the previously listed `MemoSq4gq…` never existed on any cluster — forensic audit C1; the legacy SPL memo is `Memo1UhkJRf…`) |
 | Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | pump-fun/pump-public-docs (on-chain verified) |
 | Jupiter DCA | `DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M` | Jupiter docs (on-chain verified) |
 | Wormhole Core | `worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth` | Wormhole docs (on-chain verified) |

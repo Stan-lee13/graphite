@@ -95,10 +95,32 @@ def test_program_ids_match_manifests():
     assert len(expected_manifests) == 15, f"expected 15 manifests, map has {len(expected_manifests)}"
 
     all_manifests = sorted(glob.glob(os.path.join(manifest_dir, "*.json")))
+    # verified_program_ids.json is the ID registry, not a protocol manifest.
+    all_manifests = [p for p in all_manifests if os.path.basename(p) != "verified_program_ids.json"]
     found = {os.path.basename(p) for p in all_manifests}
     assert found == expected_manifests, (
         f"manifest set drift: missing={sorted(expected_manifests - found)} "
         f"unexpected={sorted(found - expected_manifests)}"
+    )
+
+    # Single source of truth: the verified program-ID registry. Every manifest
+    # ID must be in the registry AND every registry ID must have a manifest
+    # (bidirectional) — the systematic guard against the MemoSq4gq class of
+    # fabricated/removed/duplicated identifiers. The registry itself is
+    # on-chain verified (scripts/live_revalidate.py reproduces the check).
+    registry_path = os.path.join(manifest_dir, "verified_program_ids.json")
+    with open(registry_path) as f:
+        registry = json.load(f)
+    verified_ids = {p["program_id"]: p["name"] for p in registry["programs"]}
+    manifest_ids = set()
+    for manifest_path in all_manifests:
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        manifest_ids.add(manifest["protocol"]["program_id"])
+    assert manifest_ids == set(verified_ids), (
+        f"manifest↔registry drift: in-manifests-not-registry="
+        f"{sorted(manifest_ids - set(verified_ids))} "
+        f"in-registry-not-manifests={sorted(set(verified_ids) - manifest_ids)}"
     )
 
     # intent -> set of manifest program IDs that support it

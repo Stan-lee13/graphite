@@ -53,15 +53,53 @@ pub fn corpus_wallet_profile() -> WalletProfile {
 /// Instruction data is base58-encoded in JSON-encoded RPC responses; the
 /// discriminator is the first 8 bytes hex-encoded. Real compute usage comes
 /// from the block metadata (`computeUnitsConsumed`).
+/// Expand a transaction message's account-key space to its FULL size,
+/// including Address Lookup Table (ALT) entries for v0 transactions.
+///
+/// The JSON-RPC `getBlock`/`getTransaction` response keeps ONLY the static
+/// accountKeys for a v0 transaction; instruction indices beyond the static
+/// key count resolve into the entries of `addressTableLookups` (per lookup:
+/// writable entries then readonly entries, in lookup order). A parser that
+/// ignores the lookups silently DROPS every ALT-resolved account — proven
+/// against the pinned mainnet fixtures, where the Jupiter swap has 26 such
+/// references and the System batch has 8. This expansion restores the exact
+/// index space: entries become positionally-correct `alt:{table}:{entry}`
+/// placeholders (resolving the actual addresses needs the ALT account data,
+/// but program resolution and account-count analysis need only the positions).
+pub fn expand_account_keys(msg: &serde_json::Value) -> Option<Vec<String>> {
+    let static_keys = msg.get("accountKeys")?.as_array()?;
+    let mut keys: Vec<String> = static_keys
+        .iter()
+        .filter_map(|k| k.as_str().map(String::from))
+        .collect();
+    if let Some(lookups) = msg.get("addressTableLookups").and_then(|l| l.as_array()) {
+        for (ti, l) in lookups.iter().enumerate() {
+            let writable = l.get("writableIndexes").and_then(|a| a.as_array());
+            let readonly = l.get("readonlyIndexes").and_then(|a| a.as_array());
+            let mut entries: Vec<u64> = Vec::new();
+            if let Some(w) = writable {
+                entries.extend(w.iter().filter_map(|v| v.as_u64()));
+            }
+            if let Some(r) = readonly {
+                entries.extend(r.iter().filter_map(|v| v.as_u64()));
+            }
+            for e in entries {
+                keys.push(format!("alt:{ti}:{e}"));
+            }
+        }
+    }
+    Some(keys)
+}
+
 pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<VerificationInput> {
     let msg = tx.get("transaction")?.get("message")?;
-    let keys = msg.get("accountKeys")?.as_array()?;
+    let keys = expand_account_keys(msg)?;
     let ixs = msg.get("instructions")?.as_array()?;
 
     // Program-id resolution helper for one instruction index.
     let program_of = |ix: &serde_json::Value| -> Option<String> {
         let program_idx = ix.get("programIdIndex")?.as_u64()? as usize;
-        keys.get(program_idx)?.as_str().map(|s| s.to_string())
+        keys.get(program_idx).cloned()
     };
     let has_accounts = |ix: &serde_json::Value| -> bool {
         ix.get("accounts")
@@ -98,9 +136,9 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
     let mut accounts: Vec<String> = Vec::new();
     if let Some(idx_list) = ix.get("accounts").and_then(|a| a.as_array()) {
         for idx in idx_list.iter().filter_map(|i| i.as_u64()) {
-            if let Some(key) = keys.get(idx as usize).and_then(|k| k.as_str()) {
-                if !accounts.contains(&key.to_string()) {
-                    accounts.push(key.to_string());
+            if let Some(key) = keys.get(idx as usize).cloned() {
+                if !accounts.contains(&key) {
+                    accounts.push(key);
                     if accounts.len() >= MAX_ACCOUNTS_PER_INSTRUCTION {
                         break;
                     }
@@ -450,5 +488,78 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// v0 transactions carry Address Lookup Tables; the parser must expand the
+    /// key space or every ALT-resolved account is silently dropped. The pinned
+    /// mainnet fixtures are REAL v0 txs — this pins the expansion against them.
+    #[test]
+    fn alt_lookup_expansion_matches_real_fixtures() {
+        let jup = load_fixture("jup");
+        let msg = jup.get("transaction").unwrap().get("message").unwrap();
+        let static_keys = msg.get("accountKeys").unwrap().as_array().unwrap().len();
+        assert_eq!(static_keys, 14, "jup fixture static keys");
+
+        let expanded = expand_account_keys(msg).unwrap();
+        // 14 static + 1 lookup table; the fixture's lookup has 19 entries
+        // (26 ALT-referencing instruction accounts imply a wide table).
+        assert!(
+            expanded.len() > static_keys,
+            "ALT expansion must extend the key space ({} > {})",
+            expanded.len(),
+            static_keys
+        );
+        assert_eq!(
+            expanded.len(),
+            static_keys + 19,
+            "jup fixture: 14 static + 19 ALT entries = 33 expanded keys"
+        );
+        // Expanded positions are placeholders that preserve index space.
+        let alt_positions: Vec<&String> = expanded.iter().skip(static_keys).collect();
+        assert!(alt_positions.iter().all(|k| k.starts_with("alt:0:")));
+
+        // The System fixture also carries a lookup table (8 ALT references).
+        let sys = load_fixture("system");
+        let sys_msg = sys.get("transaction").unwrap().get("message").unwrap();
+        let sys_expanded = expand_account_keys(sys_msg).unwrap();
+        assert!(
+            sys_expanded.len()
+                > sys_msg
+                    .get("accountKeys")
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .len(),
+            "system fixture must also expand"
+        );
+
+        // The pump fixture has an EMPTY lookup table (the field is present
+        // but carries no entries): expansion must be the identity.
+        let pump = load_fixture("pump");
+        let pump_msg = pump.get("transaction").unwrap().get("message").unwrap();
+        let pump_entries = pump_msg
+            .get("addressTableLookups")
+            .and_then(|a| a.as_array())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false);
+        assert!(!pump_entries, "pump fixture has no ALT entries");
+        assert_eq!(
+            expand_account_keys(pump_msg).unwrap().len(),
+            pump_msg
+                .get("accountKeys")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len()
+        );
+
+        // End-to-end: the jup fixture's chosen instruction now resolves its
+        // account list positionally (no dropped ALT indices).
+        let input = tx_to_input(&jup, &["JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"])
+            .expect("jup fixture must parse");
+        assert_eq!(
+            input.program_id,
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+        );
     }
 }

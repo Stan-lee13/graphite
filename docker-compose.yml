@@ -1,0 +1,35 @@
+# Graphite Core Server — single-node deployment.
+#
+# Security model (fail-closed):
+#   - TLS is intentionally terminated at a reverse proxy / LB in front of this
+#     container; the container is plain HTTP on 7331 and must NOT be exposed
+#     publicly without auth.
+#   - `GRAPHITE_API_KEY` is REQUIRED (compose refuses to start without it).
+#   - State (audit log + semantic graph) lives on the `graphite-data` volume.
+#
+# Run:  cp .env.example .env   # then set GRAPHITE_API_KEY (and RPC URL)
+#       docker compose up -d --build
+services:
+  graphite:
+    build: .
+    ports:
+      - "7331:7331"
+    env_file: .env
+    environment:
+      # Fail closed: refuse to start without an API key.
+      GRAPHITE_API_KEY: ${GRAPHITE_API_KEY:?set GRAPHITE_API_KEY in .env}
+      GRAPHITE_DATA_DIR: /data
+    volumes:
+      - graphite-data:/data
+    restart: unless-stopped
+    # The Dockerfile already declares a HEALTHCHECK; this mirrors it at the
+    # compose level for orchestration visibility.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7331/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  graphite-data:

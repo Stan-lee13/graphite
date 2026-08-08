@@ -733,3 +733,85 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The benchmark is DELIBERATELY synthetic (P16 reproducibility): every
+    /// case is a hand-constructed VerificationInput with a manually-encoded
+    /// expected label. This test pins that composition explicitly so nobody
+    /// can claim the benchmark is real-data without changing it. Real on-chain
+    /// validation lives elsewhere: tests/live_transactions.rs (live devnet)
+    /// and live_corpus's pinned REAL mainnet fixtures.
+    #[test]
+    fn benchmark_composition_is_explicit_and_synthetic() {
+        let cases = build_benchmark_cases();
+        assert_eq!(cases.len(), 18, "case count must be pinned");
+
+        let safe = cases.iter().filter(|c| c.category == "safe").count();
+        let malicious = cases.iter().filter(|c| c.category == "malicious").count();
+        let unknown = cases.iter().filter(|c| c.category == "unknown").count();
+        assert_eq!(safe + malicious, 16, "16 scored cases");
+        assert_eq!(unknown, 2);
+
+        // No case is a real on-chain transaction; three are explicitly
+        // labeled SYNTHETIC (real program IDs, synthetic account lists).
+        let real = cases.iter().filter(|c| c.label.starts_with("REAL")).count();
+        assert_eq!(real, 0, "benchmark must not claim real-data cases");
+        let synthetic = cases
+            .iter()
+            .filter(|c| c.label.starts_with("SYNTHETIC"))
+            .count();
+        assert!(
+            synthetic >= 3,
+            "explicitly-synthetic drainer cases: {synthetic}"
+        );
+
+        // Attack-class diversity by label keyword (each class is a distinct
+        // detection pattern, not the same case repeated).
+        for kw in ["CPI", "drain", "hijack", "FakeSwap", "spoofing"] {
+            assert!(
+                cases.iter().any(|c| c.label.contains(kw)),
+                "missing attack class '{kw}'"
+            );
+        }
+        assert!(malicious >= 10, "malicious-case diversity: {malicious}");
+        println!(
+            "benchmark composition: {safe} safe / {malicious} malicious / {unknown} unknown — ALL synthetic by design (P16)"
+        );
+    }
+
+    /// Manual scaling probe (run: cargo test --release --lib soak -- --ignored
+    /// --nocapture). Measures wall time for N sequential verifies to detect
+    /// O(n^2) behavior or unbounded growth empirically.
+    #[test]
+    #[ignore]
+    fn soak_sequential_verifies_report_scale() {
+        use crate::verification::GraphiteCore;
+        let core = GraphiteCore::new();
+        let input = make_input(
+            "11111111111111111111111111111111",
+            "02000000",
+            &[
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            ],
+            &[],
+            WalletProfile::TradingBot,
+            no_evidence(),
+        );
+        let n = 5_000;
+        let start = std::time::Instant::now();
+        for _ in 0..n {
+            let r = core.verify(&input).expect("verify must succeed");
+            assert!(r.confidence.is_finite() && (0.0..=1.0).contains(&r.confidence));
+        }
+        let elapsed = start.elapsed();
+        let per = elapsed.as_micros() as f64 / n as f64;
+        println!(
+            "soak: {n} sequential verifies in {}ms → {per:.1}μs/verify (in-process, no RPC)",
+            elapsed.as_millis()
+        );
+    }
+}
