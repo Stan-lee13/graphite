@@ -10,17 +10,19 @@
 
 | Signal | Result |
 |---|---|
-| Full Rust test suite | **829 passed / 0 failed** (23 binaries) |
+| Full Rust test suite | **834 passed / 0 failed** (23 binaries) |
 | clippy `--all-targets --all-features -D warnings` | 0 warnings |
 | `cargo fmt --check` | clean |
 | `cargo check --no-default-features` (CI gate) | clean |
+| `cargo check --no-default-features --features cli` (CI gate) | clean (after C9) |
+| GitHub Actions CI on `main` (`c4be0d2`) | **5/5 jobs green** — Rust core, TS SDK + SAK, Go SDK, Python AI layer, Dashboard (new job added for the committed dashboard) |
 | Benchmark (P16) | 16/16 scored cases, 100% precision / 100% recall, avg **1002μs**/verify |
 | Live mainnet program IDs | 14/15 executable live; 1 legitimately retired (documented) |
 | Live devnet pipeline | 30 verification events over real devnet transactions (10 live test + 20 `seed-live`; the two runs walk overlapping recent blocks, so distinct-tx count may be less) |
 
 **Overall status: production-capable for the Phase-2 feature set, with three honest caveats** — dynamic PDA seed resolution (roadmap open item), L8 execution verification (requires a live executor), and the P16 deterministic benchmark remaining synthetic by design. All exit criteria that CAN be met without those are now met and evidence-backed.
 
-**Critical finding:** one root-level data defect (swapped/fabricated memo program IDs — see C1) was discovered and fixed.
+**Critical finding:** one root-level data defect (swapped/fabricated memo program IDs — see C1) was discovered and fixed; the CI-equivalent validation pass additionally surfaced and fixed two integration defects (C8: stale Python cross-check with a masked false-equality bug; C9: dead code under the `cli`-only gate).
 
 ---
 
@@ -66,6 +68,17 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 ### C3b. REGISTRY / RUNTIME DISCRIMINATOR DIVERGENCE (now explicit)
 - The registry's `validate_manifest` rejects empty discriminators with an error that now names the exception: raw-UTF-8-data programs (Memo-style) must be onboarded via the seed registry, not community submission. Fail-closed and documented in the error itself.
 
+### C8. PYTHON AI-LAYER CROSS-CHECK STALE + LATENT FALSE-EQUALITY (found via CI-equivalent run, fixed)
+- **Symptom:** `test_program_ids_match_manifests` failed only after the memo/expansion work — hardcoded `11` manifests against the 15 now shipped.
+- **Root cause 1 (stale):** the test asserted `len(manifests) == 11`; the protocol expansion to 15 (Pump.fun, Jupiter DCA, Wormhole, Metaplex) never propagated to the Python layer — a cross-component integration break.
+- **Root cause 2 (latent, masked):** for non-canonical swap manifests (Raydium/Orca/Meteora) the test asserted `parse_intent("swap") == manifest.program_id`, but the AI layer's canonical swap suggestion is Jupiter's ID — the assertion was wrong by construction and only passed because the count assert short-circuited first.
+- **Fix:** exact 15-manifest set assertion (fails loudly on add/remove drift), honest group cross-check (AI-layer suggestion must be backed by SOME manifest declaring that intent), duplicate-ID detection replacing the pass-stub, and the 4 new manifests mapped to `None` (no AI-layer intent exists for mint/bridge/DCA yet).
+- **Regression test:** 7/7 Python tests green locally and on CI.
+
+### C9. DEAD CODE UNDER THE `cli`-ONLY FEATURE GATE (fixed)
+- `load_corpus_for_seed` was ungated but only reachable from the rpc-gated `run_regression_seed_live` and tests — the `cargo check --no-default-features --features cli` gate emitted a dead-code warning (CI would have failed it).
+- **Fix:** `#[cfg(any(feature = "rpc", test))]` — present for the rpc path and tests, excluded from the cli-only library build.
+
 ### C7. DASHBOARD BUILT INDEX.HTML RENDERED BLANK (fixed)
 - **Root cause:** the Vite build emitted absolute `/assets/…` URLs (no `base`), so opening `dist/index.html` via `file://` or serving from a subpath produced a blank page (script 404).
 - **Fix:** `base: "./"` in `vite.config.ts`; rebuilt output now references `./assets/…` and renders from any path.
@@ -92,7 +105,7 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 | Manifest Registry: signed submissions, G5, P7/P10/P11 | **Implemented** (operator path, new CLI) | register-reviewer / submit / reviewers live-verified ACCEPT/REJECT | PR-based community workflow + on-chain stake lookup (Phase 3 by design) |
 | Plugin framework: 6 interfaces + 2 real plugins, P8 | **Implemented** | plugin_framework.rs, H25 coverage, benchmark shows ~0 overhead | true third-party submissions (Phase 3) |
 | Policy Engine 4 profiles + integrations | **Implemented** | 14 profile-matrix tests; SAK bridge wiring | — |
-| Dashboard (read-only, 5 views) | **Implemented** | 6 endpoint tests, live E2E, auth live-verified | real-time (Phase 3) |
+| Dashboard (read-only, 5 views) | **Implemented** | 6 endpoint tests, live E2E, auth live-verified, CI typecheck+build job (C7) | real-time (Phase 3) |
 | AuditBind TOCTOU middleware | **Implemented** | auditbind.ts + pinned cross-language vectors; devnet execution verified | swap-payload projection (C2) |
 | L3 Simulation active in production | **Partial** | simulateTransaction wired in verify path; SAK feeds CU/writes/hops | production activation gate |
 | L8 Execution Verification | **Missing** | requires a live executor | executor integration (Phase 3) |
@@ -139,4 +152,4 @@ Bottleneck: RPC round-trips for block fetching dominate live seeding; the verifi
 4. **1,000-fixture corpus volume** — a data acquisition problem, not an engineering one.
 5. **Sybil residual (G5)** — N genuinely staked identities can still pass; the Tier-5 volume backstop holds; on-chain stake lookup is Phase 3.
 6. **Registry state persistence is file-based** — no replication; an operator deploying the registry to multiple nodes must share/exclude the state file explicitly.
-7. **Dashboard index.html** — fixed (relative base); the dev-proxy flow and the built artifact both verified.
+7. **Dashboard index.html** — fixed (relative base); dev-proxy flow, built artifact, and a new CI build job all verify it. The dashboard is now covered by CI (typecheck + production build).
