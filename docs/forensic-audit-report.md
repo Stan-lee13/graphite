@@ -10,7 +10,7 @@
 
 | Signal | Result |
 |---|---|
-| Full Rust test suite | **841 passed / 0 failed** (23 binaries) |
+| Full Rust test suite | **844 passed / 0 failed** (23 binaries) |
 | clippy `--all-targets --all-features -D warnings` | 0 warnings |
 | `cargo fmt --check` | clean |
 | `cargo check --no-default-features` (CI gate) | clean |
@@ -69,6 +69,15 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 - **Impact:** ComputeBudget instructions (priority fees, compute limits — present in all three pinned fixtures) and ATA creates (present in the Jupiter fixture) fell to unknown-protocol handling; BPF Loader Upgrade/SetAuthority — the program-upgrade / authority-abuse attack surface — were unmodeled.
 - **Fix:** 4 new Tier-0 manifests with discriminator surfaces from the official sources, each ID verified EXEC on mainnet 2026-08-08: ATA (0x00/0x01/0x02 — 0x01 observed live), Compute Budget (0x01–0x04 — 0x02/0x03/0x04 observed live), BPF Loader classic (0x00/0x01), BPF Loader Upgradeable (0x00–0x05). Added to registry, blessed set, seed loader, and both cross-checks (16 → 20 manifests).
 - **Regression test:** `test_tier0_manifest_discriminators_match_real_mainnet_fixtures` parses the pinned mainnet fixtures and asserts every observed ComputeBudget/ATA discriminator byte resolves to a manifest instruction with an EQUAL discriminator — grounded in real chain data, not self-reference. Compute Budget's zero-account instructions are documented (they take no accounts by design; the pipeline correctly rejects a standalone empty plan).
+
+### C18. SQUADS MANIFEST WAS FABRICATED — WRONG DISCRIMINATORS + 18 NON-EXISTENT INSTRUCTIONS (fixed) + DYNAMIC PDA GROUNDED
+- **Problem:** the Squads V4 manifest carried (a) discriminators computed by hashing the **camelCase** IDL display names (`sha256("global:multisigCreateV2")`) instead of the **snake_case** Rust fn names Anchor actually uses, and (b) **18 v1-era instructions** (`add_member`, `create_proposal`, `execute_transaction`, …) that do **not exist** in the deployed program. Only 3 of 21 instructions were real, and 2 of those had wrong discriminators.
+- **Root cause:** the manifest was authored without the official IDL and without on-chain verification — the same unverified-data failure mode as C1, now in a protocol manifest instead of the pin list.
+- **Evidence:** fetched the official `squads_multisig_program` IDL (v2.1.0, Squads-Protocol/v4) and observed live mainnet txs: `vaultTransactionCreate` real discriminator `30fa4ea8d0e2dad3` (observed in a live tx) vs manifest `ed3256172ab558fc`; `multisigCreateV2` real `32ddc75d28f58be9` vs manifest `8faecbbfaecf93c5`; `proposalCreate` `dc3c49e01e6c4f9f` and `proposalApprove` `9025a488bcd82af8` both observed live and both absent/wrong in the manifest.
+- **Impact:** real Squads transactions could not be matched (unknown-instruction path) while non-existent v1 discriminators would misclassify data the deployed program rejects — the exact dead-data bug class the audit exists to find.
+- **Fix:** rebuilt `squads-v4.json` from the IDL — all **36 deployed instructions** with correct snake_case-hash discriminators, IDL account lists, and honest risk rules; verified 4 discriminators against live chain data.
+- **Dynamic PDA grounded at last:** the `multisigCreateV2` multisig account now carries `pda_seeds: ["multisig", "multisig", "{account_3}"]` (create_key) — the official SDK `pda.ts` layout (`['multisig','multisig',create_key]`), IDL-confirmed. `test_squads_multisig_pda_derivation` proves the resolver derives the PDA end-to-end and flags a spoofed multisig as `pda_mismatch` (Blocked risk). The transaction/vault PDAs need account-state seeds (multisig's tx_index, transaction account's vault_index) that the current template engine cannot express — documented, not faked.
+- **Regression tests:** `test_squads_discriminators_match_anchor_snake_case` (every discriminator must equal `sha256("global:"+snake_case(name))[:8]` — the camelCase-hash bug class cannot recur), `test_squads_chain_verified_discriminators` (4 live-observed constants pinned), and the PDA derivation test. **Honest caveat:** the multisig PDA layout is SDK-source-grounded (the deployed program version was proven current via discriminators); a direct chain reproduction from a create tx was attempted but blocked (create-tx scans timed out on public RPC; the one multisig whose account data was parsed predates the current struct layout).
 
 ### C2. AUDITBIND SWAP-PATH TOCTOU COVERAGE (hardened)
 - **Finding:** `executeSwap` originally verified only `programId + discriminator + wallet` — the SAK-built swap's instruction data and full account list were not part of the checked projection.

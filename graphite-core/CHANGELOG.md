@@ -3,13 +3,22 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Independent Gap Audit — C18 Squads Rebuild + Dynamic PDA Grounded] — 2026-08-08
+
+### Squads V4 Manifest Rebuilt from the Official IDL (C18)
+- **The Squads manifest was fabricated.** Its discriminators were computed by hashing the camelCase IDL display names (`sha256("global:multisigCreateV2")`); Anchor actually hashes the snake_case Rust fn name (`sha256("global:multisig_create_v2")`). It also carried 18 v1-era instructions (`add_member`, `create_proposal`, `execute_transaction`, …) that do not exist in the deployed program. Only 3 of 21 instructions were real, and 2 had wrong discriminators.
+- **Chain evidence:** official `squads_multisig_program` IDL v2.1.0 + live mainnet txs — `vaultTransactionCreate` = `30fa4ea8d0e2dad3` (observed in a live tx; manifest said `ed3256172ab558fc`), `multisigCreateV2` = `32ddc75d28f58be9` (manifest said `8faecbbfaecf93c5`), `proposalCreate` = `dc3c49e01e6c4f9f` and `proposalApprove` = `9025a488bcd82af8` (both observed live, neither in the manifest).
+- **Fix:** `squads-v4.json` rebuilt from the IDL — all **36 deployed instructions** with correct discriminators, IDL account lists, honest risk rules (execute/approve/threshold/rent-collector flagged).
+- **Dynamic PDA grounded in a real manifest (finally):** `multisigCreateV2`'s multisig account now has `pda_seeds: ["multisig", "multisig", "{account_3}"]` (create_key) — official SDK `pda.ts` layout, IDL-confirmed ("createKey … used as a seed for the Multisig PDA"). New tests: snake_case-hash discriminator guard (bug class cannot recur), 4 chain-verified discriminator constants, and an end-to-end resolver test proving correct derivation + spoofed-multisig flagging. Transaction/vault PDAs need account-state seeds beyond the template engine — documented, not faked.
+- **Honest caveat:** a direct chain reproduction of the multisig PDA from a create tx was attempted but not completed (create-tx scans timed out on the public RPC; the multisig whose account data was parsed predates the current struct layout). The layout is grounded in the program's own SDK + IDL; the deployed program version was proven current via the 4 chain-verified discriminators.
+
 ## [Independent Gap Audit — C17 Tier-0 Protocol Surface] — 2026-08-08
 
 ### Tier-0 Foundational Programs Added (C17)
 - **4 new seed manifests** (16 → 20): Associated Token Account (`ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL`), Compute Budget (`ComputeBudget111111111111111111111111111111`), BPF Loader classic (`BPFLoader2111…`), BPF Loader Upgradeable (`BPFLoaderUpgradeab1e…`). All four IDs verified executable on mainnet 2026-08-08 and added to `verified_program_ids.json`, the blessed-canonical-set test, `load_seed_manifests`, and the Python cross-check.
 - **Grounded, not self-referential:** `test_tier0_manifest_discriminators_match_real_mainnet_fixtures` parses the pinned real mainnet fixtures and asserts every observed ComputeBudget/ATA instruction byte resolves to a manifest discriminator with an EQUAL value (0x02/0x03/0x04 ComputeBudget and 0x01 ATA observed live). Compute Budget instructions take zero accounts by design (Solana source) — documented, and the pipeline's rejection of a standalone empty plan is asserted as correct behavior.
 - **`scripts/live_revalidate.py` retry+backoff** for 429/5xx: a transient public-RPC rate limit is retried (1.5s/3s) instead of being misreported as "program absent". Run result: registry 20/20 EXEC, manifests 20/20 EXEC, SAK Ok, exit 0.
-- **Instruction surface total: 201 across 20 manifests.**
+- **Instruction surface total: 216 across 20 manifests** (Squads rebuilt to the full 36-instruction IDL surface by C18).
 
 ## [Independent Gap Audit — C16 Memo Restoration] — 2026-08-08
 

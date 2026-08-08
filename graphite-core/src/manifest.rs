@@ -306,6 +306,32 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
+
+    /// camelCase -> snake_case (Anchor IDL display name -> Rust fn name), the
+    /// names used in the sha256("global:<name>") discriminator derivation.
+    fn snake_case(name: &str) -> String {
+        let mut out = String::with_capacity(name.len() + 4);
+        let bytes: Vec<char> = name.chars().collect();
+        for (i, c) in bytes.iter().enumerate() {
+            if c.is_uppercase() {
+                if i > 0 {
+                    let prev = bytes[i - 1];
+                    let next = bytes.get(i + 1).copied();
+                    let split_before = prev.is_lowercase()
+                        || (prev.is_ascii_digit())
+                        || next.map(|n| n.is_uppercase()).unwrap_or(false) && prev.is_uppercase();
+                    if split_before {
+                        out.push('_');
+                    }
+                }
+                out.push(c.to_ascii_lowercase());
+            } else {
+                out.push(*c);
+            }
+        }
+        out
+    }
 
     #[test]
     fn test_seed_manifests_load_successfully() {
@@ -405,6 +431,153 @@ mod tests {
         // Native program: single-byte variant discriminator.
         assert_eq!(post.discriminator, "01");
         assert!(!post.risk_rules.is_empty());
+    }
+
+    /// C18 regression: the Squads manifest previously carried camelCase-hash
+    /// discriminators and v1-era instruction names that do not exist in the
+    /// deployed program. Every discriminator must equal the Anchor-convention
+    /// value sha256("global:" + snake_case(name))[:8] — the same derivation the
+    /// program's own generated SDK uses. Four of these were additionally
+    /// verified against live mainnet transactions (see
+    /// test_squads_chain_verified_discriminators).
+    #[test]
+    fn test_squads_discriminators_match_anchor_snake_case() {
+        let registry = load_seed_manifests();
+        let squads = registry
+            .get("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf")
+            .expect("Squads manifest loaded");
+        assert_eq!(squads.instructions.len(), 36, "IDL v2.1.0 surface");
+        for ix in &squads.instructions {
+            let snake = snake_case(&ix.name);
+            let mut hasher = Sha256::new();
+            hasher.update(format!("global:{snake}").as_bytes());
+            let digest = hasher.finalize();
+            let expected = hex::encode(&digest[..8]);
+            assert_eq!(
+                ix.discriminator, expected,
+                "Squads instruction '{}': discriminator {} != sha256(global:{})= {} \
+                 (camelCase-hash bug class, C18)",
+                ix.name, ix.discriminator, snake, expected
+            );
+        }
+    }
+
+    /// Chain-grounded anchors: the four Squads discriminators observed in
+    /// real mainnet transactions on 2026-08-08 (via getTransaction on live
+    /// Squads program traffic) must stay pinned in the manifest.
+    #[test]
+    fn test_squads_chain_verified_discriminators() {
+        let registry = load_seed_manifests();
+        let squads = registry
+            .get("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf")
+            .expect("Squads manifest loaded");
+        let pinned: &[(&str, &str)] = &[
+            ("multisigCreateV2", "32ddc75d28f58be9"),
+            ("vaultTransactionCreate", "30fa4ea8d0e2dad3"),
+            ("proposalCreate", "dc3c49e01e6c4f9f"),
+            ("proposalApprove", "9025a488bcd82af8"),
+        ];
+        for (name, disc) in pinned {
+            let ix = squads
+                .instructions
+                .iter()
+                .find(|i| &i.name == name)
+                .unwrap_or_else(|| panic!("{name} missing from Squads manifest"));
+            assert_eq!(
+                ix.discriminator, *disc,
+                "chain-verified discriminator for {name} changed"
+            );
+        }
+    }
+
+    /// Dynamic-PDA grounding: the Squads V4 multisig account is a PDA derived
+    /// from ['multisig','multisig',create_key] (official SDK pda.ts, IDL
+    /// 'createKey ... used as a seed for the Multisig PDA'). The resolver must
+    /// derive it from the create_key account and flag a spoofed multisig.
+    #[test]
+    fn test_squads_multisig_pda_derivation() {
+        use crate::account_resolution::{resolve_accounts, AccountResolutionInput};
+        use crate::solana_types::Pubkey;
+
+        let registry = load_seed_manifests();
+        let program = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
+        let create_key = Pubkey::from_base58("3P3Jgiv77fHvtpgnvFAxzAvaLJTfYBNuxdrsnbnqhj4B")
+            .expect("valid create_key");
+        let program_pk = Pubkey::from_base58(program).expect("valid program");
+        let (derived, _bump) = crate::solana_types::find_program_address(
+            &[b"multisig", b"multisig", create_key.as_bytes()],
+            &program_pk,
+        )
+        .expect("PDA derivation");
+        let derived_b58 = derived.to_base58();
+        // The derived key must be off-curve (it is a PDA by construction).
+        assert!(!crate::solana_types::is_on_curve(&derived));
+
+        // Correct multisig -> no mismatch.
+        let ok = resolve_accounts(
+            &AccountResolutionInput {
+                program_id: program.to_string(),
+                instruction_discriminator: "32ddc75d28f58be9".to_string(),
+                account_addresses: vec![
+                    "11111111111111111111111111111111".to_string(),
+                    "11111111111111111111111111111111".to_string(),
+                    derived_b58.clone(),
+                    create_key.to_base58(),
+                    "11111111111111111111111111111111".to_string(),
+                    "11111111111111111111111111111111".to_string(),
+                ],
+                instruction_data: None,
+            },
+            &registry,
+        )
+        .expect("resolution");
+        let multisig_acct = ok
+            .resolved_accounts
+            .iter()
+            .find(|a| a.address == derived_b58)
+            .expect("multisig account");
+        assert!(multisig_acct.is_pda);
+        assert!(
+            !multisig_acct.pda_mismatch,
+            "correct multisig must not mismatch"
+        );
+        assert_eq!(
+            multisig_acct.pda_seeds,
+            vec![
+                "multisig".to_string(),
+                "multisig".to_string(),
+                "{account_3}".to_string()
+            ]
+        );
+
+        // Spoofed multisig (on-curve key at the multisig slot) -> pda_mismatch.
+        // A real mainnet wallet pubkey, unrelated to the create_key.
+        let spoof =
+            Pubkey::from_base58("CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR").expect("valid key");
+        let bad = resolve_accounts(
+            &AccountResolutionInput {
+                program_id: program.to_string(),
+                instruction_discriminator: "32ddc75d28f58be9".to_string(),
+                account_addresses: vec![
+                    "11111111111111111111111111111111".to_string(),
+                    "11111111111111111111111111111111".to_string(),
+                    spoof.to_base58(),
+                    create_key.to_base58(),
+                    "11111111111111111111111111111111".to_string(),
+                    "11111111111111111111111111111111".to_string(),
+                ],
+                instruction_data: None,
+            },
+            &registry,
+        )
+        .expect("resolution");
+        let spoof_acct = bad
+            .resolved_accounts
+            .iter()
+            .find(|a| a.address == spoof.to_base58())
+            .expect("spoofed multisig account");
+        assert!(spoof_acct.is_pda);
+        assert!(spoof_acct.pda_mismatch, "spoofed multisig must be flagged");
     }
 
     /// Grounds the Tier-0 manifests (Compute Budget, Associated Token Account)

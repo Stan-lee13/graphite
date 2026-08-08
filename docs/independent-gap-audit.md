@@ -17,7 +17,7 @@ The prior assessment claimed **Phase 1 ~95% / Phase 1.5 ~92% / Phase 2 ~58% / ov
 | Phase 2 (regression, registry, plugins, dashboard, corpus, protocol expansion, PDA) | 58% | **57%** | **63%** |
 | **Overall** | 67% | **~72%** | **~74%** |
 
-The overall number is HIGHER than the assessment's 67%, because the assessment under-rated the genuinely solid, live-validated core (837→841 tests, 0 failures, 20/20 on-chain-verified manifest IDs after the C16 memo restoration and C17 Tier-0, durable audit, shared-state concurrency proven). But Phase 2 was *exactly* where the assessment said: **synthetic benchmark, dynamic PDA unused, thin protocol surface, no live deployment** — and this cycle proved two of those were worse than stated:
+The overall number is HIGHER than the assessment's 67%, because the assessment under-rated the genuinely solid, live-validated core (837→844 tests, 0 failures, 20/20 on-chain-verified manifest IDs after the C16 memo restoration and C17 Tier-0, durable audit, shared-state concurrency proven). But Phase 2 was *exactly* where the assessment said: **synthetic benchmark, dynamic PDA unused, thin protocol surface, no live deployment** — and this cycle proved two of those were worse than stated:
 
 1. **The ALT gap (P1, fixed):** all three "real mainnet" fixtures are v0 transactions with Address Lookup Tables, and the parser silently DROPPED every ALT-resolved account (26 references in the Jupiter fixture, 8 in the System fixture). Account-level analysis on modern txs was wrong. Fixed with positional ALT expansion + fixture-pinned regression test.
 2. **Program-ID architecture (P1, fixed):** program IDs were duplicated across **8+ sources** with no single source of truth — the exact architecture that lets the memo class of bug recur. Fixed with `protocols/verified_program_ids.json` as the single source, checked bidirectionally by both the Rust pin test and the Python AI-layer test. **Follow-up (C16):** this cycle's "fabricated MemoSq4gq…" framing was itself wrong — MemoSq4gq is EXEC on mainnet (99,736 B ELF) and was restored; the registry now carries all three real memo programs and a blessed-set test anchors the canonical core IDs.
@@ -56,7 +56,7 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 | Dashboard | 90% | **85%** | 6 endpoint tests, live E2E, auth, CI build job; read-only by design | High | Keep |
 | AuditBind TOCTOU | 85% | **80%** | Strict payload-binding + 8 tests; full auto pre-submit hook missing (needs executor API) | Med | Keep |
 | Real mainnet fixtures | 75% | **80%** | 3 real txs; **all v0+ALT — and the ALT gap they exposed is now fixed** | High | Keep |
-| Test expansion | 85% | **88%** | 841 tests incl. concurrency storm, hostile-body battery, registry caps, ALT regression | High | Keep |
+| Test expansion | 85% | **88%** | 844 tests incl. concurrency storm, hostile-body battery, registry caps, ALT regression | High | Keep |
 | Live corpus collection | 75% | **75%** | seed-live on live devnet works; corpus dedupe + fail-closed load | High | Keep |
 | Protocol expansion | 4/15–20 target | **8/15–20** (20 total manifests; Tier-0 complete — ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable added C17) | 20 manifests on-chain verified; Tier-1 (Kamino/Drift/Pyth) missing | High | **Build Tier-1 next** |
 | Dynamic PDA resolution | 30% | **30%** | `{instruction_data:…}` templates implemented + tested (10 tests, official-SDK pins); **zero manifests use them** | High | Ground in a real manifest or say "not deployed" |
@@ -98,6 +98,12 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 - **Impact:** unknown-protocol ceiling (0.55) on priority-fee/token-account/loader instructions instead of manifest matching.
 - **Fix:** 4 new manifests (ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable) — IDs EXEC-verified on mainnet 2026-08-08, discriminators from official sources AND grounded against the real fixture bytes by a new regression test; registry 16 → 20, blessed set extended, Python cross-check synced; `live_revalidate.py` gained 429/5xx retry+backoff.
 - **Regression protection:** grounded fixture test (real data, not self-reference) + bidirectional checks + on-chain script; Compute Budget's zero-account instructions documented as by-design.
+
+### C18 — Squads manifest fabricated + dynamic PDA finally grounded (P0, FIXED this cycle)
+- **Problem:** the Squads V4 manifest used camelCase-hash discriminators (`sha256("global:multisigCreateV2")`) instead of Anchor's snake_case values, and carried 18 v1-era instructions that don't exist in the deployed program. Only 3/21 instructions were real; 2 had wrong discriminators.
+- **Evidence:** official IDL v2.1.0 + live mainnet txs — `vaultTransactionCreate` = `30fa4ea8d0e2dad3` (observed live) vs manifest `ed3256172ab558fc`; `multisigCreateV2` = `32ddc75d28f58be9` vs `8faecbbfaecf93c5`; `proposalCreate`/`proposalApprove` observed live and absent.
+- **Fix:** rebuilt from the IDL — all 36 deployed instructions, correct discriminators (4 chain-verified), IDL account lists. Multisig PDA seeds added (`['multisig','multisig',create_key]`, SDK + IDL grounded) — the first real dynamic PDA in any manifest, with resolver end-to-end + spoof-flagging regression tests. Transaction/vault PDAs need account-state seeds beyond the template engine (documented).
+- **Remaining risk (honest):** the multisig PDA layout is source-grounded; a direct chain reproduction was attempted (create-tx scan timed out; an old multisig's account data predates the current struct) — flagged, not hidden.
 
 ### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
 
