@@ -3,6 +3,13 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Independent Gap Audit — C16 Memo Restoration] — 2026-08-08
+
+### Classic SPL Memo Restored (C16)
+- **`MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` restored as the 16th seed manifest** (`spl-memo-program.json`) and 16th entry in `protocols/verified_program_ids.json`. The earlier C1 conclusion that this ID "never existed on any cluster" was **itself wrong**: `getAccountInfo` on `api.mainnet-beta.solana.com` returns an executable account (99,736 B ELF, owner BPFLoader2111, actively used) — it is the classic SPL memo from solana-program-library, used in countless SPL token transfers.
+- **Registry completeness now guarded three ways:** the new blessed-canonical-set test (`manifest.rs test_registry_contains_blessed_canonical_programs`) anchors the non-negotiable core IDs (System, SPL Token, Token-2022, Stake, and all three memo programs) so the registry cannot be silently corrupted by edit again; the bidirectional pin test (Rust + Python) checks manifests↔registry consistency; `scripts/live_revalidate.py` is fixed to skip non-manifest JSON files and to verify the registry's own IDs on-chain (non-zero exit on any absence) — it previously crashed with `KeyError: 'protocol'` on `verified_program_ids.json`.
+- **Docs corrected** across `docs/forensic-audit-report.md`, `docs/independent-gap-audit.md`, `docs/release-evaluation-report.md`, and this changelog — every "never existed" claim replaced with the verified fact.
+
 ## [Phase 1.5 Completion — Devnet Verified] — 2026-08-07
 
 ### RPC Client (live-verified against Helius mainnet + devnet)
@@ -85,7 +92,7 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 ### Program ID Fixes
 - **5 fake program IDs in `extreme_adversarial.rs`** corrected: Jupiter V6, Orca Whirlpools, Raydium AMM V4, Squads V4, Memo. Tests were unknowingly exercising the unknown-protocol path (0.55 ceiling) instead of manifest matching.
 - **Legacy Memo program added as 11th manifest.** Both `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` (p-memo) and `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` (legacy SPL) are real on-chain programs.
-  - ⚠️ **Correction (2026-08-08, forensic audit C1):** `MemoSq4gq…` **never existed on any cluster** — it was a fabricated identifier. The real legacy SPL memo is `Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo` (re-verified executable on mainnet + devnet 2026-08-08; superseded, not retired — C10). Since 2026-08-08 the program-ID single source of truth is `graphite-core/protocols/verified_program_ids.json`, cross-checked bidirectionally by both the Rust pin test and the Python AI-layer test.
+  - ⚠️ **Superseded correction (2026-08-08):** the C1 conclusion that `MemoSq4gq…` "never existed on any cluster" was **itself wrong** — independent re-verification (same day, C16) shows it IS executable on mainnet (99,736 B ELF, owner BPFLoader2111) and it was restored as the classic SPL memo. The real story: all three memo programs exist on-chain — `MemoSq4gq…` (classic SPL), `Memo4c2pN8afCj…` (memo v4.0.0, upgradeable), `Memo1UhkJRfHyv…` (legacy, superseded). Since 2026-08-08 the program-ID single source of truth is `graphite-core/protocols/verified_program_ids.json`, guarded by the blessed-set test, the bidirectional pin tests (Rust + Python), and the fixed `scripts/live_revalidate.py` on-chain gate.
 
 ### Content Hash (P2)
 - **`content_hash` field added to `VerificationResult`.** `audit_trail_id` includes an AtomicU64 counter (unique per call) — not deterministic. Added separate `content_hash` field — pure SHA-256 of transaction config, fully deterministic.

@@ -7,7 +7,7 @@
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-837_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-840_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-15-blue?style=flat-square)](graphite-core/protocols/)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-8-red?style=flat-square)](graphite-core/src/risk_engine.rs)
@@ -61,12 +61,12 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 837 tests — zero setup
+# Run 840 tests — zero setup
 cargo test --release
 
 # Output:
-# running 837 tests
-# test result: ok. 837 passed; 0 failed; 2 ignored
+# running 840 tests
+# test result: ok. 840 passed; 0 failed; 2 ignored
 
 # Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
@@ -110,7 +110,7 @@ All 8 patterns are real detection logic — not stubs, not placeholders.
 
 ---
 
-## Supported Protocols (11 Manifests)
+## Supported Protocols (16 Manifests)
 
 | Protocol | Program ID | Trust Tier |
 |----------|-----------|------------|
@@ -118,13 +118,18 @@ All 8 patterns are real detection logic — not stubs, not placeholders.
 | SPL Token | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` | Battle Tested |
 | Token-2022 | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | Official Manifest |
 | Stake Program | `Stake11111111111111111111111111111111111111` | Battle Tested |
-| Memo (p-memo) | `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` | Official Manifest |
+| Memo (v4.0.0, upgradeable) | `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` | Official Manifest |
+| Memo (classic SPL, restored 2026-08-08) | `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` | Official Manifest |
 | Memo (legacy SPL, superseded) | `Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo` | Official Manifest |
 | Jupiter V6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | Battle Tested |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | Battle Tested |
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Battle Tested |
 | Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8` | Battle Tested |
 | Squads V4 | `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` | Battle Tested |
+| Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | Official Manifest |
+| Jupiter DCA | `DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M` | Official Manifest |
+| Wormhole Core | `worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth` | Official Manifest |
+| Metaplex Token Metadata | `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s` | Official Manifest |
 
 ---
 
@@ -153,7 +158,7 @@ graphite/
 │   │   ├── benchmark.rs         ← P16-compliant benchmark suite
 │   │   └── cli.rs               ← CLI (clap)
 │   ├── protocols/               ← 15 JSON protocol manifests
-│   └── tests/                   ← 837 tests (unit + adversarial + exploit)
+│   └── tests/                   ← 840 tests (unit + adversarial + exploit)
 │
 ├── dashboard/                   ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -290,7 +295,7 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.60, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming unlocks at simulation-validated evidence (≈ 0.66), Treasury at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 837 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
+- 840 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
 - 8 risk patterns are real detection logic, not stubs.
 - 15 protocol manifests with program IDs verified against official on-chain sources (11 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — all confirmed executable on mainnet 2026-08-07).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.

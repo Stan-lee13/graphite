@@ -17,10 +17,10 @@ The prior assessment claimed **Phase 1 ~95% / Phase 1.5 ~92% / Phase 2 ~58% / ov
 | Phase 2 (regression, registry, plugins, dashboard, corpus, protocol expansion, PDA) | 58% | **57%** | **63%** |
 | **Overall** | 67% | **~72%** | **~74%** |
 
-The overall number is HIGHER than the assessment's 67%, because the assessment under-rated the genuinely solid, live-validated core (837→839 tests, 0 failures, 15/15 on-chain-verified manifest IDs, durable audit, shared-state concurrency proven). But Phase 2 was *exactly* where the assessment said: **synthetic benchmark, dynamic PDA unused, thin protocol surface, no live deployment** — and this cycle proved two of those were worse than stated:
+The overall number is HIGHER than the assessment's 67%, because the assessment under-rated the genuinely solid, live-validated core (837→840 tests, 0 failures, 16/16 on-chain-verified manifest IDs after the C16 memo restoration, durable audit, shared-state concurrency proven). But Phase 2 was *exactly* where the assessment said: **synthetic benchmark, dynamic PDA unused, thin protocol surface, no live deployment** — and this cycle proved two of those were worse than stated:
 
 1. **The ALT gap (P1, fixed):** all three "real mainnet" fixtures are v0 transactions with Address Lookup Tables, and the parser silently DROPPED every ALT-resolved account (26 references in the Jupiter fixture, 8 in the System fixture). Account-level analysis on modern txs was wrong. Fixed with positional ALT expansion + fixture-pinned regression test.
-2. **Program-ID architecture (P1, fixed):** the fabricated `MemoSq4gq…` ID was still live in TWO more docs (`docs/release-evaluation-report.md`, `graphite-core/CHANGELOG.md`), and program IDs were duplicated across **8+ sources** with no single source of truth — the exact architecture that lets the memo class of bug recur. Fixed with `protocols/verified_program_ids.json` as the single source, checked bidirectionally by both the Rust pin test and the Python AI-layer test.
+2. **Program-ID architecture (P1, fixed):** program IDs were duplicated across **8+ sources** with no single source of truth — the exact architecture that lets the memo class of bug recur. Fixed with `protocols/verified_program_ids.json` as the single source, checked bidirectionally by both the Rust pin test and the Python AI-layer test. **Follow-up (C16):** this cycle's "fabricated MemoSq4gq…" framing was itself wrong — MemoSq4gq is EXEC on mainnet (99,736 B ELF) and was restored; the registry now carries all three real memo programs and a blessed-set test anchors the canonical core IDs.
 3. **Benchmark is 100% synthetic and self-referential (P2, now CI-pinned):** all 18 cases are hand-constructed `VerificationInput`s with manually-encoded labels; the "100% precision/recall" mostly measures whether the rules agree with the cases built from the rules. Now pinned by a composition test; real-data validation is explicitly the live/fixture path.
 4. **Deployment (P2, partially closed):** a good Dockerfile exists but no reproducible compose/env contract; added `docker-compose.yml` + `.env.example` (fail-closed API key).
 
@@ -56,9 +56,9 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 | Dashboard | 90% | **85%** | 6 endpoint tests, live E2E, auth, CI build job; read-only by design | High | Keep |
 | AuditBind TOCTOU | 85% | **80%** | Strict payload-binding + 8 tests; full auto pre-submit hook missing (needs executor API) | Med | Keep |
 | Real mainnet fixtures | 75% | **80%** | 3 real txs; **all v0+ALT — and the ALT gap they exposed is now fixed** | High | Keep |
-| Test expansion | 85% | **88%** | 839 tests incl. concurrency storm, hostile-body battery, registry caps, ALT regression | High | Keep |
+| Test expansion | 85% | **88%** | 840 tests incl. concurrency storm, hostile-body battery, registry caps, ALT regression | High | Keep |
 | Live corpus collection | 75% | **75%** | seed-live on live devnet works; corpus dedupe + fail-closed load | High | Keep |
-| Protocol expansion | 4/15–20 target | **4/15** (15 total manifests; 4 were added; **Tier-0 incomplete**) | 15 manifests on-chain verified; ATA/ComputeBudget/BPFLoader/Kamino/Drift/Pyth missing | High | **Build Tier-0 next** |
+| Protocol expansion | 4/15–20 target | **4/16** (16 total manifests; 4 were added + classic memo restored C16; **Tier-0 incomplete**) | 16 manifests on-chain verified; ATA/ComputeBudget/BPFLoader/Kamino/Drift/Pyth missing | High | **Build Tier-0 next** |
 | Dynamic PDA resolution | 30% | **30%** | `{instruction_data:…}` templates implemented + tested (10 tests, official-SDK pins); **zero manifests use them** | High | Ground in a real manifest or say "not deployed" |
 | Benchmark meaningfulness | — | **35%** | 18/18 synthetic, labels hand-encoded, no real holdout (C15) | High | Build real holdout |
 | Memo/ID architecture | — | **pre-fix broken → post-fix 80%** | 8+ ID sources; fabricated ID survived in 2 docs; now single registry (C14) | High | Done |
@@ -79,11 +79,20 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 - **Why prior audits missed it:** fixtures "passed" because program identification only needs the top-level program (always a static key); the wrong part was the account lists, which tests didn't assert.
 
 ### C14 — Program-ID duplication, no single source of truth (P1, FIXED this cycle)
-- **Problem:** the fabricated `MemoSq4gq…` ID was still present in `docs/release-evaluation-report.md` and `graphite-core/CHANGELOG.md` after C1 fixed the manifests; IDs were duplicated across manifests, the `manifest.rs` pin list, README, changelog, release-eval, 2 test files, Python test, and the live script — 8+ independent copies.
+- **Problem:** the `MemoSq4gq…` ID (claimed fabricated by C1) was still present in `docs/release-evaluation-report.md` and `graphite-core/CHANGELOG.md`; IDs were duplicated across manifests, the `manifest.rs` pin list, README, changelog, release-eval, 2 test files, Python test, and the live script — 8+ independent copies.
 - **Root cause:** no single registry; each doc/test re-encoded IDs by hand.
-- **Impact:** exactly the failure mode that let the memo fabrication recur (C1 → C10 → this).
+- **Impact:** exactly the failure mode that let the memo class of bug recur (C1 → C10 → C16).
 - **Fix:** `protocols/verified_program_ids.json` = single source of truth (name, ID, provenance, verification date). Rust pin test rewritten to load it and assert **bidirectional exact match** against manifests (fabricated/removed/duplicated/renamed IDs all fail CI); Python AI-layer test does the same; stale docs corrected.
-- **Regression protection:** two independent enforcement points + `scripts/live_revalidate.py` for the on-chain gate; new manifests cannot land without a registry entry backed by evidence.
+- **Regression protection:** two independent enforcement points + the on-chain gate + the blessed-set test added by C16; new manifests cannot land without a registry entry backed by evidence.
+
+### C16 — MemoSq4gq was real all along; the "fabricated" claim corrupted the registry (P0, FIXED this cycle)
+- **Problem:** the first forensic cycle (C1) removed the canonical SPL memo `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` claiming it "never existed on any cluster". Independent re-verification (third cycle, 2026-08-08) proves that claim false: `getAccountInfo` on mainnet returns an **executable account, 99,736 B ELF, owner BPFLoader2111, actively used** — the classic SPL memo used in countless token transfers.
+- **Root cause:** the previous "verification" was asserted in prose, not reproducible; the registry could be edited wrongly with no guard, and `scripts/live_revalidate.py` — the one tool that would have caught it — crashed with `KeyError: 'protocol'` on `verified_program_ids.json`.
+- **Impact:** Graphite could not match the most common memo program for two audit cycles; docs asserted a false fact about the chain.
+- **Fix:** restored `MemoSq4gq…` as the 16th manifest + registry entry; fixed `live_revalidate.py` (skips non-manifest JSON, verifies registry IDs on-chain, non-zero exit on absence); added the blessed-canonical-set test anchoring the core IDs; corrected all docs.
+- **Regression protection:** three independent layers — offline blessed-set test, bidirectional pin tests (Rust + Python), and a working on-chain revalidation script.
+
+### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
 
 ### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
 - **Problem:** all 18 cases are hand-constructed `VerificationInput`s with manually-encoded `expected_approved` labels; 16 scored (4 safe, ~10–12 malicious), 2 unknown; three cases are labeled `SYNTHETIC:` (real program IDs, synthetic accounts). Zero cases come from real transactions. The "100% precision/recall" substantially measures the rules agreeing with the cases built from the rules.
@@ -136,7 +145,7 @@ The overall number is HIGHER than the assessment's 67%, because the assessment u
 
 - **Real benign txs through the pipeline:** 3 pinned mainnet (Jupiter v6 swap, pump.fun market, System batch — all v0) + 20 live devnet corpus fixtures + 10 live devnet verify events. All finite confidence, correct hashes, correct program identification (post-ALT-fix).
 - **Real malicious txs:** **0** in the corpus or benchmark. The 3 drainer patterns are synthetic reconstructions of documented attack shapes (CLINKSINK, AAT, Wormhole) with real program IDs.
-- **Protocol diversity:** 15 manifests; 4 of the top-tier list; Tier-0 incomplete.
+- **Protocol diversity:** 16 manifests (incl. classic SPL memo restored C16); 4 of the top-tier list; Tier-0 incomplete.
 - **Attack-class diversity:** ~10–12 classes in the benchmark (CPI spoofing, compositional drain, authority abuse ×2, account drain, wrong-program swap, simulation spoofing, 3 synthetic drainers) + live adversarial suites (hell-mode H25, omega, deep-extreme).
 - **Benchmark:** 18/18 synthetic, 16 scored, 100% precision/recall — honest meaning: rule-vs-case consistency, not real-world detection.
 

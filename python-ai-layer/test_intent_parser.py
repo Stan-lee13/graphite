@@ -3,7 +3,7 @@
 
 Includes a cross-check test that verifies all manifest program IDs are valid
 base58 and that the AI layer's canonical intent→program suggestions are backed
-by a real manifest, covering all 15 manifests.
+by a real manifest, covering all 16 manifests.
 """
 
 import sys
@@ -84,15 +84,16 @@ def test_program_ids_match_manifests():
         "squads-v4.json": None,     # multisig, no direct intent
         "orca-whirlpools.json": "swap",
         "meteora-dlmm.json": "swap",
-        "memo-program.json": None,         # p-memo, no direct intent
-        "legacy-memo-program.json": None,  # legacy memo, no direct intent
+        "memo-program.json": None,         # memo v4.0.0 (upgradeable), no direct intent
+        "legacy-memo-program.json": None,  # legacy memo (Memo1Uhk), no direct intent
+        "spl-memo-program.json": None,     # classic SPL memo (MemoSq4gq, restored C15), no direct intent
         "pump-fun.json": None,      # bonding-curve mint/buy/sell, no AI intent
         "jupiter-dca.json": None,   # escrow scheduling, no AI intent
         "wormhole-core.json": None, # bridging, no AI intent
         "metaplex-token-metadata.json": None,  # NFT metadata, no AI intent
     }
     expected_manifests = set(manifest_to_intent.keys())
-    assert len(expected_manifests) == 15, f"expected 15 manifests, map has {len(expected_manifests)}"
+    assert len(expected_manifests) == 16, f"expected 16 manifests, map has {len(expected_manifests)}"
 
     all_manifests = sorted(glob.glob(os.path.join(manifest_dir, "*.json")))
     # verified_program_ids.json is the ID registry, not a protocol manifest.
@@ -105,9 +106,10 @@ def test_program_ids_match_manifests():
 
     # Single source of truth: the verified program-ID registry. Every manifest
     # ID must be in the registry AND every registry ID must have a manifest
-    # (bidirectional) — the systematic guard against the MemoSq4gq class of
-    # fabricated/removed/duplicated identifiers. The registry itself is
-    # on-chain verified (scripts/live_revalidate.py reproduces the check).
+    # (bidirectional) — the systematic guard against the memo class of
+    # fabricated/removed/duplicated identifiers (C1/C10/C15). The registry
+    # itself is on-chain verified (scripts/live_revalidate.py reproduces the
+    # check), and the Rust blessed-set test anchors the canonical core IDs.
     registry_path = os.path.join(manifest_dir, "verified_program_ids.json")
     with open(registry_path) as f:
         registry = json.load(f)

@@ -52,7 +52,11 @@ fn base_input(program_id: &str, discriminator: &str, intent: &str) -> Verificati
 #[test]
 fn all_new_manifests_are_loaded_and_instruction_surfaces_parse() {
     let registry = load_seed_manifests();
-    assert_eq!(registry.list().len(), 15, "expected 15 seed manifests");
+    assert_eq!(
+        registry.list().len(),
+        16,
+        "expected 16 seed manifests (15 + classic SPL memo restored C16)"
+    );
     for id in [PUMP_FUN, JUPITER_DCA, WORMHOLE, METAPLEX] {
         let m = registry
             .get(id)

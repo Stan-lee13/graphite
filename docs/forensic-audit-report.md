@@ -10,7 +10,7 @@
 
 | Signal | Result |
 |---|---|
-| Full Rust test suite | **837 passed / 0 failed** (23 binaries) |
+| Full Rust test suite | **840 passed / 0 failed** (23 binaries) |
 | clippy `--all-targets --all-features -D warnings` | 0 warnings |
 | `cargo fmt --check` | clean |
 | `cargo check --no-default-features` (CI gate) | clean |
@@ -33,26 +33,34 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 
 1. **All 15 seed manifest program IDs checked on mainnet** (`getAccountInfo` → `executable=true`):
    - 14 executable: System, SPL Token, Token-2022, Stake, Memo (live), Raydium AMM V4, Orca Whirlpools, Meteora DLMM, Squads V4, Jupiter V6, Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata.
-   - **1 defect:** `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` (pinned by `memo-program.json`) **never existed on any cluster** — see C1. Fixed.
+   - **1 WRONG CONCLUSION (corrected by C16):** the first cycle concluded `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` (pinned by `memo-program.json`) "never existed on any cluster". Independent re-verification (2026-08-08, third cycle) shows that conclusion was **itself false** — `MemoSq4gq…` IS executable on mainnet (99,736 B ELF, owner BPFLoader2111, actively used). Restored as the classic SPL memo (C16).
 2. **SAK devnet claim independently re-verified on-chain:** signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` re-fetched via `getTransaction` — real finalized System transfer from wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR` (slot 481727834, status Ok, fee 5000 lamports). Wallet balance confirmed. The claimed SAK→Graphite→execution pipeline is real.
 3. **Real devnet transaction corpus through the full pipeline:** the network-gated live test verified **10 real devnet transactions** (`getBlock` shapes → `VerificationInput` → full 8-layer pipeline), all with finite confidence in [0,1] and 16-char content hashes.
 4. **Real mainnet fixtures (pinned, deterministic):** 3 genuine mainnet transactions captured live (a Jupiter v6 swap with 40-account instruction, a pump.fun-market tx, a System batch tx) stored in `tests/fixtures/` in the exact RPC shape and run through the full pipeline in unit tests.
 5. **`graphite regression seed-live` on live devnet:** verified=20, approved=1, recorded=20 fixtures, skipped=0; corpus replayed **20/20 (100%), P10 gate PROMOTE**.
 6. **Registry operator path live:** registered reviewer → signed submission → **ACCEPTED at derived tier OfficialManifest** (P7: tier computed, never asserted); unregistered signer → REJECTED; no-evidence → REJECTED; invalid manifest → REJECTED; state persisted across invocations.
 7. **Adversarial suites on the expanded trusted roots:** H25 hell-mode tests pin that the Pump.fun/Jupiter-DCA `DEX_PROGRAMS` relaxations stay scoped (repeated-CPI compositional drains still block on pump.fun; DCA token CPIs from the trusted root pass; Wormhole is NOT exempt); omega_red_team exercises both roots.
-8. **Full live re-validation (2026-08-08, second cycle):** all 15 manifest IDs re-checked on mainnet — **15/15 executable** (the legacy memo `Memo1UhkJRf…` is EXEC on mainnet AND devnet, owner BPFLoader — the previous "retired" label was wrong, see C10; `MemoSq4gq…` remains the only ID that never existed). SAK devnet signature re-fetched again: status Ok, slot 481727834, fee 5000 — the claim still holds. Reproducible via `scripts/live_revalidate.py`.
+8. **Full live re-validation (2026-08-08, second cycle):** all 15 manifest IDs re-checked on mainnet — **15/15 executable** (the legacy memo `Memo1UhkJRf…` is EXEC on mainnet AND devnet, owner BPFLoader — the previous "retired" label was wrong, see C10). SAK devnet signature re-fetched again: status Ok, slot 481727834, fee 5000 — the claim still holds. Reproducible via `scripts/live_revalidate.py`.
+9. **Third-cycle live re-validation (2026-08-08):** all **16** manifest IDs + the 16-ID registry checked on mainnet — **16/16 executable**, including the restored classic memo `MemoSq4gq…` (99,736 B ELF, owner BPFLoader2111; EXEC on both clusters). The C1 "never existed" conclusion is retracted — see C16.
 
 ---
 
 ## C. Root-Level Findings
 
-### C1. SWAPPED / FABRICATED MEMO PROGRAM IDS (fixed)
+### C1. SWAPPED / FABRICATED MEMO PROGRAM IDS (partially wrong — corrected by C16)
 - **Symptom:** the canonical-ID pin test passed while one seed manifest pointed at a program that does not exist.
-- **Root cause:** `memo-program.json` pinned `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` (never existed on mainnet or devnet — verified `getAccountInfo` ABSENT on both), while `legacy-memo-program.json` pinned `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` (the LIVE memo program). The "on-chain-verified" pin test was written **from the manifests themselves** (self-referential), not from on-chain data — so it codified the wrong data.
-- **Impact:** real memo transactions (which use `Memo4c2pN8af...`) would not match the "Memo Program" manifest, and the "legacy" manifest mislabeled the live program. Dead trust weight + mislabeled identity.
-- **Fix:** `memo-program.json` → `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` (live, EXEC both clusters); `legacy-memo-program.json` → `Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo` (the true legacy memo — re-verified EXEC on both clusters 2026-08-08, superseded not retired, see C10); pin test + `extreme_adversarial.rs` const + README table updated with an on-chain-dated comment.
-- **Regression test:** the 15-ID pin test now asserts the corrected IDs (13 manifest tests green); README/ROADMAP claims corrected.
-- **Why existing tests missed it:** the pin test compared manifests against each other's stored strings, not against chain state.
+- **Root cause (as understood at the time):** `memo-program.json` pinned `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr`, which this cycle claimed "never existed on mainnet or devnet — verified `getAccountInfo` ABSENT on both". **That claim was itself the error (C16):** the account is real and executable on both clusters. The genuinely valid part of C1 was the architectural one — the pin test was written **from the manifests themselves** (self-referential), not from chain state, so it could codify wrong data in either direction (false positive AND false negative).
+- **Impact:** the real defect was that the "Memo Program" manifest and the live memo program were mismatched; the wrong "fix" then removed a real canonical program from the system for two cycles.
+- **Fix (final, C16):** all three real memo programs are now covered — `Memo4c2pN8afCj…` (memo v4.0.0, upgradeable), `MemoSq4gq…` (classic SPL memo, restored), `Memo1UhkJRfHyv…` (legacy, superseded) — each verified EXEC on mainnet 2026-08-08; the single-source registry + blessed-set test + fixed `live_revalidate.py` make the claim reproducible instead of asserted.
+- **Regression test:** 16-ID pin test (bidirectional), blessed-canonical-set test (registry can never lose the core programs), Python cross-check, and a working on-chain revalidation script.
+- **Why existing tests missed it:** the pin test compared manifests against each other's stored strings, not against chain state — and no offline test could catch a registry that was itself edited wrongly.
+
+### C16. THE "RETIRED/FABRICATED MEMO" CLAIM WAS ITSELF THE BUG — REGISTRY CORRUPTION BY EDIT (fixed)
+- **Problem:** C1 removed the real, canonical SPL memo `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` from manifests, docs, and (later) the new single-source registry, labeling it "fabricated / never existed on any cluster". Independent re-verification (third audit cycle, 2026-08-08) proves that conclusion false: `getAccountInfo` on `api.mainnet-beta.solana.com` returns an **executable account, 99,736 B ELF, owner BPFLoader2111, actively used** — it is the classic SPL memo from solana-program-library, used in countless SPL token transfers.
+- **Root cause:** the previous "on-chain verification" was not reproducible — the claim lived in prose and was contradicted by the pre-C1 CHANGELOG, which already stated both memo IDs were real. The bidirectional manifest↔registry check cannot catch a registry that is itself edited wrongly; `scripts/live_revalidate.py` (the intended on-chain gate) crashed on `KeyError: 'protocol'` because it treated `verified_program_ids.json` as a manifest — so the one tool that would have caught the corruption could not run.
+- **Impact:** for two audit cycles Graphite could not match transactions using the most common memo program ID — a silent precision regression on a huge fraction of SPL transfers; worse, the docs asserted a false fact about the chain.
+- **Fix:** (1) restored `MemoSq4gq…` as the 16th seed manifest (`spl-memo-program.json`) and 16th registry entry with honest provenance; (2) fixed `live_revalidate.py` to skip non-manifest JSON files and to verify the registry's own IDs on-chain (exit non-zero on any absence); (3) added the blessed-canonical-set test (`test_registry_contains_blessed_canonical_programs`) — the core programs (incl. all three memo IDs) can never silently vanish from the registry again; (4) corrected every doc that repeated the false claim.
+- **Regression protection:** registry completeness is now anchored offline (blessed-set test), on-chain (fixed revalidation script, runnable in CI/ops), and bidirectionally (pin test + Python cross-check) — the memo class of bug (C1 → C10 → C16) has no remaining silent path.
 
 ### C2. AUDITBIND SWAP-PATH TOCTOU COVERAGE (hardened)
 - **Finding:** `executeSwap` originally verified only `programId + discriminator + wallet` — the SAK-built swap's instruction data and full account list were not part of the checked projection.
@@ -118,7 +126,7 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 
 | Requirement (roadmap) | Status | Evidence | Missing work |
 |---|---|---|---|
-| 15 manifests, IDs on-chain verified | **Implemented** (corrected) | live getAccountInfo 15/15 EXEC re-verified 2026-08-08; memo swap fixed; C10 corrected the "retired" prose | — |
+| 16 manifests, IDs on-chain verified | **Implemented** (corrected) | live getAccountInfo 16/16 EXEC re-verified 2026-08-08; memo swap fixed; C10 corrected the "retired" prose; C16 restored the classic SPL memo | — |
 | Feed actual transaction data through Graphite | **Implemented** (new) | `live_corpus.rs`, `regression seed-live`, 30 live devnet verifies, 3 pinned real mainnet fixtures | — |
 | Regression Engine corpus + replay + P10 gate | **Implemented** | 20 real fixtures replayed 100%, PROMOTE; deterministic replay | 1,000-fixture volume (data acquisition), 10k cost model |
 | Manifest Registry: signed submissions, G5, P7/P10/P11 | **Implemented** (operator path, new CLI) | register-reviewer / submit / reviewers live-verified ACCEPT/REJECT | PR-based community workflow + on-chain stake lookup (Phase 3 by design) |

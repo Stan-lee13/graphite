@@ -218,6 +218,7 @@ pub fn load_seed_manifests() -> ManifestRegistry {
         "../protocols/meteora-dlmm.json",
         "../protocols/memo-program.json",
         "../protocols/legacy-memo-program.json",
+        "../protocols/spl-memo-program.json",
         "../protocols/pump-fun.json",
         "../protocols/jupiter-dca.json",
         "../protocols/wormhole-core.json",
@@ -259,6 +260,9 @@ pub fn load_seed_manifests() -> ManifestRegistry {
             }
             "../protocols/legacy-memo-program.json" => {
                 registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
+            }
+            "../protocols/spl-memo-program.json" => {
+                registry.load_from_json(include_str!("../protocols/spl-memo-program.json"))
             }
             "../protocols/pump-fun.json" => {
                 registry.load_from_json(include_str!("../protocols/pump-fun.json"))
@@ -416,21 +420,26 @@ mod tests {
         // reproduces the check). This test asserts the manifests match the
         // registry EXACTLY and BIDIRECTIONALLY:
         //   - any manifest program_id NOT in the verified registry fails
-        //     (fabricated/typo'd IDs — the MemoSq4gq class of bug),
+        //     (fabricated/typo'd IDs — the memo class of bug, which has
+        //     recurred three times: C1's fabricated-ID claim, C10's wrong
+        //     'retired' label, C15's removal of a real program),
         //   - any verified program missing from the manifests fails
         //     (accidental removal), and
         //   - names must match (no swapped labels).
-        // The registry is checked from BOTH Rust and the Python AI layer, so
-        // an accidental identifier change cannot silently pass — it must be
-        // accompanied by on-chain evidence in the registry itself.
+        // NOTE: this consistency check alone cannot catch a registry that is
+        // itself wrong — that is what test_registry_contains_blessed_canonical_programs
+        // and scripts/live_revalidate.py (on-chain) cover. The registry is
+        // checked from BOTH Rust and the Python AI layer, so an accidental
+        // identifier change cannot silently pass — it must be accompanied by
+        // on-chain evidence in the registry itself.
         let verified: serde_json::Value =
             serde_json::from_str(include_str!("../protocols/verified_program_ids.json"))
                 .expect("verified_program_ids.json must be valid JSON");
         let programs = verified["programs"].as_array().expect("programs array");
         assert_eq!(
             programs.len(),
-            15,
-            "verified registry must list exactly the 15 seed programs"
+            16,
+            "verified registry must list exactly the 16 seed programs"
         );
 
         let mut verified_by_id: std::collections::BTreeMap<&str, &str> =
@@ -482,6 +491,62 @@ mod tests {
             assert_eq!(
                 verified_name, name,
                 "name mismatch for {id}: manifest says '{name}', registry says '{verified_name}'"
+            );
+        }
+    }
+
+    /// The memo-class completeness guard. The bidirectional manifest<->registry
+    /// check above can only detect *inconsistency* — if the registry itself is
+    /// corrupted (as C1 corrupted it by removing the real MemoSq4gq program),
+    /// both sides stay "consistent" and the error sails through. This blessed
+    /// set is the offline anchor: the canonical core programs that MUST always
+    /// be present, each verified executable on mainnet 2026-08-08 (the memo
+    /// IDs additionally verified by getAccountInfo this same day). Removing or
+    /// renaming any of these fails CI with a message naming the program — the
+    /// memo class of bug cannot silently recur.
+    #[test]
+    fn test_registry_contains_blessed_canonical_programs() {
+        let blessed: &[(&str, &str)] = &[
+            ("System Program", "11111111111111111111111111111111"),
+            (
+                "SPL Token Program",
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            ),
+            (
+                "Token-2022 Program",
+                "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            ),
+            (
+                "Stake Program",
+                "Stake11111111111111111111111111111111111111",
+            ),
+            (
+                "SPL Memo (classic)",
+                "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+            ),
+            (
+                "SPL Memo (v4.0.0)",
+                "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
+            ),
+            (
+                "SPL Memo (legacy)",
+                "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
+            ),
+        ];
+        let verified: serde_json::Value =
+            serde_json::from_str(include_str!("../protocols/verified_program_ids.json"))
+                .expect("verified_program_ids.json must be valid JSON");
+        let programs = verified["programs"].as_array().expect("programs array");
+        let registry_ids: std::collections::BTreeSet<&str> = programs
+            .iter()
+            .map(|p| p["program_id"].as_str().expect("program_id"))
+            .collect();
+        for (name, id) in blessed {
+            assert!(
+                registry_ids.contains(id),
+                "blessed canonical program '{name}' ({id}) is MISSING from \
+                 verified_program_ids.json — a memo-class regression (C15: \
+                 MemoSq4gq was wrongly removed by C1 and is EXEC on mainnet)"
             );
         }
     }

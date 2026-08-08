@@ -1,0 +1,39 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "SPL Memo Program (classic)",
+    "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+    "note": "Classic SPL Memo from solana-program-library — the canonical memo program used in countless SPL token transfers. Restored 2026-08-08 (C15): forensic audit C1 wrongly claimed this ID 'never existed on any cluster'; getAccountInfo re-verified it EXECUTABLE on mainnet (99,736 B ELF, owner BPFLoader2111) and it is actively used.",
+    "website": "https://spl.solana.com/memo",
+    "github": "https://github.com/solana-labs/solana-program-library"
+  },
+  "version": {
+    "label": "1.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": null
+  },
+  "instructions": [
+    {
+      "name": "Memo",
+      "discriminator": "",
+      "accounts": [
+        {
+          "name": "signer",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "emits UTF-8 memo string to transaction log \u2014 no state changes"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "no state changes \u2014 pure logging instruction",
+        "safe by default"
+      ]
+    }
+  ],
+  "trust_tier": "OfficialManifest"
+}

@@ -77,13 +77,13 @@ fn no_evidence() -> BehaviorEvidence {
 // ============================================================
 
 #[test]
-fn test_all_15_manifests_load_with_valid_pubkeys() {
+fn test_all_16_manifests_load_with_valid_pubkeys() {
     let registry = load_seed_manifests();
     let manifests = registry.list();
     assert_eq!(
         manifests.len(),
-        15,
-        "expected exactly 15 seed manifests (11 Phase 1 + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata)"
+        16,
+        "expected exactly 16 seed manifests (11 Phase 1 + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata + classic SPL memo restored C16)"
     );
 
     for m in &manifests {
