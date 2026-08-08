@@ -13,7 +13,26 @@ import glob
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from intent_parser import parse_intent
+from intent_parser import parse_intent, IntentParserHandler
+
+
+def _bounded_body(cl_value):
+    """A minimal stand-in for the handler's request object."""
+    class Req:
+        def __init__(self):
+            self.headers = {"Content-Length": cl_value}
+            self.rfile = None
+    return Req()
+
+
+def test_bounded_body_rejects_oversized_and_malformed_content_length():
+    # Oversized claims must be rejected outright (no unbounded rfile read).
+    assert IntentParserHandler._read_bounded_body(_bounded_body("999999999")) is None
+    # Non-numeric Content-Length must be rejected, not raise ValueError.
+    assert IntentParserHandler._read_bounded_body(_bounded_body("abc")) is None
+    # Negative lengths are malformed.
+    assert IntentParserHandler._read_bounded_body(_bounded_body("-1")) is None
+    print("✓ test_bounded_body_rejects_oversized_and_malformed_content_length passed")
 
 
 def test_transfer_intent():

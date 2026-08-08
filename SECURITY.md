@@ -43,15 +43,13 @@ The RPC client (active when `GRAPHITE_RPC_URL` is set) was live-audited against 
 - Token freeze state is read from the correct byte offset (108)
 - No credentials are logged; the API key is passed via request header/URL only
 
-## Known Limitations (Phase 1.5)
-
-## Known Limitations (Phase 1.5)
+## Known Limitations
 
 These are documented scope boundaries, not hidden vulnerabilities:
 
-- **No instruction data semantic parsing** — Graphite matches known discriminators (hex byte comparison) but does not parse the semantic meaning of instruction data beyond the discriminator. Phase 2.
-- **L3 simulation is opt-in** — L3 (Simulation Verification) runs live `simulateTransaction` when an RPC client is attached (`GRAPHITE_RPC_URL`), verified on Solana devnet. Without an RPC client it reports an honest `Inconclusive` state, never a phantom pass. Full production activation of L3/L8 across all deployments is a Phase 2 exit criterion.
-- **TOCTOU gap** — The SAK integration verifies transaction structure before execution but does not re-hash the final signed transaction against the approved `content_hash`. Phase 2 AuditBind middleware.
-- **Caller-provided behavior evidence** — `behavior_evidence` fields are caller-supplied in Phase 1.5. Phase 2 Manifest Registry will query trusted historical data instead.
+- **No instruction data semantic parsing** — Graphite matches known discriminators (hex byte comparison) but does not parse the semantic meaning of instruction data beyond the discriminator.
+- **L3 simulation is opt-in** — L3 (Simulation Verification) runs live `simulateTransaction` when an RPC client is attached (`GRAPHITE_RPC_URL`). Without an RPC client it reports an honest `Inconclusive` state, never a phantom pass.
+- **AuditBind closes the verify-to-execute TOCTOU for the transfer path and any payload-bound instruction** (`verifyInstruction` re-hashes the exact instruction against the approved `content_hash`, cross-language pinned-vector tested). **Residual gap on the SAK swap path:** `methods.swap` rebuilds the swap instruction internally, so a bound payload is not guaranteed to be the executed instruction — `GRAPHITE_SWAP_STRICT=1` requires a payload but does not force the executor to submit it. Full closure requires executing the bound instruction directly. See `ARCHITECTURE.md` → Known Boundary Limitations.
+- **Caller-provided behavior evidence** — `behavior_evidence` fields are caller-supplied; the confidence engine deliberately zeroes the evidence-derived signals (Constitution G4) so this cannot inflate confidence.
 
 See [ROADMAP.md](ROADMAP.md) for the full Phase 2 plan.

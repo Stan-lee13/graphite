@@ -51,10 +51,17 @@ PROGRAM_IDS = {
     "close": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",  # SPL Token
 }
 
-# Instruction discriminators for known programs
+# Instruction discriminators for known programs.
+#
+# NOTE (final-forensic 2026-08-08): these suggestions are ADVISORY ONLY and the
+# SAK bridge does not consume them (it hardcodes its own values) — a stale value
+# here can never weaken a decision (a wrong suggestion simply fails to match and
+# the verification blocks). Kept accurate regardless: Jupiter V6's currently
+# deployed entrypoint is `route_v2` (bb64facc31c4af14); `e517cb977ae3ad2a` was
+# the legacy `route`.
 DISCRIMINATORS = {
     ("transfer", "11111111111111111111111111111111"): "02000000",
-    ("swap", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"): "e517cb977ae3ad2a",
+    ("swap", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"): "bb64facc31c4af14",
     ("stake", "Stake11111111111111111111111111111111111111"): "02000000",
     ("close", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"): "09",
 }
@@ -119,18 +126,43 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
     }
 
 
+# Maximum accepted request body. Intent text is a short natural-language
+# string (a few KB at most); an adversarial client must not be able to force
+# an unbounded read into memory (the old handler trusted Content-Length
+# directly and read whatever it claimed).
+MAX_BODY_BYTES = 64 * 1024
+
+
 class IntentParserHandler(BaseHTTPRequestHandler):
     """HTTP handler for intent parsing requests."""
-    
-    def do_POST(self):
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode("utf-8")
-        
+
+    def _read_bounded_body(self) -> bytes:
+        """Read the request body with a hard size cap and robust
+        Content-Length parsing. Malformed or oversized requests return None
+        (caller answers 413/400) instead of raising or trusting the header."""
+        raw = self.headers.get("Content-Length", "0")
         try:
-            request = json.loads(body)
+            length = int(raw)
+        except ValueError:
+            return None
+        if length < 0 or length > MAX_BODY_BYTES:
+            return None
+        return self.rfile.read(length)
+
+    def do_POST(self):
+        body = self._read_bounded_body()
+        if body is None:
+            self.send_response(413)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "request body too large or malformed Content-Length"}).encode())
+            return
+
+        try:
+            request = json.loads(body.decode("utf-8"))
             text = request.get("text", "")
             result = parse_intent(text)
-            
+
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -140,7 +172,7 @@ class IntentParserHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())
-    
+
     def do_GET(self):
         if self.path == "/health":
             self.send_response(200)
@@ -150,7 +182,7 @@ class IntentParserHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
-    
+
     def log_message(self, format, *args):
         print(f"[AI Layer] {args[0]}")
 

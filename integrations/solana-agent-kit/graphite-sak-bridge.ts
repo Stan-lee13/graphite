@@ -298,6 +298,16 @@ export class VerifiedSakAgent {
           "so AuditBind can bind the exact instruction — the opaque SAK swap path cannot be TOCTOU-bound. ABORTING."
       );
     }
+    // HONEST BOUNDARY (final-forensic finding): a bound payload is verified
+    // against the approved content_hash, but `sakAgent.methods.swap` below
+    // REBUILDS the swap instruction internally — the executed instruction is
+    // not guaranteed to be the payload. The payload schema (base58 account
+    // strings only) lacks isSigner/isWritable flags, so the bridge cannot
+    // safely reconstruct + sign the bound instruction itself. Full TOCTOU
+    // closure therefore requires the OPERATOR to build, verify, and submit
+    // the exact instruction (see ARCHITECTURE.md → Known Boundary
+    // Limitations). GRAPHITE_SWAP_STRICT=1 only forces a payload to exist;
+    // it does not by itself make the executor submit it.
 
     const accountAddresses = payload?.accounts ?? [this.walletPublicKey];
     const verification = await this.verifyTransaction({

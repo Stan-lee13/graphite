@@ -30,7 +30,7 @@ The pipeline executes in order. Each layer is tracked in the verification result
 4. **L4 State Verification** — Diffs pre/post account state against the manifest's expected state changes
 5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program
 6. **L6 Policy Verification** — Computes confidence (0.0–1.0 from weighted signals + tier ceilings) and applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Gaming 60%, Enterprise 99%) and trust tier requirements
-7. **L7 Risk Verification** — Pattern-matches against 8 known attack patterns (hard gate, independent of confidence). Runs early for fail-fast but is reported at L7 per architecture spec.
+7. **L7 Risk Verification** — Pattern-matches against 9 known attack patterns (hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack, FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, and Impersonation (system-account impersonation — P0 Check 10, grounded in SolPhishHunter arXiv:2505.04094). Runs early for fail-fast but is reported at L7 per architecture spec.
 8. **L8 Execution Verification** — Post-submission: confirm finalized on-chain result matches prediction. Until live execution is wired (Phase 2), L8 reports an honest **"not yet verified"** state with an audit-trail event.
 
 ### Key Properties
@@ -49,7 +49,7 @@ The pipeline executes in order. Each layer is tracked in the verification result
 
 ## Server (HTTP API)
 
-The axum-based HTTP server exposes `POST /verify`, `POST /manifests` (listing), and `GET /health`.
+The axum-based HTTP server exposes `POST /verify`, `GET /manifests` (listing), `GET /health`, and the read-only dashboard API (`/api/graph`, `/api/confidence-history`, `/api/policy-violations`, `/api/protocols/top`, `/api/registry`).
 
 | Concern | Implementation |
 |---|---|
@@ -63,20 +63,25 @@ The axum-based HTTP server exposes `POST /verify`, `POST /manifests` (listing), 
 
 ## What Graphite Does NOT Do (Honest)
 
-- Does NOT parse instruction data semantics (instruction bytes are not analyzed)
-- Does NOT detect novel attack patterns (only known patterns are matched)
-- Does NOT use AI/ML in the verification path (deterministic pattern matching only)
+- Does NOT parse instruction data semantics beyond the discriminator (instruction bytes are not analyzed for meaning)
+- Does NOT detect novel attack patterns (only the 9 known patterns are matched)
+- Does NOT use AI/ML in the verification path (deterministic pattern matching only; the Python layer is an advisory labeler)
 - Does NOT verify intent semantically (intent is a label, not a semantic constraint)
 - Does NOT work on chains other than Solana (SVM-specific, complete rewrite needed)
+- Does NOT hold wallet private keys — the Rust core never receives signing material; keys live at the wallet/SAK boundary (the integration bridge holds them to execute, like any self-custody agent wallet)
+
+## Known Boundary Limitations (honest)
+
+- **SAK swap-path TOCTOU residual:** AuditBind can bind the EXACT instruction the caller supplies (`verifyInstruction`), but the SAK `methods.swap` path rebuilds the swap instruction internally — so a bound payload is not guaranteed to be the executed instruction. `GRAPHITE_SWAP_STRICT=1` requires a payload but does not by itself force the executor to submit it. Operators who need full TOCTOU closure must execute the bound payload directly (build + sign the verified instruction themselves) rather than delegating to SAK's internal builder. The transfer path is fully bound (same instruction object is verified and executed).
 
 ## Repository Structure
 
 ```
 graphite/
 ├── graphite-core/          # Rust verification engine
-│   ├── src/                # 16 core modules + plugins/ + feature-gated server/cli/rpc (no dead code)
-│   ├── protocols/          # 15 JSON protocol manifests
-│   ├── tests/              # 819 tests (unit + adversarial + exploit)
+│   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
+│   ├── protocols/          # 20 JSON protocol manifests (canonical registry: protocols/verified_program_ids.json)
+│   ├── tests/              # 852 tests (unit + adversarial + exploit + pinned real corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)
