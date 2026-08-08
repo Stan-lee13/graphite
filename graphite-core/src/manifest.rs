@@ -428,11 +428,12 @@ mod tests {
             // On-chain corrected 2026-08-08: the two memo manifests had
             // SWAPPED program IDs. The live memo program is
             // Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH (executable on
-            // mainnet + devnet, verified live); the true legacy memo is
-            // Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo (retired — account
-            // deleted on both clusters). The previously pinned
-            // MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr never existed on
-            // any cluster.
+            // mainnet + devnet, verified live); the legacy memo is
+            // Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo — re-verified
+            // EXECUTABLE on BOTH clusters 2026-08-08 (superseded in ecosystem
+            // use, NOT retired; an earlier audit note mislabeled it retired).
+            // The previously pinned MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
+            // never existed on any cluster.
             (
                 "Memo Program",
                 "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",

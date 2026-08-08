@@ -299,7 +299,61 @@ impl ManifestRegistryEngine {
                 "manifest must declare at least one instruction".to_string(),
             ));
         }
+
+        // Resource-exhaustion guard: a community submission must never be able
+        // to carry an unbounded instruction/account/list payload through the
+        // hashing, serialization, and graph-storage path (memory + CPU DoS).
+        const MAX_INSTRUCTIONS: usize = 512;
+        const MAX_ACCOUNTS_PER_INSTRUCTION: usize = 256;
+        const MAX_FIELD_CHARS: usize = 128;
+        const MAX_LIST_ITEMS: usize = 64;
+        if manifest.instructions.len() > MAX_INSTRUCTIONS {
+            return Err(RegistryError::InvalidManifest(format!(
+                "manifest declares {} instructions (cap {MAX_INSTRUCTIONS}) — resource-exhaustion guard",
+                manifest.instructions.len()
+            )));
+        }
         for ix in &manifest.instructions {
+            if ix.name.chars().count() > MAX_FIELD_CHARS {
+                return Err(RegistryError::InvalidManifest(format!(
+                    "instruction name exceeds {MAX_FIELD_CHARS} chars"
+                )));
+            }
+            if ix.accounts.len() > MAX_ACCOUNTS_PER_INSTRUCTION {
+                return Err(RegistryError::InvalidManifest(format!(
+                    "instruction '{}' declares {} accounts (cap {MAX_ACCOUNTS_PER_INSTRUCTION}) — resource-exhaustion guard",
+                    ix.name,
+                    ix.accounts.len()
+                )));
+            }
+            if ix.allowed_cpis.len() > MAX_LIST_ITEMS
+                || ix.expected_state_changes.len() > MAX_LIST_ITEMS
+                || ix.risk_rules.len() > MAX_LIST_ITEMS
+            {
+                return Err(RegistryError::InvalidManifest(format!(
+                    "instruction '{}' exceeds list cap {MAX_LIST_ITEMS} (allowed_cpis/state_changes/risk_rules) — resource-exhaustion guard",
+                    ix.name
+                )));
+            }
+            // Per-string length cap as well: a single oversized list entry
+            // would otherwise pass the count cap. Overall worst case stays
+            // bounded (~instructions × items × chars).
+            for list in [&ix.allowed_cpis, &ix.expected_state_changes, &ix.risk_rules] {
+                if list.iter().any(|s| s.chars().count() > MAX_FIELD_CHARS) {
+                    return Err(RegistryError::InvalidManifest(format!(
+                        "instruction '{}' has a list entry exceeding {MAX_FIELD_CHARS} chars — resource-exhaustion guard",
+                        ix.name
+                    )));
+                }
+            }
+            for acc in &ix.accounts {
+                if acc.pda_seeds.len() > MAX_LIST_ITEMS {
+                    return Err(RegistryError::InvalidManifest(format!(
+                        "account '{}' exceeds {MAX_LIST_ITEMS} pda seeds — resource-exhaustion guard",
+                        acc.name
+                    )));
+                }
+            }
             if ix.discriminator.trim().is_empty() {
                 // Deliberately STRICTER than the runtime loader, which allows
                 // empty discriminators for raw-UTF-8-data programs (e.g. the
@@ -429,7 +483,7 @@ fn tier_rank(tier: &TrustTier) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::{InstructionDef, ManifestVersion, ProtocolInfo};
+    use crate::manifest::{AccountRoleDef, InstructionDef, ManifestVersion, ProtocolInfo};
     use crate::policy_engine::WalletProfile;
     use crate::regression_engine::{RegressionCorpus, RegressionFixture};
     use crate::verification::ProposedIntent;
@@ -554,6 +608,55 @@ mod tests {
             .unwrap();
         assert_eq!(record.trust_tier, TrustTier::OfficialManifest);
         assert!(record.evidence.has_signed_manifest);
+    }
+
+    #[test]
+    fn registry_rejects_resource_exhaustion_manifest() {
+        // 1000 instructions (cap 512) must be rejected BEFORE any hashing or
+        // signing work — a clean resource-exhaustion guard, not an OOM.
+        let mut m = manifest("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", "Huge", "v1");
+        m.instructions = (0..1000)
+            .map(|i| InstructionDef {
+                name: format!("op{i}"),
+                discriminator: "01".to_string(),
+                accounts: vec![],
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                risk_rules: vec![],
+                variable_accounts: false,
+            })
+            .collect();
+        let err = ManifestRegistryEngine::validate_manifest(&m).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("resource-exhaustion guard"),
+            "expected cap error, got: {msg}"
+        );
+
+        // 300 accounts on one instruction (cap 256) is rejected too.
+        let mut m2 = manifest("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", "Huge2", "v1");
+        m2.instructions[0].accounts = (0..300)
+            .map(|i| AccountRoleDef {
+                name: format!("acc{i}"),
+                role: "readonly".to_string(),
+                is_writable: false,
+                is_signer: false,
+                pda_seeds: vec![],
+            })
+            .collect();
+        let err2 = ManifestRegistryEngine::validate_manifest(&m2).unwrap_err();
+        assert!(
+            format!("{err2:?}").contains("resource-exhaustion guard"),
+            "expected account-cap error"
+        );
+
+        // A normal manifest still passes — the caps must not false-positive.
+        let ok = ManifestRegistryEngine::validate_manifest(&manifest(
+            "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+            "Ok",
+            "v1",
+        ));
+        assert!(ok.is_ok());
     }
 
     #[test]

@@ -3,7 +3,8 @@
   "protocol": {
     "name": "Legacy Memo Program (SPL)",
     "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
-    "retired_on_mainnet": true,
+    "superseded": true,
+    "note": "Legacy SPL Memo — still deployed and executable on mainnet AND devnet (getAccountInfo verified 2026-08-08); superseded in ecosystem use by Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH. Not retired: the account is live on both clusters.",
     "website": "https://spl.solana.com/memo",
     "github": "https://github.com/solana-labs/solana-program-library"
   },

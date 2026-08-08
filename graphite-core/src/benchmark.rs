@@ -67,6 +67,8 @@ pub fn run_benchmark() {
     let mut false_positives = 0; // safe incorrectly blocked
     let mut false_negatives = 0; // malicious incorrectly approved
     let mut total_latency_us: u128 = 0;
+    // Per-case latencies, kept for the p50/p95/p99 distribution.
+    let mut latencies_us: Vec<u128> = Vec::with_capacity(cases.len());
 
     println!(
         "{:<40} {:<12} {:<12} {:<12} {:>10}",
@@ -118,6 +120,7 @@ pub fn run_benchmark() {
         });
         let elapsed = start.elapsed();
         total_latency_us += elapsed.as_micros();
+        latencies_us.push(elapsed.as_micros());
 
         let actually_approved = result.approved;
         let correct = actually_approved == case.expected_approved;
@@ -181,6 +184,20 @@ pub fn run_benchmark() {
         0
     };
 
+    // p50/p95/p99 from the per-case distribution (deterministic: same cases,
+    // same order, same release binary ⇒ reproducible percentiles).
+    latencies_us.sort_unstable();
+    let percentile = |p: f64| -> u128 {
+        if latencies_us.is_empty() {
+            return 0;
+        }
+        let idx = ((latencies_us.len() as f64 - 1.0) * p).round() as usize;
+        latencies_us[idx]
+    };
+    let p50 = percentile(0.50);
+    let p95 = percentile(0.95);
+    let p99 = percentile(0.99);
+
     println!("{}", "─".repeat(90));
     println!("\n📊 Results:\n");
     println!("  Total cases:      {}", total);
@@ -206,6 +223,18 @@ pub fn run_benchmark() {
         false_negatives
     );
     println!("  Avg Latency:      {}μs", avg_latency);
+    println!("  p50 Latency:      {}μs", p50);
+    println!("  p95 Latency:      {}μs", p95);
+    println!("  p99 Latency:      {}μs", p99);
+    println!(
+        "  Sequential thru:  {:.0} verifies/s ({} cases, single-threaded)",
+        if total > 0 {
+            total as f64 / (total_latency_us as f64 / 1_000_000.0)
+        } else {
+            0.0
+        },
+        total
+    );
     println!();
 
     // ─── Plugin overhead (P16: measured, reproducible) ───

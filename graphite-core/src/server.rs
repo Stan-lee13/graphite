@@ -1170,4 +1170,226 @@ mod tests {
         assert_eq!(resp.status(), axum::http::StatusCode::UNAUTHORIZED);
         let _ = dir;
     }
+
+    /// Real-listener concurrency storm: 8 parallel workers × 25 /verify calls
+    /// plus concurrent dashboard reads against one bound server. Proves the
+    /// shared state (Arc<Mutex<SemanticGraphStore>>, Mutex-guarded audit log,
+    /// per-IP rate limiter) survives real parallelism with zero 5xx/panics,
+    /// and that the audit log durably records every concurrent verification.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_verify_storm_shares_state_and_stays_healthy() {
+        let (mut state, dir) = test_state();
+        // Raise the per-IP limit so the storm exercises concurrency, not 429s.
+        state.rate = RateLimiter::with_capacity(10_000, 100_000.0);
+        let assert_core = state.core.clone();
+        let app = build_app(state, vec![]);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let serve = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        );
+        let server_task = tokio::spawn(async move {
+            serve.await.expect("server must run");
+        });
+
+        let client = reqwest::Client::new();
+        let base = format!("http://{addr}");
+        let body = serde_json::json!({
+            "proposed_intent": {
+                "intent_type": "transfer",
+                "raw_natural_language": "Transfer 1 SOL to friend",
+                "confidence_of_parse": 0.95
+            },
+            "program_id": "11111111111111111111111111111111",
+            "protocol_version": "1.0.0",
+            "instruction_discriminator": "02000000",
+            "account_addresses": [
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+            ],
+            "wallet_profile": "TradingBot"
+        })
+        .to_string();
+
+        const WORKERS: usize = 8;
+        const PER_WORKER: usize = 25;
+        let start = std::time::Instant::now();
+        let mut tasks = Vec::new();
+        for _ in 0..WORKERS {
+            let client = client.clone();
+            let body = body.clone();
+            let base = base.clone();
+            tasks.push(tokio::spawn(async move {
+                let mut results = Vec::with_capacity(PER_WORKER);
+                for _ in 0..PER_WORKER {
+                    let resp = client
+                        .post(format!("{base}/verify"))
+                        .header("content-type", "application/json")
+                        .body(body.clone())
+                        .send()
+                        .await
+                        .expect("post must succeed");
+                    let status = resp.status();
+                    let json: serde_json::Value =
+                        resp.json().await.unwrap_or(serde_json::Value::Null);
+                    results.push((status, json.get("confidence").and_then(|c| c.as_f64())));
+                }
+                results
+            }));
+        }
+        // Concurrent dashboard reads on the same server.
+        let mut readers = Vec::new();
+        for _ in 0..4 {
+            let client = client.clone();
+            let base = base.clone();
+            readers.push(tokio::spawn(async move {
+                let mut out = Vec::new();
+                for path in [
+                    "/manifests",
+                    "/api/graph",
+                    "/api/confidence-history",
+                    "/health",
+                ] {
+                    let r = client
+                        .get(format!("{base}{path}"))
+                        .send()
+                        .await
+                        .expect("get must succeed");
+                    out.push((path.to_string(), r.status()));
+                }
+                out
+            }));
+        }
+        let mut all: Vec<(reqwest::StatusCode, Option<f64>)> = Vec::new();
+        for t in tasks {
+            all.extend(t.await.expect("worker task must not panic"));
+        }
+        for r in readers {
+            for (path, status) in r.await.expect("reader task must not panic") {
+                assert_eq!(status, reqwest::StatusCode::OK, "GET {path} under load");
+            }
+        }
+        let elapsed = start.elapsed();
+
+        for (status, confidence) in &all {
+            assert_eq!(*status, reqwest::StatusCode::OK, "verify under concurrency");
+            let c = confidence.expect("confidence must be a number");
+            assert!(
+                c.is_finite() && (0.0..=1.0).contains(&c),
+                "confidence out of range: {c}"
+            );
+        }
+        assert_eq!(all.len(), WORKERS * PER_WORKER, "every verify answered");
+
+        // The shared semantic graph survived uncorrupted: the seeded System
+        // evidence is still intact (verify_async is a read-only scorer — see
+        // forensic report C10).
+        let snapshot = assert_core.graph_snapshot();
+        let sys = snapshot
+            .nodes
+            .iter()
+            .find(|n| n.program_id == "11111111111111111111111111111111")
+            .expect("seeded system node must survive the storm");
+        assert_eq!(sys.battle_tested_tx_count, 1500);
+
+        // Durability: the audit log durably recorded ALL 200 verifications
+        // despite 8 concurrent writers (Mutex-guarded append). Valid only
+        // because the server task is fully joined above (abort → router drop
+        // → audit File handle drop → flush), so every append is visible to a
+        // fresh open.
+        let log = AuditLog::open(audit_path(&dir)).unwrap();
+        let (records, errors, total, _) = log.read_tail_filtered(10_000, |_| true);
+        assert_eq!(
+            total,
+            WORKERS * PER_WORKER,
+            "every concurrent verification must reach the audit log"
+        );
+        assert_eq!(records.len(), WORKERS * PER_WORKER);
+        assert!(errors.is_empty(), "no error records from a clean storm");
+
+        server_task.abort();
+        let _ = server_task.await;
+        let rate = (WORKERS * PER_WORKER) as f64 / elapsed.as_secs_f64();
+        println!(
+            "stress: {WORKERS}×{PER_WORKER} verifies + 16 dashboard reads in {}ms → {rate:.0} verifies/s (includes dashboard reads)",
+            elapsed.as_millis()
+        );
+    }
+
+    /// Hostile-body battery against /verify: invalid JSON, wrong types, deep
+    /// nesting, a >1MB body (body-limit middleware), a 200k-account list
+    /// (body cap), a 2k-account list (semantic MAX_ACCOUNTS cap), and random
+    /// bytes. Every case must be a clean 4xx — never a 5xx, never a panic —
+    /// and the server must still answer /health afterwards.
+    #[tokio::test]
+    async fn hostile_verify_bodies_never_return_5xx() {
+        use axum::body::Body;
+        use tower::ServiceExt;
+
+        let (mut state, _dir) = test_state();
+        state.rate = RateLimiter::with_capacity(10_000, 100_000.0);
+        let app = build_app(state, vec![]);
+
+        let two_k_accounts: String = (0..2_000)
+            .map(|_| "\"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU\"")
+            .collect::<Vec<_>>()
+            .join(",");
+        let two_hundred_k_accounts: String = (0..200_000)
+            .map(|_| "\"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU\"")
+            .collect::<Vec<_>>()
+            .join(",");
+        let deep = format!("{{\"a\":{}}}", "[".repeat(5000) + &"]".repeat(5000));
+        let cases: Vec<(&str, Vec<u8>)> = vec![
+            ("invalid json", b"{ not json".to_vec()),
+            ("empty body", Vec::new()),
+            ("null", b"null".to_vec()),
+            ("json array", b"[1,2,3]".to_vec()),
+            ("wrong types", br#"{"program_id": 123, "account_addresses": "x"}"#.to_vec()),
+            ("partial input", br#"{"program_id":"11111111111111111111111111111111"}"#.to_vec()),
+            ("deeply nested", deep.into_bytes()),
+            ("5MB string", format!("{{\"program_id\":\"{}\"}}", "1".repeat(5_000_000)).into_bytes()),
+            (
+                "200k accounts (over body cap)",
+                format!(
+                    "{{\"program_id\":\"11111111111111111111111111111111\",\"instruction_discriminator\":\"02000000\",\"account_addresses\":[{two_hundred_k_accounts}]}}"
+                )
+                .into_bytes(),
+            ),
+            (
+                "2k accounts (over MAX_ACCOUNTS=64)",
+                format!(
+                    "{{\"program_id\":\"11111111111111111111111111111111\",\"instruction_discriminator\":\"02000000\",\"account_addresses\":[{two_k_accounts}]}}"
+                )
+                .into_bytes(),
+            ),
+            ("random bytes", vec![0x00, 0xff, 0xfe, 0x01, 0x80, 0x7f]),
+        ];
+
+        for (name, bytes) in cases {
+            let mut req = axum::http::Request::builder()
+                .method("POST")
+                .uri("/verify")
+                .header("content-type", "application/json")
+                .body(Body::from(bytes))
+                .unwrap();
+            let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            let resp = app
+                .clone()
+                .oneshot(req)
+                .await
+                .expect("router must never panic on hostile input");
+            let status = resp.status();
+            assert!(
+                status.is_client_error(),
+                "{name}: expected 4xx, got {status} — a 5xx here is a bug"
+            );
+        }
+
+        // Server still healthy after the barrage.
+        let (status, _) = get_json(&app, "/health").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+    }
 }
