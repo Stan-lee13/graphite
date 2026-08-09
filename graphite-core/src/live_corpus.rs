@@ -108,35 +108,86 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
             .unwrap_or(false)
     };
 
-    // Preferred instruction: first one whose program is in the known set.
-    let preferred = if prefer_programs.is_empty() {
-        None
-    } else {
-        ixs.iter().filter(|ix| has_accounts(ix)).find(|ix| {
-            program_of(ix)
-                .as_deref()
-                .is_some_and(|p| prefer_programs.contains(&p))
-        })
-    };
-    // Fallback: the "meatiest" instruction that references accounts — most
-    // account keys (ties resolve to the last maximal). Real blocks front-load
-    // System fee payments and ComputeBudget setup, so "first with accounts"
-    // would select the fee payment, not the protocol call; the instruction
-    // with the most accounts is overwhelmingly the actual program invocation.
-    let fallback = ixs.iter().filter(|ix| has_accounts(ix)).max_by_key(|ix| {
+    let account_count = |ix: &serde_json::Value| -> usize {
         ix.get("accounts")
             .and_then(|a| a.as_array())
             .map(|a| a.len())
             .unwrap_or(0)
-    });
-    let ix = preferred.or(fallback)?;
+    };
+    let candidates: Vec<&serde_json::Value> = ixs.iter().filter(|ix| has_accounts(ix)).collect();
+
+    /// Infrastructure programs that appear in almost every real transaction
+    /// (fee payment, compute-budget setup, memo, ATA plumbing) and are never
+    /// the transaction's actual protocol action. The production `seed-live`
+    /// prefer-set is EVERY manifest program ID — which includes these — so
+    /// prefer-matching them would degenerate to recording the System fee
+    /// payment instead of the protocol call. They are therefore excluded from
+    /// prefer-matching: the corpus must record the instruction that IS the
+    /// transaction's point.
+    const BOILERPLATE_PROGRAMS: &[&str] = &[
+        "11111111111111111111111111111111", // System Program (fee payment)
+        "ComputeBudget111111111111111111111111111111", // Compute Budget
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // Associated Token Account
+        "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr", // SPL Memo (classic)
+        "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH", // Memo (Pinocchio)
+        "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo", // Legacy Memo
+    ];
+    let is_boilerplate = |p: &str| BOILERPLATE_PROGRAMS.contains(&p);
+
+    // Preferred instruction: the MOST-ACCOUNTED one whose program is in the
+    // known set AND is not infrastructure. Two rules make this correct where
+    // the original first-match search was not:
+    //
+    // 1. "Most accounted", not "first": real transactions front-load the
+    //    System fee payment and ComputeBudget setup, so first-match selects
+    //    the fee payment. The actual invocation (Jupiter route: 40 accounts,
+    //    Squads multisig: many signers) is overwhelmingly the most-accounted
+    //    prefer-matching instruction.
+    // 2. Boilerplate exclusion: the production prefer-set contains System and
+    //    ComputeBudget themselves, so set membership alone cannot mean "the
+    //    interesting program". Without the exclusion, even max-accounts
+    //    prefer-matching picks the 3-account System fee over a 20-account
+    //    router call whose program is not in the set (e.g. pump.fun markets,
+    //    which invoke pump only via CPI).
+    //
+    // Ties resolve to the last maximal (stable, deterministic).
+    let preferred = if prefer_programs.is_empty() {
+        None
+    } else {
+        candidates
+            .iter()
+            .filter(|ix| {
+                program_of(ix)
+                    .as_deref()
+                    .is_some_and(|p| prefer_programs.contains(&p) && !is_boilerplate(p))
+            })
+            .max_by_key(|ix| account_count(ix))
+    };
+    // Fallback: the "meatiest" instruction that references accounts — most
+    // account keys. Real blocks front-load System fee payments and ComputeBudget
+    // setup, so the instruction with the most accounts is overwhelmingly the
+    // actual program invocation.
+    let fallback = candidates.iter().max_by_key(|ix| account_count(ix));
+    let ix = *preferred.or(fallback)?;
     let program_id = program_of(ix)?;
 
     // Instruction accounts → real account keys (deduplicate, cap).
+    //
+    // ALT-resolved positions carry `alt:{table}:{entry}` placeholders (the
+    // real addresses require the lookup-table account data, which the reader
+    // does not fetch). They are NOT valid base58 pubkeys, so passing one to
+    // verification would fail every fixture with InvalidAddress — silently
+    // dropping the transaction from the corpus. Skip them: fixtures record
+    // the instruction's static-key accounts only (provenance pins the tx
+    // signature for forensic lookup). If nothing resolvable remains, the
+    // instruction cannot be verified as-is and yields no input.
     let mut accounts: Vec<String> = Vec::new();
     if let Some(idx_list) = ix.get("accounts").and_then(|a| a.as_array()) {
         for idx in idx_list.iter().filter_map(|i| i.as_u64()) {
             if let Some(key) = keys.get(idx as usize).cloned() {
+                if key.starts_with("alt:") {
+                    continue;
+                }
                 if !accounts.contains(&key) {
                     accounts.push(key);
                     if accounts.len() >= MAX_ACCOUNTS_PER_INSTRUCTION {
@@ -145,6 +196,9 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
                 }
             }
         }
+    }
+    if accounts.is_empty() {
+        return None;
     }
 
     // Instruction data is base58-encoded in JSON-encoded blocks.
@@ -460,10 +514,24 @@ mod tests {
     /// Full pipeline over a REAL mainnet transaction: structure invariants
     /// must hold (finite confidence in [0,1], 16-char content hash, and an
     /// approved result implies a Clear risk verdict).
+    ///
+    /// REGRESSION (C22): with the PRODUCTION prefer-set (every manifest
+    /// program ID, including System and ComputeBudget), selection must land on
+    /// the transaction's actual protocol invocation — never the System fee
+    /// payment that real blocks front-load. This pins the fix for the
+    /// fee-payment selection bug; the previous test passed while recording
+    /// fee payments because it never asserted which instruction won.
     #[test]
     fn full_pipeline_over_real_mainnet_transactions() {
         let core = GraphiteCore::new();
-        for name in ["pump", "jup", "system"] {
+        // Which instruction each pinned fixture must select under the
+        // production prefer-set (all manifest IDs).
+        let expect_program = [
+            ("pump", "QZerdCbKWCo79xfPhapNaAB7aZerGyPMXaJjK1VTAYQ"),
+            ("jup", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"),
+            ("system", "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"),
+        ];
+        for (name, want_program) in expect_program {
             let tx = load_fixture(name);
             let prefer: Vec<String> = core
                 .list_manifests()
@@ -473,6 +541,10 @@ mod tests {
             let prefer: Vec<&str> = prefer.iter().map(|s| s.as_str()).collect();
             let input = tx_to_input(&tx, &prefer)
                 .unwrap_or_else(|| panic!("{name}: real tx must produce a VerificationInput"));
+            assert_eq!(
+                input.program_id, want_program,
+                "{name}: production prefer-set must select the protocol call, not the System fee payment"
+            );
             let result = core
                 .verify(&input)
                 .unwrap_or_else(|e| panic!("{name}: real tx must verify: {e:?}"));
@@ -487,6 +559,62 @@ mod tests {
                     "{name}: approved must imply Clear risk"
                 );
             }
+        }
+    }
+
+    /// The prefer-set must also work when a SPECIFIC protocol is requested
+    /// (e.g. `--prefer <jup>`): the Jupiter route is selected even though the
+    /// System fee payment is first in the instruction list.
+    #[test]
+    fn production_prefer_set_never_selects_fee_payment() {
+        let core = GraphiteCore::new();
+        let prefer: Vec<String> = core
+            .list_manifests()
+            .iter()
+            .map(|m| m.protocol.program_id.clone())
+            .collect();
+        let prefer: Vec<&str> = prefer.iter().map(|s| s.as_str()).collect();
+        for name in ["pump", "jup", "system"] {
+            let tx = load_fixture(name);
+            let input =
+                tx_to_input(&tx, &prefer).unwrap_or_else(|| panic!("{name}: real tx must parse"));
+            assert_ne!(
+                input.program_id, "11111111111111111111111111111111",
+                "{name}: the System fee payment must never be the recorded corpus instruction"
+            );
+            // The selected program must have meaningful account usage — a real
+            // protocol invocation, not a 1-2 account setup instruction.
+            assert!(
+                input.account_addresses.len() >= 5,
+                "{name}: selected instruction must be the protocol call (got {} accounts)",
+                input.account_addresses.len()
+            );
+        }
+    }
+
+    /// ALT-resolved account positions (`alt:{table}:{entry}` placeholders) are
+    /// not valid base58 — feeding one to verification would fail every fixture
+    /// with InvalidAddress and silently drop the transaction from the corpus.
+    /// They must be skipped, and an instruction whose accounts are ALL
+    /// ALT-resolved must yield no input (fail-closed, not garbage).
+    #[test]
+    fn alt_placeholder_accounts_are_skipped_not_recorded() {
+        let jup = load_fixture("jup");
+        let input = tx_to_input(&jup, &["JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"])
+            .expect("jup fixture must parse");
+        assert!(
+            input
+                .account_addresses
+                .iter()
+                .all(|a| !a.starts_with("alt:")),
+            "ALT placeholders must never reach the VerificationInput"
+        );
+        // Every address must be a plausible base58 pubkey (32-44 chars).
+        for addr in &input.account_addresses {
+            assert!(
+                (32..=44).contains(&addr.len()),
+                "recorded account must be a real pubkey: {addr}"
+            );
         }
     }
 

@@ -3,6 +3,22 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Clean-Room Revalidation — C22: Live-Corpus Selection + Transfer TOCTOU Binding] — 2026-08-09
+
+### Live-corpus selection records the protocol call, not the fee payment (C22.1)
+- `live_corpus::tx_to_input` prefer-selection was first-match over the prefer-set. The production `seed-live` path passes EVERY manifest program ID (including System and ComputeBudget), so first-match degenerated to the System fee payment (2–3 accounts) that real blocks front-load — the corpus recorded fee payments instead of protocol interactions.
+- Selection now ranks prefer-matching instructions by **account count** AND **excludes infrastructure programs** (System, ComputeBudget, ATA, Memo×3) from prefer-matching: set membership alone cannot mean "the interesting program" when the set contains the boilerplate. The actual invocation wins (Jupiter route: 40 accounts), or the max-accounts fallback for CPI-only protocols (pump.fun: 20-account router). Deterministic (ties → last maximal).
+- **ALT placeholders fixed:** ALT-resolved account positions (`alt:{table}:{entry}`) are not valid base58 and silently failed verification, dropping transactions from the corpus. They are now skipped; an instruction whose accounts are ALL ALT-resolved yields no input (fail-closed).
+- Regression protection: `full_pipeline_over_real_mainnet_transactions` now pins the selected program per pinned fixture (pump → router, jup → Jupiter, system → AMM) under the PRODUCTION prefer-set; new `production_prefer_set_never_selects_fee_payment` and `alt_placeholder_accounts_are_skipped_not_recorded`.
+
+### Transfer-path AuditBind binds the amount (C22.2)
+- `executeTransfer` (SAK bridge) verified and AuditBind-bound only `programId + discriminator + accounts` — the transfer amount (u64 LE lamports in the instruction data) was UNBOUND, so mutating the amount between verification and execution passed the TOCTOU check.
+- Fix is two-sided by contract (Rust `content_hash` includes `instruction_data` only when present): the bridge now sends `instructionData` to verification AND to the AuditBind projection (4-byte `02000000` discriminator shape). Amount mutation now changes the hash and ABORTS.
+- Regression protection: pinned TS test `C22 transfer binding: amount is bound via instructionData` (1 SOL vs 100 SOL differ; old no-data projection differs; bound projection verifies).
+
+### Validation
+- **858 Rust tests / 0 failed** (+2), clippy `-D warnings`, fmt clean, no-default-features + cli + rpc gates green, 27/27 Python, **9/9 AuditBind** (+1), TS SDK + SAK typecheck clean, dashboard builds.
+
 ## [Final Forensic Re-run — C21: Advisory Labeler v2 + Intent-Vocabulary Alignment] — 2026-08-08
 
 ### Advisory labeler expanded without an LLM (C21.2)

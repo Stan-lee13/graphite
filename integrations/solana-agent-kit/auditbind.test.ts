@@ -148,6 +148,50 @@ test("verifyInstruction binds the exact instruction payload (swap TOCTOU closure
   );
 });
 
+test("C22 transfer binding: amount is bound via instructionData (4-byte discriminator shape)", () => {
+  // The exact shape the bridge's executeTransfer now verifies and binds:
+  //   programId + 4-byte discriminator ("02000000") + accounts + raw data.
+  // System transfer data = 0x02 || 3 pad bytes || u64 LE lamports.
+  const lamportsLE = (n: number) => {
+    const b = new Uint8Array(8);
+    new DataView(b.buffer).setBigUint64(0, BigInt(n), true);
+    return Array.from(b);
+  };
+  const makeData = (amount: number) => [2, 0, 0, 0, ...lamportsLE(amount)];
+  const hash = AuditBind.computeHash({
+    programId: SYSTEM_PROGRAM,
+    instructionDiscriminator: "02000000",
+    accountAddresses: [FROM, TO],
+    instructionData: makeData(1_000_000_000),
+  });
+  // Same everything, only the amount changed (1 SOL -> 100 SOL) → hash differs.
+  const mutated = AuditBind.computeHash({
+    programId: SYSTEM_PROGRAM,
+    instructionDiscriminator: "02000000",
+    accountAddresses: [FROM, TO],
+    instructionData: makeData(100_000_000_000),
+  });
+  assert.notEqual(mutated, hash, "amount mutation must change the content hash");
+  // The pre-C22 projection (no instructionData) also must NOT equal the
+  // bound hash — proving the amount was previously unbound.
+  const oldProjection = AuditBind.computeHash({
+    programId: SYSTEM_PROGRAM,
+    instructionDiscriminator: "02000000",
+    accountAddresses: [FROM, TO],
+  });
+  assert.notEqual(oldProjection, hash, "the old projection did not bind the amount");
+  // And the bound projection verifies cleanly against its own hash.
+  AuditBind.verify({
+    transaction: {
+      programId: SYSTEM_PROGRAM,
+      instructionDiscriminator: "02000000",
+      accountAddresses: [FROM, TO],
+      instructionData: makeData(1_000_000_000),
+    },
+    contentHash: hash,
+  });
+});
+
 test("verifyInstruction with no data hashes as empty instructionData (parity with Rust)", () => {
   const proj = AuditBind.projectionFromInstruction({
     programId: SYSTEM_PROGRAM,

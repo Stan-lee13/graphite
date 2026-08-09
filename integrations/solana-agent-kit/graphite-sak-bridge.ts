@@ -244,16 +244,32 @@ export class VerifiedSakAgent {
     const SYSTEM_PROGRAM = "11111111111111111111111111111111";
     const TRANSFER_DISCRIMINATOR = "02000000";
 
+    // C22 TOCTOU closure: bind the AMOUNT, not just program+discriminator+
+    // accounts. The transfer amount lives in `transferIx.data` (u64 LE lamports
+    // after the 0x02 discriminator). The previous projection omitted it, so an
+    // attacker who mutated the amount between verification and execution would
+    // pass the AuditBind check unchanged. Both sides must carry the same raw
+    // data bytes: the Rust content_hash includes instruction_data only when it
+    // is present (generate_audit_id), so we pass it to verification AND to the
+    // AuditBind projection together — changing only one side would make the
+    // check permanently abort.
+    const transferData = Array.from(transferIx.data);
     const verification = await this.verifyTransaction({
       programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
       accountAddresses: [this.walletPublicKey, destination], proposedIntent, instructions: [transferIx],
+      instructionData: transferData,
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
     if (!verification.approved) { console.log("[Graphite] Transfer BLOCKED."); return { executed: false, verification }; }
 
     AuditBind.verify({
-      transaction: { programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR, accountAddresses: [this.walletPublicKey, destination] },
+      transaction: {
+        programId: SYSTEM_PROGRAM,
+        instructionDiscriminator: TRANSFER_DISCRIMINATOR,
+        accountAddresses: [this.walletPublicKey, destination],
+        instructionData: transferData,
+      },
       contentHash: verification.content_hash ?? verification.audit_trail_id,
     });
 
