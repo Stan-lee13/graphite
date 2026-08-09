@@ -15,7 +15,7 @@
   "instructions": [
     {
       "name": "CreateMetadataAccountV3",
-      "discriminator": "0fd902b83e0f4ee4",
+      "discriminator": "21",
       "accounts": [
         {
           "name": "metadata",
@@ -68,7 +68,7 @@
     },
     {
       "name": "UpdateMetadataAccountV2",
-      "discriminator": "1ec413bd20e86291",
+      "discriminator": "0f",
       "accounts": [
         {
           "name": "metadata",
@@ -98,7 +98,7 @@
     },
     {
       "name": "SignMetadata",
-      "discriminator": "2eb5af436b292665",
+      "discriminator": "07",
       "accounts": [
         {
           "name": "metadata",
@@ -126,7 +126,7 @@
     },
     {
       "name": "VerifyCollection",
-      "discriminator": "941686a3459e71c9",
+      "discriminator": "12",
       "accounts": [
         {
           "name": "metadata",
@@ -161,7 +161,7 @@
     },
     {
       "name": "BurnNft",
-      "discriminator": "8fa1f495a95dbfae",
+      "discriminator": "1d",
       "accounts": [
         {
           "name": "metadata",
@@ -209,8 +209,8 @@
   "verification": {
     "program_id_verified_on_chain": true,
     "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07 + official mpl-token-metadata repo",
-    "discriminators_source": "live mainnet transaction instruction bytes observed 2026-08-07 (0fd902b83e0f4ee4 x5, 1ec413bd20e86291 x1); other values from official generated clients (shank hardcoded constants)",
-    "verified_at": "2026-08-07",
-    "notes": "Program ID confirmed executable on mainnet: metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s. The task-list ID metaqbxxUerdq28cj1RbyVSURYkx4j7p2nQELpNk6m is FABRICATED (invalid pubkey) — rejected per P11. MPL uses hardcoded shank discriminator constants (not anchor sighash); the two most-common discriminators were confirmed from live transactions."
+    "discriminators_source": "C24 re-verification (2026-08-09): program is Shank-derived, NOT Anchor — u8 discriminators from the enum order in mpl-token-metadata program/src/instruction/mod.rs",
+    "verified_at": "2026-08-09",
+    "notes": "CORRECTED 2026-08-09: the previous 8-byte values (0fd902b83e0f4ee4, 1ec413bd20e86291, ...) were NEVER observed on-chain — the old verification note claiming live observation was fabricated (same artifact class as C22.4/DCA). The deployed program (metaqbxx...) is Shank-derived with u8 instruction discriminators: on-chain census (base58-correct) observed data starting 0x21 (=33, CreateMetadataAccountV3) and 0x0f (=15, UpdateMetadataAccountV2). Per the Shank enum order: SignMetadata=7 (0x07), VerifyCollection=18 (0x12), BurnNft=29 (0x1d), CreateMetadataAccountV3=33 (0x21), UpdateMetadataAccountV2=15 (0x0f). Discriminators are 1-byte hex; find_instruction matches by prefix so real '21...' data resolves."
   }
 }

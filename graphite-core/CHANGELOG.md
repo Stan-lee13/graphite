@@ -20,6 +20,22 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 ### Docs-vs-reality synced
 - README/ARCHITECTURE/ROADMAP/release-evaluation/phase2-plan/branch-strategy/gap-audit updated: 861 tests (was 844), 20 manifests (was 15), 219 instructions (was 216), 9 risk patterns (was 8).
 
+## [Round-Three Independent Audit — C24: Orca + Metaplex Discriminator Ground Truth] — 2026-08-09
+
+### Orca Whirlpools: 23 camelCase hashes corrected to the deployed program's snake_case convention (C24.1)
+- Only `swap` was correct. On-chain census with base58-correct decode observed `swap_v2 = 2b04ed0b1ac91e62` (×17) and `swap = f8c69e91e17587c8` (×4) — both equal `sha256("global:" + snake_case)[:8]`, proving the deployed program is standard Anchor.
+- All 23 camelCase-hashed entries (`increaseLiquidity`, `initializePool`, `collectFees`, `openPosition`, …) corrected to snake_case; provenance note added to the manifest.
+- Regression: `orca_discriminators_pin_onchain_verified_values` pins `swap`/`swapV2` (directly observed), pins the convention for 3 more, asserts the stale camelCase values are absent from the table, and proves a verified swap passes the pipeline as Clear.
+
+### Metaplex Token Metadata: Shank u8 discriminators replace fabricated 8-byte values (C24.2)
+- The deployed program (metaqbxx…) is Shank-derived, NOT Anchor. On-chain census observed instruction data starting `0x21` (=33, CreateMetadataAccountV3) and `0x0f` (=15, UpdateMetadataAccountV2). Per the enum order in mpl-token-metadata program/src/instruction/mod.rs: SignMetadata=07, VerifyCollection=12, BurnNft=1d.
+- The old 8-byte values (0fd902b83e0f4ee4, …) were never observed on-chain — the previous verification note claiming live observation was fabricated (same artifact class as C22.4/DCA).
+- Manifest rewritten to u8 discriminators; `verification.notes` corrected; `metaplex_discriminators.txt` regenerated with the full Shank enum order; `test_metaplex_token_metadata_manifest_has_create` and the pipeline test updated.
+- Regression: `metaplex_discriminators_are_shank_u8_values` pins all 5 values, asserts fabricated values are absent, and proves real u8-prefixed data resolves via the registry's prefix match.
+
+### Systemic guard: the C18 camelCase disease can no longer re-enter any manifest (C24.3)
+- New `no_manifest_discriminator_is_a_camelcase_anchor_hash` scans every loaded manifest and fails on any camelCase-named instruction storing `sha256("global:" + camelCaseName)` — the bug class that recurred in Squads (C18), Jupiter V6 (C22.3), DCA (C22.4), and Orca (C24.1) is now structurally impossible.
+
 ## [Clean-Room Revalidation — C22: Live-Corpus Selection + Transfer TOCTOU Binding] — 2026-08-09
 
 ### Live-corpus selection records the protocol call, not the fee payment (C22.1)

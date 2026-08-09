@@ -151,7 +151,9 @@ fn wormhole_unknown_intent_is_fail_closed() {
 #[test]
 fn metaplex_create_metadata_runs_pipeline() {
     let core = GraphiteCore::new();
-    let input = base_input(METAPLEX, "0fd902b83e0f4ee4", "transfer");
+    // C24: Metaplex is Shank-derived — CreateMetadataAccountV3 = u8 33 = "21"
+    // (the previous 8-byte value was never observed on-chain).
+    let input = base_input(METAPLEX, "21", "transfer");
     let result = core.verify(&input).expect("verify should not fail");
     assert!(
         result.layers.iter().any(|l| l.layer.contains("L1")),
@@ -546,5 +548,160 @@ fn jupiter_dca_discriminators_pin_onchain_verified_values() {
             registry.find_instruction(JUPITER_DCA, fill).is_some(),
             "live fill discriminator {fill} must resolve (C22.4)"
         );
+    }
+}
+
+/// C24 — Orca Whirlpools discriminator re-verification (2026-08-09).
+///
+/// 23 of 24 Orca discriminators were sha256("global:" + camelCase) hashes (the
+/// C18 camelCase bug class) that never matched the deployed program. An on-chain
+/// census (base58-correct decode of getTransaction json) shows the deployed
+/// Orca Whirlpools program is standard Anchor: swap_v2 = 2b04ed0b1ac91e62
+/// (observed x17) and swap = f8c69e91e17587c8 (observed x4) both equal
+/// sha256("global:" + snake_case)[:8]. All entries now follow the confirmed
+/// convention; the two directly observed values are pinned here.
+#[test]
+fn orca_discriminators_pin_onchain_verified_values() {
+    let registry = load_seed_manifests();
+    let orca = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+    let m = registry
+        .get(orca)
+        .unwrap_or_else(|| panic!("orca manifest must load"));
+    let get = |name: &str| -> String {
+        m.instructions
+            .iter()
+            .find(|ix| ix.name == name)
+            .unwrap_or_else(|| panic!("{name} must exist"))
+            .discriminator
+            .clone()
+    };
+    // Directly observed on-chain.
+    assert_eq!(get("swap"), "f8c69e91e17587c8");
+    assert_eq!(get("swapV2"), "2b04ed0b1ac91e62");
+    // Represent the confirmed snake_case convention.
+    assert_eq!(get("increaseLiquidity"), "2e9cf3760dcdfbb2");
+    assert_eq!(get("collectFees"), "a498cf631eba13b6");
+    assert_eq!(get("openPosition"), "87802f4d0f98f031");
+    // The old camelCase-hashed values must NOT be stored in the manifest table
+    // (checked directly — find_instruction is prefix-based, so an 8-byte stale
+    // value could prefix-match a shorter real discriminator).
+    for stale in [
+        "07fd4e278db4d5f4", // increaseLiquidity (camelCase hash)
+        "5f4d179a1629512c", // initializePool
+        "72712de2b3ef6ae1", // swapV2
+        "b179ad7e886ca3f0", // decreaseLiquidity
+    ] {
+        assert!(
+            !m.instructions.iter().any(|ix| ix.discriminator == stale),
+            "camelCase hash {stale} must not be stored (C24)"
+        );
+    }
+    // A verified swap value passes the pipeline as a swap. Orca swap declares
+    // 11 accounts (variable_accounts=true), so pad the fixture accordingly.
+    let mut input = base_input(orca, "f8c69e91e17587c8", "swap");
+    // Pad to the declared 11-account minimum with valid base58 pubkeys.
+    for extra in [
+        "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU",
+        "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP",
+        "12TcEygMYKNaXhPL7pNM9pB8xVq5ynpqURG7rXXJ8ULy",
+        "Coxid3BVrSNeMjBNuR2h1JCXBUKvERNMpuDrBk6J1ksw",
+        "BfQo77gHmKxUmbMXbZ9avLJuNQXDtUQ7DAf53SZFATeZ",
+        "2dYfyhfoSoEApQL3iNqhHQso6waZjfH2rNtb9SiYS2FW",
+    ] {
+        input.account_addresses.push(extra.to_string());
+    }
+    let core = GraphiteCore::new();
+    let r = core.verify(&input).expect("verify must not fail");
+    assert_eq!(
+        r.risk_verdict.status, "Clear",
+        "known Orca swap with swap intent must pass risk: {:?}",
+        r.risk_verdict
+    );
+}
+
+/// C24 — Metaplex Token Metadata is Shank-derived, NOT Anchor (2026-08-09).
+///
+/// The previous 8-byte values (0fd902b83e0f4ee4, …) were never observed
+/// on-chain — the old verification note claiming live observation was the same
+/// fabricated-evidence class as C22.4/DCA. On-chain census (base58-correct)
+/// observed instruction data starting 0x21 (=33, CreateMetadataAccountV3) and
+/// 0x0f (=15, UpdateMetadataAccountV2). Per the Shank enum order in
+/// mpl-token-metadata program/src/instruction/mod.rs: SignMetadata=7,
+/// VerifyCollection=18, BurnNft=29. Discriminators are 1-byte hex; the
+/// registry matches by prefix, so real "21…" data resolves to "21".
+#[test]
+fn metaplex_discriminators_are_shank_u8_values() {
+    let registry = load_seed_manifests();
+    let m = registry
+        .get(METAPLEX)
+        .unwrap_or_else(|| panic!("metaplex manifest must load"));
+    let get = |name: &str| -> String {
+        m.instructions
+            .iter()
+            .find(|ix| ix.name == name)
+            .unwrap_or_else(|| panic!("{name} must exist"))
+            .discriminator
+            .clone()
+    };
+    // Shank u8 discriminators (enum order, 2 of 5 directly observed on-chain).
+    assert_eq!(get("CreateMetadataAccountV3"), "21"); // 33, observed 0x21
+    assert_eq!(get("UpdateMetadataAccountV2"), "0f"); // 15, observed 0x0f
+    assert_eq!(get("SignMetadata"), "07"); // 7
+    assert_eq!(get("VerifyCollection"), "12"); // 18
+    assert_eq!(get("BurnNft"), "1d"); // 29
+                                      // The old fabricated 8-byte values must NOT be stored in the manifest
+                                      // table (checked directly — find_instruction is prefix-based, so
+                                      // "0fd902b83e0f4ee4" legitimately prefix-matches the "0f" entry).
+    for stale in [
+        "0fd902b83e0f4ee4",
+        "1ec413bd20e86291",
+        "2eb5af436b292665",
+        "941686a3459e71c9",
+        "8fa1f495a95dbfae",
+    ] {
+        assert!(
+            !m.instructions.iter().any(|ix| ix.discriminator == stale),
+            "fabricated 8-byte discriminator {stale} must not be stored (C24)"
+        );
+    }
+    // Real instruction data (u8 discriminator prefix) resolves via prefix match.
+    assert!(registry
+        .find_instruction(METAPLEX, "2112000000575954")
+        .is_some());
+    assert!(registry
+        .find_instruction(METAPLEX, "0f00010000000000")
+        .is_some());
+}
+
+/// C24 — systemic guard: NO manifest may carry a camelCase-hashed discriminator.
+///
+/// The C18 disease (sha256("global:" + camelCaseName) stored for an instruction
+/// whose NAME is camelCase) recurred in Squads (C18), Jupiter V6 (C22.3), DCA
+/// (C22.4), and Orca (C24) because each fix was scoped to one manifest. This
+/// test scans every loaded manifest and fails on ANY camelCase-named
+/// instruction whose discriminator equals the camelCase hash — the bug class
+/// can no longer silently re-enter any manifest.
+#[test]
+fn no_manifest_discriminator_is_a_camelcase_anchor_hash() {
+    use sha2::{Digest, Sha256};
+
+    let registry = load_seed_manifests();
+    for manifest in registry.list() {
+        for ix in &manifest.instructions {
+            // Only camelCase names can carry the disease (snake_case names have
+            // identical camel/snake hashes). u8/u32-tagged programs use short
+            // discriminators that never equal a 16-char hash.
+            if ix.name == ix.name.to_lowercase() {
+                continue;
+            }
+            let camel_hash = hex::encode(&Sha256::digest(format!("global:{}", ix.name))[..8]);
+            assert_ne!(
+                ix.discriminator, camel_hash,
+                "C18 camelCase disease: {}:{} stores sha256(global:+camelCase)={} \
+                 — an Anchor program hashes the SNAKE_CASE name, so this never \
+                 matches the deployed program (C24 systemic guard)",
+                manifest.protocol.name, ix.name, camel_hash
+            );
+        }
     }
 }

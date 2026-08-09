@@ -1,35 +1,41 @@
-CreateMetadataAccount ed04200dabcde976
-UpdateMetadataAccount 47e0cc39af8f215e
-DeprecatedCreateMasterEdition ef8d53f0017431d4
-DeprecatedMintNewEditionFromMasterEditionViaPrintingToken 49d24ad96f1d6ae0
-UpdatePrimarySaleHappenedViaToken 3ff90e140d26a0a5
-DeprecatedSetReservationList 31a4e732fdcbcafa
-DeprecatedCreateReservationList 2c645119de86e932
-SignMetadata 2eb5af436b292665
-DeprecatedMintPrintingTokensViaToken fa4eae1257609e68
-DeprecatedMintPrintingTokens 520a9071f583c87f
-CreateMasterEdition 2e99544df4892c81
-ConvertMasterEditionV1ToV2 f8015273b775af61
-PuffMetadata f71d370be6fa603c
-CreateMetadataAccountV2 5c3fad48986c49b4
-VerifyCollection 941686a3459e71c9
-RevokeUseAuthority faa28b7f33d01ef6
-UnverifyCollection daf83af936ffef9f
-ApproveCollectionAuthority 8234e7474314d87b
-RevokeCollectionAuthority 1aee913420572401
-SetAndVerifyCollection b37aef71c3faaae5
-FreezeDelegatedAccount c4cc50fb8f8bea78
-ThawDelegatedAccount cf1236e46b5e963d
-RemoveCreatorVerification d475fb2799ff243c
-BurnNft 8fa1f495a95dbfae
-VerifySizedCollectionItem 757cf5a719bde635
-UnverifySizedCollectionItem 81abaf31b9a76e93
-SetAndVerifySizedCollectionItem 5714de557e0ab90c
-SetTokenStandard 501c90432de9a7fc
-BurnEditionNft c908394cdd90534a
-CreateEscrowAccount 42e1167ab3d29609
-CloseEscrowAccount bce4fb337d6ecee1
-Migrate 41aefeb377ab6ffe
-Collect 4e0167065d2ea46e
-Resize 1cf9da54974f89e8
-CloseAccounts 1ef32a15265c7d15
+# mpl-token-metadata (metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s) — Shank u8 discriminators.
+# CORRECTED 2026-08-09 (C24): the program is Shank-derived, NOT Anchor. Discriminators
+# are u8 values assigned by enum order in mpl-token-metadata program/src/instruction/mod.rs,
+# NOT sha256("global:"+name). The previous values in this file were camelCase Anchor-style
+# hashes that were never observed on-chain.
+#
+#   value  instruction (enum order)
+CreateMetadataAccount 00
+UpdateMetadataAccount 01
+DeprecatedCreateMasterEdition 02
+DeprecatedMintNewEditionFromMasterEditionViaPrintingToken 03
+UpdatePrimarySaleHappenedViaToken 04
+DeprecatedSetReservationList 05
+DeprecatedCreateReservationList 06
+SignMetadata 07
+DeprecatedMintPrintingTokensViaToken 08
+DeprecatedMintPrintingTokens 09
+CreateMasterEdition 0a
+MintNewEditionFromMasterEditionViaToken 0b
+ConvertMasterEditionV1ToV2 0c
+MintNewEditionFromMasterEditionViaVaultProxy 0d
+PuffMetadata 0e
+UpdateMetadataAccountV2 0f
+CreateMetadataAccountV2 10
+CreateMasterEditionV3 11
+VerifyCollection 12
+Utilize 13
+ApproveUseAuthority 14
+RevokeUseAuthority 15
+UnverifyCollection 16
+ApproveCollectionAuthority 17
+RevokeCollectionAuthority 18
+SetAndVerifyCollection 19
+FreezeDelegatedAccount 1a
+ThawDelegatedAccount 1b
+RemoveCreatorVerification 1c
+BurnNft 1d
+VerifySizedCollectionItem 1e
+UnverifySizedCollectionItem 1f
+SetAndVerifySizedCollectionItem 20
+CreateMetadataAccountV3 21

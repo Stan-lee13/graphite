@@ -664,8 +664,11 @@ mod tests {
             .iter()
             .find(|i| i.name == "CreateMetadataAccountV3")
             .expect("CreateMetadataAccountV3 should exist");
-        // Observed live on mainnet 2026-08-07 (shank hardcoded discriminator).
-        assert_eq!(create.discriminator, "0fd902b83e0f4ee4");
+        // C24 (2026-08-09): the deployed program is Shank-derived with u8
+        // discriminators — CreateMetadataAccountV3 = 33 = 0x21 (observed on-chain
+        // as the leading byte of real instruction data). The previous 8-byte
+        // value was never observed on-chain.
+        assert_eq!(create.discriminator, "21");
     }
 
     /// Pins every seed manifest's program_id to its on-chain-verified
