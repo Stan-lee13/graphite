@@ -97,7 +97,7 @@ fn pump_fun_swap_intent_mismatch_is_flagged() {
 #[test]
 fn jupiter_dca_close_intent_is_accepted() {
     let core = GraphiteCore::new();
-    let input = base_input(JUPITER_DCA, "131cb5dbd74f7e19", "close");
+    let input = base_input(JUPITER_DCA, "16072162a8b722f3", "close");
     let result = core.verify(&input).expect("verify should not fail");
     assert!(
         result.layers.iter().any(|l| l.layer.contains("L1")),
@@ -367,4 +367,184 @@ fn create_intent_with_undeclared_approve_instruction_still_blocks() {
         "approve with undeclared intent must block: {:?}",
         r.risk_verdict
     );
+}
+
+/// C22.3 — Jupiter V6 on-chain discriminator re-verification (2026-08-09).
+///
+/// Corrected methodology: instruction data in `getTransaction` JSON encoding is
+/// base58 (not base64). Under that decoding, route_v2 = bb64facc31c4af14 is
+/// CONFIRMED on-chain (pinned fixture sig 57TAjPZXt49F9rSVZNEu… slot
+/// 438012579, SUCCESS; live txs the same day). The real bug found was the
+/// C18 camelCase disease: 16 old-era entries carried
+/// sha256("global:" + camelCaseName) hashes that never matched the deployed
+/// program; they now carry the program's snake_case convention, with
+/// sharedAccountsRoute = c1209b3341d69c81, setTokenLedger = e455b9704e4f4d02,
+/// routeWithTokenLedger = 96564774a75d0e68 verified on-chain. These pins make
+/// the bug class fail loudly on recurrence.
+#[test]
+fn jupiter_discriminators_pin_onchain_verified_values() {
+    let registry = load_seed_manifests();
+    let jup = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+    let m = registry
+        .get(jup)
+        .unwrap_or_else(|| panic!("jupiter manifest must load"));
+    // route_v2: on-chain confirmed (fixture + live txs).
+    let route_v2 = m
+        .instructions
+        .iter()
+        .find(|ix| ix.name == "route_v2")
+        .expect("route_v2 must exist");
+    assert_eq!(route_v2.discriminator, "bb64facc31c4af14");
+    // Old-era entries whose snake_case values were verified on-chain.
+    for (name, want) in [
+        ("sharedAccountsRoute", "c1209b3341d69c81"),
+        ("setTokenLedger", "e455b9704e4f4d02"),
+        ("routeWithTokenLedger", "96564774a75d0e68"),
+    ] {
+        let ix = m
+            .instructions
+            .iter()
+            .find(|ix| ix.name == name)
+            .unwrap_or_else(|| panic!("{name} must exist"));
+        assert_eq!(ix.discriminator, want, "{name} (C22.3 on-chain verified)");
+    }
+    // The old camelCase-hashed values must NOT resolve to any active entry.
+    for (name, camel) in [
+        ("sharedAccountsRoute", "5703feb8e7573909"),
+        ("setTokenLedger", "a015bd07dd7f35e4"),
+        ("routeWithTokenLedger", "34650f14745e8de8"),
+    ] {
+        assert!(
+            registry.find_instruction(jup, camel).is_none(),
+            "camelCase hash of {name} must not resolve (C22.3)"
+        );
+    }
+    // A verified value resolves and passes the pipeline as a swap (route_v2 is
+    // variable-accounted, so the 5-account base input satisfies it).
+    let core = GraphiteCore::new();
+    let r = core
+        .verify(&base_input(jup, "bb64facc31c4af14", "swap"))
+        .expect("verify must not fail");
+    assert_eq!(
+        r.risk_verdict.status, "Clear",
+        "known Jupiter route with swap intent must pass risk: {:?}",
+        r.risk_verdict
+    );
+}
+
+/// The pinned real-mainnet Jupiter fixture's actual instruction discriminator
+/// (base58-decoded — the JSON RPC encoding is base58, not base64) must resolve
+/// in the manifest, i.e. corpus ingestion of a REAL Jupiter transaction hits
+/// the known-instruction path, not unknown-protocol mode.
+#[test]
+fn jupiter_pinned_fixture_discriminator_resolves_in_manifest() {
+    let raw = std::fs::read_to_string("tests/fixtures/real_mainnet_jup.json")
+        .expect("pinned jup fixture must exist");
+    let tx: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let msg = tx["transaction"]["message"].clone();
+    let keys: Vec<String> = msg["accountKeys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| {
+            k.as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| k["pubkey"].as_str().unwrap().to_string())
+        })
+        .collect();
+    let jup = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+    let mut fixture_disc = None;
+    for ix in msg["instructions"].as_array().unwrap() {
+        let pid_idx = ix["programIdIndex"].as_u64().unwrap() as usize;
+        if keys[pid_idx] == jup {
+            let data_b58 = ix["data"].as_str().unwrap_or("");
+            let bytes = graphite_core::solana_types::base58_decode(data_b58)
+                .expect("fixture instruction data must be base58");
+            fixture_disc = Some(hex::encode(&bytes[..bytes.len().min(8)]));
+        }
+    }
+    let disc = fixture_disc.expect("fixture must contain a Jupiter instruction");
+    assert_eq!(
+        disc, "bb64facc31c4af14",
+        "pinned fixture must carry route_v2 (C22.3 base58 decode)"
+    );
+    let registry = load_seed_manifests();
+    let resolved = registry.find_instruction(jup, &disc);
+    assert!(
+        resolved.is_some(),
+        "real fixture discriminator {disc} must resolve in the manifest"
+    );
+}
+
+/// C22.4 — Jupiter DCA discriminator re-verification (2026-08-09).
+///
+/// The previous DCA table (ee26b3c8…, 459dd6dd…, 131cb5db…, …) was never
+/// observed on-chain: it was produced by base64-decoding base58 instruction
+/// data (the same decode artifact class as the Jupiter V6 C22.3 finding). An
+/// on-chain census of real DCA txs (base58-correct decode) shows the deployed
+/// program is STANDARD ANCHOR: initiate_flash_fill = 8fcd03bfa2d7f531,
+/// fulfill_flash_fill = 7340e24e21d369a2, transfer = a334c8e78c0345ba all
+/// observed live; the rest follow sha256("global:" + snake_case)[:8]. The three
+/// fill-path instructions were previously MISSING entirely — dominant live DCA
+/// traffic (keeper fills) was falling to unknown-protocol mode. These pins make
+/// the corruption fail loudly on recurrence.
+#[test]
+fn jupiter_dca_discriminators_pin_onchain_verified_values() {
+    let registry = load_seed_manifests();
+    let m = registry
+        .get(JUPITER_DCA)
+        .unwrap_or_else(|| panic!("jupiter dca manifest must load"));
+    let get = |name: &str| -> String {
+        m.instructions
+            .iter()
+            .find(|ix| ix.name == name)
+            .unwrap_or_else(|| panic!("{name} must exist"))
+            .discriminator
+            .clone()
+    };
+    // Observed live on-chain (base58-correct decode of real fill txs).
+    assert_eq!(get("initiateFlashFill"), "8fcd03bfa2d7f531");
+    assert_eq!(get("fulfillFlashFill"), "7340e24e21d369a2");
+    assert_eq!(get("transfer"), "a334c8e78c0345ba");
+    // Snake_case Anchor convention for the rest (deployed program is standard
+    // Anchor; the old camelCase/corrupted values were never observed).
+    assert_eq!(get("openDca"), "2441b93601d264a3");
+    assert_eq!(get("openDcaV2"), "8e772b6da2340bb1");
+    assert_eq!(get("closeDca"), "16072162a8b722f3");
+    assert_eq!(get("deposit"), "f223c68952e1f2b6");
+    assert_eq!(get("withdraw"), "b712469c946da122");
+    assert_eq!(get("withdrawFees"), "c6d4ab6d90d7ae59");
+    assert_eq!(get("endAndClose"), "537da645f7fc6785");
+    // The OLD corrupted values must NOT resolve to any active entry.
+    for stale in [
+        "ee26b3c80e7dc30b",
+        "459dd6ddd29d32ea",
+        "131cb5dbd74f7e19",
+        "478de837bcb934f6",
+        "1444d06d0075b0ab",
+        "2a54d7277fa6589b",
+        "f4eba28483c2ce7d",
+    ] {
+        assert!(
+            registry.find_instruction(JUPITER_DCA, stale).is_none(),
+            "stale discriminator {stale} must not resolve (C22.4)"
+        );
+    }
+    // A corrected value resolves and passes the pipeline as a close.
+    let core = GraphiteCore::new();
+    let r = core
+        .verify(&base_input(JUPITER_DCA, "16072162a8b722f3", "close"))
+        .expect("verify must not fail");
+    assert_ne!(
+        r.risk_verdict.status, "Blocked",
+        "known DCA close must not hard-block: {:?}",
+        r.risk_verdict
+    );
+    // The dominant live traffic (keeper fills) now resolves as known protocol.
+    for fill in ["8fcd03bfa2d7f531", "7340e24e21d369a2", "a334c8e78c0345ba"] {
+        assert!(
+            registry.find_instruction(JUPITER_DCA, fill).is_some(),
+            "live fill discriminator {fill} must resolve (C22.4)"
+        );
+    }
 }

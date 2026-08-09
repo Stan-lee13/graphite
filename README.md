@@ -7,10 +7,10 @@
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-844_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-861_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
-[![Protocols](https://img.shields.io/badge/Protocol_Manifests-15-blue?style=flat-square)](graphite-core/protocols/)
-[![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-8-red?style=flat-square)](graphite-core/src/risk_engine.rs)
+[![Protocols](https://img.shields.io/badge/Protocol_Manifests-20-blue?style=flat-square)](graphite-core/protocols/)
+[![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-9-red?style=flat-square)](graphite-core/src/risk_engine.rs)
 [![Version](https://img.shields.io/badge/Version-v0.1.1--alpha-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
 
 </div>
@@ -61,12 +61,12 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 844 tests — zero setup
+# Run 861 tests — zero setup
 cargo test --release
 
 # Output:
-# running 844 tests
-# test result: ok. 844 passed; 0 failed; 2 ignored
+# running 861 tests
+# test result: ok. 861 passed; 0 failed; 3 ignored
 
 # Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
@@ -161,8 +161,8 @@ graphite/
 │   │   │                          VerificationEventLogger (analytics)
 │   │   ├── benchmark.rs         ← P16-compliant benchmark suite
 │   │   └── cli.rs               ← CLI (clap)
-│   ├── protocols/               ← 15 JSON protocol manifests
-│   └── tests/                   ← 844 tests (unit + adversarial + exploit)
+│   ├── protocols/               ← 20 JSON protocol manifests
+│   └── tests/                   ← 861 tests (unit + adversarial + exploit)
 │
 ├── dashboard/                   ← React + TS dashboard (5 views, polls /api/*)
 │

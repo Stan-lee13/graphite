@@ -15,7 +15,7 @@ import urllib.request
 
 RPC = "https://api.mainnet-beta.solana.com"
 DCA = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
-OPEN_DCA = "ee26b3c80e7dc30b"  # openDca discriminator from the manifest
+OPEN_DCA = "2441b93601d264a3"  # openDca discriminator from the manifest (C22.4: corrected to Anchor snake_case hash)
 
 
 def rpc(method, params):

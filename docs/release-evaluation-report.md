@@ -19,7 +19,7 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 - **16 scored benchmark cases** (safe + malicious) + 2 baseline comparisons, **100% precision, 100% recall**
 - **~850μs average latency** (release build, all features, live-measured 2026-08-07)
 - **0 clippy warnings**, fmt clean, no-default-features builds
-- **15 protocol manifests** (11 Phase 1 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata), all program IDs verified from official sources (confirmed executable on mainnet 2026-08-07)
+- **20 protocol manifests** (16 base + Tier-0: ATA, Compute Budget, BPF Loader classic + Upgradeable), all program IDs verified from official sources (confirmed executable on mainnet)
 - **SAK integration verified on Solana devnet** — 5 finalized transactions (Aug 7, 2026)
 
 ---
@@ -135,7 +135,7 @@ The adversarial/exploit test suites cover 9 attack categories:
 
 ## 4. Protocol Coverage
 
-15 protocol manifests (11 Phase 1 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata), all program IDs verified from official sources:
+20 protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loader classic + Upgradeable), all program IDs verified from official sources:
 
 | Protocol | Program ID | Source |
 |---|---|---|

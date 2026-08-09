@@ -312,7 +312,7 @@ this milestone's gates meaningful:
 - **Design hardening:** the graph-evidence readout binds each `graph()` guard to
   a temporary — an inline struct-literal readout deadlocked on the non-reentrant
   std Mutex (caught by the aggressive test cycle).
-- **Verification:** 844 tests / 0 failures,
+- **Verification:** 861 tests / 0 failures,
   clippy 0 warnings, fmt clean, all CI feature gates pass, live CLI smoke tests.
 
 ---

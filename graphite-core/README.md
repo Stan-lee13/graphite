@@ -45,7 +45,7 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-15 JSON manifests in `protocols/` (11 Phase 1 seed + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — all confirmed executable on mainnet 2026-08-07). Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets.
+20 JSON manifests in `protocols/` (16 base + Tier-0: ATA, Compute Budget, BPF Loader classic + Upgradeable — all confirmed executable on mainnet). Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets.
 
 All program IDs verified against official on-chain sources (pinned by `test_all_seed_manifest_program_ids_are_canonical`). See `CONTRIBUTING.md` for how to add a new manifest.
 

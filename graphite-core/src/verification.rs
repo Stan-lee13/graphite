@@ -2433,7 +2433,7 @@ mod tests {
             },
             program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
             protocol_version: "1.0.0".to_string(),
-            instruction_discriminator: "bb64facc31c4af14".to_string(), // route_v2
+            instruction_discriminator: "bb64facc31c4af14".to_string(), // route_v2 (C22.3: on-chain confirmed)
             account_addresses: accounts,
             instruction_data: None,
             cpi_targets: vec![],

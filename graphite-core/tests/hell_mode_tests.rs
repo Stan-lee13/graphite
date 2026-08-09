@@ -1216,7 +1216,7 @@ fn h25_dca_token_cpi_from_trusted_root_is_allowed() {
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
         &["debits accounts.escrow", "credits accounts.user"],
         &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
-        "131cb5dbd74f7e19",
+        "16072162a8b722f3",
     );
     let result = assess(&input).unwrap();
     assert_eq!(

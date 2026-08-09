@@ -4,7 +4,7 @@
 
 - [x] Core verification engine (Rust)
 - [x] 8-layer pipeline (L1-L7 active, L3/L8 Phase 2)
-- [x] 15 seed protocol manifests (11 Phase 1 + Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata added Phase 2 Month 1)
+- [x] 20 seed protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loader classic + Upgradeable)
 - [x] Risk engine: 8 attack pattern detectors
 - [x] Confidence engine with 0.55 cap on unknown protocols (P6/P12)
 - [x] Policy engine: 4 wallet profiles (Treasury, TradingBot, Gaming, Enterprise)

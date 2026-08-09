@@ -15,7 +15,7 @@
   "instructions": [
     {
       "name": "openDca",
-      "discriminator": "ee26b3c80e7dc30b",
+      "discriminator": "2441b93601d264a3",
       "accounts": [
         {
           "name": "user",
@@ -69,7 +69,7 @@
     },
     {
       "name": "openDcaV2",
-      "discriminator": "459dd6ddd29d32ea",
+      "discriminator": "8e772b6da2340bb1",
       "accounts": [
         {
           "name": "user",
@@ -108,7 +108,7 @@
     },
     {
       "name": "closeDca",
-      "discriminator": "131cb5dbd74f7e19",
+      "discriminator": "16072162a8b722f3",
       "accounts": [
         {
           "name": "user",
@@ -140,7 +140,7 @@
     },
     {
       "name": "deposit",
-      "discriminator": "478de837bcb934f6",
+      "discriminator": "f223c68952e1f2b6",
       "accounts": [
         {
           "name": "user",
@@ -178,7 +178,7 @@
     },
     {
       "name": "withdraw",
-      "discriminator": "1444d06d0075b0ab",
+      "discriminator": "b712469c946da122",
       "accounts": [
         {
           "name": "user",
@@ -216,7 +216,7 @@
     },
     {
       "name": "endAndClose",
-      "discriminator": "2a54d7277fa6589b",
+      "discriminator": "537da645f7fc6785",
       "accounts": [
         {
           "name": "user",
@@ -248,7 +248,7 @@
     },
     {
       "name": "withdrawFees",
-      "discriminator": "f4eba28483c2ce7d",
+      "discriminator": "c6d4ab6d90d7ae59",
       "accounts": [
         {
           "name": "admin",
@@ -275,14 +275,155 @@
         "admin-only instruction",
         "RISK: unexpected fee withdrawal — flag PermissionEscalation"
       ]
+    },
+    {
+      "name": "initiateFlashFill",
+      "discriminator": "8fcd03bfa2d7f531",
+      "accounts": [
+        {
+          "name": "keeper",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "in_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "keeper_in_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "keeper flash-borrows the DCA input position from in_ata to keeper_in_ata",
+        "records the borrow so fulfill_flash_fill must repay it"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "keeper-initiated flash fill must be repaid by a matching fulfill_flash_fill",
+        "RISK: borrowed input tokens must return to the DCA in_ata — if the repayment path is missing or diverted, flag FlashLoanAbuse"
+      ]
+    },
+    {
+      "name": "fulfillFlashFill",
+      "discriminator": "7340e24e21d369a2",
+      "accounts": [
+        {
+          "name": "keeper",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "in_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "out_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "repays the flash loan into the DCA in_ata",
+        "executes the scheduled swap and credits output to the DCA out_ata"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "repay amount must equal the recorded borrow (keeper must not short-change the DCA)",
+        "RISK: swap output must land in the DCA out_ata — if diverted to the keeper or a third party, flag CompositionalDrain"
+      ]
+    },
+    {
+      "name": "transfer",
+      "discriminator": "a334c8e78c0345ba",
+      "accounts": [
+        {
+          "name": "keeper",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "dca_out_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_out_ata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "keeper moves the DCA output from dca_out_ata to the owner's user_out_ata"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "transfer recipient must be the DCA owner's user_out_ata",
+        "RISK: if the output is diverted from the owner, flag CompositionalDrain"
+      ]
     }
   ],
   "trust_tier": "OfficialManifest",
   "verification": {
     "program_id_verified_on_chain": true,
     "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07",
-    "discriminators_source": "live mainnet transaction instruction bytes (observed via getTransaction, json encoding, 2026-08-07)",
-    "verified_at": "2026-08-07",
-    "notes": "Program ID confirmed executable on mainnet. Discriminators observed from live transactions: 459dd6ddd29d32ea (len16, 8 metas), 131cb5dbd74f7e19 (len8), ee26b3c80e7dc30b (len206), 478de837bcb934f6 (len8), 1444d06d0075b0ab (len16). The deployed program uses explicit discriminators that differ from the archived dca-cpi v1 IDL sighashes; names are mapped from the official instruction surface with payload-size evidence. openDca (len 206) carries the full schedule config."
+    "discriminators_source": "C22.4 re-verification (2026-08-09): deployed program confirmed standard Anchor (sha256(\"global:\"+snake_case)[:8])",
+    "verified_at": "2026-08-09",
+    "notes": "CORRECTED 2026-08-09: the previous discriminator table (ee26b3c8..., 459dd6dd..., etc.) was never observed on-chain — it was produced by base64-decoding base58 instruction data (the same decode artifact class as the Jupiter V6 C22.3 finding) and does not match the deployed program. On-chain census of real DCA txs (base58-correct decode) shows the deployed program is STANDARD ANCHOR: initiate_flash_fill=8fcd03bfa2d7f531, fulfill_flash_fill=7340e24e21d369a2, transfer=a334c8e78c0345ba all observed live; the remaining instructions follow the same snake_case convention (open_dca=2441b93601d264a3, open_dca_v2=8e772b6da2340bb1, close_dca=16072162a8b722f3, withdraw=b712469c946da122, deposit=f223c68952e1f2b6, withdraw_fees=c6d4ab6d90d7ae59, end_and_close=537da645f7fc6785). The three fill-path instructions (initiateFlashFill, fulfillFlashFill, transfer) were previously MISSING entirely — the dominant live DCA traffic (keeper fills) was falling to unknown-protocol mode; they are now declared."
   }
 }

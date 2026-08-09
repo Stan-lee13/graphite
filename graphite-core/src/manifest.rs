@@ -851,7 +851,11 @@ mod tests {
         // known discriminator must NOT match (previously accepted with >= 4
         // chars — the discriminator-impersonation bypass).
         let registry = load_seed_manifests();
-        // Jupiter route_v2's real discriminator is "bb64facc31c4af14".
+        // Jupiter route_v2's discriminator (C22.3): bb64facc31c4af14, CONFIRMED
+        // on-chain (base58-decoded live mainnet txs 2026-08-09 + pinned fixture
+        // sig 57TAjPZXt… slot 438012579). The camelCase-hashed old-era values
+        // (e.g. sharedAccountsRoute=5703feb8e7573909) were corrected to the
+        // program's snake_case convention.
         let jup = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
         assert!(
             registry.find_instruction(jup, "bb64facc31c4af14").is_some(),
@@ -936,5 +940,16 @@ mod test_v2_discriminators {
             "bb64facc31c4af14",
         );
         assert!(f.is_some(), "find_instruction should match route_v2 disc");
+        // The OLD camelCase hash (C18 disease) must not resolve to ANY active
+        // entry: sharedAccountsRoute was 5703feb8e7573909 (sha256 of
+        // "global:sharedAccountsRoute") and never matched the deployed program.
+        let camel = registry.find_instruction(
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            "5703feb8e7573909",
+        );
+        assert!(
+            camel.is_none(),
+            "camelCase-hashed discriminator must not resolve to any active entry (C22.3)"
+        );
     }
 }

@@ -69,4 +69,4 @@ Every feature merge to phase2-development must pass:
 - TypeScript SDK (`tsc --noEmit`)
 - Python AI Layer (`pytest`)
 - Benchmark (`cargo run --release --bin graphite benchmark`)
-- No regressions in existing 844 tests
+- No regressions in existing 861 tests

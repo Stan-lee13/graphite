@@ -3,6 +3,23 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round-Two Sub-Agent Verification — C23: Manifest Discriminator Ground Truth] — 2026-08-09
+
+### Jupiter V6: 16 legacy camelCase hashes corrected to the deployed program's snake_case convention (C23.1)
+- `route` (`e517cb977ae3ad2a`) and `route_v2` (`bb64facc31c4af14`) are CONFIRMED on-chain (C19/C21 claim stood; an early base64-vs-base58 decode artifact was caught and reverted before any claim was made).
+- 16 old-era entries (`sharedAccountsRoute`, `setTokenLedger`, `routeWithTokenLedger`, all account-compression/check variants) carried `sha256("global:"+camelCase)` hashes that never match the deployed program — the C18 bug class. Corrected to snake_case; `sharedAccountsRoute=c1209b3341d69c81`, `setTokenLedger=e455b9704e4f4d02`, `routeWithTokenLedger=96564774a75d0e68` verified on-chain, the rest follow the program's confirmed convention.
+- Manifest `note` documents the correction methodology and the internal `e445a52e51cb9a1d` route (1-account CPI under `shared_accounts_route_v2`) as non-top-level provenance.
+- Regression: `jupiter_discriminators_pin_onchain_verified_values` pins verified values AND asserts the old camelCase hashes must NOT resolve; `jupiter_pinned_fixture_discriminator_resolves_in_manifest` asserts the pinned fixture carries `bb64facc31c4af14` under base58 decode.
+
+### Jupiter DCA: corrupted discriminator table replaced + live fill path declared (C23.2)
+- The previous 7-value table was never observed on-chain (stale/contaminated values; `verification.notes` falsely claimed live observation). On-chain census with base58-correct decode shows the deployed program is STANDARD ANCHOR: `initiate_flash_fill=8fcd03bfa2d7f531`, `fulfill_flash_fill=7340e24e21d369a2`, `transfer=a334c8e78c0345ba` observed live; remaining instructions follow `sha256("global:"+snake_case)[:8]`.
+- The 3 fill-path instructions were MISSING entirely — the dominant real DCA traffic (keeper fills) was falling to unknown-protocol mode (0.55 ceiling). Added with accounts, expected state changes, and risk rules (flash-loan repayment must match borrow; diverted swap output = compositional drain; transfer recipient must be the owner's ATA).
+- All 7 stale discriminators updated to confirmed values; `verification.notes` corrected; `probe_dca_pda.py` and tests referencing the stale `131cb5dbd74f7e19` updated to `16072162a8b722f3`.
+- Regression: `jupiter_dca_discriminators_pin_onchain_verified_values` pins all 10 values, asserts the 7 stale values must NOT resolve, and verifies the fill path resolves as known protocol.
+
+### Docs-vs-reality synced
+- README/ARCHITECTURE/ROADMAP/release-evaluation/phase2-plan/branch-strategy/gap-audit updated: 861 tests (was 844), 20 manifests (was 15), 219 instructions (was 216), 9 risk patterns (was 8).
+
 ## [Clean-Room Revalidation — C22: Live-Corpus Selection + Transfer TOCTOU Binding] — 2026-08-09
 
 ### Live-corpus selection records the protocol call, not the fee payment (C22.1)

@@ -4,7 +4,8 @@
     "name": "Jupiter V6 Aggregator",
     "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
     "website": "https://jup.ag",
-    "github": "https://github.com/jup-ag/jupiter-v6"
+    "github": "https://github.com/jup-ag/jupiter-v6",
+    "note": "C22.3 on-chain re-verification (2026-08-09, corrected methodology): all 27 discriminators were re-derived AND spot-verified against live mainnet transactions (base58-decoded instruction data from getTransaction encoding=json). Findings: (1) route=e517cb977ae3ad2a and route_v2=bb64facc31c4af14 are CONFIRMED on-chain (legacy route and the current standard route both live). (2) The 16 old-era camelCase-named entries carried sha256(\"global:\"+camelCase) hashes \u2014 the C18 camelCase bug class \u2014 and never matched the deployed program; all were corrected to sha256(\"global:\"+snake_case), with sharedAccountsRoute=c1209b3341d69c81, setTokenLedger=e455b9704e4f4d02, routeWithTokenLedger=96564774a75d0e68 verified on-chain and the rest following the program's confirmed snake_case convention. (3) e445a52e51cb9a1d is the program's INTERNAL route (1-account CPI payload with a route plan), observed under shared_accounts_route_v2 (d19853937cfed8e9, confirmed); it is not a top-level entry point and is documented here for provenance. Pinned fixture: sig 57TAjPZXt49F9rSVZNEuyTPGHDJEHEgFbDkEzTXXjVh71cxZa75FFch5XJzpW88z1ZqHko6Fn7BMj2LLzWNiHcd9 (slot 438012579, SUCCESS) carries route_v2=bb64facc31c4af14."
   },
   "version": {
     "label": "6.0.0",
@@ -71,7 +72,7 @@
     },
     {
       "name": "sharedAccountsRoute",
-      "discriminator": "5703feb8e7573909",
+      "discriminator": "c1209b3341d69c81",
       "accounts": [
         {
           "name": "token_program",
@@ -171,7 +172,7 @@
     },
     {
       "name": "exactOutRoute",
-      "discriminator": "7e2c8ea1d9a65bc6",
+      "discriminator": "d033ef977b2bed5c",
       "accounts": [
         {
           "name": "user_authority",
@@ -202,7 +203,7 @@
     },
     {
       "name": "sharedAccountsExactOutRoute",
-      "discriminator": "41d8fa8dac726b69",
+      "discriminator": "b0d169a89a7d453e",
       "accounts": [
         {
           "name": "user_authority",
@@ -233,7 +234,7 @@
     },
     {
       "name": "accountCompressionRoute",
-      "discriminator": "84672628374d0fc3",
+      "discriminator": "f7f2b98c0dbbe4de",
       "accounts": [
         {
           "name": "user_authority",
@@ -264,7 +265,7 @@
     },
     {
       "name": "sharedAccountsAccountCompressionRoute",
-      "discriminator": "97539e0fe6e6d2c6",
+      "discriminator": "9e3abec4751725cb",
       "accounts": [
         {
           "name": "user_authority",
@@ -295,7 +296,7 @@
     },
     {
       "name": "exactOutAccountCompressionRoute",
-      "discriminator": "ddc8224e801cd613",
+      "discriminator": "89e4fceca2814b80",
       "accounts": [
         {
           "name": "user_authority",
@@ -326,7 +327,7 @@
     },
     {
       "name": "sharedAccountsExactOutAccountCompressionRoute",
-      "discriminator": "fbb6a9eaff878a6f",
+      "discriminator": "e5a9985c25bf13c6",
       "accounts": [
         {
           "name": "user_authority",
@@ -357,7 +358,7 @@
     },
     {
       "name": "routeCheck",
-      "discriminator": "0227608f568c789f",
+      "discriminator": "6d1f67e9df5fad2a",
       "accounts": [
         {
           "name": "user_authority",
@@ -388,7 +389,7 @@
     },
     {
       "name": "sharedAccountsRouteCheck",
-      "discriminator": "aec772eeec0443ce",
+      "discriminator": "3f03a1891f36162e",
       "accounts": [
         {
           "name": "user_authority",
@@ -419,7 +420,7 @@
     },
     {
       "name": "exactOutRouteCheck",
-      "discriminator": "0898cbf31ef08800",
+      "discriminator": "ad226402f63ee60f",
       "accounts": [
         {
           "name": "user_authority",
@@ -450,7 +451,7 @@
     },
     {
       "name": "sharedAccountsExactOutRouteCheck",
-      "discriminator": "8b7ce6d17475d035",
+      "discriminator": "dba89ef8801136ee",
       "accounts": [
         {
           "name": "user_authority",
@@ -481,7 +482,7 @@
     },
     {
       "name": "accountCompressionRouteCheck",
-      "discriminator": "bd186137182802a0",
+      "discriminator": "a5fb304cc8ee6568",
       "accounts": [
         {
           "name": "user_authority",
@@ -512,7 +513,7 @@
     },
     {
       "name": "sharedAccountsAccountCompressionRouteCheck",
-      "discriminator": "e69ffab167933535",
+      "discriminator": "94f00fdb38ef7eb0",
       "accounts": [
         {
           "name": "user_authority",
@@ -543,7 +544,7 @@
     },
     {
       "name": "exactOutAccountCompressionRouteCheck",
-      "discriminator": "2deccb6919af86ba",
+      "discriminator": "945e8680ebfbe57d",
       "accounts": [
         {
           "name": "user_authority",
@@ -574,7 +575,7 @@
     },
     {
       "name": "sharedAccountsExactOutAccountCompressionRouteCheck",
-      "discriminator": "8e3f75c1af50469d",
+      "discriminator": "c8b81e3d70cf01f3",
       "accounts": [
         {
           "name": "user_authority",
@@ -605,7 +606,7 @@
     },
     {
       "name": "setTokenLedger",
-      "discriminator": "a015bd07dd7f35e4",
+      "discriminator": "e455b9704e4f4d02",
       "accounts": [
         {
           "name": "user_authority",
@@ -635,7 +636,7 @@
     },
     {
       "name": "claimToken",
-      "discriminator": "ae0b59ad2b621e50",
+      "discriminator": "74ce1bbfa6130049",
       "accounts": [
         {
           "name": "user_authority",
@@ -665,7 +666,7 @@
     },
     {
       "name": "closeTokenLedger",
-      "discriminator": "d8439681655cef45",
+      "discriminator": "f262cf8dd4cdc779",
       "accounts": [
         {
           "name": "user_authority",
@@ -1071,7 +1072,7 @@
     },
     {
       "name": "routeWithTokenLedger",
-      "discriminator": "34650f14745e8de8",
+      "discriminator": "96564774a75d0e68",
       "accounts": [
         {
           "name": "token_program",
@@ -1128,7 +1129,7 @@
     },
     {
       "name": "sharedAccountsRouteWithTokenLedger",
-      "discriminator": "b4476e37d9cc1af6",
+      "discriminator": "e6798f50779f6aaa",
       "accounts": [
         {
           "name": "token_program",

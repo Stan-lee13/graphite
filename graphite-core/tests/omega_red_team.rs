@@ -526,7 +526,7 @@ fn dx2_dca_repeated_cpi_drain_still_blocked() {
         cpi_targets: vec!["evil_drainer_program".to_string(); 4],
         expected_state_changes: vec!["debits accounts.escrow".to_string()],
         allowed_cpis: vec![SPL_TOKEN.to_string()],
-        instruction_discriminator: "131cb5dbd74f7e19".to_string(),
+        instruction_discriminator: "16072162a8b722f3".to_string(),
         expected_account_count: None,
         proposed_intent_type: "close".to_string(),
         variable_accounts: false,
@@ -550,7 +550,7 @@ fn dx2_dca_repeated_cpi_drain_still_blocked() {
 fn dx3_pumpfun_and_dca_token_cpi_from_trusted_root_is_allowed() {
     for (program, disc, intent) in [
         (PUMP_FUN, "66063d1201daebea", "swap"),
-        (JUPITER_DCA, "131cb5dbd74f7e19", "close"),
+        (JUPITER_DCA, "16072162a8b722f3", "close"),
     ] {
         let input = RiskAssessmentInput {
             program_id: program.to_string(),
