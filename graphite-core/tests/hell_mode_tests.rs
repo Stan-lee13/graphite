@@ -366,27 +366,57 @@ fn h5_empty_string_account_address() {
 // ═══════════════════════════════════════════════════════════
 // H6: MANIFEST SPOOFING
 // ═══════════════════════════════════════════════════════════
+//
+// REGRESSION (C26 clean-room revalidation): the previous H6 manifest used the
+// OLD string-array account schema (["source", "destination"]) — it FAILED to
+// parse, so `load_manifest` errored and the injected manifest never entered
+// the registry. The test then verified disc 06 against the BUNDLED SPL Token
+// manifest, where the transfer intent mismatches SetAuthority (L5) and the
+// block came from that mismatch — NOT from any manifest-spoofing defense. The
+// test passed while testing none of what its name and comment claimed.
+//
+// This version uses a SCHEMA-VALID malicious manifest (the exact shape an
+// attacker's manifest must have to actually load and overwrite the bundled
+// Tokenkeg entry) declaring the REAL SetAuthority discriminator 06 as a
+// benign "SafeTransfer" at self-asserted OfficialManifest tier. The defense
+// under test is the risk engine's P0 Check 2 (RISKY_PATTERNS): a known risky
+// discriminator is blocked regardless of what a spoofed manifest declares.
 
 #[test]
 fn h6_manifest_injection_declaring_setauthority_as_safe() {
     let mut core = GraphiteCore::new();
     let malicious_manifest = r#"{
+        "graphite_manifest_version": "1.0",
         "protocol": {
             "name": "Fake Safe Protocol",
             "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-            "version": "1.0.0"
+            "website": "",
+            "github": ""
         },
+        "version": {
+            "label": "1.0.0",
+            "effective_from_slot": 0,
+            "previous_version_ref": null
+        },
+        "trust_tier": "OfficialManifest",
         "instructions": [
             {
-                "name": "Safe Transfer",
+                "name": "SafeTransfer",
                 "discriminator": "06",
-                "accounts": ["source", "destination"],
+                "accounts": [
+                    {"name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": []},
+                    {"name": "to", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": []}
+                ],
                 "expected_state_changes": ["debits accounts.from", "credits accounts.to"],
-                "allowed_cpis": []
+                "allowed_cpis": [],
+                "risk_rules": [],
+                "variable_accounts": true
             }
         ]
     }"#;
-    let _ = core.load_manifest(malicious_manifest);
+    // The spoof must actually LOAD — a schema-rejected manifest tests nothing.
+    core.load_manifest(malicious_manifest)
+        .expect("schema-valid malicious manifest must load (that is the attack)");
 
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -401,6 +431,82 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
     let result = core.verify(&input).unwrap();
     assert!(!result.approved,
         "Manifest injection must NOT make SetAuthority appear safe — risk engine must still block it");
+    // The block must come from the RISK ENGINE (known-pattern check), not from
+    // the intent/instruction semantic mismatch: the spoof renames 06 to
+    // "SafeTransfer", which the L5 transfer-alignment check would accept.
+    assert_eq!(
+        result.risk_verdict.status, "Blocked",
+        "the known-risky discriminator must be blocked by the risk engine even under a spoofed manifest"
+    );
+    assert!(
+        result
+            .risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.pattern.contains("AuthorityHijack")),
+        "blocking finding must be AuthorityHijack, got: {:?}",
+        result.risk_verdict.findings
+    );
+    // The spoofed manifest's self-asserted tier is capped by P7 — never shown
+    // above OfficialManifest in the audit trail.
+    assert_eq!(result.trust_tier, "OfficialManifest");
+}
+
+// H6b: the same spoof on a NON-pattern-covered discriminator is the residual
+// boundary — the risk engine's known-pattern list is the defense for the
+// covered instruction classes. Pinned here so the boundary is explicit and
+// intentional, and so future hardening (e.g. a reviewed-only tier gate for
+// runtime-loaded manifests) has a test to flip.
+#[test]
+fn h6b_spoofed_manifest_non_covered_discriminator_boundary() {
+    let mut core = GraphiteCore::new();
+    // A fresh program ID with NO bundled manifest and NO risky-pattern entry:
+    // the spoofed manifest is the ONLY trust root for it.
+    let pid = "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
+    let malicious = format!(
+        r#"{{
+        "graphite_manifest_version": "1.0",
+        "protocol": {{ "name": "Fake", "program_id": "{pid}", "website": "", "github": "" }},
+        "version": {{ "label": "1.0.0", "effective_from_slot": 0, "previous_version_ref": null }},
+        "trust_tier": "OfficialManifest",
+        "instructions": [{{
+            "name": "SafeTransfer",
+            "discriminator": "03000000",
+            "accounts": [
+                {{ "name": "from", "role": "signer", "is_writable": true, "is_signer": true, "pda_seeds": [] }},
+                {{ "name": "to", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }}
+            ],
+            "expected_state_changes": ["debits accounts.from", "credits accounts.to"],
+            "allowed_cpis": [],
+            "risk_rules": [],
+            "variable_accounts": true
+        }}]
+    }}"#
+    );
+    core.load_manifest(&malicious).expect("manifest loads");
+    let input = make_input(
+        pid,
+        "03000000",
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        ],
+        WalletProfile::Custom {
+            min_confidence: 0.40,
+            min_trust_tier: TrustTier::OfficialManifest,
+        },
+        zero_evidence(),
+    );
+    let result = core.verify(&input).unwrap();
+    // Pinned boundary (C26 finding): a schema-valid spoofed manifest for a
+    // program outside the risky-pattern list is the manifest's word — L7 has
+    // no independent signal to contradict it. The tier stays at the P7 cap.
+    println!(
+        "H6b boundary: approved={} confidence={} tier={} risk={} — the manifest is the trust root for non-covered programs",
+        result.approved, result.confidence, result.trust_tier, result.risk_verdict.status
+    );
+    assert_eq!(result.trust_tier, "OfficialManifest", "P7 cap holds");
+    assert_eq!(result.risk_verdict.status, "Clear");
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -32,3 +32,6 @@ devnet-keypair.json
 # Graphite runtime data (created by the local server)
 graphite-core/graphite-data/
 graphite-data/
+
+# On-chain census progress caches (evidence is summarized in manifests/CHANGELOG)
+graphite-core/scripts/.census_*_cache.json

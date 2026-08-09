@@ -5,14 +5,3683 @@
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "website": "https://www.orca.so",
     "github": "https://github.com/orca-so/whirlpools",
-    "note": "C24 on-chain re-verification (2026-08-09): 23 of 24 discriminators were sha256(\"global:\"+camelCase) hashes (the C18 camelCase bug class) and never matched the deployed program. Deployed Orca Whirlpools is a standard Anchor program: on-chain census (base58-correct decode of getTransaction json) observed swap_v2=2b04ed0b1ac91e62 and swap=f8c69e91e17587c8 — both equal sha256(\"global:\"+snake_case)[:8]. All entries corrected to the program's snake_case convention; swap and swap_v2 are directly on-chain verified."
+    "note": "C25 full-surface rebuild (2026-08-09): the manifest previously carried 6 FABRICATED instructions (updateFeeRate, transferPositionDelegate, applyDelta, syncTickArray, closeAccount, closeConfigExtension) that were never part of the deployed program at any version — they appear in neither the 2022-era deployed IDL (v0.1.0, 25 instructions) nor the current deployed IDL (66 instructions), and the orca-so/whirlpools git history has zero occurrences. Those entries are removed. The manifest now covers the FULL deployed surface: all 66 discriminators are the explicit byte arrays from the official deployed-program IDL (npm @orca-so/whirlpools, program v0.9.0; the repo's Anchor.toml maps whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc to this source), NOT re-derived hashes. Three are additionally corroborated by live on-chain observation (base58-correct decode): swap=f8c69e91e17587c8, swap_v2=2b04ed0b1ac91e62, increase_liquidity_by_token_amounts_v2=effb097cd2c6352b. The C24 note's claim that the 6 were 'corrected to the snake_case convention' was itself based on the false premise that they existed; this note supersedes it."
   },
   "version": {
-    "label": "1.0.0",
+    "label": "2.0.0",
     "effective_from_slot": 0,
-    "previous_version_ref": null
+    "previous_version_ref": "1.0.0"
   },
   "instructions": [
+    {
+      "name": "closeBundledPosition",
+      "discriminator": "2924d8f51b556743",
+      "accounts": [
+        {
+          "name": "bundled_position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "receiver",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "closes the bundled position account and reclaims rent"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "closePosition",
+      "discriminator": "7b86510031446262",
+      "accounts": [
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "receiver",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "closePositionWithTokenExtensions",
+      "discriminator": "01b6873b9b1963df",
+      "accounts": [
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "receiver",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_2022_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "closes the position with token extensions account and reclaims rent"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "collectFees",
+      "discriminator": "a498cf631eba13b6",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "collectFeesV2",
+      "discriminator": "cf755fbfe5b4e20f",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "collectProtocolFees",
+      "discriminator": "1643176296b246dc",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collect_protocol_fees_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_destination_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_destination_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "collectProtocolFeesV2",
+      "discriminator": "6780de8672c816c8",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collect_protocol_fees_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_destination_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_destination_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "whirlpool protocol state transition"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "collectReward",
+      "discriminator": "4605845756ebb122",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_owner_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "collects accrued rewards from a position",
+        "credits user token accounts"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "collectRewardV2",
+      "discriminator": "b16b25b4a01331d1",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_owner_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "whirlpool protocol state transition"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "decreaseLiquidity",
+      "discriminator": "a026d06f685b2c01",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_lower",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_upper",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "decreaseLiquidityV2",
+      "discriminator": "3a7fbc3e4f52c460",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_lower",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_upper",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "deletePositionBundle",
+      "discriminator": "64196302d9ef7cad",
+      "accounts": [
+        {
+          "name": "position_bundle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "receiver",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "removes the position bundle entry from protocol state"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "deleteTokenBadge",
+      "discriminator": "35924408127511b9",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpools_config_extension",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "receiver",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "removes the token badge entry from protocol state"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "idlInclude",
+      "discriminator": "dffd79793cc1811f",
+      "accounts": [
+        {
+          "name": "tick_array",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "whirlpool protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "increaseLiquidity",
+      "discriminator": "2e9cf3760dcdfbb2",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_lower",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_upper",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "adds liquidity to concentrated liquidity position",
+        "debits user token accounts A and B",
+        "credits whirlpool vaults A and B",
+        "updates position and tick arrays"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "risk_rules": [
+        "position_authority must be signer and own the position",
+        "RISK: verify whirlpool and tick arrays are legitimate"
+      ]
+    },
+    {
+      "name": "increaseLiquidityByTokenAmountsV2",
+      "discriminator": "effb097cd2c6352b",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_lower",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_upper",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "whirlpool protocol state transition"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "increaseLiquidityV2",
+      "discriminator": "851d59df45eeb00a",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_lower",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_upper",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeAdaptiveFeeTier",
+      "discriminator": "4d63d0c88d7b7530",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "adaptive_fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the adaptive fee tier account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeConfig",
+      "discriminator": "d07f1501c2bec446",
+      "accounts": [
+        {
+          "name": "config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the config account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeConfigExtension",
+      "discriminator": "370935097239d134",
+      "accounts": [
+        {
+          "name": "config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "config_extension",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeDynamicTickArray",
+      "discriminator": "2921a5c878e78e32",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the dynamic tick array account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeFeeTier",
+      "discriminator": "b74a9ca070022a1e",
+      "accounts": [
+        {
+          "name": "config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the fee tier account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initializePool",
+      "discriminator": "5fb40aac54aee828",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializePoolV2",
+      "discriminator": "cf2d57f21b3fcc43",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the pool v2 account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializePoolWithAdaptiveFee",
+      "discriminator": "8f5e604cac7c77c7",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "initialize_pool_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "adaptive_fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the pool with adaptive fee account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializePositionBundle",
+      "discriminator": "752df1951812c241",
+      "accounts": [
+        {
+          "name": "position_bundle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "associated_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the position bundle account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializePositionBundleWithMetadata",
+      "discriminator": "5d7c10b3f98373f5",
+      "accounts": [
+        {
+          "name": "position_bundle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_metadata",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "metadata_update_auth",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "associated_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "metadata_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the position bundle with metadata account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeReward",
+      "discriminator": "5f87c0c4f281e644",
+      "accounts": [
+        {
+          "name": "reward_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the reward account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeRewardV2",
+      "discriminator": "5b014d32ebe58531",
+      "accounts": [
+        {
+          "name": "reward_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_token_badge",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the reward v2 account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeTickArray",
+      "discriminator": "0bbcc1d68d5b95b8",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initializeTokenBadge",
+      "discriminator": "fd4dcd5f1be059df",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpools_config_extension",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the token badge account for the whirlpool protocol"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "lockPosition",
+      "discriminator": "e33e02fcf70aabb9",
+      "accounts": [
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lock_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_2022_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "locks a position",
+        "prevents further position transfers"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "migrateRepurposeRewardAuthoritySpace",
+      "discriminator": "d6a1f84f9862ace7",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "whirlpool protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "openBundledPosition",
+      "discriminator": "a9717eabd5acd431",
+      "accounts": [
+        {
+          "name": "bundled_position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_bundle_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "whirlpool protocol state transition"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "openPosition",
+      "discriminator": "87802f4d0f98f031",
+      "accounts": [
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "associated_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "openPositionWithMetadata",
+      "discriminator": "f21d86303a6e0e3c",
+      "accounts": [
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_metadata_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "associated_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "metadata_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "metadata_update_auth",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "openPositionWithTokenExtensions",
+      "discriminator": "d42f5f5c726683fa",
+      "accounts": [
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_2022_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "associated_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "metadata_update_auth",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "whirlpool protocol state transition"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "repositionLiquidityV2",
+      "discriminator": "bfa9e00b83139efd",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "existing_tick_array_lower",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "existing_tick_array_upper",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_tick_array_lower",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_tick_array_upper",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "repositions liquidity within the pool's tick range"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "resetPositionRange",
+      "discriminator": "a47bb48dc264a0af",
+      "accounts": [
+        {
+          "name": "funder",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "resets a position's active tick range"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "setAdaptiveFeeConstants",
+      "discriminator": "859ed4bded0c4927",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setCollectProtocolFeesAuthority",
+      "discriminator": "22965df48be1e943",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collect_protocol_fees_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_collect_protocol_fees_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setConfigExtensionAuthority",
+      "discriminator": "2c5ef17418bc3c8f",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpools_config_extension",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "config_extension_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_config_extension_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setConfigFeatureFlag",
+      "discriminator": "47ade41243f7d239",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setDefaultBaseFeeRate",
+      "discriminator": "e54254fba486b707",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "adaptive_fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setDefaultFeeRate",
+      "discriminator": "76d7d69db6e5d0e4",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setDefaultProtocolFeeRate",
+      "discriminator": "6bcdf9e297235600",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setDelegatedFeeAuthority",
+      "discriminator": "c1eae7938a39037a",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "adaptive_fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_delegated_fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setFeeAuthority",
+      "discriminator": "1f013257ed656184",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setFeeRate",
+      "discriminator": "35f38941088c9e06",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setFeeRateByDelegatedFeeAuthority",
+      "discriminator": "7979367283e6a268",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "adaptive_fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "delegated_fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setInitializePoolAuthority",
+      "discriminator": "7d2b7feb951a6aec",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "adaptive_fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_initialize_pool_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setPresetAdaptiveFeeConstants",
+      "discriminator": "84b94294535886c6",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "adaptive_fee_tier",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setProtocolFeeRate",
+      "discriminator": "5f0704329a4f9c83",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "fee_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setRewardAuthority",
+      "discriminator": "2227b7fc531c557f",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_reward_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setRewardAuthorityBySuperAuthority",
+      "discriminator": "f09ac9c6945d3819",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_emissions_super_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_reward_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setRewardEmissions",
+      "discriminator": "0dc556a86db01bf4",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "setRewardEmissionsSuperAuthority",
+      "discriminator": "cf05c8d17a3852b7",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_emissions_super_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_reward_emissions_super_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setRewardEmissionsV2",
+      "discriminator": "72e44820c130a066",
+      "accounts": [
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reward_vault",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "Orca Whirlpools instruction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "setTokenBadgeAttribute",
+      "discriminator": "e05841218a93f689",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpools_config_extension",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_badge",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "setTokenBadgeAuthority",
+      "discriminator": "cfca0420cd4f0db2",
+      "accounts": [
+        {
+          "name": "whirlpools_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpools_config_extension",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "config_extension_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_token_badge_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates a whirlpool protocol authority or parameter"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
     {
       "name": "swap",
       "discriminator": "f8c69e91e17587c8",
@@ -26,64 +3695,64 @@
         },
         {
           "name": "token_authority",
-          "role": "signer",
+          "role": "readonly",
           "is_writable": false,
-          "is_signer": true,
+          "is_signer": false,
           "pda_seeds": []
         },
         {
           "name": "whirlpool",
-          "role": "writable",
-          "is_writable": true,
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "user_token_account_a",
-          "role": "writable",
-          "is_writable": true,
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "whirlpool_vault_a",
-          "role": "writable",
-          "is_writable": true,
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "user_token_account_b",
-          "role": "writable",
-          "is_writable": true,
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "whirlpool_vault_b",
-          "role": "writable",
-          "is_writable": true,
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
           "name": "tick_array_0",
-          "role": "writable",
-          "is_writable": true,
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
           "name": "tick_array_1",
-          "role": "writable",
-          "is_writable": true,
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
           "name": "tick_array_2",
-          "role": "writable",
-          "is_writable": true,
+          "role": "readonly",
+          "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
@@ -112,170 +3781,109 @@
       "variable_accounts": true
     },
     {
-      "name": "increaseLiquidity",
-      "discriminator": "2e9cf3760dcdfbb2",
-      "accounts": [
-        {
-          "name": "whirlpool",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "token_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "position_authority",
-          "role": "signer",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "position",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "position_token_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_token_account_a",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_token_account_b",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "whirlpool_vault_a",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "whirlpool_vault_b",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "tick_array_lower",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "tick_array_upper",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "adds liquidity to concentrated liquidity position",
-        "debits user token accounts A and B",
-        "credits whirlpool vaults A and B",
-        "updates position and tick arrays"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "position_authority must be signer and own the position",
-        "RISK: verify whirlpool and tick arrays are legitimate"
-      ]
-    },
-    {
-      "name": "initializePool",
-      "discriminator": "5fb40aac54aee828",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "initializeTickArray",
-      "discriminator": "0bbcc1d68d5b95b8",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
       "name": "swapV2",
       "discriminator": "2b04ed0b1ac91e62",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
+          "name": "token_program_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "program_account",
+          "name": "token_program_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_0",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_1",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_2",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -293,18 +3901,60 @@
       "variable_accounts": true
     },
     {
-      "name": "decreaseLiquidity",
-      "discriminator": "a026d06f685b2c01",
+      "name": "transferLockedPosition",
+      "discriminator": "b379e52e438ac28a",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
+          "name": "position_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "program_account",
+          "name": "receiver",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "position_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "destination_token_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lock_config",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_2022_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -312,7 +3962,7 @@
         }
       ],
       "expected_state_changes": [
-        "Orca Whirlpools instruction"
+        "transfers a locked position between owners"
       ],
       "allowed_cpis": [
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -321,18 +3971,144 @@
       "risk_rules": []
     },
     {
-      "name": "decreaseLiquidityV2",
-      "discriminator": "3a7fbc3e4f52c460",
+      "name": "twoHopSwap",
+      "discriminator": "c360ed6c44a2dbe6",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "program_account",
+          "name": "token_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool_one",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "whirlpool_two",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_one_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_one_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_one_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_one_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_two_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_two_a",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_two_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_two_b",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_one_0",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_one_1",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_one_2",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_two_0",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_two_1",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_two_2",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle_one",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle_two",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -340,7 +4116,9 @@
         }
       ],
       "expected_state_changes": [
-        "Orca Whirlpools instruction"
+        "swaps tokens across two whirlpool pools",
+        "debits user source token account",
+        "credits user destination token account"
       ],
       "allowed_cpis": [
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -349,18 +4127,172 @@
       "risk_rules": []
     },
     {
-      "name": "increaseLiquidityV2",
-      "discriminator": "851d59df45eeb00a",
+      "name": "twoHopSwapV2",
+      "discriminator": "ba8fd11dfe02c275",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
+          "name": "whirlpool_one",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "program_account",
+          "name": "whirlpool_two",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_input",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_intermediate",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint_output",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_input",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_intermediate",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program_output",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_input",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_one_input",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_one_intermediate",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_two_intermediate",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_vault_two_output",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_owner_account_output",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_one_0",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_one_1",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_one_2",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_two_0",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_two_1",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tick_array_two_2",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle_one",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "oracle_two",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "memo_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -368,315 +4300,7 @@
         }
       ],
       "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "updateFeeRate",
-      "discriminator": "c3f1e2d86601057a",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "collectFees",
-      "discriminator": "a498cf631eba13b6",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "collectFeesV2",
-      "discriminator": "cf755fbfe5b4e20f",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "collectProtocolFees",
-      "discriminator": "1643176296b246dc",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "setRewardEmissions",
-      "discriminator": "0dc556a86db01bf4",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "setRewardEmissionsV2",
-      "discriminator": "72e44820c130a066",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "openPosition",
-      "discriminator": "87802f4d0f98f031",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "openPositionWithMetadata",
-      "discriminator": "f21d86303a6e0e3c",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "closePosition",
-      "discriminator": "7b86510031446262",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "transferPositionDelegate",
-      "discriminator": "a7c116fc87ba6ffa",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "applyDelta",
-      "discriminator": "cf26da63710cd37c",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
+        "whirlpool protocol state transition"
       ],
       "allowed_cpis": [
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -689,126 +4313,28 @@
       "discriminator": "9ae6fa0decd14bdf",
       "accounts": [
         {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
+          "name": "whirlpool",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "syncTickArray",
-      "discriminator": "0f16948506753d6d",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
         },
         {
-          "name": "program_account",
+          "name": "position",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "closeAccount",
-      "discriminator": "7dff950e6e224818",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
         },
         {
-          "name": "program_account",
+          "name": "tick_array_lower",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "initializeConfigExtension",
-      "discriminator": "370935097239d134",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
         },
         {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Orca Whirlpools instruction"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-      ],
-      "risk_rules": []
-    },
-    {
-      "name": "closeConfigExtension",
-      "discriminator": "d3d94ca660f96be7",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
+          "name": "tick_array_upper",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,

@@ -551,15 +551,18 @@ fn jupiter_dca_discriminators_pin_onchain_verified_values() {
     }
 }
 
-/// C24 — Orca Whirlpools discriminator re-verification (2026-08-09).
+/// C24/C25 — Orca Whirlpools discriminator ground truth (2026-08-09).
 ///
-/// 23 of 24 Orca discriminators were sha256("global:" + camelCase) hashes (the
-/// C18 camelCase bug class) that never matched the deployed program. An on-chain
-/// census (base58-correct decode of getTransaction json) shows the deployed
-/// Orca Whirlpools program is standard Anchor: swap_v2 = 2b04ed0b1ac91e62
-/// (observed x17) and swap = f8c69e91e17587c8 (observed x4) both equal
-/// sha256("global:" + snake_case)[:8]. All entries now follow the confirmed
-/// convention; the two directly observed values are pinned here.
+/// C24 corrected 23 camelCase-hashed values to the deployed program's Anchor
+/// snake_case convention. C25 then rebuilt the manifest against the deployed
+/// program's OFFICIAL IDL (npm @orca-so/whirlpools, program v0.9.0): the 6
+/// remaining "legacy" entries (updateFeeRate, transferPositionDelegate,
+/// applyDelta, syncTickArray, closeAccount, closeConfigExtension) were
+/// FABRICATED — they appear in neither the 2022-era deployed IDL (v0.1.0,
+/// 25 instructions) nor the current deployed IDL (66 instructions), and the
+/// orca-so/whirlpools git history has zero occurrences. The manifest now
+/// covers the full 66-instruction deployed surface with the IDL's explicit
+/// discriminator byte arrays.
 #[test]
 fn orca_discriminators_pin_onchain_verified_values() {
     let registry = load_seed_manifests();
@@ -575,16 +578,38 @@ fn orca_discriminators_pin_onchain_verified_values() {
             .discriminator
             .clone()
     };
-    // Directly observed on-chain.
+    // C25: the manifest covers the FULL deployed surface (66 instructions).
+    assert_eq!(
+        m.instructions.len(),
+        66,
+        "Orca manifest must cover all 66 deployed instructions"
+    );
+    // Directly observed on-chain (base58-correct decode).
     assert_eq!(get("swap"), "f8c69e91e17587c8");
     assert_eq!(get("swapV2"), "2b04ed0b1ac91e62");
-    // Represent the confirmed snake_case convention.
+    assert_eq!(get("increaseLiquidityByTokenAmountsV2"), "effb097cd2c6352b");
+    // Represent the confirmed Anchor convention from the deployed IDL.
     assert_eq!(get("increaseLiquidity"), "2e9cf3760dcdfbb2");
     assert_eq!(get("collectFees"), "a498cf631eba13b6");
     assert_eq!(get("openPosition"), "87802f4d0f98f031");
-    // The old camelCase-hashed values must NOT be stored in the manifest table
-    // (checked directly — find_instruction is prefix-based, so an 8-byte stale
-    // value could prefix-match a shorter real discriminator).
+    // C25: the 6 fabricated instructions must be gone — they were never part
+    // of the deployed program at any version.
+    for fabricated in [
+        "updateFeeRate",
+        "transferPositionDelegate",
+        "applyDelta",
+        "syncTickArray",
+        "closeAccount",
+        "closeConfigExtension",
+    ] {
+        assert!(
+            !m.instructions.iter().any(|ix| ix.name == fabricated),
+            "fabricated instruction {fabricated} must not exist (C25)"
+        );
+    }
+    // Every discriminator is a real deployed-IDL value (8-byte, snake_case
+    // Anchor hash). The systemic camelCase guard covers hash convention; here
+    // we additionally assert the previously-fabricated stale values are absent.
     for stale in [
         "07fd4e278db4d5f4", // increaseLiquidity (camelCase hash)
         "5f4d179a1629512c", // initializePool

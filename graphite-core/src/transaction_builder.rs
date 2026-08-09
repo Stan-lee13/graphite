@@ -100,7 +100,13 @@ pub fn build_transaction(
     let signer_count = account_metas.iter().filter(|a| a.is_signer).count();
     let writable_count = account_metas.iter().filter(|a| a.is_writable).count();
 
-    // Compute budget estimate (base + per-account + per-CPI)
+    // Compute budget ESTIMATE (base + per-account + per-CPI). This is a
+    // heuristic projection of the ComputeBudget units a transaction of this
+    // shape is likely to need — it is NOT a measured value and must not be
+    // read as one (the real consumed units come from simulation/L3 and the
+    // audit trail's `compute_units`). C26 clean-room correction: the field
+    // name `compute_budget_units` implies a real budget, so the estimate is
+    // documented as such here and in the field's doc.
     let compute_budget_units = 200_000u64
         + (plan.resolved_accounts.len() as u64 * 10_000)
         + (plan.allowed_cpis.len() as u64 * 50_000);
@@ -115,7 +121,11 @@ pub fn build_transaction(
         })
         .collect();
 
-    // Canonical serialization for audit trail
+    // The instruction payload WITHOUT the discriminator (the discriminator is
+    // carried separately in `instruction_discriminator`; the full wire bytes
+    // are discriminator || payload). This is the audit payload projection,
+    // NOT the canonical audit identity — the deterministic content_hash in
+    // the verification result is the linkage key for the audit trail.
     let data_hex = hex::encode(&plan.instruction_data);
 
     Ok(BuiltTransaction {
@@ -123,7 +133,12 @@ pub fn build_transaction(
         protocol_version: plan.protocol_version.clone(),
         instruction_name: plan.instruction_name.clone(),
         instruction_discriminator: plan.instruction_discriminator.clone(),
-        instruction_count: 1 + plan.expected_state_changes.len() + plan.allowed_cpis.len(),
+        // The verified transaction plan is exactly ONE instruction (the one
+        // being verified). C26 clean-room correction: this used to be
+        // `1 + state_changes.len() + allowed_cpis.len()`, a fabricated count
+        // that grew with manifest metadata and misled audit consumers into
+        // reading it as the transaction's real instruction count.
+        instruction_count: 1,
         account_count: plan.resolved_accounts.len(),
         signer_count,
         writable_count,

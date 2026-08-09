@@ -3,6 +3,33 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round-Five Clean-Room Revalidation — C26: Orca 66/66 On-Chain Proof + Manifest-Spoofing Defense Repair] — 2026-08-09
+
+### Orca Whirlpools: all 66 discriminators verified against the DEPLOYED program, not just the census (C26.1)
+- **On-chain dispatch proof**: every one of the 66 manifest discriminators was simulated against the live mainnet binary (programdata fetched via the ELF-loader stub, `sigVerify:false`, real fee-payer) — each dispatches to its named handler; a garbage discriminator returns `InstructionFallbackNotFound`. The 6 entries without explicit handler logs failed AFTER dispatch with Anchor account-validation errors (3006/3007/3010). The `idl_include` entry (suspected as a non-dispatchable Anchor artifact) is a real handler on the deployed binary.
+- **Anchor-convention cross-check**: all 66 discriminators re-derive as `sha256("global:"+snake_case)[0..8]`; the IDL is internally consistent.
+- **2022-era continuity**: earliest program-source tree (v0.1.1) through latest 0.1.x (v0.1.19) — all 2022-era instruction names are a strict subset of the current 66; the 6 fabricated C23-era names appear in NO program-source tree at any tag.
+- Full report: `docs/clean-room-revalidation-C26.md`.
+
+### Manifest-spoofing defense: the H6 test was vacuous and is repaired (C26.2)
+- H6's malicious manifest used the OLD string-array account schema, so `load_manifest` rejected it and the injected manifest NEVER entered the registry — the test passed because the transfer intent mismatched SetAuthority (L5) against the bundled manifest, not because any spoofing defense fired.
+- H6 rewritten with a schema-valid malicious manifest (self-asserted `OfficialManifest`, real SetAuthority discriminator `06` renamed "SafeTransfer"): it now asserts the manifest loads AND the risk engine's P0 Check 2 blocks with an `AuthorityHijack` finding. H6b pins the residual boundary: non-pattern-covered discriminators on fabricated manifests follow the manifest (the risky-pattern list is the defense).
+- Benchmark correction: both "SetAuthority hijack" cases used discriminator `0b` (ThawAccount, blocked by L5 intent mismatch) — corrected to the real `06` so the suite actually exercises SetAuthority-hijack detection.
+- Audit honesty: `BuiltTransaction.instruction_count` was a fabricated `1 + state_changes + allowed_cpis`; now `1` (the plan verifies exactly one instruction). The compute-budget estimate and data-hex projection are documented as what they are.
+- Validation: full suite green (all 24 test binaries, 0 failures), clippy clean, fmt clean.
+
+## [Round-Four Independent Audit — C25: Orca Full-Surface Rebuild + Fabricated-Instruction Removal] — 2026-08-09
+
+### Orca Whirlpools: 6 FABRICATED instructions removed; manifest rebuilt to the full deployed surface (C25.1/C25.2)
+- **6 of 24 manifest entries were fabricated** — `updateFeeRate`, `transferPositionDelegate`, `applyDelta`, `syncTickArray`, `closeAccount`, `closeConfigExtension` appear in NEITHER the 2022-era deployed IDL (v0.1.0, 25 instructions) NOR the current deployed IDL (66 instructions), and the orca-so/whirlpools git history has zero occurrences. The C24 note's claim that these were "corrected to the snake_case convention" was itself built on the false premise that they existed; this round supersedes it.
+- The manifest previously covered only 24 of the 66 deployed instructions — every legitimate Orca txn using any other instruction fell to unknown-protocol mode (0.55 confidence ceiling). The manifest now covers the FULL deployed surface: all 66 discriminators are the explicit byte arrays from the official deployed-program IDL (npm `@orca-so/whirlpools`, program v0.9.0; the repo's Anchor.toml maps `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` to this source), NOT re-derived hashes. The IDL is committed as `scripts/whirlpool_idl.json` for reproducibility; `scripts/rebuild_orca_manifest.py` regenerates the manifest.
+- **3 discriminators corroborated by live on-chain census** (base58-correct decode, 528 Orca txs): `swap = f8c69e91e17587c8` (×153), `swap_v2 = 2b04ed0b1ac91e62` (×342), `increase_liquidity_by_token_amounts_v2 = effb097cd2c6352b` (×7 — an instruction that exists only in the current IDL, proving the IDL is the deployment's instruction set). Census script: `scripts/census_orca.py` (progress cache gitignored).
+- Regression: `orca_discriminators_pin_onchain_verified_values` now asserts the manifest covers all 66 instructions, pins the 3 live-observed values, and asserts all 6 fabricated names are ABSENT from the table.
+
+### Instruction-surface total updated
+- 219 → **261 instructions** across 20 manifests (Orca 24 → 66); manifest version bumped 1.0.0 → 2.0.0 with `previous_version_ref`.
+- Validation: **864 Rust tests / 0 failed**, clippy `-D warnings` clean, fmt clean.
+
 ## [Round-Two Sub-Agent Verification — C23: Manifest Discriminator Ground Truth] — 2026-08-09
 
 ### Jupiter V6: 16 legacy camelCase hashes corrected to the deployed program's snake_case convention (C23.1)

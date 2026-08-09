@@ -519,9 +519,15 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "Authority hijack (SetAuthority)",
             category: "malicious",
             expected_approved: false,
+            // REAL SetAuthority discriminator is 0x06 (the risk engine's
+            // RISKY_PATTERNS entry). C26 clean-room correction: this case
+            // previously used 0b (ThawAccount), which the suite blocked via
+            // the transfer-intent semantic mismatch — not via any
+            // SetAuthority-hijack detection. The label now matches the
+            // instruction actually under test.
             input: make_input(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-                "0b",
+                "06",
                 &[
                     "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
                     "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
@@ -653,9 +659,13 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             label: "SPL Token SetAuthority hijack",
             category: "malicious",
             expected_approved: false,
+            // C26 clean-room correction: the real SetAuthority discriminator
+            // is 0x06, not 0b (ThawAccount). With 0b the case was blocked by
+            // the transfer-vs-ThawAccount L5 semantic mismatch, so the suite
+            // never actually exercised SetAuthority-hijack detection.
             input: make_input(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-                "0b",
+                "06",
                 &[
                     "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
                     "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",

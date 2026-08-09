@@ -140,6 +140,15 @@ Round-two sub-agent verification closed the highest-risk unchecked surface: comp
 - **Verification:** 864 Rust tests / 0 failures (+3: Orca pin, Metaplex pin, systemic guard), clippy/fmt clean, 27 Python, all feature gates.
 - **Validation:** 858 Rust tests / 0 failed (+2), 27/27 Python, 9/9 AuditBind (+1), clippy/fmt/gates green, TS/SAK clean, dashboard builds.
 
+### C25 — Orca full-surface rebuild: 6 fabricated instructions removed (P1, FIXED this cycle)
+
+Round four (independent audit of C24) rebuilt the Orca Whirlpools manifest from the deployed program's official IDL and exposed a second-order fabrication: C24 "corrected" 6 entries that never existed.
+
+- **C25.1 6 of 24 entries were fabricated.** `updateFeeRate`, `transferPositionDelegate`, `applyDelta`, `syncTickArray`, `closeAccount`, `closeConfigExtension` appear in neither the 2022-era deployed IDL (v0.1.0, 25 instructions) nor the current deployed IDL (66 instructions), and the orca-so/whirlpools git history has zero occurrences. The C24 note's claim that they were "corrected to the snake_case convention" rested on the false premise that they existed; the note is superseded. All 6 removed; the regression test asserts each name is ABSENT.
+- **C25.2 manifest covered only 24 of 66 deployed instructions.** Every legitimate Orca txn using any other instruction fell to unknown-protocol mode (0.55 ceiling). Rebuilt from the official deployed-program IDL (npm `@orca-so/whirlpools`, program v0.9.0): all 66 discriminators are the IDL's explicit byte arrays (not re-derived hashes); IDL committed as `scripts/whirlpool_idl.json`; `scripts/rebuild_orca_manifest.py` regenerates; manifest version 2.0.0. Instruction surface total: 219 → **261** across 20 manifests.
+- **C25.3 extended live corroboration.** Base58-correct census over 528 Orca txs: `swap=f8c69e91e17587c8` (×153), `swap_v2=2b04ed0b1ac91e62` (×342), `increase_liquidity_by_token_amounts_v2=effb097cd2c6352b` (×7 — an instruction that exists only in the current IDL, proving the IDL is the deployment's instruction set). Script: `scripts/census_orca.py` (progress cache gitignored).
+- **Verification:** 864 Rust tests / 0 failures, clippy `-D warnings` clean, fmt clean.
+
 ### C15 — Benchmark is synthetic and self-referential (P2, now explicit + CI-pinned)
 - **Problem:** all 18 cases are hand-constructed `VerificationInput`s with manually-encoded `expected_approved` labels; 16 scored (4 safe, ~10–12 malicious), 2 unknown; three cases are labeled `SYNTHETIC:` (real program IDs, synthetic accounts). Zero cases come from real transactions. The "100% precision/recall" substantially measures the rules agreeing with the cases built from the rules.
 - **Root cause:** P16 reproducibility (deterministic benchmark) was prioritized over real-data validation; the two are different things and the benchmark only satisfies the first.
