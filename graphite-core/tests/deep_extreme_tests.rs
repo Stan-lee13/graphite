@@ -82,8 +82,8 @@ fn test_all_20_manifests_load_with_valid_pubkeys() {
     let manifests = registry.list();
     assert_eq!(
         manifests.len(),
-        20,
-        "expected exactly 20 seed manifests (16 + Tier-0: ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable)"
+        22,
+        "expected exactly 22 seed manifests (18 + Tier-0: ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable); C27 added Drift + Kamino Lending"
     );
 
     for m in &manifests {
@@ -125,6 +125,12 @@ fn test_every_instruction_has_accounts() {
                     "Compute Budget instruction '{}' unexpectedly declares accounts",
                     ix.name
                 );
+                continue;
+            }
+            // variable_accounts: instruction reads its accounts from
+            // remaining_accounts (e.g. Kamino refreshReservesBatch, Jupiter
+            // route) — the IDL legitimately declares zero.
+            if ix.variable_accounts {
                 continue;
             }
             assert!(

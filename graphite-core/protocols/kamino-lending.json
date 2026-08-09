@@ -1,0 +1,3077 @@
+{
+  "graphite_manifest_version": "1.0",
+  "protocol": {
+    "name": "Kamino Lending",
+    "program_id": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+    "website": "https://kamino.finance",
+    "github": "https://github.com/Kamino-Finance/klend",
+    "note": "C27 build (2026-08-09) from the official deployed-program IDL (scripts/klend_idl.json, committed for reproducibility). All 51 discriminators are DERIVED as sha256(\"global:\"+snake_case_name)[0..8] (the IDLs carry no byte arrays) and VERIFIED LIVE by on-chain census (scripts/census_drift_kamino.py, base58-correct decode): flashBorrowReserveLiquidity=87e734a70734d4c1, flashRepayReserveLiquidity=b97500cb60f5b4ba, refreshReserve=02da8aeb4fc91966, refreshReservesBatch=906e1a67a2ccfc93, refreshObligation=218493e497c04859, depositReserveLiquidityAndObligationCollateralV2=d8e0bf1bcc9766af, borrowObligationLiquidityV2=a1808ff5abc7c206, redeemReserveCollateral=ea75b57db98edc1d, depositReserveLiquidity=a9c91e7e06cd6644, initUserMetadata=75a9b045c5170fa2, initObligation=fb0ae74c1b0b9f60 all matched the derived value with zero unmatched — the convention is proven on the deployed binary. PDA seeds are grounded ONLY where the deployed program's account struct seed-constrains the derivation (C26: a wrong seed spec would flag legitimate txs): Drift initialize_user user=[user,authority,sub_account_id], initialize_user_stats user_stats=[user_stats,authority], deposit/withdraw/transfer_deposit spot_market_vault=[spot_market_vault,market_index], withdraw drift_signer=[drift_signer]; Kamino lending_market_authority=[lma,market] (every ix carrying it), init_reserve vaults=[reserve_liq_supply|fee_receiver|reserve_coll_mint|reserve_coll_supply, reserve] (ONLY init_reserve — runtime ixs constrain vaults by address-from-state, not PDA), init_user_metadata user_metadata=[user_meta,owner], init_obligation obligation=[tag,id,owner,market,seed1,seed2]."
+  },
+  "version": {
+    "label": "2.0.0",
+    "effective_from_slot": 0,
+    "previous_version_ref": "1.0.0"
+  },
+  "instructions": [
+    {
+      "name": "borrowObligationLiquidity",
+      "discriminator": "797f12cc49f5e141",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "borrowReserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "borrowReserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveSourceLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "borrowReserveLiquidityFeeReceiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerTokenState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits reserve liquidity supply",
+        "credits user destination liquidity",
+        "increases obligation borrows"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": [
+        "borrow must match the declared intent and the owner must sign"
+      ]
+    },
+    {
+      "name": "borrowObligationLiquidityV2",
+      "discriminator": "a1808ff5abc7c206",
+      "accounts": [
+        {
+          "name": "borrowAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits reserve liquidity supply",
+        "credits user destination liquidity",
+        "increases obligation borrows"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "borrow must match the declared intent and the owner must sign"
+      ]
+    },
+    {
+      "name": "deleteReferrerStateAndShortUrl",
+      "discriminator": "99b9631ce4b3bb96",
+      "accounts": [
+        {
+          "name": "referrer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "shortUrl",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "closes the referrer_state_and_short_url account and reclaims rent"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "depositAndWithdraw",
+      "discriminator": "8d99270f403d5854",
+      "accounts": [
+        {
+          "name": "depositAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "depositFarmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawFarmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "depositObligationCollateral",
+      "discriminator": "6cd1044815167685",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "depositReserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveDestinationCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userSourceCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "depositObligationCollateralV2",
+      "discriminator": "8991975ea7710491",
+      "accounts": [
+        {
+          "name": "depositAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "depositReserveLiquidity",
+      "discriminator": "a9c91e7e06cd6644",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveCollateralMint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userSourceLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits user_source_liquidity",
+        "credits user_destination_collateral"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "depositReserveLiquidityAndObligationCollateral",
+      "discriminator": "81c70402de271a2e",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveCollateralMint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveDestinationDepositCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userSourceLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "placeholderUserDestinationCollateral",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits user source liquidity",
+        "credits obligation collateral"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "depositReserveLiquidityAndObligationCollateralV2",
+      "discriminator": "d8e0bf1bcc9766af",
+      "accounts": [
+        {
+          "name": "depositAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits user source liquidity",
+        "credits obligation collateral"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "fillBorrowOrder",
+      "discriminator": "6604a74c83aa5d13",
+      "accounts": [
+        {
+          "name": "borrowAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "eventAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "flashBorrowReserveLiquidity",
+      "discriminator": "87e734a70734d4c1",
+      "accounts": [
+        {
+          "name": "userTransferAuthority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveSourceLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityFeeReceiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerTokenState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerAccount",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "sysvarInfo",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "temporarily borrows reserve liquidity",
+        "the flash loan must be repaid in the same transaction"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": [
+        "a flash borrow must be repaid in the same transaction"
+      ]
+    },
+    {
+      "name": "flashRepayReserveLiquidity",
+      "discriminator": "b97500cb60f5b4ba",
+      "accounts": [
+        {
+          "name": "userTransferAuthority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveDestinationLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userSourceLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityFeeReceiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerTokenState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerAccount",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "sysvarInfo",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "repays the flash borrow plus fee"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": [
+        "flash repay must settle a prior flash borrow"
+      ]
+    },
+    {
+      "name": "idlMissingTypes",
+      "discriminator": "8250269950d4b6fd",
+      "accounts": [
+        {
+          "name": "signer",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "globalConfig",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initFarmsForReserve",
+      "discriminator": "da063ee90121e852",
+      "accounts": [
+        {
+          "name": "lendingMarketOwner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_1}"
+          ]
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsGlobalConfig",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsVaultAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes farms for a reserve"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initGlobalConfig",
+      "discriminator": "8c88d630570078ff",
+      "accounts": [
+        {
+          "name": "payer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "globalConfig",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "programData",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the global config account for the protocol"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initLendingMarket",
+      "discriminator": "22a2740e65895eef",
+      "accounts": [
+        {
+          "name": "lendingMarketOwner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_1}"
+          ]
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes a lending market"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initObligation",
+      "discriminator": "fb0ae74c1b0b9f60",
+      "accounts": [
+        {
+          "name": "obligationOwner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "feePayer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": [
+            "{instruction_data:8:9}",
+            "{instruction_data:9:10}",
+            "{account_0}",
+            "{account_3}",
+            "{account_4}",
+            "{account_5}"
+          ]
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "seed1Account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "seed2Account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "ownerUserMetadata",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes an obligation account for the owner"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initObligationFarmsForReserve",
+      "discriminator": "883f0fbad398a8a4",
+      "accounts": [
+        {
+          "name": "payer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_7}"
+          ]
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveFarmState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligationFarm",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes obligation farms for a reserve"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initReferrerStateAndShortUrl",
+      "discriminator": "a513197f64371f5a",
+      "accounts": [
+        {
+          "name": "referrer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerShortUrl",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerUserMetadata",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the referrer state and short url account for the protocol"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initReferrerTokenState",
+      "discriminator": "742d42943a0dda73",
+      "accounts": [
+        {
+          "name": "payer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrer",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerTokenState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes the referrer token state account for the protocol"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "initReserve",
+      "discriminator": "8af547e19904032b",
+      "accounts": [
+        {
+          "name": "signer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_1}"
+          ]
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": [
+            "reserve_liq_supply",
+            "{account_3}"
+          ]
+        },
+        {
+          "name": "feeReceiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": [
+            "fee_receiver",
+            "{account_3}"
+          ]
+        },
+        {
+          "name": "reserveCollateralMint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": [
+            "reserve_coll_mint",
+            "{account_3}"
+          ]
+        },
+        {
+          "name": "reserveCollateralSupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": [
+            "reserve_coll_supply",
+            "{account_3}"
+          ]
+        },
+        {
+          "name": "initialLiquiditySource",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes a reserve with its vault PDAs"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "initUserMetadata",
+      "discriminator": "75a9b045c5170fa2",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "feePayer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "userMetadata",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": [
+            "user_meta",
+            "{account_0}"
+          ]
+        },
+        {
+          "name": "referrerUserMetadata",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "initializes user metadata for the owner"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "liquidateObligationAndRedeemReserveCollateral",
+      "discriminator": "b1479abce2854a37",
+      "accounts": [
+        {
+          "name": "liquidator",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "repayReserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "repayReserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "repayReserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawReserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawReserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawReserveCollateralMint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawReserveCollateralSupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawReserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawReserveLiquidityFeeReceiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userSourceLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "repayLiquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawLiquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "liquidates the obligation and redeems seized collateral"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": [
+        "liquidation must target a delinquent obligation"
+      ]
+    },
+    {
+      "name": "liquidateObligationAndRedeemReserveCollateralV2",
+      "discriminator": "a2a1238f1ebbb967",
+      "accounts": [
+        {
+          "name": "liquidationAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralFarmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "debtFarmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "markObligationForDeleveraging",
+      "discriminator": "a423b6130074f37f",
+      "accounts": [
+        {
+          "name": "riskCouncil",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "redeemFees",
+      "discriminator": "d727b429ad2ef8dc",
+      "accounts": [
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityFeeReceiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveSupplyLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_4}"
+          ]
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "redeems fees from reserves"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "redeemReserveCollateral",
+      "discriminator": "ea75b57db98edc1d",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_1}"
+          ]
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveCollateralMint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userSourceCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "burns reserve collateral",
+        "credits the user reserve liquidity"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "refreshObligation",
+      "discriminator": "218493e497c04859",
+      "accounts": [
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates obligation state from current reserve prices"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "refreshObligationFarmsForReserve",
+      "discriminator": "8c90fd150a4af803",
+      "accounts": [
+        {
+          "name": "crank",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "baseAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "systemProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "refreshReserve",
+      "discriminator": "02da8aeb4fc91966",
+      "accounts": [
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "pythOracle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "switchboardPriceOracle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "switchboardTwapOracle",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "scopePrices",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates reserve state from current oracle prices"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "refreshReservesBatch",
+      "discriminator": "906e1a67a2ccfc93",
+      "accounts": [],
+      "expected_state_changes": [
+        "updates multiple reserves from oracle prices"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [],
+      "variable_accounts": true
+    },
+    {
+      "name": "repayAndWithdrawAndRedeem",
+      "discriminator": "0236980394606dda",
+      "accounts": [
+        {
+          "name": "repayAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "withdrawAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralFarmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "debtFarmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "repayObligationLiquidity",
+      "discriminator": "91b20de14cf09348",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "repayReserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveDestinationLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userSourceLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits user source liquidity",
+        "credits reserve liquidity supply",
+        "decreases obligation borrows"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "repayObligationLiquidityV2",
+      "discriminator": "74aed54cb435d290",
+      "accounts": [
+        {
+          "name": "repayAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits user source liquidity",
+        "credits reserve liquidity supply",
+        "decreases obligation borrows"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "requestElevationGroup",
+      "discriminator": "2477fb8122f00793",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "seedDepositOnInitReserve",
+      "discriminator": "fec5e476b7ce3ee2",
+      "accounts": [
+        {
+          "name": "signer",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "initialLiquiditySource",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "seeds the initial reserve liquidity"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "setBorrowOrder",
+      "discriminator": "b1ba2d3deb5b448b",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "filledDebtDestination",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "debtLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "eventAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "setObligationOrder",
+      "discriminator": "5101639cd3534e2e",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "socializeLoss",
+      "discriminator": "f54b5b00ec611303",
+      "accounts": [
+        {
+          "name": "riskCouncil",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "socializeLossV2",
+      "discriminator": "ee5f62dcbb28cc9a",
+      "accounts": [
+        {
+          "name": "socializeLossAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "updateGlobalConfig",
+      "discriminator": "a45482bd6f3afac8",
+      "accounts": [
+        {
+          "name": "globalAdmin",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "globalConfig",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates the global configuration"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "updateGlobalConfigAdmin",
+      "discriminator": "b85717c19ceeaf77",
+      "accounts": [
+        {
+          "name": "pendingAdmin",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "globalConfig",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates the global config admin"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "updateLendingMarket",
+      "discriminator": "d19d35d261b41f2d",
+      "accounts": [
+        {
+          "name": "lendingMarketOwner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates lending market configuration"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "updateLendingMarketOwner",
+      "discriminator": "76e00a3ec4e6b859",
+      "accounts": [
+        {
+          "name": "lendingMarketOwnerCached",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates the lending market owner"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": [
+        "changing the market owner must match the declared intent"
+      ]
+    },
+    {
+      "name": "updateReserveConfig",
+      "discriminator": "3d9464468f6b110d",
+      "accounts": [
+        {
+          "name": "signer",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "globalConfig",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "updates reserve configuration"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "withdrawObligationCollateral",
+      "discriminator": "2574cd67f3c05cc6",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "withdrawReserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveSourceCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "debits reserve collateral supply",
+        "credits user destination collateral"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": [
+        "withdrawal must match the declared intent and the owner must sign"
+      ]
+    },
+    {
+      "name": "withdrawObligationCollateralAndRedeemReserveCollateral",
+      "discriminator": "4b5d5ddc2296dac4",
+      "accounts": [
+        {
+          "name": "owner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "withdrawReserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveSourceCollateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveCollateralMint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquiditySupply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "userDestinationLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "placeholderUserDestinationCollateral",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateralTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidityTokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instructionSysvarAccount",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "redeems reserve collateral for liquidity"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "withdrawObligationCollateralAndRedeemReserveCollateralV2",
+      "discriminator": "eb34779895c51407",
+      "accounts": [
+        {
+          "name": "withdrawAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "withdrawObligationCollateralV2",
+      "discriminator": "caf97572e7c02f8a",
+      "accounts": [
+        {
+          "name": "withdrawAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsAccounts",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farmsProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [],
+      "risk_rules": []
+    },
+    {
+      "name": "withdrawProtocolFee",
+      "discriminator": "9ec99ebd215da267",
+      "accounts": [
+        {
+          "name": "globalConfig",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_1}"
+          ]
+        },
+        {
+          "name": "feeVault",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "feeCollectorAta",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "withdraws protocol fees to the market owner"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    },
+    {
+      "name": "withdrawReferrerFees",
+      "discriminator": "ab7679c9e98c17e4",
+      "accounts": [
+        {
+          "name": "referrer",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerTokenState",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveLiquidityMint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserveSupplyLiquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrerTokenAccount",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarket",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lendingMarketAuthority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_6}"
+          ]
+        },
+        {
+          "name": "tokenProgram",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
+      ],
+      "expected_state_changes": [
+        "protocol state transition"
+      ],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "risk_rules": []
+    }
+  ],
+  "trust_tier": "BattleTested"
+}

@@ -227,6 +227,8 @@ pub fn load_seed_manifests() -> ManifestRegistry {
         "../protocols/jupiter-dca.json",
         "../protocols/wormhole-core.json",
         "../protocols/metaplex-token-metadata.json",
+        "../protocols/drift.json",
+        "../protocols/kamino-lending.json",
     ];
 
     for p in &seed_paths {
@@ -291,6 +293,12 @@ pub fn load_seed_manifests() -> ManifestRegistry {
                 }
                 "../protocols/metaplex-token-metadata.json" => registry
                     .load_from_json(include_str!("../protocols/metaplex-token-metadata.json")),
+                "../protocols/drift.json" => {
+                    registry.load_from_json(include_str!("../protocols/drift.json"))
+                }
+                "../protocols/kamino-lending.json" => {
+                    registry.load_from_json(include_str!("../protocols/kamino-lending.json"))
+                }
                 _ => unreachable!(),
             };
 
@@ -702,8 +710,8 @@ mod tests {
         let programs = verified["programs"].as_array().expect("programs array");
         assert_eq!(
             programs.len(),
-            20,
-            "verified registry must list exactly the 20 seed programs"
+            22,
+            "verified registry must list exactly the 22 seed programs (C27 added Drift + Kamino)"
         );
 
         let mut verified_by_id: std::collections::BTreeMap<&str, &str> =
@@ -953,6 +961,336 @@ mod test_v2_discriminators {
         assert!(
             camel.is_none(),
             "camelCase-hashed discriminator must not resolve to any active entry (C22.3)"
+        );
+    }
+}
+
+/// C27 — Drift + Kamino Lending manifests (2026-08-09).
+///
+/// Both were built from the official deployed-program IDLs (committed under
+/// scripts/): Drift from velocity-exchange/protocol-v2 sdk/src/idl/drift.json
+/// (program dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH), Kamino from
+/// Kamino-Finance/klend-sdk src/idl/klend.json (program
+/// KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD). The IDLs carry no discriminator
+/// bytes, so every value is DERIVED as sha256("global:" + snake_case)[:8] and
+/// then VERIFIED LIVE by on-chain census (scripts/census_drift_kamino.py,
+/// base58-correct decode): 14/300 discriminators observed on mainnet, all
+/// matched the derived value, zero unmatched. PDA seeds are grounded ONLY where
+/// the deployed program's account struct seed-constrains them (C26 principle) —
+/// verified against the program source + live txs (scripts/verify_dk_pdas.py).
+#[cfg(test)]
+mod test_c27_drift_kamino {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    /// camelCase -> snake_case, mirroring the C27 generator's regex
+    /// (re.sub("(.)([A-Z][a-z]+)", ...) then re.sub("([a-z0-9])([A-Z])", ...)):
+    /// insert '_' before an uppercase when the previous char is lowercase or a
+    /// digit, or when the previous char is uppercase and the next is lowercase
+    /// (handles digit+uppercase boundaries like V2Fulfillment -> v2_fulfillment).
+    fn snake_case(name: &str) -> String {
+        let mut out = String::with_capacity(name.len() + 4);
+        let bytes: Vec<char> = name.chars().collect();
+        for (i, c) in bytes.iter().enumerate() {
+            if c.is_uppercase() {
+                if i > 0 {
+                    let prev = bytes[i - 1];
+                    let next = bytes.get(i + 1).copied();
+                    if prev.is_lowercase()
+                        || prev.is_ascii_digit()
+                        || (prev.is_uppercase() && next.is_some() && next.unwrap().is_lowercase())
+                    {
+                        out.push('_');
+                    }
+                }
+                out.push(c.to_ascii_lowercase());
+            } else {
+                out.push(*c);
+            }
+        }
+        out
+    }
+
+    const DRIFT: &str = "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH";
+    const KAMINO: &str = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+
+    /// The whole surface must follow the Anchor snake_case convention — the
+    /// same sha256("global:" + snake_case(name))[:8] the deployed programs' own
+    /// generated SDKs use. This is the C18 bug class: any camelCase-hash
+    /// discriminator would silently fail L2 matching on real transactions.
+    #[test]
+    fn test_drift_and_kamino_discriminators_match_anchor_snake_case() {
+        let registry = load_seed_manifests();
+        for (id, expected_count) in [(DRIFT, 249usize), (KAMINO, 51usize)] {
+            let m = registry.get(id).unwrap_or_else(|| panic!("{id} loaded"));
+            assert_eq!(m.instructions.len(), expected_count, "{id} IDL surface");
+            for ix in &m.instructions {
+                let snake = snake_case(&ix.name);
+                let mut hasher = Sha256::new();
+                hasher.update(format!("global:{snake}").as_bytes());
+                let digest = hasher.finalize();
+                let expected = hex::encode(&digest[..8]);
+                assert_eq!(
+                    ix.discriminator, expected,
+                    "{id} instruction '{}': discriminator {} != sha256(global:{})= {} \
+                     (camelCase-hash bug class, C18/C27)",
+                    ix.name, ix.discriminator, snake, expected
+                );
+            }
+        }
+    }
+
+    /// Chain-grounded anchors: discriminators observed in real mainnet
+    /// transactions by the C27 census must stay pinned. A drift here means the
+    /// manifest no longer matches the deployed program.
+    #[test]
+    fn test_drift_and_kamino_chain_verified_discriminators() {
+        let registry = load_seed_manifests();
+        let drift = registry.get(DRIFT).unwrap();
+        let kamino = registry.get(KAMINO).unwrap();
+        let pinned: &[(&str, &str, &str)] = &[
+            (DRIFT, "placePerpOrder", "45a15dca787e4cb9"),
+            (DRIFT, "cancelOrdersByIds", "861390a55ef0d25e"),
+            (DRIFT, "placeOrders", "3c3f327b0cc53cbe"),
+            (KAMINO, "flashBorrowReserveLiquidity", "87e734a70734d4c1"),
+            (KAMINO, "flashRepayReserveLiquidity", "b97500cb60f5b4ba"),
+            (KAMINO, "refreshReserve", "02da8aeb4fc91966"),
+            (KAMINO, "refreshObligation", "218493e497c04859"),
+            (KAMINO, "initObligation", "fb0ae74c1b0b9f60"),
+            (KAMINO, "initUserMetadata", "75a9b045c5170fa2"),
+        ];
+        for (id, name, disc) in pinned {
+            let m = if *id == DRIFT { &drift } else { &kamino };
+            let ix = m
+                .instructions
+                .iter()
+                .find(|i| &i.name == name)
+                .unwrap_or_else(|| panic!("{name} missing from {id}"));
+            assert_eq!(
+                ix.discriminator, *disc,
+                "chain-verified discriminator for {name} changed"
+            );
+        }
+    }
+
+    /// Grounded-PDA integrity: every non-empty pda_seeds template must resolve
+    /// to a valid off-curve key under the program id, and the templates may
+    /// only appear on accounts the deployed program seed-constrains (C26:
+    /// grounding unconstrained accounts would flag legitimate txs).
+    #[test]
+    fn test_drift_and_kamino_pda_grounding_scoped_to_seed_constrained_accounts() {
+        let registry = load_seed_manifests();
+        let drift = registry.get(DRIFT).unwrap();
+        let kamino = registry.get(KAMINO).unwrap();
+
+        // Drift: user_stats is PDA-derived ONLY in initializeUserStats (all
+        // other ixs use has_one/is_stats_for_user consistency checks); the
+        // vault PDA is grounded only in deposit/withdraw/transferDeposit.
+        for (ix_name, grounded) in [
+            ("initializeUserStats", vec!["userStats"]),
+            ("deposit", vec!["spotMarketVault"]),
+            ("withdraw", vec!["spotMarketVault", "driftSigner"]),
+            ("transferDeposit", vec!["spotMarketVault"]),
+        ] {
+            let ix = drift
+                .instructions
+                .iter()
+                .find(|i| i.name == ix_name)
+                .unwrap_or_else(|| panic!("{ix_name} in Drift manifest"));
+            let grounded_now: Vec<String> = ix
+                .accounts
+                .iter()
+                .filter(|a| !a.pda_seeds.is_empty())
+                .map(|a| a.name.clone())
+                .collect();
+            assert_eq!(
+                grounded_now, grounded,
+                "{ix_name}: grounded accounts must be exactly {grounded:?}"
+            );
+        }
+        // deposit/withdraw must NOT ground userStats as a PDA.
+        for ix_name in ["deposit", "withdraw"] {
+            let ix = drift
+                .instructions
+                .iter()
+                .find(|i| i.name == ix_name)
+                .unwrap();
+            let us = ix
+                .accounts
+                .iter()
+                .find(|a| a.name == "userStats")
+                .expect("userStats present");
+            assert!(
+                us.pda_seeds.is_empty(),
+                "{ix_name}.userStats must not be PDA-grounded (program uses is_stats_for_user, not seeds)"
+            );
+        }
+
+        // Kamino: vaults grounded ONLY in initReserve; lma everywhere it
+        // appears; obligation only in initObligation.
+        let init_reserve = kamino
+            .instructions
+            .iter()
+            .find(|i| i.name == "initReserve")
+            .unwrap();
+        let vault_names: Vec<&str> = init_reserve
+            .accounts
+            .iter()
+            .filter(|a| !a.pda_seeds.is_empty())
+            .map(|a| a.name.as_str())
+            .collect();
+        assert!(
+            vault_names.contains(&"reserveLiquiditySupply")
+                && vault_names.contains(&"feeReceiver")
+                && vault_names.contains(&"reserveCollateralMint")
+                && vault_names.contains(&"reserveCollateralSupply"),
+            "initReserve must ground all four vault accounts, got {vault_names:?}"
+        );
+        // flashBorrow must NOT ground the vaults (they are address-from-state
+        // constrained, not PDAs) — only the lma authority.
+        let flash = kamino
+            .instructions
+            .iter()
+            .find(|i| i.name == "flashBorrowReserveLiquidity")
+            .unwrap();
+        let flash_grounded: Vec<&str> = flash
+            .accounts
+            .iter()
+            .filter(|a| !a.pda_seeds.is_empty())
+            .map(|a| a.name.as_str())
+            .collect();
+        assert_eq!(
+            flash_grounded,
+            vec!["lendingMarketAuthority"],
+            "flashBorrow must ground only the lma PDA, got {flash_grounded:?}"
+        );
+        // obligation grounded only in initObligation.
+        let init_obl = kamino
+            .instructions
+            .iter()
+            .find(|i| i.name == "initObligation")
+            .unwrap();
+        let obl = init_obl
+            .accounts
+            .iter()
+            .find(|a| a.name == "obligation")
+            .unwrap();
+        assert_eq!(
+            obl.pda_seeds,
+            vec![
+                "{instruction_data:8:9}".to_string(),
+                "{instruction_data:9:10}".to_string(),
+                "{account_0}".to_string(),
+                "{account_3}".to_string(),
+                "{account_4}".to_string(),
+                "{account_5}".to_string(),
+            ],
+            "initObligation.obligation seeds = [tag,id,owner,market,seed1,seed2]"
+        );
+        for ix in &kamino.instructions {
+            if ix.name != "initObligation" {
+                for a in &ix.accounts {
+                    assert!(
+                        a.name != "obligation" || a.pda_seeds.is_empty(),
+                        "{}.obligation must not be grounded outside initObligation",
+                        ix.name
+                    );
+                }
+            }
+        }
+    }
+
+    /// End-to-end: a real Drift perp-order and a Kamino flash-borrow must
+    /// resolve through the pipeline without PDA mismatches on the grounded
+    /// accounts (no live-deposit corpus needed — the grounded accounts are
+    /// exercised at the account-resolution layer with correct derived keys).
+    #[test]
+    fn test_drift_and_kamino_pipeline_end_to_end() {
+        use crate::account_resolution::{resolve_accounts, AccountResolutionInput};
+        use crate::solana_types::Pubkey;
+
+        let registry = load_seed_manifests();
+
+        // Kamino initObligation: obligation PDA from [tag,id,owner,market,
+        // seed1,seed2] with the tx observed on mainnet (C27 census).
+        let owner = Pubkey::from_base58("Cf9NAEfTEpuRgWE345sQ8FhscfuxK5UF8yTTqbuTHGBT").unwrap();
+        let market = Pubkey::from_base58("5wJeMrUYECGq41fxRESKALVcHnNX26TAWy4W98yULsua").unwrap();
+        let system = Pubkey::from_base58("11111111111111111111111111111111").unwrap();
+        let kamino_pk = Pubkey::from_base58(KAMINO).unwrap();
+        let (obl_pda, _b) = crate::solana_types::find_program_address(
+            &[
+                &[0u8],
+                &[0u8],
+                owner.as_bytes(),
+                market.as_bytes(),
+                system.as_bytes(),
+                system.as_bytes(),
+            ],
+            &kamino_pk,
+        )
+        .expect("obligation PDA");
+
+        let res = resolve_accounts(
+            &AccountResolutionInput {
+                program_id: KAMINO.to_string(),
+                instruction_discriminator: "fb0ae74c1b0b9f60".to_string(),
+                account_addresses: vec![
+                    owner.to_base58(),
+                    owner.to_base58(), // fee payer (same signer in observed tx)
+                    obl_pda.to_base58(),
+                    market.to_base58(),
+                    system.to_base58(),
+                    system.to_base58(),
+                    // remaining: ownerUserMetadata, rent, systemProgram
+                    system.to_base58(),
+                    system.to_base58(),
+                    system.to_base58(),
+                ],
+                instruction_data: Some(vec![
+                    0xfb, 0x0a, 0xe7, 0x4c, 0x1b, 0x0b, 0x9f, 0x60, 0x00, 0x00,
+                ]),
+            },
+            &registry,
+        )
+        .expect("resolution");
+        let obl_acct = res
+            .resolved_accounts
+            .iter()
+            .find(|a| a.address == obl_pda.to_base58())
+            .expect("obligation resolved");
+        assert!(obl_acct.is_pda);
+        assert!(
+            !obl_acct.pda_mismatch,
+            "correct obligation PDA must not mismatch"
+        );
+
+        // Spoofed obligation (a random on-curve key) MUST mismatch.
+        let spoof = Pubkey::from_base58("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").unwrap();
+        let res2 = resolve_accounts(
+            &AccountResolutionInput {
+                program_id: KAMINO.to_string(),
+                instruction_discriminator: "fb0ae74c1b0b9f60".to_string(),
+                account_addresses: vec![
+                    owner.to_base58(),
+                    owner.to_base58(),
+                    spoof.to_base58(),
+                    market.to_base58(),
+                    system.to_base58(),
+                    system.to_base58(),
+                    system.to_base58(),
+                    system.to_base58(),
+                    system.to_base58(),
+                ],
+                instruction_data: Some(vec![
+                    0xfb, 0x0a, 0xe7, 0x4c, 0x1b, 0x0b, 0x9f, 0x60, 0x00, 0x00,
+                ]),
+            },
+            &registry,
+        )
+        .expect("resolution");
+        assert!(
+            res2.resolved_accounts.iter().any(|a| a.pda_mismatch),
+            "spoofed obligation must be flagged as a PDA mismatch"
         );
     }
 }

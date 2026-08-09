@@ -52,7 +52,7 @@ fn base_input(program_id: &str, discriminator: &str, intent: &str) -> Verificati
 #[test]
 fn all_new_manifests_are_loaded_and_instruction_surfaces_parse() {
     let registry = load_seed_manifests();
-    assert_eq!(registry.list().len(), 20, "expected 20 seed manifests (16 + Tier-0: ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable)");
+    assert_eq!(registry.list().len(), 22, "expected 22 seed manifests (18 + Tier-0: ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable); C27 added Drift + Kamino Lending");
     for id in [PUMP_FUN, JUPITER_DCA, WORMHOLE, METAPLEX] {
         let m = registry
             .get(id)
