@@ -74,14 +74,14 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 ## Phase 2 (PLANNED — branch: phase2-development)
 
 ### Month 1: Real Data + Protocol Expansion
-- [ ] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — real txs now flow through; exploit-class reconstruction now partially real (C30: 3 pinned mainnet exploits scored in the benchmark), live RPC fetch of additional raw bytes remains for corpus expansion
+- [ ] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — real txs now flow through; exploit-class reconstruction now partially real (C30: 3 pinned mainnet exploits scored in the benchmark; C41: 35 real mainnet exploit signatures from SolPhishHunter arXiv:2505.04094 + 3 real successful mainnet txs in the holdout corpus), live RPC fetch of additional raw bytes remains for corpus expansion
 - [x] Feed actual transaction data through Graphite (not synthetic reconstructions) — `src/live_corpus.rs` + `graphite regression seed-live` (2026-08-08): live devnet verified=20 / recorded=20, live test verified 10 real devnet txs, 3 pinned REAL mainnet fixtures (Jupiter swap, pump.fun market, System) through the full pipeline
 - [x] Add 4 more protocol manifests (Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — program IDs confirmed executable on mainnet 2026-08-07); 15 total now, expansion toward 20 continues
 - [x] Regression Engine core: append-only fixture corpus, deterministic replay, P10 promotion gate (99.5%), benchmark-seeded initial corpus, `graphite regression` CLI gate — 12 tests (2026-08-07)
 - [x] Replace synthetic exploit tests with real on-chain data — 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) scored in the P16 benchmark binary, replacing 3 of 5 SYNTHETIC reconstructions (C30); 2 SYNTHETIC remain, honestly labeled
 - [x] Multi-instruction transaction analysis — coordinated mass-drain patterns ACROSS instructions in one tx (AAT approve+transfer, authority-hijack SetAuthority+Transfer, close-and-sweep, mass multi-transfer sweep, AAT ownership-theft via System assign) — hard gates (C29)
 - [x] CPI instruction trace analysis — unknown, re-entered (compositional), or vanity-impersonated programs in the hierarchical CPI tree; deep-chain warning — hard gates except the depth warning (C29)
-- [~] **Dynamic PDA seed resolution**: extraction capability implemented + tested (2026-08-08) — `{instruction_data}`, `{instruction_data:start:end}`, `{instruction_data:start}` templates, 5 tests with known-answer PDAs pinned from the official Solana JS SDK + a false-positive guard. Remaining: confirming real protocol seed layouts (Squads V4 devnet txs currently error; Jupiter DCA layout unmatched by candidates) — a Phase 3 IDL/source data task.
+- [~] **Dynamic PDA seed resolution**: extraction capability implemented + tested (2026-08-08) — `{instruction_data}`, `{instruction_data:start:end}`, `{instruction_data:start}` templates, 5 tests with known-answer PDAs pinned from the official Solana JS SDK + a false-positive guard. Remaining: confirming real protocol seed layouts (Squads V4 devnet txs currently error; Jupiter DCA layout unmatched by candidates) — a Phase 3 IDL/source data task. (C42: Kamino V2 lending_market_authority PDA seeds verified and added.)
 
 ### Month 2: Manifest Registry + Plugin Framework
 - [x] Manifest Registry with signature verification + G5 reviewer reputation — `graphite registry register-reviewer|submit|reviewers` operator CLI (2026-08-08), live-verified signed submission ACCEPTED at derived tier
@@ -92,9 +92,13 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 
 ### Month 3: Live Integration + Dashboard
 - [x] Live SAK integration on devnet — **re-verified on-chain Aug 8, 2026** (signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` re-fetched: finalized System transfer, slot 481727834)
-- [ ] L3 Simulation Verification fully active in production (RPC wiring exists; production activation is Phase 2 exit)
-- [ ] L8 Execution Verification active (requires live execution)
+- [x] L3 Simulation Verification live-validated against real RPC — `tests/l3_live_simulation.rs` (C40): real simulateTransaction returns a result, partial/no-baseline results are non-events, malformed payloads fail safely; production activation (server default-on) remains
+- [x] L8 Execution Verification live-validated against mainnet — `tests/l8_live_mainnet.rs` (C40): Confirmed (real signature, slot 438408575), UnknownSignature (fabricated), Unavailable (unreachable RPC); production activation remains
 - [x] React dashboard showing live verification state (read-only /api endpoints + 5 views)
+- [x] 1,000+ meaningful regression fixtures — **2,181-fixture corpus** (C41): dev ~2,112 (manifest-driven synthetic) + regression 31 (re-pinned attack classes) + holdout 38 (35 real SolPhishHunter mainnet exploits + 3 real mainnet txs, independently labeled, never used for tuning); replay 0 divergences, byte-identical across runs (C42 registry determinism fix)
+- [x] Real holdout evaluation — holdout n=38: precision 1.000, recall 1.000, F1 1.000, 0 false negatives (C41)
+- [x] 22-manifest revalidation — all program IDs base58-decode to 32 bytes; Kamino V2 stub layouts rebuilt from live on-chain decoded streams (C42); Orca roles fixed to real SDK layouts (C41); universal-CPI audit: infra exclusion is per-target and cannot shield a malicious caller (C42)
+- [ ] Public deployment endpoint (Dockerfile + hardened server code-ready; no live public endpoint yet — UNVERIFIED)
 - [ ] Phase 2 certification
 - [ ] Tag v0.2.0-beta
 
@@ -103,9 +107,11 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] SAK integration executes real devnet transactions after Graphite approval — 5 finalized devnet txs, re-verified on-chain 2026-08-08
 - [x] Protocol Manifest Registry accepts signed community submissions — CLI operator path live-verified (signed → ACCEPTED at derived tier; unregistered → REJECTED)
 - [x] Plugin framework has 2+ real plugins
-- [ ] L3 and L8 pipeline layers active — L3 wired (RPC simulateTransaction) but needs production activation; L8 requires live execution
+- [ ] L3 and L8 pipeline layers active — both live-validated against real RPC/mainnet (C40); production activation (default-on wiring) remains
 - [x] TOCTOU prevention via AuditBind middleware
 - [x] Dashboard shows live verification state
+- [x] 1,000+ meaningful regression fixtures (2,181 corpus, C41)
+- [x] Real holdout evaluation with independent labels (38 fixtures, 0 FN, C41)
 
 ## Phase 3+ (Future)
 
