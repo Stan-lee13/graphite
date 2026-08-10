@@ -2182,10 +2182,14 @@ impl GraphiteCore {
                     },
                     if risk_summary.status == "Clear" {
                         if risk_warnings.is_empty() {
-                            "No risk patterns detected (8 patterns checked)".to_string()
+                            format!(
+                                "No risk patterns detected ({} patterns checked)",
+                                crate::risk_engine::CHECKED_PATTERNS
+                            )
                         } else {
                             format!(
-                                "No risk patterns detected (8 patterns checked) — warnings: {}",
+                                "No risk patterns detected ({} patterns checked) — warnings: {}",
+                                crate::risk_engine::CHECKED_PATTERNS,
                                 risk_warnings.join("; ")
                             )
                         }

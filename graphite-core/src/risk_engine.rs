@@ -17,6 +17,11 @@ pub enum RiskError {
     InvalidTransaction { reason: String },
 }
 
+/// Number of distinct risk checks `assess` performs (P0 Check 1..10, with
+/// 1b/3b/6a/6b sub-checks). Kept next to the enum so the L7 layer report's
+/// "patterns checked" string cannot silently drift out of sync.
+pub const CHECKED_PATTERNS: usize = 13;
+
 /// Adversarial pattern categories that the Risk Engine detects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RiskPattern {
@@ -182,6 +187,22 @@ fn is_universal_cpi(cpi_target: &str) -> bool {
     UNIVERSAL_CPI_WHITELIST.contains(&cpi_target)
 }
 
+/// Prefix-match an input discriminator against a known selector, mirroring
+/// the manifest convention (`crate::manifest::discriminator_matches`: manifest
+/// "06" matches input "0600000000000000").
+///
+/// Width-substitution guard: the risk checks MUST NOT compare by exact
+/// equality — an attacker can pad a selector to its full 8-byte form (e.g.
+/// "0600000000000000" for SetAuthority) and sail through manifest resolution
+/// (which prefix-matches) while an exact-equality risk check would silently
+/// not fire. The manifest and the risk engine must agree on discriminator
+/// semantics, or the intent-mismatch gates are trivially bypassable.
+fn disc_matches(selector: &str, input_disc: &str) -> bool {
+    let s = selector.to_lowercase();
+    let i = input_disc.to_lowercase();
+    !s.is_empty() && i.starts_with(&s)
+}
+
 /// Pure, deterministic (Constitution P2). Based on transaction structure and
 /// known risk signatures, not runtime behavior.
 pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
@@ -242,8 +263,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     for pattern in RISKY_PATTERNS {
         if input.program_id == pattern.program_id {
             if !input.instruction_discriminator.is_empty()
-                && input.instruction_discriminator.to_lowercase()
-                    == pattern.discriminator.to_lowercase()
+                && disc_matches(pattern.discriminator, &input.instruction_discriminator)
             {
                 return Ok(RiskVerdict::Blocked {
                     pattern: pattern.pattern,
@@ -329,7 +349,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     if !input.proposed_intent_type.is_empty() && input.proposed_intent_type != "close" {
         let close_discriminators = ["09", "0x09"];
         for close_disc in &close_discriminators {
-            if input.instruction_discriminator.to_lowercase() == close_disc.to_lowercase() {
+            if disc_matches(close_disc, &input.instruction_discriminator) {
                 let token_programs = [
                     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
@@ -354,8 +374,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     {
         let alloc_disc = "03000000";
         let create_disc = "00000000";
-        if input.instruction_discriminator.to_lowercase() == alloc_disc
-            || input.instruction_discriminator.to_lowercase() == create_disc
+        if disc_matches(alloc_disc, &input.instruction_discriminator)
+            || disc_matches(create_disc, &input.instruction_discriminator)
         {
             return Ok(RiskVerdict::Blocked {
                 pattern: RiskPattern::MaliciousAccountChange,
@@ -376,7 +396,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     {
         let approve_discriminators = ["04", "0x04"];
         for approve_disc in &approve_discriminators {
-            if input.instruction_discriminator.to_lowercase() == approve_disc.to_lowercase() {
+            if disc_matches(approve_disc, &input.instruction_discriminator) {
                 let token_programs = [
                     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",

@@ -148,6 +148,71 @@ fn test_evasion_set_authority_on_token_2022_with_safe_intent() {
     assert_eq!(result.risk_verdict.status, "Blocked");
 }
 
+/// Discriminator-width substitution bypass (forensic audit finding): the
+/// manifest matches discriminators by PREFIX (manifest "06" matches input
+/// "0600000000000000"), but the Risk Engine's intent-mismatch checks compared
+/// by EXACT equality — so an attacker could pad a SetAuthority selector to its
+/// full 8-byte form, sail through manifest resolution, and evade the risk
+/// gate that exact equality was supposed to enforce. This pins the fix: the
+/// risk engine must treat discriminators width-independently.
+#[test]
+fn test_evasion_set_authority_padded_discriminator_width_bypass() {
+    let core = GraphiteCore::default();
+    let mut input = make_input(
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "0600000000000000", // SetAuthority selector + 7 zero bytes (8-byte form)
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
+        ],
+        &[],
+        WalletProfile::Treasury,
+        good_evidence(),
+    );
+    input.proposed_intent.intent_type = "transfer".to_string();
+    input.proposed_intent.raw_natural_language = "Transfer 100 USDC to my friend".to_string();
+    let result = core.verify(&input).unwrap();
+    assert!(
+        !result.approved,
+        "padded SetAuthority with fake 'transfer' intent must be blocked"
+    );
+    assert_eq!(
+        result.risk_verdict.status, "Blocked",
+        "risk engine must catch SetAuthority regardless of discriminator width — got {:?}",
+        result.risk_verdict
+    );
+}
+
+/// Same width-substitution attack for the Approve intent-mismatch gate
+/// (Check 7): padded "0400000000000000" must still trip PermissionEscalation.
+#[test]
+fn test_evasion_approve_padded_discriminator_width_bypass() {
+    let core = GraphiteCore::default();
+    let mut input = make_input(
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "0400000000000000", // Approve selector + 7 zero bytes (8-byte form)
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        ],
+        &[],
+        WalletProfile::Treasury,
+        good_evidence(),
+    );
+    input.proposed_intent.intent_type = "transfer".to_string();
+    let result = core.verify(&input).unwrap();
+    assert!(
+        !result.approved,
+        "padded Approve with fake 'transfer' intent must be blocked"
+    );
+    assert_eq!(
+        result.risk_verdict.status, "Blocked",
+        "risk engine must catch Approve regardless of discriminator width — got {:?}",
+        result.risk_verdict
+    );
+}
+
 #[test]
 fn test_evasion_drainer_with_safe_intent_and_few_accounts() {
     // Attacker uses only 2 accounts (below drainer threshold) but still drains
