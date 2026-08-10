@@ -437,6 +437,99 @@ fn test_boundary_compositional_drain_5_with_repeat_blocked() {
 }
 
 #[test]
+fn test_legitimate_swap_repeated_token_cpi_not_compositional_drain() {
+    // P0 #4 regression: a normal multi-hop swap invokes SPL Token / Token-2022
+    // several times (transfer in, transfer out, intermediate hops). Repeated
+    // UNIVERSAL infrastructure CPI is normal execution — it must NOT be read
+    // as a compositional drain. Real addresses, not placeholders.
+    let input = risk_input(
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter (trusted root)
+        &["pool_a", "pool_b"],
+        &[
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // SPL Token x3
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", // Token-2022
+        ],
+        &["debits accounts.input", "credits accounts.output"],
+        &[
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        ],
+        "",
+    );
+    assert!(
+        !matches!(
+            assess(&input).unwrap(),
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            }
+        ),
+        "repeated universal-infrastructure CPI must not be a compositional drain"
+    );
+}
+
+#[test]
+fn test_token2022_multi_transfer_cpi_not_compositional_drain() {
+    // Token-2022 multi-transfer (e.g. a lending protocol's collateral moves)
+    // is universal infrastructure too — repeated Token-2022 calls stay clean.
+    let input = risk_input(
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        &["a1", "a2", "a3"],
+        &[
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        ],
+        &["debits accounts.collateral"],
+        &[
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        ],
+        "",
+    );
+    assert!(
+        !matches!(
+            assess(&input).unwrap(),
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::CompositionalDrainPattern,
+                ..
+            }
+        ),
+        "repeated Token-2022 infrastructure CPI must not be a compositional drain"
+    );
+}
+
+#[test]
+fn test_repeated_custom_program_cpi_still_compositional_drain() {
+    // The signal is preserved: repeated visits to a SECURITY-RELEVANT program
+    // (a custom contract) deep in a chain remains the drain signature.
+    // (Token is deliberately absent from the CPI list — an untrusted root
+    // CPIing to Token is caught earlier by Check 1b's AuthorityHijack.)
+    let input = risk_input(
+        "agg",
+        &[],
+        &[
+            "custom_drainer_contract",
+            "other_contract",
+            "custom_drainer_contract",
+            "custom_drainer_contract",
+        ],
+        &[],
+        &["custom_drainer_contract", "other_contract"],
+        "",
+    );
+    assert!(matches!(
+        assess(&input).unwrap(),
+        RiskVerdict::Blocked {
+            pattern: RiskPattern::CompositionalDrainPattern,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn test_boundary_confidence_exactly_0_55_unknown_protocol() {
     // Unknown protocol confidence must be exactly capped at 0.55
     let core = GraphiteCore::default();

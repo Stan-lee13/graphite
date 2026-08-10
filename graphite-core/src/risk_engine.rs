@@ -372,10 +372,13 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
         && input.proposed_intent_type != "create"
         && input.program_id == "11111111111111111111111111111111"
     {
-        let alloc_disc = "03000000";
-        let create_disc = "00000000";
-        if disc_matches(alloc_disc, &input.instruction_discriminator)
-            || disc_matches(create_disc, &input.instruction_discriminator)
+        // Full System account-creation family (canonical 8-byte LE discriminators):
+        //   00000000 CreateAccount, 03000000 CreateAccountWithSeed,
+        //   08000000 Allocate, 09000000 AllocateWithSeed
+        let create_discs = ["00000000", "03000000", "08000000", "09000000"];
+        if create_discs
+            .iter()
+            .any(|d| disc_matches(d, &input.instruction_discriminator))
         {
             return Ok(RiskVerdict::Blocked {
                 pattern: RiskPattern::MaliciousAccountChange,
@@ -565,11 +568,37 @@ fn detect_drainer_pattern(accounts: &[String], expected_changes: &[String]) -> b
     false
 }
 
+/// Universal infrastructure programs that ANY protocol legitimately invokes,
+/// often repeatedly, during normal execution. A swap performs several SPL
+/// Token / Token-2022 transfers; a protocol routes lamports through System.
+/// Repeated CPI calls to these are normal protocol execution, NOT a
+/// compositional-drain signal. Only repeated calls to SECURITY-RELEVANT
+/// programs (custom contracts, drainer code) constitute the drain signature.
+const UNIVERSAL_INFRASTRUCTURE_CPIS: &[&str] = &[
+    "11111111111111111111111111111111",               // System
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",    // SPL Token
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",    // Token-2022
+    "ComputeBudget111111111111111111111111111111",    // Compute Budget
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",   // Associated Token
+    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",    // Memo
+    "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",    // Memo v1
+    "BPFLoader2111111111111111111111111111111111111", // BPF Loader v2
+    "BPFLoaderUpgradeab1e11111111111111111111111",    // BPF Loader v3
+    "Stake11111111111111111111111111111111111111",    // Stake
+    "Vote111111111111111111111111111111111111111",    // Vote
+];
+
 fn detect_compositional_drain(cpi_targets: &[String], program_id: &str) -> bool {
-    // Pattern 1: Repeated program IDs in a deep chain (revisits to same program)
-    // A legitimate transaction rarely calls the same program 3+ times via CPI.
-    let unique_programs: std::collections::HashSet<_> = cpi_targets.iter().collect();
-    if unique_programs.len() < cpi_targets.len() {
+    // Pattern 1: Repeated visits to the same SECURITY-RELEVANT program.
+    // Universal infrastructure (SPL Token, Token-2022, System, ...) is
+    // excluded: a legitimate multi-hop swap calls SPL Token 2-3+ times as
+    // normal execution, and treating that as a drain produces false positives.
+    let security_relevant: Vec<&String> = cpi_targets
+        .iter()
+        .filter(|t| !UNIVERSAL_INFRASTRUCTURE_CPIS.contains(&t.as_str()))
+        .collect();
+    let unique_programs: std::collections::HashSet<_> = security_relevant.iter().collect();
+    if unique_programs.len() < security_relevant.len() {
         return true;
     }
 

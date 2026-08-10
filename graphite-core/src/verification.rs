@@ -2598,7 +2598,7 @@ mod tests {
             },
             program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
             protocol_version: "1.0.0".to_string(),
-            instruction_discriminator: "0b".to_string(), // SetAuthority
+            instruction_discriminator: "06".to_string(), // SetAuthority
             account_addresses: vec![
                 "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
                 "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),

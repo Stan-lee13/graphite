@@ -1,441 +1,540 @@
 {
-  "graphite_manifest_version": "1.0",
-  "protocol": {
-    "name": "Token-2022 Program",
-    "program_id": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-    "website": "https://spl.solana.com/token-2022",
-    "github": "https://github.com/solana-program/token-2022"
-  },
-  "version": {
-    "label": "3.0.0",
-    "effective_from_slot": 0,
-    "previous_version_ref": null
-  },
-  "instructions": [
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Token-2022 Program",
+  "program_id": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  "website": "https://spl.solana.com/token-2022",
+  "github": "https://github.com/solana-program/token-2022"
+ },
+ "version": {
+  "label": "3.0.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "Transfer",
+   "discriminator": "03",
+   "accounts": [
     {
-      "name": "Transfer",
-      "discriminator": "03",
-      "accounts": [
-        {
-          "name": "source",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "destination",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "authority",
-          "role": "signer",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "debits accounts.source token balance by data.amount",
-        "credits accounts.destination token balance by data.amount"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "authority must be signer",
-        "RISK: large transfers to new/dormant accounts should be flagged"
-      ]
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
     },
     {
-      "name": "SetAuthority",
-      "discriminator": "06",
-      "accounts": [
-        {
-          "name": "account_or_mint",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "current_authority",
-          "role": "signer",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "changes authority of accounts.account_or_mint"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "current_authority must be signer",
-        "RISK: AUTHORITY_HIJACK \u2014 always flag. Setting authority to system program burns the account."
-      ]
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
     },
     {
-      "name": "CloseAccount",
-      "discriminator": "09",
-      "accounts": [
-        {
-          "name": "account",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "destination",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "owner",
-          "role": "signer",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "closes accounts.account, transfers lamports to accounts.destination"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "owner must be signer",
-        "RISK: DRAIN \u2014 verify destination is expected"
-      ]
-    },
-    {
-      "name": "InitializeMint",
-      "discriminator": "00",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "InitializeAccount",
-      "discriminator": "01",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "InitializeMultisig",
-      "discriminator": "02",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "Approve",
-      "discriminator": "04",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "Revoke",
-      "discriminator": "05",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "MintTo",
-      "discriminator": "07",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "Burn",
-      "discriminator": "08",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "FreezeAccount",
-      "discriminator": "0a",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "ThawAccount",
-      "discriminator": "0b",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "TransferChecked",
-      "discriminator": "0c",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "ApproveChecked",
-      "discriminator": "0d",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "MintToChecked",
-      "discriminator": "0e",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "BurnChecked",
-      "discriminator": "0f",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Token-2022 instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
     }
-  ],
-  "trust_tier": "OfficialManifest"
+   ],
+   "expected_state_changes": [
+    "debits accounts.source token balance by data.amount",
+    "credits accounts.destination token balance by data.amount"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer",
+    "RISK: large transfers to new/dormant accounts should be flagged"
+   ]
+  },
+  {
+   "name": "SetAuthority",
+   "discriminator": "06",
+   "accounts": [
+    {
+     "name": "account_or_mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "current_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes authority of accounts.account_or_mint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "current_authority must be signer",
+    "RISK: AUTHORITY_HIJACK \u2014 always flag. Setting authority to system program burns the account."
+   ]
+  },
+  {
+   "name": "CloseAccount",
+   "discriminator": "09",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "closes accounts.account, transfers lamports to accounts.destination"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "owner must be signer",
+    "RISK: DRAIN \u2014 verify destination is expected"
+   ]
+  },
+  {
+   "name": "InitializeMint",
+   "discriminator": "00",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.mint with data.decimals decimals and data.mint_authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "InitializeAccount",
+   "discriminator": "01",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.account token balance to 0",
+    "sets accounts.account owner to accounts.owner"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "InitializeMultisig",
+   "discriminator": "02",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.multisig as a multisig account"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "Approve",
+   "discriminator": "04",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "delegate",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "sets accounts.source delegated_amount to data.amount",
+    "sets accounts.source delegate to accounts.delegate"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "Revoke",
+   "discriminator": "05",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "revokes accounts.source delegated_amount (sets to 0)"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "MintTo",
+   "discriminator": "07",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "credits accounts.account token balance by data.amount",
+    "increments accounts.mint supply by data.amount"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "Burn",
+   "discriminator": "08",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.account token balance by data.amount",
+    "decrements accounts.mint supply by data.amount"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "FreezeAccount",
+   "discriminator": "0a",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "freezes accounts.account (state -> Frozen)"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "ThawAccount",
+   "discriminator": "0b",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "thaws accounts.account (state -> Initialized)"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "TransferChecked",
+   "discriminator": "0c",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.source token balance by data.amount",
+    "credits accounts.destination token balance by data.amount"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "ApproveChecked",
+   "discriminator": "0d",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "delegate",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "sets accounts.source delegated_amount to data.amount",
+    "sets accounts.source delegate to accounts.delegate"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "MintToChecked",
+   "discriminator": "0e",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "credits accounts.account token balance by data.amount",
+    "increments accounts.mint supply by data.amount"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "BurnChecked",
+   "discriminator": "0f",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.account token balance by data.amount",
+    "decrements accounts.mint supply by data.amount"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  }
+ ],
+ "trust_tier": "OfficialManifest"
 }

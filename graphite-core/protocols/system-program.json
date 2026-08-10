@@ -1,317 +1,367 @@
 {
-  "graphite_manifest_version": "1.0",
-  "protocol": {
-    "name": "System Program",
-    "program_id": "11111111111111111111111111111111",
-    "website": "https://docs.solana.com/runtime/programs#system-program",
-    "github": "https://github.com/anza-xyz/agave/tree/master/sdk/program/src/system"
-  },
-  "version": {
-    "label": "1.0.0",
-    "effective_from_slot": 0,
-    "previous_version_ref": null
-  },
-  "instructions": [
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "System Program",
+  "program_id": "11111111111111111111111111111111",
+  "website": "https://docs.solana.com/runtime/programs#system-program",
+  "github": "https://github.com/anza-xyz/agave/tree/master/sdk/program/src/system"
+ },
+ "version": {
+  "label": "1.0.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "Transfer",
+   "discriminator": "02000000",
+   "accounts": [
     {
-      "name": "Transfer",
-      "discriminator": "02000000",
-      "accounts": [
-        {
-          "name": "from",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "to",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "debits accounts.from by data.amount lamports",
-        "credits accounts.to by data.amount lamports"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "amount must not exceed accounts.from lamport balance",
-        "from must be signer"
-      ]
+     "name": "from",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
     },
     {
-      "name": "CreateAccount",
-      "discriminator": "00000000",
-      "accounts": [
-        {
-          "name": "from",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "to",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "debits accounts.from by (data.lamports + rent_exempt_minimum)",
-        "creates new account at accounts.to with data.space bytes owned by data.owner"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "to must be signer and not already initialized",
-        "owner is set from instruction data (can be any program)"
-      ]
-    },
-    {
-      "name": "Assign",
-      "discriminator": "01000000",
-      "accounts": [
-        {
-          "name": "account",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "sets accounts.account owner to data.owner"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "account must be signer \u2014 only current owner can reassign",
-        "RISK: changes program ownership \u2014 flag if unexpected"
-      ]
-    },
-    {
-      "name": "Allocate",
-      "discriminator": "08000000",
-      "accounts": [
-        {
-          "name": "account",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "allocates data.space bytes for accounts.account"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "account must be signer",
-        "space must be reasonable (< 10MB per account)"
-      ]
-    },
-    {
-      "name": "CreateAccountWithSeed",
-      "discriminator": "03000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "AdvanceNonceAccount",
-      "discriminator": "04000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "WithdrawNonceAccount",
-      "discriminator": "05000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "InitializeNonceAccount",
-      "discriminator": "06000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "AuthorizeNonceAccount",
-      "discriminator": "07000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "AllocateWithSeed",
-      "discriminator": "09000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "AssignWithSeed",
-      "discriminator": "0a000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "TransferWithSeed",
-      "discriminator": "0b000000",
-      "accounts": [
-        {
-          "name": "user_authority",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "program_account",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "System Program instruction"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
+     "name": "to",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
     }
-  ],
-  "trust_tier": "BattleTested"
+   ],
+   "expected_state_changes": [
+    "debits accounts.from by data.amount lamports",
+    "credits accounts.to by data.amount lamports"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "amount must not exceed accounts.from lamport balance",
+    "from must be signer"
+   ]
+  },
+  {
+   "name": "CreateAccount",
+   "discriminator": "00000000",
+   "accounts": [
+    {
+     "name": "from",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "to",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.from by (data.lamports + rent_exempt_minimum)",
+    "creates new account at accounts.to with data.space bytes owned by data.owner"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "to must be signer and not already initialized",
+    "owner is set from instruction data (can be any program)"
+   ]
+  },
+  {
+   "name": "Assign",
+   "discriminator": "01000000",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "sets accounts.account owner to data.owner"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "account must be signer \u2014 only current owner can reassign",
+    "RISK: changes program ownership \u2014 flag if unexpected"
+   ]
+  },
+  {
+   "name": "Allocate",
+   "discriminator": "08000000",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "allocates data.space bytes for accounts.account"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "account must be signer",
+    "space must be reasonable (< 10MB per account)"
+   ]
+  },
+  {
+   "name": "CreateAccountWithSeed",
+   "discriminator": "03000000",
+   "accounts": [
+    {
+     "name": "from",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "to",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "base",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "creates accounts.to with data.space bytes owned by data.owner, funded from accounts.from"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "AdvanceNonceAccount",
+   "discriminator": "04000000",
+   "accounts": [
+    {
+     "name": "nonce",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "recent_blockhashes",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "advances accounts.nonce account's stored blockhash"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "WithdrawNonceAccount",
+   "discriminator": "05000000",
+   "accounts": [
+    {
+     "name": "nonce",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "to",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "recent_blockhashes",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "withdraws accounts.nonce lamports to accounts.to"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "InitializeNonceAccount",
+   "discriminator": "06000000",
+   "accounts": [
+    {
+     "name": "nonce",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "recent_blockhashes",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.nonce as a nonce account"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "AuthorizeNonceAccount",
+   "discriminator": "07000000",
+   "accounts": [
+    {
+     "name": "nonce",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "sets accounts.nonce authority to data.new_authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "AllocateWithSeed",
+   "discriminator": "09000000",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "base",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "allocates data.space bytes to accounts.account owned by data.owner"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "AssignWithSeed",
+   "discriminator": "0a000000",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "base",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "reassigns accounts.account owner to data.owner"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "TransferWithSeed",
+   "discriminator": "0b000000",
+   "accounts": [
+    {
+     "name": "from",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "to",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "base",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.from lamports by data.lamports",
+    "credits accounts.to lamports by data.lamports"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  }
+ ],
+ "trust_tier": "BattleTested"
 }

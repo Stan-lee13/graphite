@@ -144,6 +144,33 @@ fn primary_token_account(ix: &TransactionInstruction) -> Option<&str> {
     }
 }
 
+/// Canonical SPL Token / Token-2022 account layouts (per the official
+/// TokenInstruction docs, verified against mainnet):
+///   Transfer `03`        : [source, destination, authority]
+///   TransferChecked `0c` : [source, mint, destination, authority]
+/// The SOURCE is always accounts[0]; the DESTINATION index differs.
+/// Instruction-type-aware extraction so a TransferChecked mass sweep cannot
+/// evade the mass-sweep detector by having the mint parsed as destination.
+fn transfer_source(ix: &TransactionInstruction) -> Option<&str> {
+    if is_transfer_instruction(ix) {
+        ix.account_addresses.first().map(|s| s.as_str())
+    } else {
+        None
+    }
+}
+
+fn transfer_destination(ix: &TransactionInstruction) -> Option<&str> {
+    if !is_transfer_instruction(ix) {
+        return None;
+    }
+    let idx = if disc_matches(&ix.instruction_discriminator, DISC_TRANSFER_CHECKED) {
+        2
+    } else {
+        1
+    };
+    ix.account_addresses.get(idx).map(|s| s.as_str())
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Multi-instruction analysis
 // ─────────────────────────────────────────────────────────────────────────────
@@ -245,11 +272,11 @@ pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec
     if transfers.len() >= 3 {
         let sources: std::collections::HashSet<&str> = transfers
             .iter()
-            .filter_map(|ix| ix.account_addresses.first().map(|s| s.as_str()))
+            .filter_map(|ix| transfer_source(ix))
             .collect();
         let destinations: std::collections::HashSet<&str> = transfers
             .iter()
-            .filter_map(|ix| ix.account_addresses.get(1).map(|s| s.as_str()))
+            .filter_map(|ix| transfer_destination(ix))
             .collect();
         let mass_sweep = destinations.len() >= 3 || (transfers.len() >= 4 && sources.len() >= 3);
         if mass_sweep {
@@ -313,13 +340,24 @@ pub fn system_programs() -> Vec<String> {
     ]
 }
 
-/// Count occurrences of `program_id` along a single root-to-leaf path.
-fn path_occurrences(node: &CpiTraceNode, needle: &str, count: u32) -> u32 {
-    let mut c = count + u32::from(node.program_id == needle);
-    for child in &node.children {
-        c = c.max(path_occurrences(child, needle, c));
+/// Max occurrences of `needle` along any single root-to-leaf path, INCLUDING
+/// the root node. This is the correct execution-path semantic: a program
+/// re-entered at the root (the verified instruction's own program) counts
+/// toward the compositional-drain threshold just like any deeper revisit.
+/// The prior implementation counted downward from a depth >= 1 node, so a
+/// chain like A(root) -> B -> A -> A reported 2 occurrences for A instead of
+/// 3 and evaded the repeated-revisit rule.
+fn max_path_occurrences(node: &CpiTraceNode, needle: &str, count: u32) -> u32 {
+    let c = count + u32::from(node.program_id == needle);
+    if node.children.is_empty() {
+        c
+    } else {
+        node.children
+            .iter()
+            .map(|child| max_path_occurrences(child, needle, c))
+            .max()
+            .unwrap_or(c)
     }
-    c
 }
 
 fn max_depth(node: &CpiTraceNode) -> u32 {
@@ -384,15 +422,20 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
 
     // Rule 2: repeated revisit along one path — the compositional drain
     // signature (same program re-entered >= 3 times within a single chain).
-    for node in &nodes {
-        let occ = path_occurrences(node, &node.program_id, 0);
+    // Evaluated per distinct program from the ROOT so root-level repetition
+    // (the verified instruction's own program re-entering itself) counts.
+    let mut programs: std::collections::HashSet<&str> =
+        nodes.iter().map(|n| n.program_id.as_str()).collect();
+    programs.insert(trace.program_id.as_str());
+    for prog in programs {
+        let occ = max_path_occurrences(trace, prog, 0);
         if occ >= 3 {
             findings.push(PatternFinding {
                 pattern: "CpiTraceAnomaly".to_string(),
                 severity: PatternSeverity::Blocked,
                 reason: format!(
                     "CPI trace re-enters program {} {} times along one path — compositional drain signature",
-                    node.program_id, occ
+                    prog, occ
                 ),
             });
         }
@@ -447,6 +490,9 @@ mod tests {
     const DEST: &str = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
     const DEST2: &str = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP";
     const DEST3: &str = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
+    const MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const MINT2: &str = "So11111111111111111111111111111111111111112";
+    const MINT3: &str = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytf3jPxZ7P";
 
     // ── Multi-instruction rules ─────────────────────────────────────────────
 
@@ -520,16 +566,84 @@ mod tests {
             ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, SOURCE]),
             ix(TOKEN_PROGRAM, "03", &[DEST2, DEST, SOURCE]),
             ix(TOKEN_PROGRAM, "03", &[DEST3, DEST, SOURCE]),
+            // TransferChecked canonical layout: [source, mint, destination, authority]
             ix(
                 TOKEN_PROGRAM,
                 "0c",
-                &["9jYfQm6n3vT2wZxK4pR8sLcE7aBdU5iN1hG0fJqV", DEST, SOURCE],
+                &[
+                    "9jYfQm6n3vT2wZxK4pR8sLcE7aBdU5iN1hG0fJqV",
+                    MINT,
+                    DEST,
+                    SOURCE,
+                ],
             ),
         ];
         let findings = analyze_multi_instruction(&txs);
         assert_eq!(findings.len(), 1);
         assert!(findings[0].reason.contains("Mass multi-transfer sweep"));
         assert!(findings[0].reason.contains("4 distinct source"));
+    }
+
+    #[test]
+    fn transfer_checked_three_distinct_destinations_is_blocked() {
+        // P0 #2 regression: with the OLD code, destinations were read from
+        // accounts[1] — for TransferChecked that is the MINT. Three
+        // TransferChecked transfers sharing a mint showed ONE "destination"
+        // and slipped under the >= 3 floor: a genuine 3-destination mass
+        // drain evaded the detector. Canonical layout is
+        // [source, mint, destination, authority] so the destination is
+        // accounts[2].
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "0c", &[SOURCE, MINT, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "0c", &[DEST2, MINT, DEST3, SOURCE]),
+            ix(TOKEN_PROGRAM, "0c", &[DEST3, MINT, DEST2, SOURCE]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, PatternSeverity::Blocked);
+        assert!(findings[0].reason.contains("3 distinct source"));
+        assert!(findings[0].reason.contains("3 distinct destination"));
+    }
+
+    #[test]
+    fn transfer_checked_mixed_programs_mass_sweep_is_blocked() {
+        // Token-2022 TransferChecked variants must be treated identically to
+        // SPL Token: mixed SPL/Token-2022 sweeps still count every transfer.
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "0c", &[SOURCE, MINT, DEST, SOURCE]),
+            ix(TOKEN_2022_PROGRAM, "0c", &[DEST2, MINT2, DEST3, SOURCE]),
+            ix(TOKEN_2022_PROGRAM, "0c", &[DEST3, MINT3, DEST2, SOURCE]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, PatternSeverity::Blocked);
+    }
+
+    #[test]
+    fn transfer_checked_distinct_mints_not_misread_as_destinations() {
+        // The pre-fix bug also INFLATED findings: with the mint read as the
+        // destination, transfers to one destination but through distinct mints
+        // (e.g. 3 token types consolidated into one account) looked like 3
+        // distinct destinations and hard-blocked a legitimate consolidation.
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "0c", &[SOURCE, MINT, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "0c", &[DEST2, MINT2, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "0c", &[DEST3, MINT3, DEST, SOURCE]),
+        ];
+        assert!(analyze_multi_instruction(&txs).is_empty());
+    }
+
+    #[test]
+    fn transfer_checked_missing_accounts_are_clean() {
+        // Malformed arrays must not panic and must not fabricate a sweep:
+        // a TransferChecked with fewer than 3 accounts has no extractable
+        // destination.
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "0c", &[SOURCE, MINT]),
+            ix(TOKEN_PROGRAM, "0c", &[DEST2, MINT]),
+            ix(TOKEN_PROGRAM, "0c", &[DEST3, MINT]),
+        ];
+        assert!(analyze_multi_instruction(&txs).is_empty());
     }
 
     #[test]
@@ -663,6 +777,136 @@ mod tests {
                 .iter()
                 .any(|f| f.reason.contains("re-enters program prog_a 3 times")),
             "expected revisit finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn trace_root_level_repetition_is_blocked() {
+        // P0 #3 regression: the ROOT is the verified instruction's program.
+        // A chain A(root) -> B -> A -> A re-enters A three times along one
+        // execution path. The old downward-only counter saw only two
+        // occurrences (from the depth-2 node) and missed the root.
+        let trace = node(
+            "prog_a",
+            0,
+            vec![node(
+                "prog_b",
+                1,
+                vec![node("prog_a", 2, vec![node("prog_a", 3, vec![])])],
+            )],
+        );
+        let known: Vec<String> = vec!["prog_a".into(), "prog_b".into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.reason.contains("re-enters program prog_a 3 times")),
+            "expected root-level revisit finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn trace_root_is_same_program_double_reentry_is_clean() {
+        // A(root) -> B -> A is only TWO occurrences along the path — below
+        // the >= 3 threshold and legitimately clean.
+        let trace = node(
+            "prog_a",
+            0,
+            vec![node("prog_b", 1, vec![node("prog_a", 2, vec![])])],
+        );
+        let known: Vec<String> = vec!["prog_a".into(), "prog_b".into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            !findings.iter().any(|f| f.reason.contains("re-enters")),
+            "unexpected revisit finding: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn trace_sibling_repetition_is_clean() {
+        // A -> {A, A} repeats A across SIBLING branches — no single path
+        // contains A more than twice, so this is not a drain chain.
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![
+                node("prog_a", 1, vec![]),
+                node("prog_a", 1, vec![]),
+                node("prog_a", 1, vec![]),
+            ],
+        );
+        let known: Vec<String> = vec![TOKEN_PROGRAM.into(), "prog_a".into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            !findings.iter().any(|f| f.reason.contains("re-enters")),
+            "sibling calls must not look like path re-entry: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn trace_mixed_branch_deep_path_is_blocked() {
+        // Two branches: one short (A, B), one deep with A repeated
+        // (A -> A -> A). The max over paths must count the deep one (3).
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![
+                node("prog_a", 1, vec![node("prog_b", 2, vec![])]),
+                node(
+                    "prog_a",
+                    1,
+                    vec![node("prog_a", 2, vec![node("prog_a", 3, vec![])])],
+                ),
+            ],
+        );
+        let known: Vec<String> = vec![TOKEN_PROGRAM.into(), "prog_a".into(), "prog_b".into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.reason.contains("re-enters program prog_a 3 times")),
+            "expected deep-path finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn trace_cyclic_malformed_self_reference_is_blocked() {
+        // Reentrancy-shaped: a program calling itself through a loop of
+        // distinct intermediaries still yields a path count of 3.
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![node(
+                "prog_a",
+                1,
+                vec![node(
+                    "prog_b",
+                    2,
+                    vec![node(
+                        "prog_c",
+                        3,
+                        vec![node("prog_a", 4, vec![node("prog_a", 5, vec![])])],
+                    )],
+                )],
+            )],
+        );
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "prog_a".into(),
+            "prog_b".into(),
+            "prog_c".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.reason.contains("re-enters program prog_a 3 times")),
+            "expected reentrancy finding, got: {:?}",
             findings
         );
     }
