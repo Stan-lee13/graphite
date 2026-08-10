@@ -47,6 +47,19 @@ pub struct AccountState {
     pub data: Vec<u8>,
 }
 
+/// On-chain status of a submitted transaction (getSignatureStatuses).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SignatureStatus {
+    /// Slot the transaction was included in (0 if unknown).
+    pub slot: u64,
+    /// Remaining confirmations; None once finalized.
+    pub confirmations: Option<u64>,
+    /// Whether the transaction executed successfully (status Ok).
+    pub success: bool,
+    /// RPC error payload when the transaction failed (status Err).
+    pub error: Option<String>,
+}
+
 /// Simulation result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationResult {
@@ -456,6 +469,62 @@ impl SolanaRpcClient {
             .to_string();
         Ok(blockhash)
     }
+
+    /// Confirm the on-chain status of a submitted transaction (L8 execution
+    /// verification primitive). `getSignatureStatuses` returns per-signature
+    /// status: `Ok` with `Some(status)` when the transaction was confirmed and
+    /// included in a slot, `Ok` with `None` when the signature is unknown
+    /// (still pending or never submitted), and an error for malformed input.
+    ///
+    /// This is the honest post-submission check: Graphite cannot guarantee
+    /// execution BEFORE submission, but once a transaction is submitted, its
+    /// inclusion and success can be confirmed against the cluster. L8 stays
+    /// Inconclusive during pre-submission verification BY DESIGN (see
+    /// verification.rs L8) and only becomes conclusive with a real signature
+    /// plus this RPC evidence.
+    pub async fn get_signature_status(
+        &self,
+        signature: &str,
+    ) -> Result<Option<SignatureStatus>, RpcError> {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getSignatureStatuses",
+            "params": [[signature], {"searchTransactionHistory": true}]
+        });
+        let result = self.post_rpc(body).await?;
+        let value = result
+            .get("value")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first().cloned())
+            .ok_or_else(|| {
+                RpcError::InvalidResponse(
+                    "missing getSignatureStatuses result.value[0]".to_string(),
+                )
+            })?;
+        if value.is_null() {
+            return Ok(None);
+        }
+        let slot = value.get("slot").and_then(|s| s.as_u64()).unwrap_or(0);
+        let confirmations = value.get("confirmations").and_then(|c| c.as_u64());
+        let status = value.get("status").and_then(|s| s.as_object());
+        let (err, success) = match status {
+            Some(map) if map.contains_key("Ok") => (None, true),
+            Some(map) if map.contains_key("Err") => (
+                map.get("Err").map(|e| {
+                    serde_json::to_string(e).unwrap_or_else(|_| "unknown error".to_string())
+                }),
+                false,
+            ),
+            _ => (None, false),
+        };
+        Ok(Some(SignatureStatus {
+            slot,
+            confirmations,
+            success,
+            error: err,
+        }))
+    }
 }
 
 /// Exponential backoff between RPC retries: 50ms * 2^attempt, capped at 1s.
@@ -640,6 +709,57 @@ mod tests {
             .await
             .expect("blockhash must parse");
         assert_eq!(bh, "3pq18hX1Ucpnm7n1UP5d7wK8eCDo9bbYWvdx1GJmwrfr");
+        handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_signature_status_confirmed_success() {
+        let (url, handle) = mock_rpc_server(vec![(
+            200,
+            "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":100,\"confirmations\":0,\"err\":null,\"status\":{\"Ok\":null}}]},\"id\":1}",
+        )]);
+        let client = client_at(&url, 0);
+        let st = client
+            .get_signature_status("5sigAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .await
+            .expect("status must parse")
+            .expect("signature must be known");
+        assert_eq!(st.slot, 100);
+        assert!(st.success);
+        assert_eq!(st.confirmations, Some(0));
+        assert!(st.error.is_none());
+        handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_signature_status_err_is_failure() {
+        let (url, handle) = mock_rpc_server(vec![(
+            200,
+            "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":101,\"confirmations\":null,\"err\":null,\"status\":{\"Err\":{\"InstructionError\":[0,{\"Custom\":1}]}}}]},\"id\":1}",
+        )]);
+        let client = client_at(&url, 0);
+        let st = client
+            .get_signature_status("5sigAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .await
+            .expect("status must parse")
+            .expect("signature must be known");
+        assert!(!st.success, "Err status must not be success");
+        assert!(st.error.is_some());
+        handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_signature_status_unknown_signature_returns_none() {
+        let (url, handle) = mock_rpc_server(vec![(
+            200,
+            "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[null]},\"id\":1}",
+        )]);
+        let client = client_at(&url, 0);
+        let st = client
+            .get_signature_status("5sigAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .await
+            .expect("null value must parse as None");
+        assert!(st.is_none(), "unknown signature must be None");
         handle.join().unwrap();
     }
 

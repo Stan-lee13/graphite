@@ -46,6 +46,7 @@ fn exploit_l1_drainer_threshold_bypass_5_accounts() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -69,6 +70,7 @@ fn exploit_l2_hidden_transfer_threshold_bypass_12_accounts() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -97,6 +99,7 @@ fn exploit_l3_compositional_drain_bypass_4_targets() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -120,6 +123,7 @@ fn exploit_l4_token2022_setauthority_bypass() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -200,6 +204,7 @@ fn exploit_l8_empty_discriminator_bypasses_setauthority() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -256,6 +261,7 @@ fn exploit_l12_account_duplication_false_positive() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -279,6 +285,7 @@ fn exploit_l14_unknown_system_instruction_passes() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -336,6 +343,7 @@ fn exploit_l18_drainer_with_single_meaningful_change_bypass() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -401,6 +409,7 @@ fn exploit_l20_cpi_self_allowing() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert_eq!(
@@ -512,6 +521,7 @@ fn dx1_pumpfun_repeated_cpi_drain_still_blocked() {
         proposed_intent_type: "swap".to_string(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     assert!(
         matches!(
@@ -538,6 +548,7 @@ fn dx2_dca_repeated_cpi_drain_still_blocked() {
         proposed_intent_type: "close".to_string(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     assert!(
         matches!(
@@ -573,6 +584,7 @@ fn dx3_pumpfun_and_dca_token_cpi_from_trusted_root_is_allowed() {
             proposed_intent_type: intent.to_string(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         assert_eq!(
             assess(&input).unwrap(),
@@ -599,6 +611,7 @@ fn dx4_pumpfun_unlisted_cpi_warning_surfaced_not_silent() {
         proposed_intent_type: "swap".to_string(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let detail = assess_with_warnings(&input).unwrap();
     assert_eq!(
@@ -635,6 +648,7 @@ fn dx5_non_dex_expansion_roots_do_not_get_drainer_relaxation() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     assert!(
         matches!(

@@ -554,6 +554,7 @@ mod tests {
                 allowed_cpis: vec![],
                 risk_rules: vec![],
                 variable_accounts: false,
+                risk_class: String::new(),
             }],
             trust_tier: String::new(),
         }
@@ -684,6 +685,7 @@ mod tests {
                 allowed_cpis: vec![],
                 risk_rules: vec![],
                 variable_accounts: false,
+                risk_class: String::new(),
             })
             .collect();
         let err = ManifestRegistryEngine::validate_manifest(&m).unwrap_err();

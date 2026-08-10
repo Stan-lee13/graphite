@@ -225,7 +225,8 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": false
+   "variable_accounts": false,
+   "risk_class": "withdraw"
   },
   {
    "name": "SwapBaseIn",
@@ -682,7 +683,8 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": false
+   "variable_accounts": false,
+   "risk_class": "authority"
   },
   {
    "name": "WithdrawPnl",
@@ -767,7 +769,8 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": false
+   "variable_accounts": false,
+   "risk_class": "withdraw"
   },
   {
    "name": "Initialize2",
@@ -922,7 +925,8 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": false
+   "variable_accounts": false,
+   "risk_class": "create"
   }
  ]
 }

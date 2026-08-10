@@ -39,7 +39,8 @@
    "risk_rules": [
     "amount must not exceed accounts.from lamport balance",
     "from must be signer"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "CreateAccount",
@@ -68,7 +69,8 @@
    "risk_rules": [
     "to must be signer and not already initialized",
     "owner is set from instruction data (can be any program)"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "Assign",
@@ -87,9 +89,10 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [
-    "account must be signer \u2014 only current owner can reassign",
-    "RISK: changes program ownership \u2014 flag if unexpected"
-   ]
+    "account must be signer — only current owner can reassign",
+    "RISK: changes program ownership — flag if unexpected"
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "Allocate",
@@ -110,7 +113,8 @@
    "risk_rules": [
     "account must be signer",
     "space must be reasonable (< 10MB per account)"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "CreateAccountWithSeed",
@@ -142,7 +146,8 @@
     "creates accounts.to with data.space bytes owned by data.owner, funded from accounts.from"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "AdvanceNonceAccount",
@@ -174,7 +179,8 @@
     "advances accounts.nonce account's stored blockhash"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "WithdrawNonceAccount",
@@ -220,7 +226,8 @@
     "withdraws accounts.nonce lamports to accounts.to"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "InitializeNonceAccount",
@@ -252,7 +259,8 @@
     "initializes accounts.nonce as a nonce account"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "AuthorizeNonceAccount",
@@ -277,7 +285,8 @@
     "sets accounts.nonce authority to data.new_authority"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "AllocateWithSeed",
@@ -302,7 +311,8 @@
     "allocates data.space bytes to accounts.account owned by data.owner"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "AssignWithSeed",

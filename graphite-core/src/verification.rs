@@ -143,6 +143,29 @@ pub struct GraphEdge {
     pub to: String,
 }
 
+/// Outcome of L8 execution verification (post-submission confirmation).
+///
+/// The honest L8 contract: Graphite cannot prove execution before
+/// submission. After submission it confirms against the cluster. The
+/// variants below are the ONLY truthful states — there is deliberately no
+/// "assumed executed" fallback (GAP-2026-08-06-3: Inconclusive, never a
+/// phantom pass).
+#[cfg(feature = "rpc")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionVerification {
+    /// Transaction included in a slot; `success` is the on-chain status.
+    Confirmed {
+        signature: String,
+        slot: u64,
+        success: bool,
+        error: Option<String>,
+    },
+    /// The cluster has no record of this signature (pending or never sent).
+    UnknownSignature(String),
+    /// Cannot confirm right now (no RPC client, RPC failure, timeout).
+    Unavailable(String),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerificationResult {
     pub approved: bool,
@@ -571,6 +594,47 @@ impl GraphiteCore {
     #[cfg(feature = "rpc")]
     pub fn attach_rpc_client(&mut self, client: SolanaRpcClient) {
         self.rpc_client = Some(client);
+    }
+
+    /// L8 execution verification — the POST-SUBMISSION confirmation path.
+    ///
+    /// L8 is Inconclusive during pre-submission verification by design: no
+    /// static analysis can guarantee what happens on-chain. The honest
+    /// guarantee Graphite CAN provide is the closing of the loop after the
+    /// transaction is actually submitted: given the transaction signature,
+    /// confirm from the cluster that (a) the transaction was included in a
+    /// slot, and (b) it executed successfully (status Ok). A failed or
+    /// unknown status is reported exactly as such — never as a phantom pass.
+    ///
+    /// Requires an attached RPC client (the `rpc` feature + GRAPHITE_RPC_URL
+    /// or an explicit `attach_rpc_client`). Without one, this returns
+    /// `None`-success with a clear "unavailable" reason rather than failing
+    /// closed or fabricating evidence.
+    #[cfg(feature = "rpc")]
+    pub async fn verify_execution(
+        &self,
+        signature: &str,
+    ) -> Result<ExecutionVerification, VerificationError> {
+        let Some(client) = &self.rpc_client else {
+            return Ok(ExecutionVerification::Unavailable(
+                "no RPC client attached — attach one via attach_rpc_client or set GRAPHITE_RPC_URL"
+                    .to_string(),
+            ));
+        };
+        match client.get_signature_status(signature).await {
+            Ok(Some(status)) => Ok(ExecutionVerification::Confirmed {
+                signature: signature.to_string(),
+                slot: status.slot,
+                success: status.success,
+                error: status.error,
+            }),
+            Ok(None) => Ok(ExecutionVerification::UnknownSignature(
+                signature.to_string(),
+            )),
+            Err(e) => Ok(ExecutionVerification::Unavailable(format!(
+                "RPC error confirming signature: {e}"
+            ))),
+        }
     }
 
     /// Synchronous wrapper around the async verification API. Blocks on a
@@ -1227,7 +1291,7 @@ impl GraphiteCore {
         })
         .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
         // Step 3: Risk Assessment
-        let (expected_account_count, variable_accounts) = match manifest {
+        let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
                 let ix = m.instructions.iter().find(|i| {
                     crate::manifest::discriminator_matches(
@@ -1236,11 +1300,15 @@ impl GraphiteCore {
                     )
                 });
                 match ix {
-                    Some(i) => (Some(i.accounts.len()), i.variable_accounts),
-                    None => (None, false),
+                    Some(i) => (
+                        Some(i.accounts.len()),
+                        i.variable_accounts,
+                        i.risk_class.clone(),
+                    ),
+                    None => (None, false, String::new()),
                 }
             }
-            None => (None, false),
+            None => (None, false, String::new()),
         };
 
         let risk_detail = assess_with_warnings(&RiskAssessmentInput {
@@ -1258,6 +1326,7 @@ impl GraphiteCore {
                 .extracted_parameters
                 .as_ref()
                 .and_then(|p| p.output_token.clone()),
+            manifest_risk_class,
         })?;
         // `assess_with_warnings` returns non-blocking warnings (e.g. an
         // out-of-manifest CPI on a known protocol) alongside the binary verdict.
@@ -3091,5 +3160,72 @@ mod tests {
             "summary must surface the warning, got: {}",
             result.summary
         );
+    }
+
+    #[cfg(feature = "rpc")]
+    #[tokio::test]
+    async fn l8_verify_execution_no_rpc_client_is_unavailable_not_fake() {
+        // L8 contract: without an RPC client, the outcome is Unavailable —
+        // never a fabricated "executed" pass.
+        let core = GraphiteCore::new();
+        let outcome = core
+            .verify_execution("5sigAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .await
+            .unwrap();
+        assert!(
+            matches!(outcome, ExecutionVerification::Unavailable(_)),
+            "no RPC client must be Unavailable, got: {:?}",
+            outcome
+        );
+    }
+
+    #[cfg(feature = "rpc")]
+    #[tokio::test]
+    async fn l8_verify_execution_confirmed_success_via_mock_rpc() {
+        // Full L8 loop: mock cluster confirms the signature in a slot with
+        // status Ok — the only honest "executed" state.
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let body = "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":12345,\"confirmations\":0,\"err\":null,\"status\":{\"Ok\":null}}]},\"id\":1}";
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(body.as_bytes());
+            let _ = stream.flush();
+        });
+        let mut core = GraphiteCore::new();
+        core.attach_rpc_client(SolanaRpcClient::new(crate::rpc_client::RpcConfig {
+            endpoint: format!("http://{addr}"),
+            timeout: std::time::Duration::from_secs(5),
+            max_retries: 0,
+            ..Default::default()
+        }));
+        let outcome = core
+            .verify_execution("5sigAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .await
+            .unwrap();
+        handle.join().unwrap();
+        match outcome {
+            ExecutionVerification::Confirmed {
+                signature,
+                slot,
+                success,
+                error,
+            } => {
+                assert_eq!(slot, 12345);
+                assert!(success);
+                assert!(error.is_none());
+                assert!(signature.starts_with("5sig"));
+            }
+            other => panic!("expected Confirmed, got: {:?}", other),
+        }
     }
 }

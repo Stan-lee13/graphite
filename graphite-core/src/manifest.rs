@@ -35,6 +35,21 @@ pub struct InstructionDef {
     /// When true, the drainer pattern heuristic is skipped for this instruction.
     #[serde(default)]
     pub variable_accounts: bool,
+    /// Machine-readable security class, declared by the manifest author.
+    /// Empty (default) means "no special class". Recognized values:
+    ///   "drain"      — funds can leave to an attacker-chosen destination
+    ///   "authority"  — ownership/authority can be transferred
+    ///   "withdraw"   — funds are withdrawn (destination must be verified)
+    ///   "mint"       — new tokens are created
+    ///   "close"      — an account is closed (lamports refunded)
+    ///   "create"     — an account is created/allocated
+    ///   "transfer"   — ordinary transfer
+    /// The risk engine consumes this as a fail-closed gate (see `assess`
+    /// Check 10): a high-risk class with NO declared intent is blocked, so
+    /// newly onboarded protocols inherit protection without editing
+    /// detection logic.
+    #[serde(default)]
+    pub risk_class: String,
 }
 
 /// Account role in an instruction.

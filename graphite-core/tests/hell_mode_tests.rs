@@ -108,6 +108,7 @@ fn risk_input(
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     }
 }
 
@@ -704,6 +705,7 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -728,6 +730,7 @@ fn h10_state_changes_dont_mask_closeaccount() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -758,6 +761,7 @@ fn h11_empty_string_state_change_bypasses_drainer() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     // If this passes (not blocked), we found a drainer bypass
@@ -784,6 +788,7 @@ fn h11_whitespace_state_change_bypasses_drainer() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(

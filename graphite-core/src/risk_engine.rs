@@ -75,6 +75,13 @@ pub struct RiskAssessmentInput {
     /// Extracted output token from intent parameters (for FakeSwap detection)
     #[serde(default)]
     pub extracted_output_token: Option<String>,
+    /// Machine-readable security class declared in the manifest for this
+    /// instruction ("drain", "authority", "withdraw", "mint", "close",
+    /// "create", "transfer", or empty). Consumed by Check 10 as a
+    /// fail-closed gate when the agent declares no intent for a high-risk
+    /// class.
+    #[serde(default)]
+    pub manifest_risk_class: String,
 }
 
 /// Known risky instruction discriminators by program ID.
@@ -472,6 +479,28 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
             reason: format!(
                 "System-account impersonation: fund movement to/from {} whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)",
                 impersonator
+            ),
+        });
+    }
+
+    // P0 Check 10: Manifest-declared high-risk class with NO declared intent.
+    // The manifest declares the security class of each instruction
+    // ("drain", "authority", "withdraw", "mint", "close"). A high-risk
+    // instruction with an EMPTY declared intent means the agent never said
+    // what it was doing — fail closed (P12). This extends protection to every
+    // onboarded protocol without per-protocol detection logic: tagging the
+    // manifest is the mechanism. Instructions WITH a declared intent are left
+    // to the intent-mismatch checks (6a/6b/7) which require a concrete
+    // declared class to compare against.
+    let high_risk_classes = ["drain", "authority", "withdraw", "mint", "close"];
+    if high_risk_classes.contains(&input.manifest_risk_class.as_str())
+        && input.proposed_intent_type.trim().is_empty()
+    {
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::MaliciousAccountChange,
+            reason: format!(
+                "Manifest declares this instruction as high-risk class '{}' but no intent was declared — unstated fund movement/authority change (P12 fail-closed)",
+                input.manifest_risk_class
             ),
         });
     }
@@ -934,6 +963,7 @@ mod tests {
             variable_accounts: false,
             proposed_intent_type: "transfer".to_string(),
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         assert_eq!(
             assess(&input).unwrap(),
@@ -941,6 +971,74 @@ mod tests {
                 pattern: RiskPattern::Impersonation,
                 reason: "System-account impersonation: fund movement to/from iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111 whose address shape impersonates an official system account (vanity 11111 suffix or Compu prefix)".to_string(),
             }
+        );
+    }
+
+    #[test]
+    fn test_high_risk_class_without_declared_intent_is_blocked() {
+        // Check 10: every manifest-declared high-risk class (drain,
+        // authority, withdraw, mint, close) with an EMPTY declared intent
+        // is fail-closed — the agent never stated what it was doing.
+        for cls in ["drain", "authority", "withdraw", "mint", "close"] {
+            let input = RiskAssessmentInput {
+                program_id: "11111111111111111111111111111111".to_string(),
+                accounts: vec![],
+                cpi_targets: vec![],
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                instruction_discriminator: "02000000".to_string(),
+                expected_account_count: None,
+                variable_accounts: false,
+                proposed_intent_type: String::new(),
+                extracted_output_token: None,
+                manifest_risk_class: cls.to_string(),
+            };
+            assert!(
+                matches!(
+                    assess(&input).unwrap(),
+                    RiskVerdict::Blocked {
+                        pattern: RiskPattern::MaliciousAccountChange,
+                        ..
+                    }
+                ),
+                "class '{cls}' with empty intent must fail closed"
+            );
+        }
+    }
+
+    #[test]
+    fn test_high_risk_class_with_declared_intent_not_gated_by_check_10() {
+        // A declared intent takes the instruction out of Check 10's
+        // scope — the intent-mismatch checks (6a/6b/7) handle it instead.
+        // Here intent matches a transfer-shaped instruction, so Check 10
+        // must NOT be the blocker for a non-high-risk class.
+        let input = RiskAssessmentInput {
+            program_id: "11111111111111111111111111111111".to_string(),
+            accounts: vec![
+                "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(),
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+            ],
+            cpi_targets: vec![],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            instruction_discriminator: "02000000".to_string(),
+            expected_account_count: Some(2),
+            variable_accounts: false,
+            proposed_intent_type: "transfer".to_string(),
+            extracted_output_token: None,
+            manifest_risk_class: "transfer".to_string(),
+        };
+        let v = assess(&input).unwrap();
+        assert!(
+            !matches!(
+                v,
+                RiskVerdict::Blocked {
+                    pattern: RiskPattern::MaliciousAccountChange,
+                    ..
+                }
+            ),
+            "declared transfer intent must not trip Check 10: {:?}",
+            v
         );
     }
 
@@ -962,6 +1060,7 @@ mod tests {
             variable_accounts: false,
             proposed_intent_type: "transfer".to_string(),
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         assert_eq!(
             assess(&input).unwrap(),
@@ -990,6 +1089,7 @@ mod tests {
             variable_accounts: false,
             proposed_intent_type: "transfer".to_string(),
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
     }
@@ -1012,6 +1112,7 @@ mod tests {
             variable_accounts: false,
             proposed_intent_type: "unknown".to_string(),
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         // Assign is not fund movement — the impersonation rule stays silent.
         // (The AuthorityHijack rule for assign fires on the empty-discriminator
@@ -1043,6 +1144,7 @@ mod tests {
             proposed_intent_type: "swap".to_string(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let detail = assess_with_warnings(&input).unwrap();
         assert_eq!(detail.verdict, RiskVerdict::Passed);
@@ -1068,6 +1170,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(result, RiskVerdict::Blocked { .. }));
@@ -1086,6 +1189,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -1104,6 +1208,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1128,6 +1233,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1152,6 +1258,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result1 = assess(&input).unwrap();
         let result2 = assess(&input).unwrap();
@@ -1181,6 +1288,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1217,6 +1325,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -1249,6 +1358,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1287,6 +1397,7 @@ mod tests {
             proposed_intent_type: "swap".to_string(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -1305,6 +1416,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(
@@ -1339,6 +1451,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1366,6 +1479,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1402,6 +1516,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1426,6 +1541,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1453,6 +1569,7 @@ mod tests {
             proposed_intent_type: String::new(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert!(matches!(
@@ -1478,6 +1595,7 @@ mod tests {
             proposed_intent_type: "swap".to_string(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);
@@ -1497,6 +1615,7 @@ mod tests {
             proposed_intent_type: "transfer".to_string(),
             variable_accounts: false,
             extracted_output_token: None,
+            manifest_risk_class: String::new(),
         };
         let result = assess(&input).unwrap();
         assert_eq!(result, RiskVerdict::Passed);

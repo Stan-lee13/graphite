@@ -46,7 +46,8 @@
    "risk_rules": [
     "authority must be signer",
     "RISK: large transfers to new/dormant accounts should be flagged"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "SetAuthority",
@@ -73,8 +74,9 @@
    "allowed_cpis": [],
    "risk_rules": [
     "current_authority must be signer",
-    "RISK: AUTHORITY_HIJACK \u2014 always flag. Setting authority to system program burns the account."
-   ]
+    "RISK: AUTHORITY_HIJACK — always flag. Setting authority to system program burns the account."
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "CloseAccount",
@@ -108,8 +110,9 @@
    "allowed_cpis": [],
    "risk_rules": [
     "owner must be signer",
-    "RISK: DRAIN \u2014 verify destination is expected"
-   ]
+    "RISK: DRAIN — verify destination is expected"
+   ],
+   "risk_class": "close"
   },
   {
    "name": "InitializeMint",
@@ -134,7 +137,8 @@
     "initializes accounts.mint with data.decimals decimals and data.mint_authority"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "InitializeAccount",
@@ -174,7 +178,8 @@
     "sets accounts.account owner to accounts.owner"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "InitializeMultisig",
@@ -199,7 +204,8 @@
     "initializes accounts.multisig as a multisig account"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "Approve",
@@ -232,7 +238,8 @@
     "sets accounts.source delegate to accounts.delegate"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "Revoke",
@@ -257,7 +264,8 @@
     "revokes accounts.source delegated_amount (sets to 0)"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   },
   {
    "name": "MintTo",
@@ -290,7 +298,8 @@
     "increments accounts.mint supply by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   },
   {
    "name": "Burn",
@@ -323,7 +332,8 @@
     "decrements accounts.mint supply by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   },
   {
    "name": "FreezeAccount",
@@ -355,7 +365,8 @@
     "freezes accounts.account (state -> Frozen)"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "ThawAccount",
@@ -387,7 +398,8 @@
     "thaws accounts.account (state -> Initialized)"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "TransferChecked",
@@ -427,7 +439,8 @@
     "credits accounts.destination token balance by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "ApproveChecked",
@@ -467,7 +480,8 @@
     "sets accounts.source delegate to accounts.delegate"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "MintToChecked",
@@ -500,7 +514,8 @@
     "increments accounts.mint supply by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   },
   {
    "name": "BurnChecked",
@@ -533,7 +548,8 @@
     "decrements accounts.mint supply by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   }
  ],
  "trust_tier": "OfficialManifest"

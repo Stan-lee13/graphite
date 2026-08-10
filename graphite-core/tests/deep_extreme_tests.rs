@@ -238,6 +238,7 @@ fn risk_input(
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     }
 }
 

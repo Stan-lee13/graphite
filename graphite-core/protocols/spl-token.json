@@ -47,7 +47,8 @@
     "authority must be signer and match source account's delegated authority or owner",
     "amount must not exceed source balance",
     "RISK: large transfers to new/dormant accounts should be flagged"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "InitializeMint",
@@ -74,7 +75,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "mint must not already be initialized"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "MintTo",
@@ -111,7 +113,8 @@
     "mint_authority must be signer",
     "RISK: minting to unrelated accounts should be flagged for review",
     "RISK: unlimited mint authority should be flagged"
-   ]
+   ],
+   "risk_class": "mint"
   },
   {
    "name": "Burn",
@@ -146,7 +149,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "authority must be signer and match account's delegated authority or owner"
-   ]
+   ],
+   "risk_class": "mint"
   },
   {
    "name": "Approve",
@@ -181,7 +185,8 @@
    "risk_rules": [
     "owner must be signer",
     "RISK: approving large amounts should be flagged"
-   ]
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "SetAuthority",
@@ -208,10 +213,11 @@
    "allowed_cpis": [],
    "risk_rules": [
     "current_authority must be signer",
-    "RISK: AUTHORITY_HIJACK \u2014 this instruction changes who controls the account. Always flag if called by unexpected authority.",
+    "RISK: AUTHORITY_HIJACK — this instruction changes who controls the account. Always flag if called by unexpected authority.",
     "RISK: setting authority to system program (all zeros) effectively burns the account",
     "RISK: setting freeze_authority should be flagged separately from mint_authority"
-   ]
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "CloseAccount",
@@ -246,8 +252,9 @@
    "allowed_cpis": [],
    "risk_rules": [
     "owner must be signer",
-    "RISK: DRAIN \u2014 closing account sends all lamports to destination, verify destination is expected"
-   ]
+    "RISK: DRAIN — closing account sends all lamports to destination, verify destination is expected"
+   ],
+   "risk_class": "close"
   },
   {
    "name": "InitializeAccount",
@@ -287,7 +294,8 @@
     "sets accounts.account owner to accounts.owner"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "InitializeMultisig",
@@ -312,7 +320,8 @@
     "initializes accounts.multisig as a multisig account"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "Revoke",
@@ -337,7 +346,8 @@
     "revokes accounts.source delegated_amount (sets to 0)"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   },
   {
    "name": "FreezeAccount",
@@ -369,7 +379,8 @@
     "freezes accounts.account (state -> Frozen)"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "ThawAccount",
@@ -401,7 +412,8 @@
     "thaws accounts.account (state -> Initialized)"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "TransferChecked",
@@ -441,7 +453,8 @@
     "credits accounts.destination token balance by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "ApproveChecked",
@@ -481,7 +494,8 @@
     "sets accounts.source delegate to accounts.delegate"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "MintToChecked",
@@ -514,7 +528,8 @@
     "increments accounts.mint supply by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   },
   {
    "name": "BurnChecked",
@@ -547,7 +562,8 @@
     "decrements accounts.mint supply by data.amount"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "mint"
   }
  ],
  "trust_tier": "BattleTested"

@@ -1,1494 +1,1502 @@
 {
-  "graphite_manifest_version": "1.0",
-  "protocol": {
-    "name": "Squads V4 Multisig",
-    "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
-    "note": "Rebuilt from the official squads_multisig_program IDL v2.1.0 (Squads-Protocol/v4 main) on 2026-08-08 (C18): the previous manifest carried fabricated camelCase-hash discriminators and 18 v1-era instructions that do not exist in the deployed program. Every discriminator below = sha256('global:'+snake_case(IDL name))[:8]; four chain-verified against live mainnet txs (multisigCreateV2 32ddc75d28f58be9, vaultTransactionCreate 30fa4ea8d0e2dad3, proposalCreate dc3c49e01e6c4f9f, proposalApprove 9025a488bcd82af8). Multisig PDA seeds from the official SDK (pda.ts): ['multisig','multisig',create_key], IDL-confirmed ('createKey ... used as a seed for the Multisig PDA').",
-    "website": "https://docs.squads.so",
-    "github": "https://github.com/Squads-Protocol/v4"
-  },
-  "version": {
-    "label": "2.1.0",
-    "effective_from_slot": 0,
-    "previous_version_ref": null
-  },
-  "instructions": [
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Squads V4 Multisig",
+  "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
+  "note": "Rebuilt from the official squads_multisig_program IDL v2.1.0 (Squads-Protocol/v4 main) on 2026-08-08 (C18): the previous manifest carried fabricated camelCase-hash discriminators and 18 v1-era instructions that do not exist in the deployed program. Every discriminator below = sha256('global:'+snake_case(IDL name))[:8]; four chain-verified against live mainnet txs (multisigCreateV2 32ddc75d28f58be9, vaultTransactionCreate 30fa4ea8d0e2dad3, proposalCreate dc3c49e01e6c4f9f, proposalApprove 9025a488bcd82af8). Multisig PDA seeds from the official SDK (pda.ts): ['multisig','multisig',create_key], IDL-confirmed ('createKey ... used as a seed for the Multisig PDA').",
+  "website": "https://docs.squads.so",
+  "github": "https://github.com/Squads-Protocol/v4"
+ },
+ "version": {
+  "label": "2.1.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "programConfigInit",
+   "discriminator": "b8bcc6c3cd7c75d8",
+   "accounts": [
     {
-      "name": "programConfigInit",
-      "discriminator": "b8bcc6c3cd7c75d8",
-      "accounts": [
-        {
-          "name": "program_config",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "initializer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Initialize the program config."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
+     "name": "program_config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
     },
     {
-      "name": "programConfigSetAuthority",
-      "discriminator": "eef224b5208fd84b",
-      "accounts": [
-        {
-          "name": "program_config",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Set the `authority` parameter of the program config."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
+     "name": "initializer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
     },
     {
-      "name": "programConfigSetMultisigCreationFee",
-      "discriminator": "65a0f93f9ad7990d",
-      "accounts": [
-        {
-          "name": "program_config",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Set the `multisig_creation_fee` parameter of the program config."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "programConfigSetTreasury",
-      "discriminator": "6f2ef37590bca26b",
-      "accounts": [
-        {
-          "name": "program_config",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Set the `treasury` parameter of the program config."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "multisigCreate",
-      "discriminator": "7a4d509f54585ac5",
-      "accounts": [
-        {
-          "name": "null",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "multisigCreateV2",
-      "discriminator": "32ddc75d28f58be9",
-      "accounts": [
-        {
-          "name": "program_config",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "treasury",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "multisig",
-          "role": "pda",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": [
-            "multisig",
-            "multisig",
-            "{account_3}"
-          ]
-        },
-        {
-          "name": "create_key",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "create_key must be signer (prevents front-running of the multisig PDA)",
-        "RISK: verify configured threshold is not 1-of-1 (single-signer multisig defeats purpose)"
-      ]
-    },
-    {
-      "name": "multisigAddMember",
-      "discriminator": "01dbd76cb8e5d608",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Add a new member to the controlled multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "multisigRemoveMember",
-      "discriminator": "d975b1d2b691da48",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Remove a member/key from the controlled multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "multisigSetTimeLock",
-      "discriminator": "949a794dd4fe9b48",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Set the `time_lock` config parameter for the controlled multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "multisigChangeThreshold",
-      "discriminator": "8d2a0f7ea95c3eb5",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Set the `threshold` config parameter for the controlled multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "threshold change can alter signing requirements \u2014 monitor for 1-of-1 downgrade"
-      ]
-    },
-    {
-      "name": "multisigSetConfigAuthority",
-      "discriminator": "8f5dc78f5ca9c1e8",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Set the multisig `config_authority`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "multisigSetRentCollector",
-      "discriminator": "30cc4139d2469c4a",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Set the multisig `rent_collector`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "rent collector receives closed-account rent \u2014 unexpected collector = fund diversion"
-      ]
-    },
-    {
-      "name": "multisigAddSpendingLimit",
-      "discriminator": "0bf29f2a56c55973",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "spending_limit",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a new spending limit for the controlled multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "multisigRemoveSpendingLimit",
-      "discriminator": "e4c6886f7b04b271",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "config_authority",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "spending_limit",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_collector",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Remove the spending limit from the controlled multisig."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "configTransactionCreate",
-      "discriminator": "9bec57e4894b5127",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a new config transaction."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "configTransactionExecute",
-      "discriminator": "7292f4bdfc8c2428",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Execute a config transaction."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "executes a config change (threshold, members, rent collector) \u2014 verify the target state"
-      ]
-    },
-    {
-      "name": "vaultTransactionCreate",
-      "discriminator": "30fa4ea8d0e2dad3",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a new vault transaction."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "creator must be a member of the multisig",
-        "draft transaction is a proposal of future vault instructions \u2014 approval/execution is where funds move"
-      ]
-    },
-    {
-      "name": "transactionBufferCreate",
-      "discriminator": "f5c9716c253f1d59",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction_buffer",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a transaction buffer account."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "transactionBufferClose",
-      "discriminator": "11b6d0e48818b266",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction_buffer",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Close a transaction buffer account."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "transactionBufferExtend",
-      "discriminator": "e69d433805eef592",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction_buffer",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Extend a transaction buffer account."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "vaultTransactionCreateFromBuffer",
-      "discriminator": "de36954457f630e7",
-      "accounts": [
-        {
-          "name": "vault_transaction_create",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction_buffer",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a new vault transaction from a completed transaction buffer."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "vaultTransactionExecute",
-      "discriminator": "c208a15799a419ab",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Execute a vault transaction."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "EXECUTES the transaction's instructions from the vault \u2014 verify the inner CPI/instruction list",
-        "high-impact: any member-approved execution moves vault funds"
-      ]
-    },
-    {
-      "name": "batchCreate",
-      "discriminator": "c28e8d1137b914f8",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "batch",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a new batch."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "batchAddTransaction",
-      "discriminator": "5964e0124546364c",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "batch",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Add a transaction to the batch."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "batchExecuteTransaction",
-      "discriminator": "ac2cb398157feab4",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "batch",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Execute a transaction from the batch."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "executes batched vault transactions \u2014 verify each inner transaction"
-      ]
-    },
-    {
-      "name": "proposalCreate",
-      "discriminator": "dc3c49e01e6c4f9f",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "creator",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_payer",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Create a new multisig proposal."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "creator must be a member",
-        "proposal carries the transaction index to approve/execute"
-      ]
-    },
-    {
-      "name": "proposalActivate",
-      "discriminator": "0b225cf89a1b336a",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Update status of a multisig proposal from `Draft` to `Active`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "proposalApprove",
-      "discriminator": "9025a488bcd82af8",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Approve a multisig proposal on behalf of the `member`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "approver must be a member; threshold approvals unlock execution"
-      ]
-    },
-    {
-      "name": "proposalReject",
-      "discriminator": "f33e869ce66af687",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Reject a multisig proposal on behalf of the `member`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "proposalCancel",
-      "discriminator": "1b2a7fed26a354cb",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Cancel a multisig proposal on behalf of the `member`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "proposalCancelV2",
-      "discriminator": "cd29c23ddc8b10f7",
-      "accounts": [
-        {
-          "name": "proposal_vote",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Cancel a multisig proposal on behalf of the `member`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "cancellation by a member or config authority is a governance action"
-      ]
-    },
-    {
-      "name": "spendingLimitUse",
-      "discriminator": "1039827fc1149b86",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "member",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "spending_limit",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "vault",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "destination",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "mint",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "vault_token_account",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "destination_token_account",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "token_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Use a spending limit to transfer tokens from a multisig vault to a destination account."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": [
-        "consumes a spending-limit allowance \u2014 verify limit, amount, and vault"
-      ]
-    },
-    {
-      "name": "configTransactionAccountsClose",
-      "discriminator": "50cb54359770bbba",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_collector",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Closes a `ConfigTransaction` and the corresponding `Proposal`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "vaultTransactionAccountsClose",
-      "discriminator": "c447bbb00223aaa5",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_collector",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Closes a `VaultTransaction` and the corresponding `Proposal`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "vaultBatchTransactionAccountClose",
-      "discriminator": "8612136a814461f7",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "batch",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "transaction",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_collector",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Closes a `VaultBatchTransaction` belonging to the `batch` and `proposal`."
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
-    },
-    {
-      "name": "batchAccountsClose",
-      "discriminator": "dac407af82660bff",
-      "accounts": [
-        {
-          "name": "multisig",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "proposal",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "batch",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "rent_collector",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "system_program",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "Closes Batch and the corresponding Proposal accounts for proposals in terminal states:"
-      ],
-      "allowed_cpis": [],
-      "risk_rules": []
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
     }
-  ],
-  "trust_tier": "OfficialManifest"
+   ],
+   "expected_state_changes": [
+    "Initialize the program config."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "programConfigSetAuthority",
+   "discriminator": "eef224b5208fd84b",
+   "accounts": [
+    {
+     "name": "program_config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Set the `authority` parameter of the program config."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "programConfigSetMultisigCreationFee",
+   "discriminator": "65a0f93f9ad7990d",
+   "accounts": [
+    {
+     "name": "program_config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Set the `multisig_creation_fee` parameter of the program config."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "programConfigSetTreasury",
+   "discriminator": "6f2ef37590bca26b",
+   "accounts": [
+    {
+     "name": "program_config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Set the `treasury` parameter of the program config."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "multisigCreate",
+   "discriminator": "7a4d509f54585ac5",
+   "accounts": [
+    {
+     "name": "null",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "multisigCreateV2",
+   "discriminator": "32ddc75d28f58be9",
+   "accounts": [
+    {
+     "name": "program_config",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "treasury",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "multisig",
+     "role": "pda",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [
+      "multisig",
+      "multisig",
+      "{account_3}"
+     ]
+    },
+    {
+     "name": "create_key",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "create_key must be signer (prevents front-running of the multisig PDA)",
+    "RISK: verify configured threshold is not 1-of-1 (single-signer multisig defeats purpose)"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "multisigAddMember",
+   "discriminator": "01dbd76cb8e5d608",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Add a new member to the controlled multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "multisigRemoveMember",
+   "discriminator": "d975b1d2b691da48",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Remove a member/key from the controlled multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "multisigSetTimeLock",
+   "discriminator": "949a794dd4fe9b48",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Set the `time_lock` config parameter for the controlled multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "multisigChangeThreshold",
+   "discriminator": "8d2a0f7ea95c3eb5",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Set the `threshold` config parameter for the controlled multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "threshold change can alter signing requirements — monitor for 1-of-1 downgrade"
+   ]
+  },
+  {
+   "name": "multisigSetConfigAuthority",
+   "discriminator": "8f5dc78f5ca9c1e8",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Set the multisig `config_authority`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "multisigSetRentCollector",
+   "discriminator": "30cc4139d2469c4a",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Set the multisig `rent_collector`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "rent collector receives closed-account rent — unexpected collector = fund diversion"
+   ]
+  },
+  {
+   "name": "multisigAddSpendingLimit",
+   "discriminator": "0bf29f2a56c55973",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "spending_limit",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a new spending limit for the controlled multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "multisigRemoveSpendingLimit",
+   "discriminator": "e4c6886f7b04b271",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "spending_limit",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_collector",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Remove the spending limit from the controlled multisig."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "configTransactionCreate",
+   "discriminator": "9bec57e4894b5127",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a new config transaction."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "configTransactionExecute",
+   "discriminator": "7292f4bdfc8c2428",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Execute a config transaction."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "executes a config change (threshold, members, rent collector) — verify the target state"
+   ]
+  },
+  {
+   "name": "vaultTransactionCreate",
+   "discriminator": "30fa4ea8d0e2dad3",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a new vault transaction."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "creator must be a member of the multisig",
+    "draft transaction is a proposal of future vault instructions — approval/execution is where funds move"
+   ]
+  },
+  {
+   "name": "transactionBufferCreate",
+   "discriminator": "f5c9716c253f1d59",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction_buffer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a transaction buffer account."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "transactionBufferClose",
+   "discriminator": "11b6d0e48818b266",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction_buffer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Close a transaction buffer account."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "transactionBufferExtend",
+   "discriminator": "e69d433805eef592",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction_buffer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Extend a transaction buffer account."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "vaultTransactionCreateFromBuffer",
+   "discriminator": "de36954457f630e7",
+   "accounts": [
+    {
+     "name": "vault_transaction_create",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction_buffer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a new vault transaction from a completed transaction buffer."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "vaultTransactionExecute",
+   "discriminator": "c208a15799a419ab",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Execute a vault transaction."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "EXECUTES the transaction's instructions from the vault — verify the inner CPI/instruction list",
+    "high-impact: any member-approved execution moves vault funds"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "batchCreate",
+   "discriminator": "c28e8d1137b914f8",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "batch",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a new batch."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "batchAddTransaction",
+   "discriminator": "5964e0124546364c",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "batch",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Add a transaction to the batch."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "batchExecuteTransaction",
+   "discriminator": "ac2cb398157feab4",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "batch",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Execute a transaction from the batch."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "executes batched vault transactions — verify each inner transaction"
+   ]
+  },
+  {
+   "name": "proposalCreate",
+   "discriminator": "dc3c49e01e6c4f9f",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Create a new multisig proposal."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "creator must be a member",
+    "proposal carries the transaction index to approve/execute"
+   ]
+  },
+  {
+   "name": "proposalActivate",
+   "discriminator": "0b225cf89a1b336a",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Update status of a multisig proposal from `Draft` to `Active`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "proposalApprove",
+   "discriminator": "9025a488bcd82af8",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Approve a multisig proposal on behalf of the `member`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "approver must be a member; threshold approvals unlock execution"
+   ]
+  },
+  {
+   "name": "proposalReject",
+   "discriminator": "f33e869ce66af687",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Reject a multisig proposal on behalf of the `member`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "proposalCancel",
+   "discriminator": "1b2a7fed26a354cb",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Cancel a multisig proposal on behalf of the `member`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "proposalCancelV2",
+   "discriminator": "cd29c23ddc8b10f7",
+   "accounts": [
+    {
+     "name": "proposal_vote",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Cancel a multisig proposal on behalf of the `member`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "cancellation by a member or config authority is a governance action"
+   ]
+  },
+  {
+   "name": "spendingLimitUse",
+   "discriminator": "1039827fc1149b86",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "member",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "spending_limit",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Use a spending limit to transfer tokens from a multisig vault to a destination account."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "consumes a spending-limit allowance — verify limit, amount, and vault"
+   ]
+  },
+  {
+   "name": "configTransactionAccountsClose",
+   "discriminator": "50cb54359770bbba",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_collector",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Closes a `ConfigTransaction` and the corresponding `Proposal`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "vaultTransactionAccountsClose",
+   "discriminator": "c447bbb00223aaa5",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_collector",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Closes a `VaultTransaction` and the corresponding `Proposal`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "vaultBatchTransactionAccountClose",
+   "discriminator": "8612136a814461f7",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "batch",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transaction",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_collector",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Closes a `VaultBatchTransaction` belonging to the `batch` and `proposal`."
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "batchAccountsClose",
+   "discriminator": "dac407af82660bff",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "proposal",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "batch",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_collector",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Closes Batch and the corresponding Proposal accounts for proposals in terminal states:"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  }
+ ],
+ "trust_tier": "OfficialManifest"
 }

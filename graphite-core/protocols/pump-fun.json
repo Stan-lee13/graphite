@@ -52,7 +52,8 @@
     "create is mint-launch: no user funds move",
     "mint must be a fresh uninitialized account",
     "RISK: user-supplied mint address — verify owner is SPL Token after CPI"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "buy",
@@ -215,7 +216,8 @@
     "swap-shaped: tokens in, SOL out — validate curve math",
     "user_token_account must be owned by accounts.user",
     "RISK: if sell output is drained to an attacker address instead of accounts.user, flag CompositionalDrain"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "sell_v2",
@@ -297,7 +299,8 @@
     "RISK: migration moves LP — verify pool recipient is a known DEX program",
     "RISK: authority is program PDA — flag if authority is a user key",
     "RISK: if LP tokens are transferred to an attacker account, flag CompositionalDrain"
-   ]
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "initialize",
@@ -327,7 +330,8 @@
    "risk_rules": [
     "admin-only: authority must be the known deployer key",
     "one-time: global_state must be uninitialized"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "set_params",
@@ -355,7 +359,8 @@
    "risk_rules": [
     "admin-only: authority must be the known deployer key",
     "RISK: parameter change by unknown authority — flag PermissionEscalation"
-   ]
+   ],
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "OfficialManifest",

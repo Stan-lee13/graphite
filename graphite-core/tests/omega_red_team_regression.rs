@@ -32,6 +32,7 @@ fn regression_l1_drainer_5_accounts_now_blocked() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -68,6 +69,7 @@ fn regression_l2_hidden_transfer_12_accounts_now_blocked() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -102,6 +104,7 @@ fn regression_l3_compositional_drain_4_targets_now_blocked() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -131,6 +134,7 @@ fn regression_l4_token2022_setauthority_now_blocked() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -161,6 +165,7 @@ fn regression_l4b_spl_token_setauthority_now_blocked() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -245,6 +250,7 @@ fn regression_l8_empty_discriminator_spl_token_now_blocked() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(
@@ -299,6 +305,7 @@ fn regression_l12_dedup_prevents_false_positive() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     // After dedup, only 1 unique account → should NOT be flagged as drainer
@@ -324,6 +331,7 @@ fn regression_l18_100_accounts_1_change_now_blocked() {
         proposed_intent_type: String::new(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     let result = assess(&input).unwrap();
     assert!(

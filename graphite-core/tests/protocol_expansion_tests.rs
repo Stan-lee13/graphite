@@ -205,6 +205,7 @@ fn pump_fun_drainer_heuristic_is_suppressed_for_curve_trades() {
         proposed_intent_type: "swap".to_string(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     assert_eq!(assess(&input).unwrap(), RiskVerdict::Passed);
 
@@ -236,6 +237,7 @@ fn pump_fun_repeated_cpi_chain_still_blocked_as_compositional_drain() {
         proposed_intent_type: "swap".to_string(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     };
     assert!(matches!(
         assess(&input).unwrap(),

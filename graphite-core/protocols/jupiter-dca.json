@@ -66,7 +66,8 @@
     "user must be signer and the owner of user_ata",
     "escrow transfer amount must equal data.input_amount",
     "RISK: if escrow recipient is not the DCA program PDA, flag MaliciousAccountChange"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "openDcaV2",
@@ -137,7 +138,8 @@
    "risk_rules": [
     "only the DCA owner may close",
     "RISK: refund recipient must be accounts.user — if funds go elsewhere, flag CompositionalDrain"
-   ]
+   ],
+   "risk_class": "drain"
   },
   {
    "name": "deposit",
@@ -213,7 +215,8 @@
    "risk_rules": [
     "only the DCA owner may withdraw",
     "RISK: withdrawal recipient must be user_ata owned by accounts.user — flag if diverted"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "endAndClose",
@@ -245,7 +248,8 @@
    "risk_rules": [
     "only the DCA owner may end the schedule",
     "RISK: refund recipient must be accounts.user"
-   ]
+   ],
+   "risk_class": "drain"
   },
   {
    "name": "withdrawFees",
@@ -275,7 +279,8 @@
    "risk_rules": [
     "admin-only instruction",
     "RISK: unexpected fee withdrawal — flag PermissionEscalation"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "initiateFlashFill",
@@ -320,7 +325,8 @@
    "risk_rules": [
     "keeper-initiated flash fill must be repaid by a matching fulfill_flash_fill",
     "RISK: borrowed input tokens must return to the DCA in_ata — if the repayment path is missing or diverted, flag FlashLoanAbuse"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "fulfillFlashFill",
@@ -416,7 +422,8 @@
    "risk_rules": [
     "transfer recipient must be the DCA owner's user_out_ata",
     "RISK: if the output is diverted from the owner, flag CompositionalDrain"
-   ]
+   ],
+   "risk_class": "transfer"
   }
  ],
  "trust_tier": "OfficialManifest",

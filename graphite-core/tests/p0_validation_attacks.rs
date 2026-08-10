@@ -28,6 +28,7 @@ fn risk_input(
         proposed_intent_type: intent.to_string(),
         variable_accounts: false,
         extracted_output_token: None,
+        manifest_risk_class: String::new(),
     }
 }
 
@@ -392,6 +393,100 @@ fn attack_p0_4_infra_repeats_plus_single_custom_visit_clean() {
         !is_blocked_with(&v, RiskPattern::CompositionalDrainPattern),
         "single custom visit with repeated infra flagged as drain: {:?}",
         v
+    );
+}
+
+// ── Check 10: manifest-declared high-risk class (risk-engine expansion) ───
+
+#[test]
+fn attack_check10_stake_withdraw_no_intent_is_blocked() {
+    // The stake-program manifest tags Withdraw (04000000) as "withdraw". An
+    // agent submitting a stake withdrawal WITHOUT declaring intent must be
+    // fail-closed by the manifest-declared class — no per-protocol code.
+    use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::verification::{ProposedIntent, VerificationInput};
+    use graphite_core::GraphiteCore;
+    let core = GraphiteCore::default();
+    let input = VerificationInput {
+        proposed_intent: ProposedIntent {
+            intent_type: String::new(), // NO declared intent
+            raw_natural_language: String::new(),
+            confidence_of_parse: 0.0,
+            extracted_parameters: None,
+        },
+        program_id: "Stake11111111111111111111111111111111111111".to_string(),
+        protocol_version: "1.0.0".to_string(),
+        instruction_discriminator: "04000000".to_string(), // Stake Withdraw
+        account_addresses: vec![
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(), // stake
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),  // withdrawer
+            "SysvarC1ock11111111111111111111111111111111".to_string(),  // clock
+            "SysvarStakeHistory1111111111111111111111111".to_string(),  // stake history
+            "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(), // to
+        ],
+        instruction_data: None,
+        cpi_targets: vec![],
+        wallet_profile: WalletProfile::Treasury,
+        behavior_evidence: Default::default(),
+        compute_units: 100,
+        account_writes: 1,
+        cpi_hops: 0,
+        signed_transaction: None,
+        transaction_instructions: vec![],
+        cpi_trace: None,
+    };
+    let result = core.verify(&input).unwrap();
+    assert!(
+        !result.approved,
+        "Stake Withdraw with no declared intent must be blocked by its manifest risk_class"
+    );
+}
+
+#[test]
+fn attack_check10_stake_withdraw_with_declared_intent_not_check10_blocked() {
+    // Declared "stake" intent takes it out of Check 10; the block (if any)
+    // must NOT be the Check 10 MaliciousAccountChange reason.
+    use graphite_core::policy_engine::WalletProfile;
+    use graphite_core::verification::{ProposedIntent, VerificationInput};
+    use graphite_core::GraphiteCore;
+    let core = GraphiteCore::default();
+    let input = VerificationInput {
+        proposed_intent: ProposedIntent {
+            intent_type: "stake".to_string(),
+            raw_natural_language: "withdraw staked SOL".to_string(),
+            confidence_of_parse: 0.9,
+            extracted_parameters: None,
+        },
+        program_id: "Stake11111111111111111111111111111111111111".to_string(),
+        protocol_version: "1.0.0".to_string(),
+        instruction_discriminator: "04000000".to_string(), // Stake Withdraw
+        account_addresses: vec![
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(), // stake
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),  // withdrawer
+            "SysvarC1ock11111111111111111111111111111111".to_string(),  // clock
+            "SysvarStakeHistory1111111111111111111111111".to_string(),  // stake history
+            "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(), // to
+        ],
+        instruction_data: None,
+        cpi_targets: vec![],
+        wallet_profile: WalletProfile::Treasury,
+        behavior_evidence: Default::default(),
+        compute_units: 100,
+        account_writes: 1,
+        cpi_hops: 0,
+        signed_transaction: None,
+        transaction_instructions: vec![],
+        cpi_trace: None,
+    };
+    let result = core.verify(&input).unwrap();
+    assert!(
+        !result
+            .risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.reason.contains("no intent was declared")),
+        "declared intent must not trip the Check 10 empty-intent gate: {:?}",
+        result.risk_verdict.findings
     );
 }
 
