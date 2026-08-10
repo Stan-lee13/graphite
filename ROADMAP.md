@@ -74,11 +74,13 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 ## Phase 2 (PLANNED — branch: phase2-development)
 
 ### Month 1: Real Data + Protocol Expansion
-- [ ] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — real txs now flow through; exploit-class reconstruction still synthetic
+- [ ] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — real txs now flow through; exploit-class reconstruction now partially real (C30: 3 pinned mainnet exploits scored in the benchmark), live RPC fetch of additional raw bytes remains for corpus expansion
 - [x] Feed actual transaction data through Graphite (not synthetic reconstructions) — `src/live_corpus.rs` + `graphite regression seed-live` (2026-08-08): live devnet verified=20 / recorded=20, live test verified 10 real devnet txs, 3 pinned REAL mainnet fixtures (Jupiter swap, pump.fun market, System) through the full pipeline
 - [x] Add 4 more protocol manifests (Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — program IDs confirmed executable on mainnet 2026-08-07); 15 total now, expansion toward 20 continues
 - [x] Regression Engine core: append-only fixture corpus, deterministic replay, P10 promotion gate (99.5%), benchmark-seeded initial corpus, `graphite regression` CLI gate — 12 tests (2026-08-07)
-- [ ] Replace synthetic exploit tests with real on-chain data
+- [x] Replace synthetic exploit tests with real on-chain data — 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) scored in the P16 benchmark binary, replacing 3 of 5 SYNTHETIC reconstructions (C30); 2 SYNTHETIC remain, honestly labeled
+- [x] Multi-instruction transaction analysis — coordinated mass-drain patterns ACROSS instructions in one tx (AAT approve+transfer, authority-hijack SetAuthority+Transfer, close-and-sweep, mass multi-transfer sweep, AAT ownership-theft via System assign) — hard gates (C29)
+- [x] CPI instruction trace analysis — unknown, re-entered (compositional), or vanity-impersonated programs in the hierarchical CPI tree; deep-chain warning — hard gates except the depth warning (C29)
 - [~] **Dynamic PDA seed resolution**: extraction capability implemented + tested (2026-08-08) — `{instruction_data}`, `{instruction_data:start:end}`, `{instruction_data:start}` templates, 5 tests with known-answer PDAs pinned from the official Solana JS SDK + a false-positive guard. Remaining: confirming real protocol seed layouts (Squads V4 devnet txs currently error; Jupiter DCA layout unmatched by candidates) — a Phase 3 IDL/source data task.
 
 ### Month 2: Manifest Registry + Plugin Framework
