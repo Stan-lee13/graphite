@@ -67,7 +67,8 @@ fn seed_system(core: &mut GraphiteCore, evidence: BehaviorEvidence) {
             std_account_writes: 0.5,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.1,
-            ..Default::default()},
+            ..Default::default()
+        },
     )
     .expect("baseline seed");
     core.seed_behavior(Behavior {

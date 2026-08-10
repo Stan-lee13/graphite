@@ -66,11 +66,14 @@ fn multi_instruction_aat_drain_is_hard_blocked() {
     let mut input = base_input(TOKEN_PROGRAM, "03", &[SOURCE, DEST, OWNER]);
     input.transaction_instructions = vec![
         ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]), // Approve
-        ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, OWNER]), // Transfer
+        ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, OWNER]),  // Transfer
     ];
 
     let result = core.verify(&input).unwrap();
-    assert!(!result.approved, "AAT multi-instruction drain must be blocked");
+    assert!(
+        !result.approved,
+        "AAT multi-instruction drain must be blocked"
+    );
     assert_eq!(result.risk_verdict.status, "Blocked");
     assert!(
         result
@@ -114,8 +117,16 @@ fn multi_instruction_mass_sweep_is_hard_blocked() {
     let core = GraphiteCore::new();
     let mut input = base_input(SYSTEM_PROGRAM, "02", &[SOURCE, DEST]);
     input.transaction_instructions = vec![
-        ix(SYSTEM_PROGRAM, "02", &[SOURCE, "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP"]),
-        ix(SYSTEM_PROGRAM, "02", &[SOURCE, "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU"]),
+        ix(
+            SYSTEM_PROGRAM,
+            "02",
+            &[SOURCE, "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP"],
+        ),
+        ix(
+            SYSTEM_PROGRAM,
+            "02",
+            &[SOURCE, "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU"],
+        ),
         ix(SYSTEM_PROGRAM, "02", &[SOURCE, DEST]),
     ];
 
@@ -151,7 +162,10 @@ fn cpi_trace_unknown_program_is_hard_blocked() {
     });
 
     let result = core.verify(&input).unwrap();
-    assert!(!result.approved, "CPI trace with unknown program must block");
+    assert!(
+        !result.approved,
+        "CPI trace with unknown program must block"
+    );
     assert_eq!(result.risk_verdict.status, "Blocked");
     assert!(
         result

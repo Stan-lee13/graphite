@@ -66,7 +66,7 @@ pub fn run_benchmark() {
     // operator would, instead of letting request bodies supply it.
     core.seed_simulation_baseline(
         "11111111111111111111111111111111",
-        crate::simulation_integrity::ComputeBaseline{
+        crate::simulation_integrity::ComputeBaseline {
             mean_compute_units: 150.0,
             std_compute_units: 20.0,
             sample_count: 100,
@@ -74,7 +74,8 @@ pub fn run_benchmark() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
-            ..Default::default()},
+            ..Default::default()
+        },
     )
     .expect("benchmark baseline must be valid");
 
@@ -745,7 +746,8 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
                     ],
                     &["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
-                    WalletProfile::TradingBot, no_evidence(),
+                    WalletProfile::TradingBot,
+                    no_evidence(),
                 );
                 let dest = "3AGDdKe482mNwdPdBUTPYqdmokQtEDRSEpSG5bJDVmEH";
                 inp.transaction_instructions = vec![
@@ -793,7 +795,8 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
                         "11111111111111111111111111111111",
                     ],
-                    WalletProfile::TradingBot, no_evidence(),
+                    WalletProfile::TradingBot,
+                    no_evidence(),
                 );
                 // Victim token accounts (writable in the real tx) and the
                 // attacker who receives ownership.
@@ -889,7 +892,8 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                         "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
                     ],
                     &["11111111111111111111111111111111"],
-                    WalletProfile::TradingBot, no_evidence(),
+                    WalletProfile::TradingBot,
+                    no_evidence(),
                 );
                 inp.cpi_trace = Some(CpiTraceNode {
                     program_id: "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth".to_string(),
@@ -912,9 +916,21 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             input: make_input(
                 "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
                 "0a",
-                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx", "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs", "11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
-                &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "11111111111111111111111111111111"],
-                WalletProfile::TradingBot, no_evidence(),
+                &[
+                    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                    "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+                    "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
+                    "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+                    "11111111111111111111111111111111",
+                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                ],
+                &[
+                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                    "11111111111111111111111111111111",
+                ],
+                WalletProfile::TradingBot,
+                no_evidence(),
             ),
         },
         BenchmarkCase {
@@ -924,9 +940,20 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             input: make_input(
                 "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
                 "08",
-                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa", "11111111111111111111111111111111", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "ComputeBudget111111111111111111111111111111"],
-                &["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "11111111111111111111111111111111"],
-                WalletProfile::TradingBot, no_evidence(),
+                &[
+                    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                    "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+                    "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
+                    "11111111111111111111111111111111",
+                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                    "ComputeBudget111111111111111111111111111111",
+                ],
+                &[
+                    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                    "11111111111111111111111111111111",
+                ],
+                WalletProfile::TradingBot,
+                no_evidence(),
             ),
         },
     ]
@@ -993,8 +1020,7 @@ mod tests {
             .find(|c| c.label.contains("AAT drainer TX"))
             .expect("AAT case present");
         assert!(
-            aat.input.transaction_instructions.len() >= 3
-                && aat.input.cpi_trace.is_some(),
+            aat.input.transaction_instructions.len() >= 3 && aat.input.cpi_trace.is_some(),
             "AAT case must carry Approve x2 + assign instructions and the CPI trace"
         );
         let wormhole = cases

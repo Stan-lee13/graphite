@@ -66,7 +66,7 @@ pub struct ComputeUsage {
 /// only shift the median/MAD by a bounded amount (they need >50% of the window
 /// to do that), and they age out of the window entirely.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
-pub struct ComputeBaseline{
+pub struct ComputeBaseline {
     pub mean_compute_units: f64,
     pub std_compute_units: f64,
     pub sample_count: u64,
@@ -248,7 +248,12 @@ pub fn check_simulation_integrity(
         }
         if let Some(z) = robust_signal_z(
             input.simulation_usage.account_writes as f64,
-            &input.baseline.recent_account_writes.iter().map(|&v| v as f64).collect::<Vec<_>>(),
+            &input
+                .baseline
+                .recent_account_writes
+                .iter()
+                .map(|&v| v as f64)
+                .collect::<Vec<_>>(),
             input.divergence_threshold,
             "Account write (robust median/MAD)",
         ) {
@@ -271,7 +276,12 @@ pub fn check_simulation_integrity(
         }
         if let Some(z) = robust_signal_z(
             input.simulation_usage.cpi_hops as f64,
-            &input.baseline.recent_cpi_hops.iter().map(|&v| v as f64).collect::<Vec<_>>(),
+            &input
+                .baseline
+                .recent_cpi_hops
+                .iter()
+                .map(|&v| v as f64)
+                .collect::<Vec<_>>(),
             input.divergence_threshold,
             "CPI hop (robust median/MAD)",
         ) {
@@ -318,7 +328,9 @@ fn mean_std_z(
         return Some(SimulationIntegrityResult {
             flagged: true,
             divergence_score: f64::MAX,
-            reason: Some(format!("{label} z-score produced NaN/Infinity — corrupted baseline")),
+            reason: Some(format!(
+                "{label} z-score produced NaN/Infinity — corrupted baseline"
+            )),
         });
     }
     if z.abs() > threshold {
@@ -871,10 +883,16 @@ mod tests {
         assert!(b.recent_compute_units.len() <= ROBUST_WINDOW);
         // The window must be dominated by the honest 1000s now.
         let median_cu = median(
-            &b.recent_compute_units.iter().map(|&v| v as f64).collect::<Vec<_>>(),
+            &b.recent_compute_units
+                .iter()
+                .map(|&v| v as f64)
+                .collect::<Vec<_>>(),
         )
         .unwrap();
-        assert!((median_cu - 1000.0).abs() < 1.0, "median drifted: {median_cu}");
+        assert!(
+            (median_cu - 1000.0).abs() < 1.0,
+            "median drifted: {median_cu}"
+        );
 
         let input = SimulationIntegrityInput {
             program_id: "test".to_string(),
@@ -909,7 +927,10 @@ mod tests {
         assert_eq!(robust_z(100.0, &small), Some(0.6745 * 98.0 / 1.0));
         // The robust_signal_z gate requires MIN_SAMPLES in the window.
         let r = robust_signal_z(100.0, &small, 2.0, "t");
-        assert!(r.is_none(), "below MIN_SAMPLES the mean/std path must cover it");
+        assert!(
+            r.is_none(),
+            "below MIN_SAMPLES the mean/std path must cover it"
+        );
     }
 
     #[test]

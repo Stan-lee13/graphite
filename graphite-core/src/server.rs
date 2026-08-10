@@ -946,7 +946,8 @@ mod tests {
                 std_account_writes: 0.5,
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 0.1,
-            ..Default::default()},
+                ..Default::default()
+            },
         )
         .unwrap();
         let audit = AuditLog::open(audit_path(&dir)).unwrap();

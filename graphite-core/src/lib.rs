@@ -59,13 +59,13 @@ pub use risk_engine::{
     assess, assess_with_warnings, RiskAssessmentDetail, RiskAssessmentInput, RiskPattern,
     RiskVerdict,
 };
-pub use tx_pattern_analysis::{
-    analyze_cpi_trace, analyze_multi_instruction, CpiTraceNode, PatternFinding,
-    PatternSeverity, TransactionInstruction,
-};
 pub use semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 pub use solana_types::{find_program_address, is_on_curve, AccountMeta, Instruction, Pubkey};
 pub use transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
+pub use tx_pattern_analysis::{
+    analyze_cpi_trace, analyze_multi_instruction, CpiTraceNode, PatternFinding, PatternSeverity,
+    TransactionInstruction,
+};
 pub use verification::{
     GraphiteCore, ProposedIntent, VerificationError, VerificationInput, VerificationResult,
 };

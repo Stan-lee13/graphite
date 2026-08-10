@@ -151,9 +151,7 @@ fn primary_token_account(ix: &TransactionInstruction) -> Option<&str> {
 /// Detect coordinated mass-drain patterns across the instructions of a single
 /// transaction. Requires at least two instructions; a single-instruction
 /// transaction is the Risk Engine's domain and yields no findings here.
-pub fn analyze_multi_instruction(
-    instructions: &[TransactionInstruction],
-) -> Vec<PatternFinding> {
+pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec<PatternFinding> {
     if instructions.len() < 2 {
         return Vec::new();
     }
@@ -167,7 +165,8 @@ pub fn analyze_multi_instruction(
     for approve in instructions.iter().filter(|ix| is_approve_instruction(ix)) {
         if let Some(approved_account) = primary_token_account(approve) {
             let shared = instructions.iter().any(|ix| {
-                is_transfer_instruction(ix) && ix.account_addresses.iter().any(|a| a == approved_account)
+                is_transfer_instruction(ix)
+                    && ix.account_addresses.iter().any(|a| a == approved_account)
             });
             if shared {
                 findings.push(PatternFinding {
@@ -184,10 +183,14 @@ pub fn analyze_multi_instruction(
     // Rule 2: Authority-hijack-then-Transfer. SetAuthority hands control of a
     // token account to an attacker-controlled delegate; a Transfer of that
     // account in the same tx executes the theft.
-    for hijack in instructions.iter().filter(|ix| is_set_authority_instruction(ix)) {
+    for hijack in instructions
+        .iter()
+        .filter(|ix| is_set_authority_instruction(ix))
+    {
         if let Some(target_account) = primary_token_account(hijack) {
             let shared = instructions.iter().any(|ix| {
-                is_transfer_instruction(ix) && ix.account_addresses.iter().any(|a| a == target_account)
+                is_transfer_instruction(ix)
+                    && ix.account_addresses.iter().any(|a| a == target_account)
             });
             if shared {
                 findings.push(PatternFinding {
@@ -204,10 +207,14 @@ pub fn analyze_multi_instruction(
     // Rule 3: CloseAccount-then-Transfer. Closing a token account refunds its
     // lamports to a destination; pairing it with a Transfer of the same token
     // account is the close-and-sweep drain class.
-    for close in instructions.iter().filter(|ix| is_close_account_instruction(ix)) {
+    for close in instructions
+        .iter()
+        .filter(|ix| is_close_account_instruction(ix))
+    {
         if let Some(closed_account) = primary_token_account(close) {
             let shared = instructions.iter().any(|ix| {
-                is_transfer_instruction(ix) && ix.account_addresses.iter().any(|a| a == closed_account)
+                is_transfer_instruction(ix)
+                    && ix.account_addresses.iter().any(|a| a == closed_account)
             });
             if shared {
                 findings.push(PatternFinding {
@@ -332,12 +339,14 @@ fn impersonates(program_id: &str, known: &[String]) -> Option<String> {
     if program_id.len() <= PREFIX_LEN {
         return None;
     }
-    known.iter().find(|k| {
-        k.len() > PREFIX_LEN
-            && k.as_str() != program_id
-            && k[..PREFIX_LEN] == program_id[..PREFIX_LEN]
-    })
-    .cloned()
+    known
+        .iter()
+        .find(|k| {
+            k.len() > PREFIX_LEN
+                && k.as_str() != program_id
+                && k[..PREFIX_LEN] == program_id[..PREFIX_LEN]
+        })
+        .cloned()
 }
 
 /// Analyze the hierarchical CPI trace of the primary instruction against the
@@ -345,10 +354,7 @@ fn impersonates(program_id: &str, known: &[String]) -> Option<String> {
 /// programs). The root node is the instruction being verified; its unknown-
 /// protocol status is handled by the unknown-protocol ceiling downstream, so
 /// only nodes at depth >= 1 are scrutinized here.
-pub fn analyze_cpi_trace(
-    trace: &CpiTraceNode,
-    known_programs: &[String],
-) -> Vec<PatternFinding> {
+pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec<PatternFinding> {
     let mut findings = Vec::new();
 
     // Walk the tree once, collecting depth >= 1 nodes.
@@ -454,7 +460,7 @@ mod tests {
     fn approve_then_transfer_same_account_is_blocked() {
         let txs = vec![
             ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]), // Approve
-            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST]),          // Transfer
+            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST]),         // Transfer
         ];
         let findings = analyze_multi_instruction(&txs);
         assert_eq!(findings.len(), 1);
@@ -514,7 +520,11 @@ mod tests {
             ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, SOURCE]),
             ix(TOKEN_PROGRAM, "03", &[DEST2, DEST, SOURCE]),
             ix(TOKEN_PROGRAM, "03", &[DEST3, DEST, SOURCE]),
-            ix(TOKEN_PROGRAM, "0c", &["9jYfQm6n3vT2wZxK4pR8sLcE7aBdU5iN1hG0fJqV", DEST, SOURCE]),
+            ix(
+                TOKEN_PROGRAM,
+                "0c",
+                &["9jYfQm6n3vT2wZxK4pR8sLcE7aBdU5iN1hG0fJqV", DEST, SOURCE],
+            ),
         ];
         let findings = analyze_multi_instruction(&txs);
         assert_eq!(findings.len(), 1);
@@ -596,7 +606,11 @@ mod tests {
         let trace = node(
             TOKEN_PROGRAM,
             0,
-            vec![node(TOKEN_PROGRAM, 1, vec![node(SYSTEM_PROGRAM, 2, vec![])])],
+            vec![node(
+                TOKEN_PROGRAM,
+                1,
+                vec![node(SYSTEM_PROGRAM, 2, vec![])],
+            )],
         );
         let known: Vec<String> = vec![TOKEN_PROGRAM.into(), SYSTEM_PROGRAM.into()];
         let findings = analyze_cpi_trace(&trace, &known);
@@ -636,14 +650,18 @@ mod tests {
         let trace = node(
             TOKEN_PROGRAM,
             0,
-            vec![
-                node("prog_a", 1, vec![node("prog_a", 2, vec![node("prog_a", 3, vec![])])]),
-            ],
+            vec![node(
+                "prog_a",
+                1,
+                vec![node("prog_a", 2, vec![node("prog_a", 3, vec![])])],
+            )],
         );
         let known: Vec<String> = vec![TOKEN_PROGRAM.into(), "prog_a".into()];
         let findings = analyze_cpi_trace(&trace, &known);
         assert!(
-            findings.iter().any(|f| f.reason.contains("re-enters program prog_a 3 times")),
+            findings
+                .iter()
+                .any(|f| f.reason.contains("re-enters program prog_a 3 times")),
             "expected revisit finding, got: {:?}",
             findings
         );
@@ -683,7 +701,9 @@ mod tests {
         ];
         let findings = analyze_cpi_trace(&trace, &known);
         assert!(
-            findings.iter().any(|f| f.severity == PatternSeverity::Warning && f.reason.contains("depth 6")),
+            findings
+                .iter()
+                .any(|f| f.severity == PatternSeverity::Warning && f.reason.contains("depth 6")),
             "expected depth warning, got: {:?}",
             findings
         );
@@ -696,12 +716,18 @@ mod tests {
         let trace = node(
             TOKEN_PROGRAM,
             0,
-            vec![node("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DB", 1, vec![])],
+            vec![node(
+                "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DB",
+                1,
+                vec![],
+            )],
         );
         let known: Vec<String> = vec![TOKEN_PROGRAM.into(), SYSTEM_PROGRAM.into()];
         let findings = analyze_cpi_trace(&trace, &known);
         assert!(
-            findings.iter().any(|f| f.reason.contains("vanity-impersonates")),
+            findings
+                .iter()
+                .any(|f| f.reason.contains("vanity-impersonates")),
             "expected impersonation finding, got: {:?}",
             findings
         );

@@ -1405,15 +1405,17 @@ impl GraphiteCore {
         }
         if let Some(trace) = &input.cpi_trace {
             let mut known: Vec<String> = crate::tx_pattern_analysis::system_programs();
-            known.extend(self.registry.list().iter().map(|m| m.protocol.program_id.clone()));
-            pattern_findings.extend(crate::tx_pattern_analysis::analyze_cpi_trace(
-                trace,
-                &known,
-            ));
+            known.extend(
+                self.registry
+                    .list()
+                    .iter()
+                    .map(|m| m.protocol.program_id.clone()),
+            );
+            pattern_findings.extend(crate::tx_pattern_analysis::analyze_cpi_trace(trace, &known));
         }
-        let blocked_pattern = pattern_findings.iter().find(|f| {
-            f.severity == crate::tx_pattern_analysis::PatternSeverity::Blocked
-        });
+        let blocked_pattern = pattern_findings
+            .iter()
+            .find(|f| f.severity == crate::tx_pattern_analysis::PatternSeverity::Blocked);
         let risk_verdict = if let Some(f) = blocked_pattern {
             let pattern = if f.pattern == "MultiInstructionDrain" {
                 RiskPattern::MultiInstructionDrain
@@ -2490,7 +2492,7 @@ mod tests {
         .unwrap();
         core.seed_simulation_baseline(
             jup,
-            ComputeBaseline{
+            ComputeBaseline {
                 mean_compute_units: 150.0,
                 std_compute_units: 1.0,
                 sample_count: 50,
@@ -2498,7 +2500,8 @@ mod tests {
                 std_account_writes: 0.5,
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 0.1,
-            ..Default::default()},
+                ..Default::default()
+            },
         )
         .unwrap();
         // 72 distinct valid pubkeys (the shape of a real Jupiter route tx).
