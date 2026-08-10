@@ -86,7 +86,7 @@ fn l3_reflects_flagged_simulation_as_failed() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
-        },
+            ..Default::default()},
     )
     .unwrap();
 

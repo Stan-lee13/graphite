@@ -50,7 +50,7 @@ pub fn run_benchmark() {
     // operator would, instead of letting request bodies supply it.
     core.seed_simulation_baseline(
         "11111111111111111111111111111111",
-        crate::simulation_integrity::ComputeBaseline {
+        crate::simulation_integrity::ComputeBaseline{
             mean_compute_units: 150.0,
             std_compute_units: 20.0,
             sample_count: 100,
@@ -58,7 +58,7 @@ pub fn run_benchmark() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
-        },
+            ..Default::default()},
     )
     .expect("benchmark baseline must be valid");
 

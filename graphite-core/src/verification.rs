@@ -2404,7 +2404,7 @@ mod tests {
         .unwrap();
         core.seed_simulation_baseline(
             jup,
-            ComputeBaseline {
+            ComputeBaseline{
                 mean_compute_units: 150.0,
                 std_compute_units: 1.0,
                 sample_count: 50,
@@ -2412,7 +2412,7 @@ mod tests {
                 std_account_writes: 0.5,
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 0.1,
-            },
+            ..Default::default()},
         )
         .unwrap();
         // 72 distinct valid pubkeys (the shape of a real Jupiter route tx).
@@ -2574,6 +2574,7 @@ mod tests {
                 std_account_writes: 0.5,
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 0.1,
+                ..Default::default()
             },
         )
         .unwrap();

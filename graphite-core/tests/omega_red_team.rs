@@ -144,7 +144,7 @@ fn exploit_l6_nan_baseline_bypasses_simulation_check() {
             account_writes: 100,
             cpi_hops: 50,
         },
-        baseline: ComputeBaseline {
+        baseline: ComputeBaseline{
             mean_compute_units: f64::NAN,
             std_compute_units: 100.0,
             sample_count: 100,
@@ -152,7 +152,7 @@ fn exploit_l6_nan_baseline_bypasses_simulation_check() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
-        },
+            ..Default::default()},
         divergence_threshold: 2.0,
     };
     let result = check_simulation_integrity(&input);
@@ -177,6 +177,7 @@ fn exploit_l6b_infinity_std_bypasses_simulation_check() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
+            ..Default::default()
         },
         divergence_threshold: 2.0,
     };
@@ -456,6 +457,7 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
+            ..Default::default()
         },
     )
     .unwrap();

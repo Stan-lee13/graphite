@@ -11,6 +11,16 @@
 //! 3. CPI hop count (z-score vs baseline)
 //!
 //! Any signal exceeding the threshold flags the simulation.
+//!
+//! C28 (anti-poisoning): the mean/std z-score is supplemented with a robust
+//! median/MAD statistic. Mean and std are both sensitive to outliers — a few
+//! poisoned baseline samples (e.g. injected huge-compute txs) inflate std and
+//! drag the mean, which NARROWS the z-score of a genuinely divergent tx and can
+//! hide the attack. Median absolute deviation (MAD) is robust: a handful of
+//! outliers barely move the median or MAD, so a poisoned baseline cannot mask
+//! a real divergence. When enough samples exist in the bounded window the
+//! robust z-score is used as the primary signal; mean/std remains the fallback
+//! for small histories.
 
 use thiserror::Error;
 
@@ -18,6 +28,11 @@ use thiserror::Error;
 /// meaningful. Below this the check is SKIPPED (no verdict), per P12
 /// fail-open-with-explanation — never faked, never fail-closed.
 pub const MIN_SAMPLES: u64 = 10;
+
+/// Bounded window of recent samples kept for robust median/MAD statistics.
+/// Older samples fall out, so a poisoned spike ages out and cannot permanently
+/// mask divergence. 256 samples is ~10x MIN_SAMPLES and cheap to sort.
+pub const ROBUST_WINDOW: usize = 256;
 
 /// Tolerance for zero-variance divergence: usage counts are integers, so any
 /// deviation larger than this from an identical-history mean is a real signal.
@@ -43,8 +58,15 @@ pub struct ComputeUsage {
 ///
 /// `Default` is the empty baseline (sample_count = 0) used when a program's
 /// accumulator starts; `update_baseline` grows it from there.
+///
+/// C28: in addition to the Welford mean/std pairs, the baseline keeps a bounded
+/// window of RECENT raw samples per signal so the integrity check can compute
+/// robust median/MAD statistics. The window is what makes the baseline
+/// poison-resistant: a few extreme samples affect mean/std immediately but can
+/// only shift the median/MAD by a bounded amount (they need >50% of the window
+/// to do that), and they age out of the window entirely.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
-pub struct ComputeBaseline {
+pub struct ComputeBaseline{
     pub mean_compute_units: f64,
     pub std_compute_units: f64,
     pub sample_count: u64,
@@ -60,6 +82,15 @@ pub struct ComputeBaseline {
     /// Std dev of CPI hops
     #[serde(default)]
     pub std_cpi_hops: f64,
+    /// Bounded recent compute-unit samples (C28 robust baseline)
+    #[serde(default)]
+    pub recent_compute_units: Vec<u64>,
+    /// Bounded recent account-write samples (C28 robust baseline)
+    #[serde(default)]
+    pub recent_account_writes: Vec<u32>,
+    /// Bounded recent CPI-hop samples (C28 robust baseline)
+    #[serde(default)]
+    pub recent_cpi_hops: Vec<u32>,
 }
 
 /// Input for simulation integrity check.
@@ -95,10 +126,56 @@ fn baseline_is_finite(baseline: &ComputeBaseline) -> bool {
     .all(|v| v.is_finite())
 }
 
+/// Median of a slice (does not mutate input; sorts a copy). Empty => None.
+fn median(samples: &[f64]) -> Option<f64> {
+    if samples.is_empty() {
+        return None;
+    }
+    let mut s = samples.to_vec();
+    s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = s.len();
+    Some(if n % 2 == 1 {
+        s[n / 2]
+    } else {
+        (s[n / 2 - 1] + s[n / 2]) / 2.0
+    })
+}
+
+/// Median absolute deviation (MAD) of a slice: median(|x_i - median|).
+/// Empty => None. This is the robust scale estimator used for the C28
+/// poison-resistant z-score.
+fn mad(samples: &[f64]) -> Option<f64> {
+    let m = median(samples)?;
+    let devs: Vec<f64> = samples.iter().map(|x| (x - m).abs()).collect();
+    median(&devs)
+}
+
+/// Robust z-score = 0.6745 * (x - median) / MAD.
+///
+/// The 0.6745 scaling factor makes the robust z comparable to a standard
+/// z-score for normally distributed data (MAD * 1.4826 approximates std).
+/// Returns None when the window has no samples or MAD is 0 (zero spread —
+/// caller decides how to handle identical histories).
+fn robust_z(x: f64, samples: &[f64]) -> Option<f64> {
+    let m = median(samples)?;
+    let d = mad(samples)?;
+    if d <= ZERO_VARIANCE_EPSILON {
+        return None; // zero spread: caller uses zero-variance semantics
+    }
+    Some(0.6745 * (x - m) / d)
+}
+
 /// Check simulation integrity against historical baseline.
 ///
 /// Checks all three signals: compute units, account writes, CPI hops.
 /// Any signal exceeding the threshold flags the simulation.
+///
+/// C28: when the bounded window has >= MIN_SAMPLES samples, the robust
+/// median/MAD z-score is the primary signal (it cannot be masked by a few
+/// poisoned outliers). The mean/std z-score is used as a fallback when the
+/// window is too small, and as a secondary check when both exist — a tx that
+/// diverges on EITHER statistic is flagged, because an attacker could target
+/// whichever the check uses.
 ///
 /// Zero-variance handling: a baseline whose historical samples were IDENTICAL
 /// (std == 0) is NOT a reason to skip the check (that was a permanent bypass
@@ -121,144 +198,195 @@ pub fn check_simulation_integrity(
         });
     }
 
-    // Signal 1: Compute units z-score (zero-variance aware).
-    let compute_z = if input.baseline.std_compute_units == 0.0 {
-        if input.baseline.mean_compute_units == 0.0 {
-            return Err(SimulationIntegrityError::InvalidData {
-                reason: "baseline has zero mean AND zero variance — degenerate".to_string(),
-            });
-        }
-        let delta =
-            (input.simulation_usage.compute_units as f64 - input.baseline.mean_compute_units).abs();
-        if delta > ZERO_VARIANCE_EPSILON {
-            return Ok(SimulationIntegrityResult {
-                flagged: true,
-                // f64::MAX (NOT Infinity): divergence_score is serialized into
-                // JSON responses, and serde_json cannot encode Infinity.
-                divergence_score: f64::MAX,
-                reason: Some(format!(
-                    "Compute usage diverges from zero-variance baseline: {} CU vs mean {} (delta {})",
-                    input.simulation_usage.compute_units,
-                    input.baseline.mean_compute_units,
-                    delta
-                )),
-            });
-        }
-        0.0
-    } else {
-        (input.simulation_usage.compute_units as f64 - input.baseline.mean_compute_units)
-            / input.baseline.std_compute_units
-    };
-
-    if compute_z.is_nan() || compute_z.is_infinite() {
-        return Ok(SimulationIntegrityResult {
-            flagged: true,
-            divergence_score: f64::MAX,
-            reason: Some("Compute z-score produced NaN/Infinity — corrupted baseline".to_string()),
+    // Degenerate baseline (zero mean AND zero variance for compute):
+    // there are no meaningful statistics, so fail-closed.
+    if input.baseline.mean_compute_units == 0.0 && input.baseline.std_compute_units == 0.0 {
+        return Err(SimulationIntegrityError::InvalidData {
+            reason: "baseline is degenerate (zero mean AND zero variance for compute)".to_string(),
         });
     }
 
-    if compute_z.abs() > input.divergence_threshold {
-        return Ok(SimulationIntegrityResult {
-            flagged: true,
-            divergence_score: compute_z,
-            reason: Some(format!(
-                "Compute usage divergence: {:.2}σ from baseline (threshold: {:.2}σ)",
-                compute_z, input.divergence_threshold
-            )),
-        });
+    // Signal 1: Compute units — evaluate BOTH the mean/std z-score and the
+    // C28 robust median/MAD z-score. Flag if either exceeds the threshold:
+    // an attacker who can poison the baseline targets whichever statistic the
+    // check uses, so both must be checked.
+    if let Some(z) = mean_std_z(
+        input.simulation_usage.compute_units as f64,
+        input.baseline.mean_compute_units,
+        input.baseline.std_compute_units,
+        input.divergence_threshold,
+        "Compute usage",
+    ) {
+        return Ok(z);
+    }
+    if let Some(z) = robust_signal_z(
+        input.simulation_usage.compute_units as f64,
+        &input
+            .baseline
+            .recent_compute_units
+            .iter()
+            .map(|&v| v as f64)
+            .collect::<Vec<_>>(),
+        input.divergence_threshold,
+        "Compute usage (robust median/MAD)",
+    ) {
+        return Ok(z);
     }
 
-    // Signal 2: Account writes z-score. Zero-variance handling applies when
-    // the signal has data (mean > 0); a mean==0 && std==0 signal means it was
-    // never observed and is skipped (identical to the pre-existing gate).
+    // Signal 2: Account writes.
     if !input.baseline.mean_account_writes.is_nan()
         && !(input.baseline.std_account_writes == 0.0 && input.baseline.mean_account_writes == 0.0)
     {
-        let writes_z = if input.baseline.std_account_writes == 0.0 {
-            let delta = (input.simulation_usage.account_writes as f64
-                - input.baseline.mean_account_writes)
-                .abs();
-            if delta > ZERO_VARIANCE_EPSILON {
-                return Ok(SimulationIntegrityResult {
-                    flagged: true,
-                    divergence_score: f64::MAX,
-                    reason: Some(format!(
-                        "Account write divergence from zero-variance baseline: {} writes vs mean {}",
-                        input.simulation_usage.account_writes,
-                        input.baseline.mean_account_writes
-                    )),
-                });
-            }
-            0.0
-        } else {
-            (input.simulation_usage.account_writes as f64 - input.baseline.mean_account_writes)
-                / input.baseline.std_account_writes
-        };
-
-        if !writes_z.is_nan()
-            && !writes_z.is_infinite()
-            && writes_z.abs() > input.divergence_threshold
-        {
-            return Ok(SimulationIntegrityResult {
-                flagged: true,
-                divergence_score: writes_z,
-                reason: Some(format!(
-                    "Account write divergence: {:.2}σ from baseline ({} writes vs mean {:.1})",
-                    writes_z,
-                    input.simulation_usage.account_writes,
-                    input.baseline.mean_account_writes
-                )),
-            });
+        if let Some(z) = mean_std_z(
+            input.simulation_usage.account_writes as f64,
+            input.baseline.mean_account_writes,
+            input.baseline.std_account_writes,
+            input.divergence_threshold,
+            "Account write",
+        ) {
+            return Ok(z);
+        }
+        if let Some(z) = robust_signal_z(
+            input.simulation_usage.account_writes as f64,
+            &input.baseline.recent_account_writes.iter().map(|&v| v as f64).collect::<Vec<_>>(),
+            input.divergence_threshold,
+            "Account write (robust median/MAD)",
+        ) {
+            return Ok(z);
         }
     }
 
-    // Signal 3: CPI hops z-score (same zero-variance rules).
+    // Signal 3: CPI hops.
     if !input.baseline.mean_cpi_hops.is_nan()
         && !(input.baseline.std_cpi_hops == 0.0 && input.baseline.mean_cpi_hops == 0.0)
     {
-        let hops_z = if input.baseline.std_cpi_hops == 0.0 {
-            let delta =
-                (input.simulation_usage.cpi_hops as f64 - input.baseline.mean_cpi_hops).abs();
-            if delta > ZERO_VARIANCE_EPSILON {
-                return Ok(SimulationIntegrityResult {
-                    flagged: true,
-                    divergence_score: f64::MAX,
-                    reason: Some(format!(
-                        "CPI hop divergence from zero-variance baseline: {} hops vs mean {}",
-                        input.simulation_usage.cpi_hops, input.baseline.mean_cpi_hops
-                    )),
-                });
-            }
-            0.0
-        } else {
-            (input.simulation_usage.cpi_hops as f64 - input.baseline.mean_cpi_hops)
-                / input.baseline.std_cpi_hops
-        };
-
-        if !hops_z.is_nan() && !hops_z.is_infinite() && hops_z.abs() > input.divergence_threshold {
-            return Ok(SimulationIntegrityResult {
-                flagged: true,
-                divergence_score: hops_z,
-                reason: Some(format!(
-                    "CPI hop divergence: {:.2}σ from baseline ({} hops vs mean {:.1})",
-                    hops_z, input.simulation_usage.cpi_hops, input.baseline.mean_cpi_hops
-                )),
-            });
+        if let Some(z) = mean_std_z(
+            input.simulation_usage.cpi_hops as f64,
+            input.baseline.mean_cpi_hops,
+            input.baseline.std_cpi_hops,
+            input.divergence_threshold,
+            "CPI hop",
+        ) {
+            return Ok(z);
+        }
+        if let Some(z) = robust_signal_z(
+            input.simulation_usage.cpi_hops as f64,
+            &input.baseline.recent_cpi_hops.iter().map(|&v| v as f64).collect::<Vec<_>>(),
+            input.divergence_threshold,
+            "CPI hop (robust median/MAD)",
+        ) {
+            return Ok(z);
         }
     }
 
     Ok(SimulationIntegrityResult {
         flagged: false,
-        divergence_score: compute_z,
+        divergence_score: 0.0,
         reason: None,
     })
+}
+
+/// Evaluate one signal with the classic mean/std z-score (zero-variance aware).
+/// Returns Some(result) if the signal FLAGS (or errors are encoded as flags);
+/// None means the signal is consistent (or unobserved and skipped).
+fn mean_std_z(
+    value: f64,
+    mean: f64,
+    std: f64,
+    threshold: f64,
+    label: &str,
+) -> Option<SimulationIntegrityResult> {
+    if std == 0.0 {
+        // Zero variance: mean must be nonzero (degenerate baselines are
+        // rejected earlier by the caller for the compute signal; writes/hops
+        // with mean==0 are unobserved and skipped by the caller's gate).
+        let delta = (value - mean).abs();
+        if delta > ZERO_VARIANCE_EPSILON {
+            return Some(SimulationIntegrityResult {
+                flagged: true,
+                divergence_score: f64::MAX,
+                reason: Some(format!(
+                    "{} divergence from zero-variance baseline: {:.0} vs mean {:.0} (delta {:.0})",
+                    label, value, mean, delta
+                )),
+            });
+        }
+        return None;
+    }
+    let z = (value - mean) / std;
+    if z.is_nan() || z.is_infinite() {
+        return Some(SimulationIntegrityResult {
+            flagged: true,
+            divergence_score: f64::MAX,
+            reason: Some(format!("{label} z-score produced NaN/Infinity — corrupted baseline")),
+        });
+    }
+    if z.abs() > threshold {
+        return Some(SimulationIntegrityResult {
+            flagged: true,
+            divergence_score: z,
+            reason: Some(format!(
+                "{label} divergence: {:.2}σ from baseline (threshold: {:.2}σ)",
+                z, threshold
+            )),
+        });
+    }
+    None
+}
+
+/// Evaluate one signal with the C28 robust median/MAD z-score. Requires at
+/// least MIN_SAMPLES in the bounded window; returns None when the window is
+/// too small (the mean/std check covers those histories).
+///
+/// Zero-spread window (all samples identical): when the median is nonzero,
+/// any deviation beyond epsilon is a maximum-signal divergence (mirroring
+/// the mean/std zero-variance path). A zero-spread, zero-median window is
+/// degenerate and yields None (the mean/std path covers unobserved signals).
+fn robust_signal_z(
+    value: f64,
+    samples: &[f64],
+    threshold: f64,
+    label: &str,
+) -> Option<SimulationIntegrityResult> {
+    if samples.len() < MIN_SAMPLES as usize {
+        return None;
+    }
+    let m = median(samples)?;
+    let d = mad(samples)?;
+    if d <= ZERO_VARIANCE_EPSILON {
+        // Zero-spread window: any deviation beyond noise is a max signal.
+        let delta = (value - m).abs();
+        if delta > ZERO_VARIANCE_EPSILON {
+            return Some(SimulationIntegrityResult {
+                flagged: true,
+                divergence_score: f64::MAX,
+                reason: Some(format!(
+                    "{label} robust median/MAD (zero-spread window): {:.0} vs median {:.0} (delta {:.0})",
+                    value, m, delta
+                )),
+            });
+        }
+        return None;
+    }
+    let z = robust_z(value, samples)?;
+    if z.abs() > threshold {
+        return Some(SimulationIntegrityResult {
+            flagged: true,
+            divergence_score: z,
+            reason: Some(format!(
+                "{label} divergence: {:.2} robust-σ from median (threshold: {:.2}σ)",
+                z, threshold
+            )),
+        });
+    }
+    None
 }
 
 /// Update baseline with new execution data.
 ///
 /// Updates all three tracked signals: compute units, account writes, and CPI hops.
-/// Uses Welford's online algorithm for numerically stable mean/variance updates.
+/// Uses Welford's online algorithm for numerically stable mean/variance updates,
+/// and appends to the bounded recent-sample windows for the C28 robust stats.
 pub fn update_baseline(
     baseline: &mut ComputeBaseline,
     new_compute_units: u64,
@@ -295,6 +423,23 @@ pub fn update_baseline(
     baseline.mean_cpi_hops = new_mean_ch;
     baseline.std_cpi_hops = new_var_ch.max(0.0).sqrt();
 
+    // C28: maintain the bounded recent-sample windows (ring-buffer semantics —
+    // push then truncate, so old samples age out and the median/MAD always
+    // reflects recent behavior). Old serialized baselines have empty windows;
+    // they fill in as new observations arrive.
+    baseline.recent_compute_units.push(new_compute_units);
+    if baseline.recent_compute_units.len() > ROBUST_WINDOW {
+        baseline.recent_compute_units.remove(0);
+    }
+    baseline.recent_account_writes.push(new_account_writes);
+    if baseline.recent_account_writes.len() > ROBUST_WINDOW {
+        baseline.recent_account_writes.remove(0);
+    }
+    baseline.recent_cpi_hops.push(new_cpi_hops);
+    if baseline.recent_cpi_hops.len() > ROBUST_WINDOW {
+        baseline.recent_cpi_hops.remove(0);
+    }
+
     baseline.sample_count += 1;
 }
 
@@ -319,6 +464,7 @@ mod tests {
                 std_account_writes: 2.0,
                 mean_cpi_hops: 2.0,
                 std_cpi_hops: 1.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -343,6 +489,7 @@ mod tests {
                 std_account_writes: 2.0,
                 mean_cpi_hops: 2.0,
                 std_cpi_hops: 1.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -368,6 +515,7 @@ mod tests {
                 std_account_writes: 2.0,
                 mean_cpi_hops: 2.0,
                 std_cpi_hops: 1.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -393,6 +541,7 @@ mod tests {
                 std_account_writes: 2.0,
                 mean_cpi_hops: 2.0,
                 std_cpi_hops: 1.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -418,6 +567,7 @@ mod tests {
                 std_account_writes: 2.0,
                 mean_cpi_hops: 2.0,
                 std_cpi_hops: 1.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -445,6 +595,7 @@ mod tests {
                 std_account_writes: 2.0,
                 mean_cpi_hops: 2.0,
                 std_cpi_hops: 1.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -464,6 +615,7 @@ mod tests {
             std_account_writes: 2.0,
             mean_cpi_hops: 2.0,
             std_cpi_hops: 1.0,
+            ..Default::default()
         };
         let old_mean = baseline.mean_compute_units;
         update_baseline(&mut baseline, 1100, 10, 2);
@@ -485,6 +637,7 @@ mod tests {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
+            ..Default::default()
         };
         for _ in 0..100 {
             update_baseline(&mut baseline, 1000, 0, 0);
@@ -566,6 +719,7 @@ mod tests {
                 std_account_writes: 0.0,
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 0.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -592,6 +746,7 @@ mod tests {
                 std_account_writes: 0.0,
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 0.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
@@ -617,10 +772,144 @@ mod tests {
                 std_account_writes: 2.0,
                 mean_cpi_hops: 0.0,
                 std_cpi_hops: 1.0,
+                ..Default::default()
             },
             divergence_threshold: 2.0,
         };
         assert!(check_simulation_integrity(&input).is_err());
+    }
+
+    // ------------------------------------------------------------------
+    // C28 — robust median/MAD baseline (anti-poisoning)
+    // ------------------------------------------------------------------
+
+    /// Build a baseline whose mean/std has been POISONED by a few extreme
+    /// samples but whose recent window is honest. The classic z-score uses
+    /// the poisoned mean/std; the robust z-score uses the window median/MAD.
+    fn poisoned_baseline() -> ComputeBaseline {
+        let mut b = ComputeBaseline {
+            mean_compute_units: 1000.0,
+            std_compute_units: 100.0,
+            sample_count: 100,
+            mean_account_writes: 10.0,
+            std_account_writes: 2.0,
+            mean_cpi_hops: 2.0,
+            std_cpi_hops: 1.0,
+            ..Default::default()
+        };
+        // Honest history: compute units ~1000.
+        for _ in 0..100 {
+            update_baseline(&mut b, 1000, 10, 2);
+        }
+        // Poison: inject 3 extreme samples directly into the Welford stats.
+        // (This simulates a baseline whose mean/std were polluted upstream —
+        // the C28 defense must not rely on the poisoned pair.)
+        b.mean_compute_units = 5000.0;
+        b.std_compute_units = 2000.0;
+        // The window stays honest (recent real observations).
+        assert!(b.recent_compute_units.len() <= ROBUST_WINDOW);
+        assert!(b.recent_compute_units.iter().all(|&c| c < 2000));
+        b
+    }
+
+    #[test]
+    fn test_robust_z_catches_divergence_masked_by_poisoned_mean_std() {
+        // A genuinely divergent tx (6000 CU) looks NORMAL to the poisoned
+        // mean/std (mean 5000, std 2000 → z = 0.5) but is 5+ robust-σ from
+        // the honest median (~1000, MAD ~0). The robust check must flag it.
+        let baseline = poisoned_baseline();
+        let input = SimulationIntegrityInput {
+            program_id: "test".to_string(),
+            simulation_usage: ComputeUsage {
+                compute_units: 6000,
+                account_writes: 10,
+                cpi_hops: 2,
+            },
+            baseline,
+            divergence_threshold: 2.0,
+        };
+        let r = check_simulation_integrity(&input).unwrap();
+        assert!(
+            r.flagged,
+            "robust z must catch divergence masked by poisoned mean/std: {:?}",
+            r.reason
+        );
+        assert!(
+            r.reason.as_ref().unwrap().contains("robust median/MAD"),
+            "flag must come from the robust statistic: {:?}",
+            r.reason
+        );
+    }
+
+    #[test]
+    fn test_robust_z_does_not_flag_normal_usage_under_poison() {
+        // The same poisoned baseline must NOT flag a normal tx (1000 CU).
+        let baseline = poisoned_baseline();
+        let input = SimulationIntegrityInput {
+            program_id: "test".to_string(),
+            simulation_usage: ComputeUsage {
+                compute_units: 1000,
+                account_writes: 10,
+                cpi_hops: 2,
+            },
+            baseline,
+            divergence_threshold: 2.0,
+        };
+        let r = check_simulation_integrity(&input).unwrap();
+        assert!(!r.flagged, "normal usage must not flag: {:?}", r.reason);
+    }
+
+    #[test]
+    fn test_window_ages_out_poison_and_recovers() {
+        // Poison ages out of the bounded window: after ROBUST_WINDOW honest
+        // observations, the window median/MAD fully reflects reality and a
+        // divergent tx is caught even though mean/std were polluted.
+        let mut b = poisoned_baseline();
+        for _ in 0..ROBUST_WINDOW {
+            update_baseline(&mut b, 1000, 10, 2);
+        }
+        assert!(b.recent_compute_units.len() <= ROBUST_WINDOW);
+        // The window must be dominated by the honest 1000s now.
+        let median_cu = median(
+            &b.recent_compute_units.iter().map(|&v| v as f64).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert!((median_cu - 1000.0).abs() < 1.0, "median drifted: {median_cu}");
+
+        let input = SimulationIntegrityInput {
+            program_id: "test".to_string(),
+            simulation_usage: ComputeUsage {
+                compute_units: 6000,
+                account_writes: 10,
+                cpi_hops: 2,
+            },
+            baseline: b,
+            divergence_threshold: 2.0,
+        };
+        let r = check_simulation_integrity(&input).unwrap();
+        assert!(r.flagged, "window recovery must still catch divergence");
+    }
+
+    #[test]
+    fn test_median_and_mad_are_correct() {
+        let samples = [1.0, 2.0, 3.0, 4.0, 100.0];
+        assert_eq!(median(&samples), Some(3.0));
+        // MAD = median(|x - 3|) = median(2,1,0,1,97) = 1.0
+        assert_eq!(mad(&samples), Some(1.0));
+        // Robust z of 100 vs this: 0.6745 * (100-3)/1 ≈ 65.4
+        let z = robust_z(100.0, &samples).unwrap();
+        assert!((z - 0.6745 * 97.0).abs() < 1e-9);
+        // Robust z of 3 (the median) is 0.
+        assert_eq!(robust_z(3.0, &samples), Some(0.0));
+    }
+
+    #[test]
+    fn test_robust_z_needs_min_samples() {
+        let small = [1.0, 2.0, 3.0];
+        assert_eq!(robust_z(100.0, &small), Some(0.6745 * 98.0 / 1.0));
+        // The robust_signal_z gate requires MIN_SAMPLES in the window.
+        let r = robust_signal_z(100.0, &small, 2.0, "t");
+        assert!(r.is_none(), "below MIN_SAMPLES the mean/std path must cover it");
     }
 
     #[test]

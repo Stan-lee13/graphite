@@ -186,7 +186,7 @@ fn regression_l6_nan_baseline_now_rejected() {
             account_writes: 100,
             cpi_hops: 50,
         },
-        baseline: ComputeBaseline {
+        baseline: ComputeBaseline{
             mean_compute_units: f64::NAN,
             std_compute_units: 100.0,
             sample_count: 100,
@@ -194,7 +194,7 @@ fn regression_l6_nan_baseline_now_rejected() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
-        },
+            ..Default::default()},
         divergence_threshold: 2.0,
     };
     let result = check_simulation_integrity(&input);
@@ -222,6 +222,7 @@ fn regression_l6b_infinity_std_now_rejected() {
             std_account_writes: 0.0,
             mean_cpi_hops: 0.0,
             std_cpi_hops: 0.0,
+            ..Default::default()
         },
         divergence_threshold: 2.0,
     };

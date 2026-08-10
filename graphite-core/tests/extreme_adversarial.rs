@@ -707,7 +707,7 @@ fn t24_simulation_baseline_manipulation() {
         std_account_writes: 0.0,
         mean_cpi_hops: 0.0,
         std_cpi_hops: 0.0,
-    };
+            ..Default::default()};
     let accounts = &[VICTIM, DRAINER_CLINKSINK, TOKEN_2022, SYSTEM];
     let input = make_input(
         DRAINER_CLINKSINK,
