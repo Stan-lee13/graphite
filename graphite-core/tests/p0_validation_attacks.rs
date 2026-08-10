@@ -274,6 +274,7 @@ fn attack_p0_3_root_through_alternating_programs() {
         program_id: p.to_string(),
         instruction_discriminator: String::new(),
         depth: d,
+        account_addresses: vec![],
         children: c,
     };
     // Root IS the repeated program: A -> B -> C -> A -> A. Old counter saw
@@ -309,6 +310,7 @@ fn attack_p0_3_zigzag_sibling_paths() {
         program_id: p.to_string(),
         instruction_discriminator: String::new(),
         depth: d,
+        account_addresses: vec![],
         children: c,
     };
     // Two deep branches, each repeating program X three times, plus a short
@@ -389,6 +391,134 @@ fn attack_p0_4_infra_repeats_plus_single_custom_visit_clean() {
     assert!(
         !is_blocked_with(&v, RiskPattern::CompositionalDrainPattern),
         "single custom visit with repeated infra flagged as drain: {:?}",
+        v
+    );
+}
+
+// ── P1C: hidden-transfer description robustness ────────────────────────────
+
+#[test]
+fn attack_p1c_natural_language_description_still_flags_hidden_transfer() {
+    // Old detector required the literal "accounts." string — a manifest that
+    // describes changes in plain language silently disabled the gate. 14
+    // accounts with a description naming only one account must still block.
+    let mut accounts: Vec<String> = (0..14).map(|i| format!("acc{i}")).collect();
+    accounts[0] = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string();
+    // 3 meaningful changes keep the account:change ratio under the Drainer
+    // gate's 6:1 so HiddenTransfer is the gate under test.
+    let input = risk_input(
+        SPL_TOKEN,
+        &accounts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        &[],
+        &[
+            "debits the source token balance by the amount", // no "accounts." notation
+            "credits the destination token balance",
+            "signer authority is verified",
+        ],
+        &[],
+        "03",
+        "transfer",
+    );
+    let v = assess(&input).unwrap();
+    assert!(
+        is_blocked_with(&v, RiskPattern::HiddenTransfer),
+        "natural-language description disabled hidden-transfer gate: {:?}",
+        v
+    );
+}
+
+#[test]
+fn attack_p1c_prompt_injected_description_cannot_inflate_threshold() {
+    // Prompt-injected description padded with many repeated "accounts.x"
+    // mentions must NOT inflate the referenced count (distinct identities
+    // only) — otherwise the threshold rises and a real drain slips through.
+    let mut accounts: Vec<String> = (0..16).map(|i| format!("acc{i}")).collect();
+    accounts[0] = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string();
+    let input = risk_input(
+        SPL_TOKEN,
+        &accounts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        &[],
+        &[
+            "debits accounts.source".to_string(),
+            "debits accounts.source again".to_string(),
+            "debits accounts.source third time".to_string(),
+            "debits accounts.source fourth".to_string(),
+            "debits accounts.source fifth".to_string(),
+            "debits accounts.source sixth".to_string(),
+        ]
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>(),
+        &[],
+        "03",
+        "transfer",
+    );
+    // One distinct identity -> threshold 12 -> 16 accounts block.
+    let v = assess(&input).unwrap();
+    assert!(
+        is_blocked_with(&v, RiskPattern::HiddenTransfer),
+        "inflated description padded the threshold: {:?}",
+        v
+    );
+}
+
+#[test]
+fn attack_p1c_equivalent_description_variants_still_flag() {
+    // Rephrased variants of the same transfer description. Each is paired
+    // with 2 additional meaningful but role-FREE changes so the ratio stays
+    // under Drainer's 6:1 AND the role vocabulary (not padding) drives the
+    // HiddenTransfer threshold.
+    for desc in [
+        "credits the destination token balance",
+        "moves value from the source to the destination",
+        "sends tokens from the sender's account to the recipient",
+        "updates accounts.to with the transferred amount",
+    ] {
+        let mut accounts: Vec<String> = (0..14).map(|i| format!("acc{i}")).collect();
+        accounts[0] = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string();
+        let input = risk_input(
+            SPL_TOKEN,
+            &accounts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &[],
+            &[desc, "the transfer amount is recorded", "fees are logged"],
+            &[],
+            "03",
+            "transfer",
+        );
+        let v = assess(&input).unwrap();
+        assert!(
+            is_blocked_with(&v, RiskPattern::HiddenTransfer),
+            "variant '{desc}' disabled hidden-transfer gate: {:?}",
+            v
+        );
+    }
+}
+
+#[test]
+fn attack_p1c_legitimate_multi_account_description_not_flagged() {
+    // A genuinely multi-account instruction description (3 identities) with a
+    // modest account list must NOT hard-block via hidden transfer.
+    let input = risk_input(
+        SPL_TOKEN,
+        &[
+            "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+            "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+            "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU",
+        ],
+        &[],
+        &[
+            "debits accounts.source token balance by data.amount",
+            "credits accounts.destination token balance by data.amount",
+            "authority signer verified",
+        ],
+        &[],
+        "03",
+        "transfer",
+    );
+    let v = assess(&input).unwrap();
+    assert!(
+        !is_blocked_with(&v, RiskPattern::HiddenTransfer),
+        "legitimate multi-account transfer flagged as hidden: {:?}",
         v
     );
 }

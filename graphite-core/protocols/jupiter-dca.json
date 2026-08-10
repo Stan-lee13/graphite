@@ -1,429 +1,430 @@
 {
-  "graphite_manifest_version": "1.0",
-  "protocol": {
-    "name": "Jupiter DCA",
-    "program_id": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
-    "website": "https://jup.ag",
-    "github": "https://github.com/jup-ag/dca-cpi",
-    "idl_source": "https://raw.githubusercontent.com/jup-ag/dca-cpi/master/idl.json"
-  },
-  "version": {
-    "label": "2.0.0",
-    "effective_from_slot": 0,
-    "previous_version_ref": null
-  },
-  "instructions": [
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Jupiter DCA",
+  "program_id": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+  "website": "https://jup.ag",
+  "github": "https://github.com/jup-ag/dca-cpi",
+  "idl_source": "https://raw.githubusercontent.com/jup-ag/dca-cpi/master/idl.json",
+  "category": "swap"
+ },
+ "version": {
+  "label": "2.0.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "openDca",
+   "discriminator": "2441b93601d264a3",
+   "accounts": [
     {
-      "name": "openDca",
-      "discriminator": "2441b93601d264a3",
-      "accounts": [
-        {
-          "name": "user",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "input_mint",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "output_mint",
-          "role": "readonly",
-          "is_writable": false,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "creates a new DCA account with the schedule parameters from instruction data",
-        "transfers the input_amount from user_ata into the DCA escrow"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "11111111111111111111111111111111"
-      ],
-      "risk_rules": [
-        "user must be signer and the owner of user_ata",
-        "escrow transfer amount must equal data.input_amount",
-        "RISK: if escrow recipient is not the DCA program PDA, flag MaliciousAccountChange"
-      ]
+     "name": "user",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
     },
     {
-      "name": "openDcaV2",
-      "discriminator": "8e772b6da2340bb1",
-      "accounts": [
-        {
-          "name": "user",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "creates a new DCA account (v2 params: flexible interval configuration)",
-        "transfers the input_amount from user_ata into the DCA escrow"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "11111111111111111111111111111111"
-      ],
-      "risk_rules": [
-        "user must be signer and the owner of user_ata",
-        "escrow transfer amount must equal data.input_amount"
-      ]
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
     },
     {
-      "name": "closeDca",
-      "discriminator": "16072162a8b722f3",
-      "accounts": [
-        {
-          "name": "user",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "closes the DCA account",
-        "returns escrow funds to accounts.user"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "11111111111111111111111111111111"
-      ],
-      "risk_rules": [
-        "only the DCA owner may close",
-        "RISK: refund recipient must be accounts.user — if funds go elsewhere, flag CompositionalDrain"
-      ]
+     "name": "user_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
     },
     {
-      "name": "deposit",
-      "discriminator": "f223c68952e1f2b6",
-      "accounts": [
-        {
-          "name": "user",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "adds funds to the DCA escrow",
-        "debits accounts.user_ata by data.amount"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "only the DCA owner may deposit",
-        "deposit amount must match data.amount"
-      ]
+     "name": "input_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
     },
     {
-      "name": "withdraw",
-      "discriminator": "b712469c946da122",
-      "accounts": [
-        {
-          "name": "user",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "withdraws unswapped input tokens from the DCA escrow",
-        "credits accounts.user_ata by data.amount"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "only the DCA owner may withdraw",
-        "RISK: withdrawal recipient must be user_ata owned by accounts.user — flag if diverted"
-      ]
-    },
-    {
-      "name": "endAndClose",
-      "discriminator": "537da645f7fc6785",
-      "accounts": [
-        {
-          "name": "user",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "ends the DCA schedule",
-        "closes the DCA account and returns remaining escrow to the owner"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        "11111111111111111111111111111111"
-      ],
-      "risk_rules": [
-        "only the DCA owner may end the schedule",
-        "RISK: refund recipient must be accounts.user"
-      ]
-    },
-    {
-      "name": "withdrawFees",
-      "discriminator": "c6d4ab6d90d7ae59",
-      "accounts": [
-        {
-          "name": "admin",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "fee_vault",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "transfers accumulated protocol fees from the fee vault to admin"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "admin-only instruction",
-        "RISK: unexpected fee withdrawal — flag PermissionEscalation"
-      ]
-    },
-    {
-      "name": "initiateFlashFill",
-      "discriminator": "8fcd03bfa2d7f531",
-      "accounts": [
-        {
-          "name": "keeper",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "in_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "keeper_in_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "keeper flash-borrows the DCA input position from in_ata to keeper_in_ata",
-        "records the borrow so fulfill_flash_fill must repay it"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "keeper-initiated flash fill must be repaid by a matching fulfill_flash_fill",
-        "RISK: borrowed input tokens must return to the DCA in_ata — if the repayment path is missing or diverted, flag FlashLoanAbuse"
-      ]
-    },
-    {
-      "name": "fulfillFlashFill",
-      "discriminator": "7340e24e21d369a2",
-      "accounts": [
-        {
-          "name": "keeper",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "in_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "out_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "repays the flash loan into the DCA in_ata",
-        "executes the scheduled swap and credits output to the DCA out_ata"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "repay amount must equal the recorded borrow (keeper must not short-change the DCA)",
-        "RISK: swap output must land in the DCA out_ata — if diverted to the keeper or a third party, flag CompositionalDrain"
-      ]
-    },
-    {
-      "name": "transfer",
-      "discriminator": "a334c8e78c0345ba",
-      "accounts": [
-        {
-          "name": "keeper",
-          "role": "signer",
-          "is_writable": true,
-          "is_signer": true,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "dca_out_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        },
-        {
-          "name": "user_out_ata",
-          "role": "writable",
-          "is_writable": true,
-          "is_signer": false,
-          "pda_seeds": []
-        }
-      ],
-      "expected_state_changes": [
-        "keeper moves the DCA output from dca_out_ata to the owner's user_out_ata"
-      ],
-      "allowed_cpis": [
-        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-      ],
-      "risk_rules": [
-        "transfer recipient must be the DCA owner's user_out_ata",
-        "RISK: if the output is diverted from the owner, flag CompositionalDrain"
-      ]
+     "name": "output_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
     }
-  ],
-  "trust_tier": "OfficialManifest",
-  "verification": {
-    "program_id_verified_on_chain": true,
-    "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07",
-    "discriminators_source": "C22.4 re-verification (2026-08-09): deployed program confirmed standard Anchor (sha256(\"global:\"+snake_case)[:8])",
-    "verified_at": "2026-08-09",
-    "notes": "CORRECTED 2026-08-09: the previous discriminator table (ee26b3c8..., 459dd6dd..., etc.) was never observed on-chain — it was produced by base64-decoding base58 instruction data (the same decode artifact class as the Jupiter V6 C22.3 finding) and does not match the deployed program. On-chain census of real DCA txs (base58-correct decode) shows the deployed program is STANDARD ANCHOR: initiate_flash_fill=8fcd03bfa2d7f531, fulfill_flash_fill=7340e24e21d369a2, transfer=a334c8e78c0345ba all observed live; the remaining instructions follow the same snake_case convention (open_dca=2441b93601d264a3, open_dca_v2=8e772b6da2340bb1, close_dca=16072162a8b722f3, withdraw=b712469c946da122, deposit=f223c68952e1f2b6, withdraw_fees=c6d4ab6d90d7ae59, end_and_close=537da645f7fc6785). The three fill-path instructions (initiateFlashFill, fulfillFlashFill, transfer) were previously MISSING entirely — the dominant live DCA traffic (keeper fills) was falling to unknown-protocol mode; they are now declared."
+   ],
+   "expected_state_changes": [
+    "creates a new DCA account with the schedule parameters from instruction data",
+    "transfers the input_amount from user_ata into the DCA escrow"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "user must be signer and the owner of user_ata",
+    "escrow transfer amount must equal data.input_amount",
+    "RISK: if escrow recipient is not the DCA program PDA, flag MaliciousAccountChange"
+   ]
+  },
+  {
+   "name": "openDcaV2",
+   "discriminator": "8e772b6da2340bb1",
+   "accounts": [
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "creates a new DCA account (v2 params: flexible interval configuration)",
+    "transfers the input_amount from user_ata into the DCA escrow"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "user must be signer and the owner of user_ata",
+    "escrow transfer amount must equal data.input_amount"
+   ]
+  },
+  {
+   "name": "closeDca",
+   "discriminator": "16072162a8b722f3",
+   "accounts": [
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "closes the DCA account",
+    "returns escrow funds to accounts.user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "only the DCA owner may close",
+    "RISK: refund recipient must be accounts.user — if funds go elsewhere, flag CompositionalDrain"
+   ]
+  },
+  {
+   "name": "deposit",
+   "discriminator": "f223c68952e1f2b6",
+   "accounts": [
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "adds funds to the DCA escrow",
+    "debits accounts.user_ata by data.amount"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [
+    "only the DCA owner may deposit",
+    "deposit amount must match data.amount"
+   ]
+  },
+  {
+   "name": "withdraw",
+   "discriminator": "b712469c946da122",
+   "accounts": [
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "withdraws unswapped input tokens from the DCA escrow",
+    "credits accounts.user_ata by data.amount"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [
+    "only the DCA owner may withdraw",
+    "RISK: withdrawal recipient must be user_ata owned by accounts.user — flag if diverted"
+   ]
+  },
+  {
+   "name": "endAndClose",
+   "discriminator": "537da645f7fc6785",
+   "accounts": [
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "ends the DCA schedule",
+    "closes the DCA account and returns remaining escrow to the owner"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "only the DCA owner may end the schedule",
+    "RISK: refund recipient must be accounts.user"
+   ]
+  },
+  {
+   "name": "withdrawFees",
+   "discriminator": "c6d4ab6d90d7ae59",
+   "accounts": [
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "fee_vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "transfers accumulated protocol fees from the fee vault to admin"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [
+    "admin-only instruction",
+    "RISK: unexpected fee withdrawal — flag PermissionEscalation"
+   ]
+  },
+  {
+   "name": "initiateFlashFill",
+   "discriminator": "8fcd03bfa2d7f531",
+   "accounts": [
+    {
+     "name": "keeper",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "in_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "keeper_in_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "keeper flash-borrows the DCA input position from in_ata to keeper_in_ata",
+    "records the borrow so fulfill_flash_fill must repay it"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [
+    "keeper-initiated flash fill must be repaid by a matching fulfill_flash_fill",
+    "RISK: borrowed input tokens must return to the DCA in_ata — if the repayment path is missing or diverted, flag FlashLoanAbuse"
+   ]
+  },
+  {
+   "name": "fulfillFlashFill",
+   "discriminator": "7340e24e21d369a2",
+   "accounts": [
+    {
+     "name": "keeper",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "in_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "out_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "repays the flash loan into the DCA in_ata",
+    "executes the scheduled swap and credits output to the DCA out_ata"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [
+    "repay amount must equal the recorded borrow (keeper must not short-change the DCA)",
+    "RISK: swap output must land in the DCA out_ata — if diverted to the keeper or a third party, flag CompositionalDrain"
+   ]
+  },
+  {
+   "name": "transfer",
+   "discriminator": "a334c8e78c0345ba",
+   "accounts": [
+    {
+     "name": "keeper",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca_out_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_out_ata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "keeper moves the DCA output from dca_out_ata to the owner's user_out_ata"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [
+    "transfer recipient must be the DCA owner's user_out_ata",
+    "RISK: if the output is diverted from the owner, flag CompositionalDrain"
+   ]
   }
+ ],
+ "trust_tier": "OfficialManifest",
+ "verification": {
+  "program_id_verified_on_chain": true,
+  "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07",
+  "discriminators_source": "C22.4 re-verification (2026-08-09): deployed program confirmed standard Anchor (sha256(\"global:\"+snake_case)[:8])",
+  "verified_at": "2026-08-09",
+  "notes": "CORRECTED 2026-08-09: the previous discriminator table (ee26b3c8..., 459dd6dd..., etc.) was never observed on-chain — it was produced by base64-decoding base58 instruction data (the same decode artifact class as the Jupiter V6 C22.3 finding) and does not match the deployed program. On-chain census of real DCA txs (base58-correct decode) shows the deployed program is STANDARD ANCHOR: initiate_flash_fill=8fcd03bfa2d7f531, fulfill_flash_fill=7340e24e21d369a2, transfer=a334c8e78c0345ba all observed live; the remaining instructions follow the same snake_case convention (open_dca=2441b93601d264a3, open_dca_v2=8e772b6da2340bb1, close_dca=16072162a8b722f3, withdraw=b712469c946da122, deposit=f223c68952e1f2b6, withdraw_fees=c6d4ab6d90d7ae59, end_and_close=537da645f7fc6785). The three fill-path instructions (initiateFlashFill, fulfillFlashFill, transfer) were previously MISSING entirely — the dominant live DCA traffic (keeper fills) was falling to unknown-protocol mode; they are now declared."
+ }
 }

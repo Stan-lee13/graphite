@@ -68,6 +68,12 @@ pub struct ProtocolInfo {
     pub website: String,
     #[serde(default)]
     pub github: String,
+    /// Functional classification ("swap", "lending", "bridge", "nft",
+    /// "token-infra", ...). Declarative, so protocol-aware detection
+    /// (e.g. FakeSwap's swap set) can be extended by tagging a manifest
+    /// instead of editing detection logic.
+    #[serde(default)]
+    pub category: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -346,6 +352,46 @@ mod tests {
         let registry = load_seed_manifests();
         let manifests = registry.list();
         assert!(manifests.len() >= 10, "expected at least 2 seed manifests");
+    }
+
+    #[test]
+    fn manifest_category_aligns_with_swap_set() {
+        // Maintainability contract (P1D): every manifest tagged "swap" must
+        // be in the risk engine's canonical swap set, and every swap-set
+        // program must carry the category in its manifest. Adding a swap
+        // protocol = tag the manifest + extend `is_swap_program` — the sync
+        // test catches drift in either direction.
+        let registry = load_seed_manifests();
+        let tagged: Vec<String> = registry
+            .list()
+            .iter()
+            .filter(|m| m.protocol.category == "swap")
+            .map(|m| m.protocol.program_id.clone())
+            .collect();
+        assert!(
+            !tagged.is_empty(),
+            "expected at least one swap-tagged manifest"
+        );
+        for id in &tagged {
+            assert!(
+                crate::risk_engine::is_swap_program(id),
+                "manifest-tagged swap program {id} missing from is_swap_program"
+            );
+        }
+        let canonical = [
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+            "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+            "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+            "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+            "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        ];
+        for id in canonical {
+            assert!(
+                tagged.contains(&id.to_string()),
+                "swap-set program {id} missing category tag in its manifest"
+            );
+        }
     }
 
     #[test]

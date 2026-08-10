@@ -360,6 +360,7 @@ mod tests {
                 program_id: program_id.to_string(),
                 website: String::new(),
                 github: String::new(),
+                category: String::new(),
             },
             version: ManifestVersion {
                 label: "1.0".to_string(),
@@ -427,6 +428,7 @@ mod tests {
                 program_id: program_id.to_string(),
                 website: String::new(),
                 github: String::new(),
+                category: String::new(),
             },
             version: ManifestVersion {
                 label: "1.0".to_string(),

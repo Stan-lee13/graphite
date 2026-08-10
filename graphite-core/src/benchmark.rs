@@ -845,17 +845,20 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     program_id: "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs".to_string(),
                     instruction_discriminator: "0900000000000000".to_string(),
                     depth: 0,
+                    account_addresses: vec![],
                     children: vec![
                         CpiTraceNode {
                             program_id: SPL_TOKEN.to_string(),
                             instruction_discriminator: "04".to_string(),
                             depth: 1,
+                            account_addresses: vec![],
                             children: vec![],
                         },
                         CpiTraceNode {
                             program_id: SYSTEM.to_string(),
                             instruction_discriminator: "01".to_string(),
                             depth: 1,
+                            account_addresses: vec![],
                             children: vec![],
                         },
                     ],
@@ -899,10 +902,12 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                     program_id: "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth".to_string(),
                     instruction_discriminator: "08c7d6bf130f7825".to_string(),
                     depth: 0,
+                    account_addresses: vec![],
                     children: vec![CpiTraceNode {
                         program_id: SYSTEM.to_string(),
                         instruction_discriminator: "02".to_string(),
                         depth: 1,
+                        account_addresses: vec![],
                         children: vec![],
                     }],
                 });

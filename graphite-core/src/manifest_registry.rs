@@ -510,6 +510,7 @@ mod tests {
                 program_id: program_id.to_string(),
                 website: String::new(),
                 github: String::new(),
+                category: String::new(),
             },
             version: ManifestVersion {
                 label: version.to_string(),

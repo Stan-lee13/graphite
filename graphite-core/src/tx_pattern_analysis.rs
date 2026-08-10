@@ -47,6 +47,11 @@ pub struct CpiTraceNode {
     #[serde(default)]
     pub instruction_discriminator: String,
     pub depth: u32,
+    /// Accounts the CPI callee acts on (source/destination/mint/authority in
+    /// the callee's own layout). Carried so CPI flattening can correlate
+    /// account identity across top-level and nested instructions.
+    #[serde(default)]
+    pub account_addresses: Vec<String>,
     #[serde(default)]
     pub children: Vec<CpiTraceNode>,
 }
@@ -188,10 +193,16 @@ pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec
     // Rule 1: AAT — Approve-then-Transfer on the same token account.
     // The SPL Token Approve grants a delegate authority over `source`; a
     // Transfer spending that same account in the same tx is the AAT drainer
-    // class (approve a large allowance, then transfer it out).
-    for approve in instructions.iter().filter(|ix| is_approve_instruction(ix)) {
+    // class (approve a large allowance, then transfer it out). ORDERING
+    // MATTERS (P1E): the Approve must PRECEDE the Transfer that spends the
+    // account — a Transfer followed by an Approve (e.g. spending an existing
+    // allowance, then approving for a future tx) is not the drain signature.
+    for (i, approve) in instructions.iter().enumerate() {
+        if !is_approve_instruction(approve) {
+            continue;
+        }
         if let Some(approved_account) = primary_token_account(approve) {
-            let shared = instructions.iter().any(|ix| {
+            let shared = instructions[i + 1..].iter().any(|ix| {
                 is_transfer_instruction(ix)
                     && ix.account_addresses.iter().any(|a| a == approved_account)
             });
@@ -210,12 +221,12 @@ pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec
     // Rule 2: Authority-hijack-then-Transfer. SetAuthority hands control of a
     // token account to an attacker-controlled delegate; a Transfer of that
     // account in the same tx executes the theft.
-    for hijack in instructions
-        .iter()
-        .filter(|ix| is_set_authority_instruction(ix))
-    {
+    for (i, hijack) in instructions.iter().enumerate() {
+        if !is_set_authority_instruction(hijack) {
+            continue;
+        }
         if let Some(target_account) = primary_token_account(hijack) {
-            let shared = instructions.iter().any(|ix| {
+            let shared = instructions[i + 1..].iter().any(|ix| {
                 is_transfer_instruction(ix)
                     && ix.account_addresses.iter().any(|a| a == target_account)
             });
@@ -234,12 +245,12 @@ pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec
     // Rule 3: CloseAccount-then-Transfer. Closing a token account refunds its
     // lamports to a destination; pairing it with a Transfer of the same token
     // account is the close-and-sweep drain class.
-    for close in instructions
-        .iter()
-        .filter(|ix| is_close_account_instruction(ix))
-    {
+    for (i, close) in instructions.iter().enumerate() {
+        if !is_close_account_instruction(close) {
+            continue;
+        }
         if let Some(closed_account) = primary_token_account(close) {
-            let shared = instructions.iter().any(|ix| {
+            let shared = instructions[i + 1..].iter().any(|ix| {
                 is_transfer_instruction(ix)
                     && ix.account_addresses.iter().any(|a| a == closed_account)
             });
@@ -299,9 +310,12 @@ pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec
     // attacker delegate authority, and the assign hands over the account's
     // OWNER — full control without any Transfer instruction, which is why
     // Rule 1's Approve-then-Transfer cannot see it.
-    for approve in instructions.iter().filter(|ix| is_approve_instruction(ix)) {
+    for (i, approve) in instructions.iter().enumerate() {
+        if !is_approve_instruction(approve) {
+            continue;
+        }
         if let Some(approved_account) = primary_token_account(approve) {
-            let assigned = instructions.iter().any(|ix| {
+            let assigned = instructions[i + 1..].iter().any(|ix| {
                 ix.program_id == SYSTEM_PROGRAM
                     && disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_ASSIGN)
                     && ix.account_addresses.first().map(|s| s.as_str()) == Some(approved_account)
@@ -338,6 +352,37 @@ pub fn system_programs() -> Vec<String> {
         // registered in the seed set; the caller merges manifest program IDs
         // into the known set, so the constants here stay minimal.
     ]
+}
+
+/// Flatten a CPI trace into the EFFECTIVE instruction sequence for
+/// multi-instruction analysis. Executing a CPI-wrapped instruction executes
+/// its callees in order, so a malicious Approve + Transfer pair hidden inside
+/// a single top-level instruction is a real drain pattern — the analyzer must
+/// see the normalized sequence, not just the top level.
+///
+/// Pre-order (root first, children in call order) preserves execution
+/// ordering; the root itself is omitted because it is already present in the
+/// top-level `transaction_instructions` list — flattening only the callees
+/// avoids double-counting the root.
+pub fn flatten_cpi_trace(trace: &CpiTraceNode) -> Vec<TransactionInstruction> {
+    let mut out = Vec::new();
+    let mut stack: Vec<&CpiTraceNode> = Vec::new();
+    // Push children in reverse so the first child pops first (pre-order).
+    for child in trace.children.iter().rev() {
+        stack.push(child);
+    }
+    while let Some(node) = stack.pop() {
+        out.push(TransactionInstruction {
+            program_id: node.program_id.clone(),
+            instruction_discriminator: node.instruction_discriminator.clone(),
+            account_addresses: node.account_addresses.clone(),
+            cpi_targets: Vec::new(),
+        });
+        for child in node.children.iter().rev() {
+            stack.push(child);
+        }
+    }
+    out
 }
 
 /// Max occurrences of `needle` along any single root-to-leaf path, INCLUDING
@@ -711,6 +756,7 @@ mod tests {
             program_id: program.to_string(),
             instruction_discriminator: String::new(),
             depth,
+            account_addresses: vec![],
             children,
         }
     }

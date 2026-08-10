@@ -1398,9 +1398,34 @@ impl GraphiteCore {
         // Passed risk verdict exactly like a plugin block. Warning findings
         // never block — they are surfaced in the report (P3 explainability).
         let mut pattern_findings: Vec<crate::tx_pattern_analysis::PatternFinding> = Vec::new();
-        if input.transaction_instructions.len() >= 2 {
+        // P1B: CPI flattening — a malicious combination hidden inside a single
+        // CPI-wrapped instruction (Approve + Transfer both nested in the trace)
+        // is only visible after normalizing the effective instruction sequence.
+        // Pre-order flatten preserves execution ordering; the primary
+        // instruction's callees execute during it, so they are appended in
+        // call order after the top-level list.
+        let effective_instructions: Vec<crate::tx_pattern_analysis::TransactionInstruction> = {
+            // Execution order: the primary instruction runs first, its CPI
+            // callees execute during it (pre-order flatten), then the
+            // remaining top-level instructions. Ordering matters to the AAT
+            // rules (P1E): an Approve nested in the primary's CPI precedes a
+            // top-level Transfer, so the pair must be seen in that order.
+            let mut v = Vec::with_capacity(input.transaction_instructions.len() + 1 + 8);
+            v.push(crate::tx_pattern_analysis::TransactionInstruction {
+                program_id: input.program_id.clone(),
+                instruction_discriminator: input.instruction_discriminator.clone(),
+                account_addresses: input.account_addresses.clone(),
+                cpi_targets: input.cpi_targets.clone(),
+            });
+            if let Some(trace) = &input.cpi_trace {
+                v.extend(crate::tx_pattern_analysis::flatten_cpi_trace(trace));
+            }
+            v.extend(input.transaction_instructions.clone());
+            v
+        };
+        if effective_instructions.len() >= 2 {
             pattern_findings.extend(crate::tx_pattern_analysis::analyze_multi_instruction(
-                &input.transaction_instructions,
+                &effective_instructions,
             ));
         }
         if let Some(trace) = &input.cpi_trace {

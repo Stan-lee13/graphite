@@ -336,7 +336,12 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 5: Hidden transfer detection (tightened — threshold lowered from 12 to 4)
-    if !input.expected_state_changes.is_empty()
+    // DEX/aggregator routes are exempt for the same reason as Checks 3/3b:
+    // a swap route legitimately touches dozens of pool accounts while its
+    // state changes describe only a few roles — the account:role ratio is
+    // not a hidden-transfer signal for routing programs.
+    if !is_dex
+        && !input.expected_state_changes.is_empty()
         && detect_hidden_transfer(&input.accounts, &input.expected_state_changes)
     {
         return Ok(RiskVerdict::Blocked {
@@ -614,34 +619,116 @@ fn detect_compositional_drain(cpi_targets: &[String], program_id: &str) -> bool 
     false
 }
 
-/// Detect hidden transfers: accounts touched but not in expected state changes.
+/// Number of DISTINCT account identities referenced by a set of expected
+/// state-change descriptions. Two syntactic forms are recognized so the
+/// detector does not depend on one exact literal:
 ///
-/// Tightened from original:
-/// - Threshold lowered from 12 to 4 accounts
-/// - Multiplier lowered from 6x to 2x
-/// - Still requires "accounts." notation to avoid false positives on
-///   protocols with natural-language state change descriptions
-fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> bool {
-    let uses_accounts_notation = expected_changes.iter().any(|c| c.contains("accounts."));
-
-    if !uses_accounts_notation {
-        return false;
+/// 1. Canonical manifest notation `accounts.<name>` (e.g.
+///    "debits accounts.source token balance by data.amount") — each distinct
+///    `<name>` counts once, regardless of how many times it is mentioned.
+/// 2. Natural-language role vocabulary (source, destination, from, to, mint,
+///    owner, authority, delegate, recipient, sender, account) for manifests
+///    that describe changes without the dotted notation. This keeps the
+///    hidden-transfer gate live for protocols whose descriptions read
+///    "debits the source token balance" instead of "debits accounts.source".
+///
+/// A description mentioning NO recognizable account identity still returns
+/// at least 1 (fail-safe floor): a large account list with no declared
+/// account identity is exactly the hidden-transfer signal.
+fn referenced_account_identities(expected_changes: &[String]) -> usize {
+    let mut refs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for change in expected_changes {
+        // Split on any non-identifier delimiter and look for "accounts.<name>"
+        // fragments. `accounts.` itself is filtered so a bare mention of the
+        // word "accounts" without a name does not count as a reference.
+        for fragment in change.split(|ch: char| !ch.is_alphanumeric() && ch != '.' && ch != '_') {
+            if let Some(pos) = fragment.find("accounts.") {
+                let name = &fragment[pos + "accounts.".len()..];
+                if !name.is_empty() {
+                    refs.insert(name.to_string());
+                }
+            }
+        }
+    }
+    if !refs.is_empty() {
+        return refs.len();
     }
 
-    let referenced_account_count = expected_changes
-        .iter()
-        .filter(|c| c.contains("accounts."))
-        .count();
+    // Natural-language fallback: distinct role words that name an account.
+    // Word-boundary matching — "token" must not count as a "to", and
+    // "accounts" must not count as an "account" role by substring.
+    // "from"/"to" are deliberately absent: they are relational prepositions,
+    // not account identities ("from the source to the destination" names two
+    // accounts — source and destination — not four).
+    const ROLES: &[&str] = &[
+        "source",
+        "destination",
+        "mint",
+        "owner",
+        "authority",
+        "delegate",
+        "recipient",
+        "sender",
+        "account",
+        "vault",
+        "pool",
+    ];
+    let mut roles: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for change in expected_changes {
+        let lower = change.to_lowercase();
+        let words: Vec<&str> = lower
+            .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+            .filter(|w| !w.is_empty())
+            .collect();
+        for role in ROLES {
+            if words.contains(role) {
+                roles.insert(role);
+            }
+        }
+    }
+    roles.len().max(1)
+}
 
-    // Flag when accounts > 4x the referenced count AND at least 12 accounts
-    // (original was 6x/12 — lowered multiplier to 4x for tighter ratio check
-    // while keeping the 12-account minimum to avoid false positives on
-    // legitimate multi-account protocols like SPL Token transfers)
+/// Detect hidden transfers: the transaction touches far more accounts than the
+/// expected state changes declare. A hidden transfer is the signature of a
+/// drainer moving value through accounts it never declared.
+///
+/// The reference count is derived SEMANTICALLY (see
+/// `referenced_account_identities`) rather than by counting a literal string,
+/// so an attacker cannot disable the gate by rephrasing the description, and a
+/// prompt-injected description padded with repeated "accounts.x" mentions
+/// counts each identity once instead of inflating the threshold.
+///
+/// Threshold: flag when account count >= 4x the declared identities AND at
+/// least 12 accounts — the 12-account floor keeps legitimate multi-account
+/// protocols (SPL Token transfers, multisig) out of the hard gate.
+fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> bool {
+    if expected_changes.is_empty() {
+        return false;
+    }
+    let referenced_account_count = referenced_account_identities(expected_changes);
     let threshold = referenced_account_count.saturating_mul(4).max(12);
     accounts.len() >= threshold
 }
 
 /// Detect FakeSwap: swap intent on a swap program but no output/credit state changes.
+/// The canonical swap-protocol set — SINGLE source of truth for both
+/// FakeSwap detection and intent-capability classification. New swap
+/// protocols are added here (and tagged `"category": "swap"` in their
+/// manifest, verified by `manifest_category_aligns_with_swap_set`), so
+/// detection logic itself never needs editing per protocol.
+pub fn is_swap_program(program_id: &str) -> bool {
+    const SWAP_PROGRAMS: &[&str] = &[
+        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
+        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
+        "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA (periodic swaps)
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (bonding-curve buy/sell)
+    ];
+    SWAP_PROGRAMS.contains(&program_id)
+}
+
 pub fn detect_fake_swap(
     program_id: &str,
     _accounts: &[String],
@@ -653,14 +740,7 @@ pub fn detect_fake_swap(
         return None;
     }
 
-    let swap_programs = [
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
-        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
-        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-    ];
-
-    if !swap_programs.contains(&program_id) {
+    if !is_swap_program(program_id) {
         return None;
     }
 
@@ -710,17 +790,7 @@ impl RiskPattern {
 /// unchanged.
 fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
     match intent_type {
-        "swap" | "trade" | "exchange" => {
-            const SWAP_PROGRAMS: &[&str] = &[
-                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
-                "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
-                "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
-                "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
-                "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA (periodic swaps)
-                "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (bonding-curve buy/sell)
-            ];
-            SWAP_PROGRAMS.contains(&program_id)
-        }
+        "swap" | "trade" | "exchange" => is_swap_program(program_id),
         "stake" | "delegate" => program_id == "Stake11111111111111111111111111111111111111",
         "close" | "close_account" => {
             program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
