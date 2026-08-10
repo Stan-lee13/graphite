@@ -8,8 +8,24 @@
 
 use crate::policy_engine::WalletProfile;
 use crate::semantic_graph_store::BehaviorEvidence;
+use crate::tx_pattern_analysis::{CpiTraceNode, TransactionInstruction};
 use crate::verification::{GraphiteCore, ProposedIntent, VerificationInput};
 use std::time::Instant;
+
+const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const SYSTEM: &str = "11111111111111111111111111111111";
+
+/// A Token-2022 transfer instruction, as invoked by the CLINKSINK drainer's
+/// CPIs in the real STMT transaction (source token account → destination).
+fn token_2022_transfer(source: &str, destination: &str) -> TransactionInstruction {
+    TransactionInstruction {
+        program_id: TOKEN_2022.to_string(),
+        instruction_discriminator: "03".to_string(),
+        account_addresses: vec![source.to_string(), destination.to_string()],
+        cpi_targets: vec![],
+    }
+}
 
 #[derive(Debug, Clone)]
 struct BenchmarkCase {
@@ -680,44 +696,214 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                 good_evidence(),
             ),
         },
-        // === SYNTHETIC RECONSTRUCTION CASES (real program IDs, synthetic account data) ===
-        // Based on security research: Mandiant/Google CLINKSINK, SlowMist AAT, Kudelski Wormhole
-    // NOTE: Uses real program IDs but synthetic account addresses (not raw mainnet transaction data)
+        // === REAL MAINNET EXPLOIT CASES (P16: actual on-chain data) ===
+        // Pinned from tests/real_onchain_exploits.rs — real transaction
+        // structures (program IDs, account addresses, CPI targets) from real
+        // mainnet exploit transactions, not synthetic reconstructions.
         BenchmarkCase {
-            label: "SYNTHETIC: CLINKSINK-style STMT drainer (real program ID, synthetic accounts)",
+            label: "REAL: STMT drainer TX 64tsGGe (CLINKSINK, mainnet)",
             category: "malicious",
             expected_approved: false,
-            input: make_input(
-                "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
-                "08",
-                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa", "11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", "ComputeBudget111111111111111111111111111111"],
-                &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "11111111111111111111111111111111"],
-                WalletProfile::TradingBot, no_evidence(),
-            ),
+            // Real tx structure (slot 423650628): drainer program 4PG6e9...
+            // made 21 Token-2022 CPI transfers, each sweeping one of the
+            // victim's 20 token accounts to a single destination. Pinned from
+            // tests/real_onchain_exploits.rs; transaction_instructions carry
+            // a faithful slice (5 of the 20 drained accounts → the tx's one
+            // non-writable destination account) so the benchmark exercises
+            // the Phase 2 mass-sweep detector on real data. Discriminator
+            // "07": the on-chain instruction data byte 0x07 (base58 "8"
+            // decoded to hex — the pipeline requires valid hex).
+            input: {
+                let mut inp = make_input(
+                    "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
+                    "07",
+                    &[
+                        "4cfdFcVuJf8PPXpMWPMCDehSE4gV4C8oYwpZnLra7rtW",
+                        "2tm9s5KnCdNsEGrKSJdL94NkHpmGPVrMMMUbeSpmdbci",
+                        "2VzL1cd3yPm2myQjMb8LfQ8erCm4BXgf3KmV1V8MVcjZ",
+                        "3LDiBJxLebckfpcnzKwuBd7M9AKqA2MoU9b4UwksqDBw",
+                        "4vrtnCKg1GNp5iAjLi8cQuY13uaQWPqueRoWdNHuFqMz",
+                        "8WK8d9PWNwEQ2wg62yNrpYQczhxCLyAznffyFCWuS6J9",
+                        "aVmSBBWoKFDukGntSTmhS5ufocJy7ZkoX1gsX9N9BjZ",
+                        "AWAF3jiNH9HZP4jy4u3nAMELxkPVZjASQGNoUirRnkXh",
+                        "AzfpsEe6uSnbnbEofZBDtZTXaCVZeupjUSjeUkzio72E",
+                        "B8cWxwrTTFsza3nG6hTZqBkcwuHuqCj4S5t9NBdGLPwp",
+                        "BPP8wPEX7GUEnezGfby2ciH1q3vBd3Lyny2uRemA5zHV",
+                        "DnefPrQ2TjG6fPi1sR2uidLWbPyoVTREMiMHoTiXCMmC",
+                        "E3wtq1f6PyMPJSbhqJZHX3SDQXbcRznMZP3HERY9qyXt",
+                        "EeZgoYTM78WWquhLycBhncyWVXFPUw5DNqAZJkm45ikJ",
+                        "EfNqpNK1N5bYHtRaMRAjNmJeyvXZgJUakH1SzjB84rUS",
+                        "EU1D1PP7tFVzJ62FfCsWxApmfwRufBHixQRcGYarRiEh",
+                        "EvViSoAVJEknZ6qvNopuBwCLmpmrLMtKBcveETa5z6AE",
+                        "FHQccBtVFjNut2SMaAiZ6K7CkCyWVVjr5m1fZYwJkr4",
+                        "FVhsNCuhm8ks8AXJoSrkoFbZRrWAQZpa5qefBCbSaGBm",
+                        "GAfKTMWVn4A4xYg2anrE9SUgyvdQ17eou1avTUiTQLNU",
+                        "HFJNS24yTVtH47tvApiHYdz6iXaymeecdHHv96QdgrrJ",
+                        "3AGDdKe482mNwdPdBUTPYqdmokQtEDRSEpSG5bJDVmEH",
+                        "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa",
+                        "ATAEGio97piydPQYryUFmkcUHkKj8zCXJCpYkSC3mvzZ",
+                        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                    ],
+                    &["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
+                    WalletProfile::TradingBot, no_evidence(),
+                );
+                let dest = "3AGDdKe482mNwdPdBUTPYqdmokQtEDRSEpSG5bJDVmEH";
+                inp.transaction_instructions = vec![
+                    token_2022_transfer("2tm9s5KnCdNsEGrKSJdL94NkHpmGPVrMMMUbeSpmdbci", dest),
+                    token_2022_transfer("2VzL1cd3yPm2myQjMb8LfQ8erCm4BXgf3KmV1V8MVcjZ", dest),
+                    token_2022_transfer("3LDiBJxLebckfpcnzKwuBd7M9AKqA2MoU9b4UwksqDBw", dest),
+                    token_2022_transfer("4vrtnCKg1GNp5iAjLi8cQuY13uaQWPqueRoWdNHuFqMz", dest),
+                    token_2022_transfer("8WK8d9PWNwEQ2wg62yNrpYQczhxCLyAznffyFCWuS6J9", dest),
+                ];
+                inp
+            },
         },
         BenchmarkCase {
-            label: "SYNTHETIC: AAT-style drainer — Approve + assign (real program ID, synthetic accounts)",
+            label: "REAL: AAT drainer TX 524t8LW (SlowMist, mainnet)",
             category: "malicious",
             expected_approved: false,
-            input: make_input(
-                "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
-                "0a",
-                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx", "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs", "11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
-                &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "11111111111111111111111111111111"],
-                WalletProfile::TradingBot, no_evidence(),
-            ),
+            // SlowMist-documented AAT attack (slot 382532590, $3M+ stolen):
+            // Approve (SPL Token) x2 then assign (System Program) on the
+            // victim's token accounts — the attacker takes OWNERSHIP. Pinned
+            // from tests/real_onchain_exploits.rs; transaction_instructions
+            // model the Approve x2 + assign flow so the benchmark exercises
+            // the Phase 2 ownership-theft detector on real data. Discriminator
+            // "0900000000000000": base58 "2WK48GNSUQf" decoded to its real
+            // 8 instruction bytes (selector 0x09) — valid hex for the
+            // pipeline.
+            input: {
+                let mut inp = make_input(
+                    "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+                    "0900000000000000",
+                    &[
+                        "ATNmwM5NAKAJ7pftDA2oQteHD9hvHDAn1XDQt7Rp2FjE",
+                        "9w2e3kpt5XUQXLdGb51nRWZoh4JFs6FL7TdEYsvKq6Wb",
+                        "A1nF3tgr1kkjTXUuYV6gMfCvxRJtoEjoZ7qX9rcfapxr",
+                        "9raCHKN2KJVVKRRR592aR9v4CMi4G3YDAK8jgXVmuDf2",
+                        "73DebrhoSuebjF5zWJk9ErsRb8jTKgHGi912Y7jHPzmt",
+                        "GKJBELftW5Rjg24wP88NRaKGsEBtrPLgMiv3DhbJwbzQ",
+                        "ComputeBudget111111111111111111111111111111",
+                        "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+                        "11111111111111111111111111111111",
+                        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                    ],
+                    &[
+                        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                        "11111111111111111111111111111111",
+                    ],
+                    WalletProfile::TradingBot, no_evidence(),
+                );
+                // Victim token accounts (writable in the real tx) and the
+                // attacker who receives ownership.
+                let victim_acct_1 = "A1nF3tgr1kkjTXUuYV6gMfCvxRJtoEjoZ7qX9rcfapxr";
+                let victim_acct_2 = "9raCHKN2KJVVKRRR592aR9v4CMi4G3YDAK8jgXVmuDf2";
+                let attacker = "GKJBELftW5Rjg24wP88NRaKGsEBtrPLgMiv3DhbJwbzQ";
+                let victim_signer = "9w2e3kpt5XUQXLdGb51nRWZoh4JFs6FL7TdEYsvKq6Wb";
+                inp.transaction_instructions = vec![
+                    // Approve 1: delegate authority over the victim's token
+                    // account to the attacker.
+                    TransactionInstruction {
+                        program_id: SPL_TOKEN.to_string(),
+                        instruction_discriminator: "04".to_string(),
+                        account_addresses: vec![
+                            victim_acct_1.to_string(),
+                            attacker.to_string(),
+                            victim_signer.to_string(),
+                        ],
+                        cpi_targets: vec![],
+                    },
+                    // Approve 2: same on the second victim token account.
+                    TransactionInstruction {
+                        program_id: SPL_TOKEN.to_string(),
+                        instruction_discriminator: "04".to_string(),
+                        account_addresses: vec![
+                            victim_acct_2.to_string(),
+                            attacker.to_string(),
+                            victim_signer.to_string(),
+                        ],
+                        cpi_targets: vec![],
+                    },
+                    // assign: System Program hands over the first account's
+                    // ownership — the SlowMist flow, no Transfer at all.
+                    TransactionInstruction {
+                        program_id: SYSTEM.to_string(),
+                        instruction_discriminator: "01".to_string(),
+                        account_addresses: vec![victim_acct_1.to_string(), attacker.to_string()],
+                        cpi_targets: vec![],
+                    },
+                ];
+                // Real CPI structure: drainer → SPL Token (Approve) and
+                // System Program (assign). Both known programs — the trace
+                // layer stays clean; the block comes from the ownership-theft
+                // rule + unknown-program ceiling.
+                inp.cpi_trace = Some(CpiTraceNode {
+                    program_id: "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs".to_string(),
+                    instruction_discriminator: "0900000000000000".to_string(),
+                    depth: 0,
+                    children: vec![
+                        CpiTraceNode {
+                            program_id: SPL_TOKEN.to_string(),
+                            instruction_discriminator: "04".to_string(),
+                            depth: 1,
+                            children: vec![],
+                        },
+                        CpiTraceNode {
+                            program_id: SYSTEM.to_string(),
+                            instruction_discriminator: "01".to_string(),
+                            depth: 1,
+                            children: vec![],
+                        },
+                    ],
+                });
+                inp
+            },
         },
         BenchmarkCase {
-            label: "SYNTHETIC: Wormhole-style exploit (real program ID, synthetic accounts)",
+            label: "REAL: Wormhole $320M hack TX 5fKWY7X (mainnet, Feb 2022)",
             category: "malicious",
             expected_approved: false,
-            input: make_input(
-                "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
-                "01",
-                &["worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth", "11111111111111111111111111111111", "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "ComputeBudget111111111111111111111111111111"],
-                &["11111111111111111111111111111111"],
-                WalletProfile::TradingBot, no_evidence(),
-            ),
+            // Real tx (slot 119009680, Feb 2 2022): attacker called Wormhole's
+            // verify_signatures with a FAKE SysvarClock account, then minted
+            // 120,000 wETH. The single inner CPI went to the System Program
+            // (the trace below) — the exploit was the spoofed sysvar ACCOUNT,
+            // not an unknown CPI target. The block comes from the
+            // unknown-program ceiling (Wormhole is not in the manifest
+            // registry), honestly NOT from the trace layer. Discriminator
+            // "08c7d6bf130f7825": first 8 bytes of the base58-decoded real
+            // instruction data — valid hex for the pipeline.
+            input: {
+                let mut inp = make_input(
+                    "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+                    "08c7d6bf130f7825",
+                    &[
+                        "CxegPrfn2ge5dNiQberUrQJkHCcimeR4VXkeawcFBBka",
+                        "54rboqSVddDxb5dRdmzhrnj9gnCNtPL5ohz6tyvsQrih",
+                        "ywSj8KSWAXavP8bCgjCgaLGWt4UBTF4bLBSksTzFJ3B",
+                        "2yVjuQwpsvdsrywzsJJVs9Ueh4zayyo5DYJbBNc3DDpn",
+                        "7w5JYiPnuiks8xLBiCzDWTieKPwTTgrJkR5BJcoHhjoB",
+                        "SysvarC1ock11111111111111111111111111111111",
+                        "SysvarRent111111111111111111111111111111111",
+                        "11111111111111111111111111111111",
+                        "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+                    ],
+                    &["11111111111111111111111111111111"],
+                    WalletProfile::TradingBot, no_evidence(),
+                );
+                inp.cpi_trace = Some(CpiTraceNode {
+                    program_id: "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth".to_string(),
+                    instruction_discriminator: "08c7d6bf130f7825".to_string(),
+                    depth: 0,
+                    children: vec![CpiTraceNode {
+                        program_id: SYSTEM.to_string(),
+                        instruction_discriminator: "02".to_string(),
+                        depth: 1,
+                        children: vec![],
+                    }],
+                });
+                inp
+            },
         },
         BenchmarkCase {
             label: "SYNTHETIC: AAT-style mass drain (real program ID, synthetic accounts)",
@@ -750,14 +936,18 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
 mod tests {
     use super::*;
 
-    /// The benchmark is DELIBERATELY synthetic (P16 reproducibility): every
-    /// case is a hand-constructed VerificationInput with a manually-encoded
-    /// expected label. This test pins that composition explicitly so nobody
-    /// can claim the benchmark is real-data without changing it. Real on-chain
-    /// validation lives elsewhere: tests/live_transactions.rs (live devnet)
-    /// and live_corpus's pinned REAL mainnet fixtures.
+    /// The benchmark composition is pinned and honestly labeled (P16): 3 REAL
+    /// mainnet exploit cases — STMT drainer TX 64tsGGe, AAT drainer TX
+    /// 524t8LW, Wormhole $320M hack TX 5fKWY7X — pinned from
+    /// tests/real_onchain_exploits.rs (real program IDs, real account
+    /// addresses, real CPI structure; reproducible offline) and 2 SYNTHETIC
+    /// cases (real program IDs, fabricated accounts) covering drainer classes
+    /// not yet pinned from mainnet. Every case is a hand-constructed
+    /// VerificationInput with a manually-encoded expected label, and the
+    /// REAL/SYNTHETIC distinction is enforced so no case can silently
+    /// overclaim its provenance.
     #[test]
-    fn benchmark_composition_is_explicit_and_synthetic() {
+    fn benchmark_composition_is_pinned_and_honestly_labeled() {
         let cases = build_benchmark_cases();
         assert_eq!(cases.len(), 18, "case count must be pinned");
 
@@ -767,17 +957,53 @@ mod tests {
         assert_eq!(safe + malicious, 16, "16 scored cases");
         assert_eq!(unknown, 2);
 
-        // No case is a real on-chain transaction; three are explicitly
-        // labeled SYNTHETIC (real program IDs, synthetic account lists).
-        let real = cases.iter().filter(|c| c.label.starts_with("REAL")).count();
-        assert_eq!(real, 0, "benchmark must not claim real-data cases");
+        // 3 REAL mainnet exploit cases + 2 SYNTHETIC, all honestly labeled.
+        let real = cases
+            .iter()
+            .filter(|c| c.label.starts_with("REAL:"))
+            .count();
+        assert_eq!(real, 3, "3 real mainnet exploit cases (STMT/AAT/Wormhole)");
         let synthetic = cases
             .iter()
-            .filter(|c| c.label.starts_with("SYNTHETIC"))
+            .filter(|c| c.label.starts_with("SYNTHETIC:"))
             .count();
+        assert_eq!(synthetic, 2, "2 honestly-labeled synthetic drainer cases");
+        for c in cases.iter() {
+            if c.label.starts_with("SYNTHETIC:") {
+                assert!(
+                    c.label.contains("synthetic"),
+                    "synthetic case must say so in its label: {}",
+                    c.label
+                );
+            }
+        }
+
+        // The REAL exploit cases carry their pinned transaction structure so
+        // the Phase 2 detectors actually run against real-data shapes.
+        let stmt = cases
+            .iter()
+            .find(|c| c.label.contains("STMT"))
+            .expect("STMT case present");
         assert!(
-            synthetic >= 3,
-            "explicitly-synthetic drainer cases: {synthetic}"
+            stmt.input.transaction_instructions.len() >= 4,
+            "STMT case must carry the mass-sweep instruction slice"
+        );
+        let aat = cases
+            .iter()
+            .find(|c| c.label.contains("AAT drainer TX"))
+            .expect("AAT case present");
+        assert!(
+            aat.input.transaction_instructions.len() >= 3
+                && aat.input.cpi_trace.is_some(),
+            "AAT case must carry Approve x2 + assign instructions and the CPI trace"
+        );
+        let wormhole = cases
+            .iter()
+            .find(|c| c.label.contains("Wormhole"))
+            .expect("Wormhole case present");
+        assert!(
+            wormhole.input.cpi_trace.is_some(),
+            "Wormhole case must carry its real CPI trace"
         );
 
         // Attack-class diversity by label keyword (each class is a distinct
@@ -790,7 +1016,66 @@ mod tests {
         }
         assert!(malicious >= 10, "malicious-case diversity: {malicious}");
         println!(
-            "benchmark composition: {safe} safe / {malicious} malicious / {unknown} unknown — ALL synthetic by design (P16)"
+            "benchmark composition: {safe} safe / {malicious} malicious / {unknown} unknown — {real} REAL mainnet + {synthetic} SYNTHETIC drainer cases (P16, honestly labeled)"
+        );
+    }
+
+    /// The REAL exploit cases must be blocked by the Phase 2 transaction-level
+    /// detectors, not merely by the unknown-program ceiling: the STMT case's
+    /// mass-sweep slice must produce a MultiInstructionDrain finding, and the
+    /// AAT case's Approve+assign flow the ownership-theft finding. Wormhole is
+    /// the honest exception: its CPI trace is all known programs, so the block
+    /// comes from the unknown-program ceiling — asserted explicitly so nobody
+    /// overclaims the trace layer.
+    #[test]
+    fn real_cases_exercise_phase2_detectors() {
+        use crate::verification::GraphiteCore;
+        let core = GraphiteCore::new();
+        let cases = build_benchmark_cases();
+
+        let stmt = cases
+            .iter()
+            .find(|c| c.label.contains("STMT"))
+            .expect("STMT case present");
+        let r = core.verify(&stmt.input).unwrap();
+        assert!(
+            r.risk_verdict
+                .findings
+                .iter()
+                .any(|f| f.pattern == "MultiInstructionDrain"),
+            "STMT case must trip the mass-sweep detector, got: {:?}",
+            r.risk_verdict.findings
+        );
+
+        let aat = cases
+            .iter()
+            .find(|c| c.label.contains("AAT drainer TX"))
+            .expect("AAT case present");
+        let r = core.verify(&aat.input).unwrap();
+        assert!(
+            r.risk_verdict
+                .findings
+                .iter()
+                .any(|f| f.reason.contains("AAT ownership-theft")),
+            "AAT case must trip the ownership-theft detector, got: {:?}",
+            r.risk_verdict.findings
+        );
+
+        // Wormhole: known-program trace → NO CpiTraceAnomaly; blocked by the
+        // unknown-program ceiling, which is the honest attribution.
+        let wormhole = cases
+            .iter()
+            .find(|c| c.label.contains("Wormhole"))
+            .expect("Wormhole case present");
+        let r = core.verify(&wormhole.input).unwrap();
+        assert!(!r.approved);
+        assert!(
+            !r.risk_verdict
+                .findings
+                .iter()
+                .any(|f| f.pattern == "CpiTraceAnomaly"),
+            "Wormhole trace is all known programs; block must come from the unknown-program ceiling, got: {:?}",
+            r.risk_verdict.findings
         );
     }
 

@@ -534,13 +534,14 @@ mod tests {
     fn benchmark_seeded_corpus_replays_clean_and_promotes() {
         let core = GraphiteCore::new();
         let corpus = seed_corpus_from_benchmark();
-        // 18 benchmark cases − 2 simulation-baseline-dependent (excluded) − 1
-        // deduped (the two AAT cases are byte-identical inputs, so the
-        // append-only content_hash dedupe collapses them to one fixture) = 15.
+        // 18 benchmark cases − 2 simulation-baseline-dependent (excluded) = 16.
+        // No content_hash dedupe collapse: the REAL AAT case (pinned mainnet
+        // transaction_instructions + CPI trace) is structurally distinct from
+        // the SYNTHETIC AAT case.
         assert_eq!(
             corpus.len(),
-            15,
-            "benchmark seed must pin exactly 15 non-duplicate fixtures"
+            16,
+            "benchmark seed must pin exactly 16 non-duplicate fixtures"
         );
         let run = replay_corpus(&core, &corpus);
         assert!(

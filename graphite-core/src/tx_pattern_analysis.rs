@@ -89,6 +89,7 @@ pub const DISC_SET_AUTHORITY: &str = "06";
 pub const DISC_CLOSE_ACCOUNT: &str = "09";
 // System Program discriminators.
 pub const DISC_SYSTEM_TRANSFER: &str = "02";
+pub const DISC_SYSTEM_ASSIGN: &str = "01";
 
 /// Prefix match on lowercase discriminators, mirroring
 /// `crate::manifest::discriminator_matches` (a manifest disc like "0c"
@@ -221,26 +222,65 @@ pub fn analyze_multi_instruction(
     }
 
     // Rule 4: Mass multi-transfer sweep — three or more transfer instructions
-    // sweeping to distinct destinations in one transaction (STMT class).
+    // in one transaction (STMT class). Two real shapes: a DEX-style batch
+    // sweeping one source to many destinations, OR the actual STMT drainers
+    // (tx 64tsGGe: 21 Token-2022 CPIs) sweeping MANY distinct token accounts
+    // to a single attacker address. Either >= 3 distinct destinations (>= 3
+    // transfers) or >= 3 distinct sources (>= 4 transfers) is the mass-drain
+    // signature; the >= 4 floor keeps rare legitimate consolidations (2-3
+    // accounts into one) out of the hard gate. Fail-closed tradeoff: a
+    // genuine 4+ account consolidation is blocked (SECURITY.md fail-closed
+    // stance on anomalous mass movement).
     let transfers: Vec<&TransactionInstruction> = instructions
         .iter()
         .filter(|ix| is_transfer_instruction(ix))
         .collect();
     if transfers.len() >= 3 {
+        let sources: std::collections::HashSet<&str> = transfers
+            .iter()
+            .filter_map(|ix| ix.account_addresses.first().map(|s| s.as_str()))
+            .collect();
         let destinations: std::collections::HashSet<&str> = transfers
             .iter()
             .filter_map(|ix| ix.account_addresses.get(1).map(|s| s.as_str()))
             .collect();
-        if destinations.len() >= 3 {
+        let mass_sweep = destinations.len() >= 3 || (transfers.len() >= 4 && sources.len() >= 3);
+        if mass_sweep {
             findings.push(PatternFinding {
                 pattern: "MultiInstructionDrain".to_string(),
                 severity: PatternSeverity::Blocked,
                 reason: format!(
-                    "Mass multi-transfer sweep: {} transfer instructions to {} distinct destinations in one transaction (STMT mass-drain class)",
+                    "Mass multi-transfer sweep: {} transfer instructions from {} distinct source account(s) to {} distinct destination(s) in one transaction (STMT mass-drain class)",
                     transfers.len(),
+                    sources.len(),
                     destinations.len()
                 ),
             });
+        }
+    }
+
+    // Rule 5: AAT ownership-theft — Approve + System `assign` on the same
+    // account. The SlowMist AAT drainers (tx 524t8LW, $3M+ stolen) chain SPL
+    // Token Approve x2 with a System Program assign: the Approve grants the
+    // attacker delegate authority, and the assign hands over the account's
+    // OWNER — full control without any Transfer instruction, which is why
+    // Rule 1's Approve-then-Transfer cannot see it.
+    for approve in instructions.iter().filter(|ix| is_approve_instruction(ix)) {
+        if let Some(approved_account) = primary_token_account(approve) {
+            let assigned = instructions.iter().any(|ix| {
+                ix.program_id == SYSTEM_PROGRAM
+                    && disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_ASSIGN)
+                    && ix.account_addresses.first().map(|s| s.as_str()) == Some(approved_account)
+            });
+            if assigned {
+                findings.push(PatternFinding {
+                    pattern: "MultiInstructionDrain".to_string(),
+                    severity: PatternSeverity::Blocked,
+                    reason: format!(
+                        "AAT ownership-theft signature: Approve on token account {approved_account} paired with a System Program assign of the same account in one transaction"
+                    ),
+                });
+            }
         }
     }
 
@@ -278,7 +318,7 @@ fn path_occurrences(node: &CpiTraceNode, needle: &str, count: u32) -> u32 {
 fn max_depth(node: &CpiTraceNode) -> u32 {
     node.children
         .iter()
-        .map(|c| max_depth(c))
+        .map(max_depth)
         .max()
         .unwrap_or(node.depth)
 }
@@ -463,6 +503,62 @@ mod tests {
         let findings = analyze_multi_instruction(&txs);
         assert_eq!(findings.len(), 1);
         assert!(findings[0].reason.contains("Mass multi-transfer sweep"));
+    }
+
+    #[test]
+    fn mass_sweep_to_single_destination_is_blocked() {
+        // Real STMT shape (tx 64tsGGe): many distinct token accounts swept to
+        // ONE attacker address in a single tx. 4 transfers from 4 distinct
+        // sources — the single-destination mass-drain signature.
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST2, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST3, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "0c", &["9jYfQm6n3vT2wZxK4pR8sLcE7aBdU5iN1hG0fJqV", DEST, SOURCE]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].reason.contains("Mass multi-transfer sweep"));
+        assert!(findings[0].reason.contains("4 distinct source"));
+    }
+
+    #[test]
+    fn three_transfers_same_destination_is_clean() {
+        // 3 transfers to one destination from 3 sources sits below the
+        // 4-transfer single-destination floor — a legitimate consolidation
+        // shape stays out of the hard gate.
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST2, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST3, DEST, SOURCE]),
+        ];
+        assert!(analyze_multi_instruction(&txs).is_empty());
+    }
+
+    #[test]
+    fn approve_then_system_assign_is_blocked() {
+        // SlowMist AAT (tx 524t8LW): Approve x2 + System assign, NO Transfer
+        // — the ownership-theft variant Rule 1 cannot see.
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]), // Approve
+            ix(SYSTEM_PROGRAM, "01", &[SOURCE, DEST]),        // assign
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, PatternSeverity::Blocked);
+        assert!(findings[0].reason.contains("AAT ownership-theft"));
+    }
+
+    #[test]
+    fn approve_with_assign_on_disjoint_account_is_clean() {
+        // Rule 5 requires the assign to target the SAME account as the
+        // Approve; an assign on a disjoint account is not ownership theft
+        // (and no transfer shares the approved account, so Rule 1 stays off).
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]), // Approve on SOURCE
+            ix(SYSTEM_PROGRAM, "01", &[DEST2, DEST]),         // assign on DEST2
+        ];
+        assert!(analyze_multi_instruction(&txs).is_empty());
     }
 
     #[test]

@@ -97,7 +97,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [ ] Tag v0.2.0-beta
 
 ### Phase 2 Exit Criteria
-- [~] Benchmark uses real on-chain transaction data — REAL data infrastructure done (`seed-live` + pinned real-tx tests + 20 real fixtures replayed 100%); the P16 deterministic benchmark binary itself stays synthetic BY DESIGN (reproducibility) — real-data replay is the honest evidence path
+- [x] Benchmark uses real on-chain transaction data — 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) pinned in the P16 benchmark binary from `tests/real_onchain_exploits.rs` (real program IDs, accounts, CPI structure; reproducible offline), replacing 3 of the 5 SYNTHETIC reconstructions; 2 SYNTHETIC cases remain, honestly labeled, for classes not yet pinned from mainnet
 - [x] SAK integration executes real devnet transactions after Graphite approval — 5 finalized devnet txs, re-verified on-chain 2026-08-08
 - [x] Protocol Manifest Registry accepts signed community submissions — CLI operator path live-verified (signed → ACCEPTED at derived tier; unregistered → REJECTED)
 - [x] Plugin framework has 2+ real plugins
