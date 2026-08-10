@@ -8,7 +8,7 @@
 
 use crate::solana_types::Pubkey;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -103,7 +103,13 @@ pub struct ManifestVersion {
 /// In-memory registry of loaded protocol manifests.
 #[derive(Debug, Clone, Default)]
 pub struct ManifestRegistry {
-    manifests: HashMap<String, ProtocolManifest>,
+    // BTreeMap (not HashMap): `list()`/`values()` iteration must be
+    // deterministic. Registry enumeration order is load-bearing — the
+    // regression corpus derives fixture addresses from the manifest index,
+    // and any index drift would silently change every generated fixture
+    // (P2/P4 determinism). A HashMap's per-process random iteration order
+    // made the corpus non-reproducible across runs.
+    manifests: BTreeMap<String, ProtocolManifest>,
 }
 
 impl ManifestRegistry {

@@ -640,3 +640,69 @@ fn cert_p0_4_malicious_repeats_behind_trusted_root_still_caught() {
         v
     );
 }
+
+#[test]
+fn cert_universal_cpi_audit_single_malicious_call_among_infra_repeats() {
+    // Universal-CPI audit (mandate 13): "Can an attacker route malicious
+    // behavior through an infrastructure program to hide the real malicious
+    // program?" The infrastructure EXCLUSION is per-target and covers only
+    // fixed substrate programs that cannot run attacker logic. The residual
+    // shape — a SINGLE visit to the attacker's program buried among many
+    // SPL Token repeats — must still be blocked by the layered gates:
+    //   - compositional-drain Pattern 1 does NOT fire (one custom visit),
+    //   - so the block must come from Check 1b (token CPI from an untrusted
+    //     root with no manifest-declared allowlist) or the CPI-trace
+    //     unknown-program rule when a trace is present.
+    //
+    // Risk-engine level: the untrusted root's Token CPI is undeclared
+    // (empty allowed_cpis ⇒ no manifest authorization) → hard-blocked.
+    let input = risk_input(
+        "attacker_contract",
+        &["a1", "a2"],
+        &[
+            "attacker_contract",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        ],
+        &["debits accounts.a1"],
+        &[],
+        "",
+        "",
+        "",
+    );
+    let v = assess(&input).unwrap();
+    assert!(
+        is_blocked(&v),
+        "attacker hiding among infra repeats must still be blocked: {:?}",
+        v
+    );
+
+    // Same shape but WITH a manifest-declared Token allowlist (a known
+    // non-trusted protocol): compositional-drain must now fire for the
+    // repeated attacker visits — the infra exclusion never shields the
+    // attacker's own program. (Self-referencing CPI to the root program is
+    // the repeat that must trip Pattern 1.)
+    let input2 = risk_input(
+        "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+        &["a1", "a2"],
+        &[
+            "attacker_contract",
+            "attacker_contract",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        ],
+        &["debits accounts.a1"],
+        &["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"],
+        "",
+        "",
+        "",
+    );
+    let v2 = assess(&input2).unwrap();
+    assert!(
+        is_blocked(&v2),
+        "repeated attacker visits must trip compositional drain even with declared Token CPI: {:?}",
+        v2
+    );
+}

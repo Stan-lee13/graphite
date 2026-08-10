@@ -5,7 +5,7 @@
     "program_id": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
     "website": "https://kamino.finance",
     "github": "https://github.com/Kamino-Finance/klend",
-    "note": "C27 build (2026-08-09) from the official deployed-program IDL (scripts/klend_idl.json, committed for reproducibility). All 51 discriminators are DERIVED as sha256(\"global:\"+snake_case_name)[0..8] (the IDLs carry no byte arrays) and VERIFIED LIVE by on-chain census (scripts/census_drift_kamino.py, base58-correct decode): flashBorrowReserveLiquidity=87e734a70734d4c1, flashRepayReserveLiquidity=b97500cb60f5b4ba, refreshReserve=02da8aeb4fc91966, refreshReservesBatch=906e1a67a2ccfc93, refreshObligation=218493e497c04859, depositReserveLiquidityAndObligationCollateralV2=d8e0bf1bcc9766af, borrowObligationLiquidityV2=a1808ff5abc7c206, redeemReserveCollateral=ea75b57db98edc1d, depositReserveLiquidity=a9c91e7e06cd6644, initUserMetadata=75a9b045c5170fa2, initObligation=fb0ae74c1b0b9f60 all matched the derived value with zero unmatched — the convention is proven on the deployed binary. PDA seeds are grounded ONLY where the deployed program's account struct seed-constrains the derivation (C26: a wrong seed spec would flag legitimate txs): Drift initialize_user user=[user,authority,sub_account_id], initialize_user_stats user_stats=[user_stats,authority], deposit/withdraw/transfer_deposit spot_market_vault=[spot_market_vault,market_index], withdraw drift_signer=[drift_signer]; Kamino lending_market_authority=[lma,market] (every ix carrying it), init_reserve vaults=[reserve_liq_supply|fee_receiver|reserve_coll_mint|reserve_coll_supply, reserve] (ONLY init_reserve — runtime ixs constrain vaults by address-from-state, not PDA), init_user_metadata user_metadata=[user_meta,owner], init_obligation obligation=[tag,id,owner,market,seed1,seed2]."
+    "note": "C27 build (2026-08-09) from the official deployed-program IDL (scripts/klend_idl.json, committed for reproducibility). All 51 discriminators are DERIVED as sha256(\"global:\"+snake_case_name)[0..8] (the IDLs carry no byte arrays) and VERIFIED LIVE by on-chain census (scripts/census_drift_kamino.py, base58-correct decode): flashBorrowReserveLiquidity=87e734a70734d4c1, flashRepayReserveLiquidity=b97500cb60f5b4ba, refreshReserve=02da8aeb4fc91966, refreshReservesBatch=906e1a67a2ccfc93, refreshObligation=218493e497c04859, depositReserveLiquidityAndObligationCollateralV2=d8e0bf1bcc9766af, borrowObligationLiquidityV2=a1808ff5abc7c206, redeemReserveCollateral=ea75b57db98edc1d, depositReserveLiquidity=a9c91e7e06cd6644, initUserMetadata=75a9b045c5170fa2, initObligation=fb0ae74c1b0b9f60 all matched the derived value with zero unmatched â€” the convention is proven on the deployed binary. PDA seeds are grounded ONLY where the deployed program's account struct seed-constrains the derivation (C26: a wrong seed spec would flag legitimate txs): Drift initialize_user user=[user,authority,sub_account_id], initialize_user_stats user_stats=[user_stats,authority], deposit/withdraw/transfer_deposit spot_market_vault=[spot_market_vault,market_index], withdraw drift_signer=[drift_signer]; Kamino lending_market_authority=[lma,market] (every ix carrying it), init_reserve vaults=[reserve_liq_supply|fee_receiver|reserve_coll_mint|reserve_coll_supply, reserve] (ONLY init_reserve â€” runtime ixs constrain vaults by address-from-state, not PDA), init_user_metadata user_metadata=[user_meta,owner], init_obligation obligation=[tag,id,owner,market,seed1,seed2]."
   },
   "version": {
     "label": "2.0.0",
@@ -123,21 +123,108 @@
       "discriminator": "a1808ff5abc7c206",
       "accounts": [
         {
-          "name": "borrowAccounts",
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsAccounts",
+          "name": "lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "borrow_reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "borrow_reserve_liquidity_mint",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "reserve_source_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "borrow_reserve_liquidity_fee_receiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_destination_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "referrer_token_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instruction_sysvar_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -321,28 +408,87 @@
       "discriminator": "8991975ea7710491",
       "accounts": [
         {
-          "name": "depositAccounts",
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "lendingMarketAuthority",
+          "name": "deposit_reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_destination_collateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_source_collateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsAccounts",
+          "name": "instruction_sysvar_account",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -578,21 +724,122 @@
       "discriminator": "d8e0bf1bcc9766af",
       "accounts": [
         {
-          "name": "depositAccounts",
+          "name": "owner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsAccounts",
+          "name": "lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_liquidity_mint",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "reserve_liquidity_supply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_collateral_mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_destination_deposit_collateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_source_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "placeholder_user_destination_collateral",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateral_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidity_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instruction_sysvar_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -1709,28 +1956,178 @@
       "discriminator": "a2a1238f1ebbb967",
       "accounts": [
         {
-          "name": "liquidationAccounts",
+          "name": "liquidation_accounts_liquidator",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "collateralFarmsAccounts",
+          "name": "liquidation_accounts_lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "liquidation_accounts_repay_reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_repay_reserve_liquidity_mint",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "debtFarmsAccounts",
+          "name": "liquidation_accounts_repay_reserve_liquidity_supply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_withdraw_reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_withdraw_reserve_liquidity_mint",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "liquidation_accounts_withdraw_reserve_collateral_mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_withdraw_reserve_collateral_supply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_withdraw_reserve_liquidity_supply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_withdraw_reserve_liquidity_fee_receiver",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_user_source_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_user_destination_collateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_user_destination_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_collateral_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_repay_liquidity_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_withdraw_liquidity_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidation_accounts_instruction_sysvar_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateral_farms_accounts_obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateral_farms_accounts_reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "debt_farms_accounts_obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "debt_farms_accounts_reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -2208,28 +2605,94 @@
       "discriminator": "74aed54cb435d290",
       "accounts": [
         {
-          "name": "repayAccounts",
+          "name": "owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsAccounts",
+          "name": "repay_reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_liquidity_mint",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "lendingMarketAuthority",
+          "name": "reserve_destination_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_source_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "instruction_sysvar_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -2482,28 +2945,66 @@
       "discriminator": "ee5f62dcbb28cc9a",
       "accounts": [
         {
-          "name": "socializeLossAccounts",
+          "name": "lending_market_owner",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsAccounts",
+          "name": "reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instruction_sysvar_account",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "lendingMarketAuthority",
-          "role": "readonly",
-          "is_writable": false,
+          "name": "obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -2860,21 +3361,122 @@
       "discriminator": "eb34779895c51407",
       "accounts": [
         {
-          "name": "withdrawAccounts",
+          "name": "owner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsAccounts",
+          "name": "lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "withdraw_reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_liquidity_mint",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "reserve_source_collateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_collateral_mint",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_liquidity_supply",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_destination_liquidity",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "placeholder_user_destination_collateral",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "collateral_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "liquidity_token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "instruction_sysvar_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
@@ -2892,21 +3494,87 @@
       "discriminator": "caf97572e7c02f8a",
       "accounts": [
         {
-          "name": "withdrawAccounts",
+          "name": "owner",
+          "role": "signer",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "lending_market",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsAccounts",
+          "name": "lending_market_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [
+            "lma",
+            "{account_2}"
+          ]
+        },
+        {
+          "name": "withdraw_reserve",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_source_collateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "user_destination_collateral",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
           "pda_seeds": []
         },
         {
-          "name": "farmsProgram",
+          "name": "instruction_sysvar_account",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "obligation_farm_user_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "reserve_farm_state",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "farms_program",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
