@@ -238,6 +238,15 @@ pub fn discriminator_matches(manifest_disc: &str, input_disc: &str) -> bool {
     if manifest_disc.is_empty() {
         return false;
     }
+    // The INPUT must be well-formed hex before any prefix matching: a
+    // whitespace-padded or otherwise malformed discriminator ("03 ", "0x09",
+    // "03zz") must NOT silently resolve to a legitimate instruction — it is
+    // treated as an unknown discriminator (P12 Response 2: reduced
+    // confidence, never an accidental pass). Manifest discriminators are
+    // schema-validated at load; inputs are attacker-controlled.
+    if input_disc.is_empty() || !input_disc.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return false;
+    }
     input_disc.starts_with(&manifest_disc)
 }
 
