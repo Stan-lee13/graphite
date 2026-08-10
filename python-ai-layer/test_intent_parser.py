@@ -290,12 +290,14 @@ def test_program_ids_match_manifests():
 
     # Bidirectional manifest <-> registry consistency.
     registry_path = os.path.join(manifest_dir, "verified_program_ids.json")
-    with open(registry_path) as f:
+    # Manifests carry UTF-8 note text (em-dashes etc.) — reads must be
+    # encoding-explicit, never locale-default (cp1252 on Windows).
+    with open(registry_path, encoding="utf-8") as f:
         registry = json.load(f)
     verified_ids = {p["program_id"]: p["name"] for p in registry["programs"]}
     manifest_ids = set()
     for manifest_path in all_manifests:
-        with open(manifest_path) as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
         manifest_ids.add(manifest["protocol"]["program_id"])
     assert manifest_ids == set(verified_ids), (
@@ -307,7 +309,7 @@ def test_program_ids_match_manifests():
     intent_to_ids = {}
     for manifest_path in all_manifests:
         filename = os.path.basename(manifest_path)
-        with open(manifest_path) as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
         program_id = manifest["protocol"]["program_id"]
         assert program_id, f"{filename}: program_id is empty"
@@ -322,7 +324,7 @@ def test_program_ids_match_manifests():
     seen = {}
     for manifest_path in all_manifests:
         filename = os.path.basename(manifest_path)
-        with open(manifest_path) as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
         pid = manifest["protocol"]["program_id"]
         if pid in seen:
