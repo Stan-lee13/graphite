@@ -313,6 +313,33 @@ impl ManifestRegistryEngine {
                 manifest.instructions.len()
             )));
         }
+        // Discriminator-length decision (certification item): matching is
+        // PREFIX-based (`input.starts_with(manifest_disc)`) because Solana
+        // instruction selectors are the LEADING bytes of instruction data —
+        // 2 hex chars (1 byte, SPL Token/Token-2022), 8 hex chars (4 bytes,
+        // System u32 LE), 16 hex chars (8 bytes, Anchor-style). An input like
+        // "0900000000000000" MUST match manifest "09". Prefix matching is
+        // unambiguous iff no two instructions of a program have one
+        // discriminator as a proper prefix of another; such manifests are
+        // rejected here (fail-closed — an ambiguous selector could route an
+        // instruction to the wrong security rules).
+        for i in 0..manifest.instructions.len() {
+            for j in (i + 1)..manifest.instructions.len() {
+                let a = manifest.instructions[i].discriminator.to_lowercase();
+                let b = manifest.instructions[j].discriminator.to_lowercase();
+                let ambiguous =
+                    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.starts_with(&a));
+                if ambiguous {
+                    return Err(RegistryError::InvalidManifest(format!(
+                        "discriminator ambiguity: '{}' ({}) and '{}' ({}) are prefix-related — prefix matching would be ambiguous; use distinct-width selectors",
+                        manifest.instructions[i].name,
+                        a,
+                        manifest.instructions[j].name,
+                        b
+                    )));
+                }
+            }
+        }
         for ix in &manifest.instructions {
             if ix.name.chars().count() > MAX_FIELD_CHARS {
                 return Err(RegistryError::InvalidManifest(format!(
@@ -548,6 +575,36 @@ mod tests {
 
     fn signed_submission(program: &str, version: &str, signer: &SigningKey) -> ManifestSubmission {
         sign_manifest(manifest(program, "Test Protocol", version), signer)
+    }
+
+    #[test]
+    fn ambiguous_prefix_discriminators_are_rejected() {
+        // Certification decision: prefix matching is only safe when no two
+        // instructions have prefix-related discriminators. A manifest that
+        // declares both "09" and "0900" must be rejected at submission.
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let signer = key(2);
+        let signer_b58 = pubkey_b58(&signer);
+        engine.register_reviewer(&signer_b58, 1000).unwrap();
+
+        let mut m = manifest(
+            "Prog1111111111111111111111111111111111",
+            "Ambiguous",
+            "v1.0",
+        );
+        let mut second = m.instructions[0].clone();
+        second.name = "SecondOp".to_string();
+        second.discriminator = "0100".to_string(); // "01" is a proper prefix of "0100"
+        m.instructions.push(second);
+        let submission = sign_manifest(m, &signer);
+        assert!(
+            matches!(
+                engine.submit(&mut store, submission, None),
+                Err(RegistryError::InvalidManifest(reason)) if reason.contains("discriminator ambiguity")
+            ),
+            "prefix-ambiguous discriminators must be rejected"
+        );
     }
 
     fn make_fixture_input(

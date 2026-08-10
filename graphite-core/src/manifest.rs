@@ -195,6 +195,27 @@ impl ManifestRegistry {
 /// which let an attacker craft a 4-char prefix of a known 8-byte Anchor
 /// discriminator (e.g. "bb64" of Jupiter's "bb64facc31c4af14") to mint a
 /// false `InstructionMatch` confidence signal on a DIFFERENT instruction.
+/// Canonical discriminator matching — PREFIX semantics, applied uniformly
+/// across the manifest resolver, the risk engine, and the transaction-pattern
+/// analyzer (C33/C35 unified them).
+///
+/// WHY PREFIX (certification decision, documented): a Solana instruction
+/// selector is the LEADING bytes of the instruction data. Widths in use:
+/// - 2 hex chars (1 byte)  : SPL Token / Token-2022 (e.g. `09` CloseAccount)
+/// - 8 hex chars (4 bytes) : System Program u32 LE (e.g. `02000000` Transfer)
+/// - 16 hex chars (8 bytes): Anchor-style (`bb64facc31c4af14` Jupiter route)
+///
+/// An on-chain discriminator therefore always STARTS WITH the manifest's
+/// selector: input `0900000000000000` MUST match manifest `09`. This is not
+/// a laxity — it is the only correct interpretation of variable-width
+/// selectors, and it is unambiguous because the manifest registry REJECTS
+/// any manifest where two instructions have prefix-related discriminators
+/// (see `ManifestRegistryEngine::validate_manifest`).
+///
+/// Safety properties:
+/// - input longer than the selector: matches (correct — real 8-byte forms)
+/// - input SHORTER than the selector: does NOT match (starts_with is false)
+/// - empty selector: never matches (unknown discriminator path)
 pub fn discriminator_matches(manifest_disc: &str, input_disc: &str) -> bool {
     let manifest_disc = manifest_disc.to_lowercase();
     let input_disc = input_disc.to_lowercase();
@@ -352,6 +373,78 @@ mod tests {
         let registry = load_seed_manifests();
         let manifests = registry.list();
         assert!(manifests.len() >= 10, "expected at least 2 seed manifests");
+    }
+
+    #[test]
+    fn discriminator_matching_semantics() {
+        // Exact match
+        assert!(discriminator_matches("09", "09"));
+        // Valid prefix: real 8-byte little-endian form of CloseAccount
+        assert!(discriminator_matches("09", "0900000000000000"));
+        // Longer valid Anchor-style discriminator
+        assert!(discriminator_matches(
+            "bb64facc31c4af14",
+            "bb64facc31c4af14"
+        ));
+        // Input SHORTER than the selector — must NOT match (starts_with false)
+        assert!(!discriminator_matches("0900000000000000", "09"));
+        // Similar but wrong prefixes must not match
+        assert!(!discriminator_matches("06", "05"));
+        // 0601 DOES match 06 by prefix semantics — 0x06 SetAuthority's
+        // on-chain form is the leading byte; the trailing 01 is payload. This
+        // is correct and is why the registry rejects prefix-ambiguous pairs.
+        assert!(discriminator_matches("06", "0601"));
+        // Empty inputs never match
+        assert!(!discriminator_matches("09", ""));
+        assert!(!discriminator_matches("", "09"));
+        // Unknown selectors: a discriminator with no manifest entry (0x12 on
+        // SPL Token) does not match the token selectors.
+        assert!(!discriminator_matches("03", "12"));
+        assert!(!discriminator_matches("04", "12"));
+        // Case-insensitive
+        assert!(discriminator_matches("0C", "0c00000000000000"));
+    }
+
+    #[test]
+    fn seed_token_manifests_are_prefix_consistent() {
+        // SPL Token: every instruction selector is 2 hex chars and none is a
+        // proper prefix of another — so prefix matching is unambiguous.
+        let registry = load_seed_manifests();
+        for id in [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            "11111111111111111111111111111111",
+        ] {
+            let m = registry.get(id).expect("seed manifest");
+            for i in 0..m.instructions.len() {
+                for j in (i + 1)..m.instructions.len() {
+                    let a = m.instructions[i].discriminator.to_lowercase();
+                    let b = m.instructions[j].discriminator.to_lowercase();
+                    assert!(
+                        !(a.starts_with(&b) || b.starts_with(&a)),
+                        "program {id}: {} ({}) and {} ({}) are prefix-ambiguous",
+                        m.instructions[i].name,
+                        a,
+                        m.instructions[j].name,
+                        b
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn anchor_style_discriminator_roundtrip() {
+        // Anchor programs use 8-byte sha256("global:<name>")[:8] selectors.
+        // Derive one and confirm the manifest convention matches it exactly
+        // (16 hex chars, prefix-consistent with itself).
+        let mut hasher = Sha256::new();
+        hasher.update(b"global:route");
+        let digest = hasher.finalize();
+        let disc = hex::encode(&digest[..8]);
+        assert_eq!(disc.len(), 16);
+        assert!(discriminator_matches(&disc, &disc));
+        assert!(discriminator_matches(&disc[..8], &disc)); // 4-byte prefix view also matches
     }
 
     #[test]

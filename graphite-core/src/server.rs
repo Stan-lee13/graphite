@@ -31,6 +31,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::signal;
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
 
 /// Maximum request body size (1 MB). Verification inputs are small —
@@ -380,6 +381,22 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
+        // Certification item: a panicking handler must not drop the connection
+        // or destabilize the server — convert the panic to a clean 500 with a
+        // generic message (no internal details leaked to the client). Logging
+        // of the panic happens in the handler via tracing.
+        .layer(CatchPanicLayer::custom(
+            |_panic: Box<dyn std::any::Any + Send + 'static>| {
+                tracing_log("internal error: handler panicked (caught by CatchPanicLayer)");
+                axum::http::Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(axum::body::Body::from(axum::body::Bytes::from_static(
+                        b"{\"error\":\"internal server error\"}",
+                    )))
+                    .unwrap()
+            },
+        ))
         .layer(tower_http::limit::RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .layer(tower_http::timeout::TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
@@ -1392,5 +1409,69 @@ mod tests {
         // Server still healthy after the barrage.
         let (status, _) = get_json(&app, "/health").await;
         assert_eq!(status, axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn panicking_handler_returns_500_and_server_survives() {
+        // Certification item: a handler that panics must produce a clean 500
+        // (no connection drop, no internal details leaked) and the server must
+        // continue serving subsequent requests.
+        use tower::ServiceExt;
+
+        // A dedicated panicking route wrapped in the SAME catch-panic layer
+        // the production router uses.
+        async fn boom() -> Response {
+            panic!("deliberate test panic — must be caught");
+        }
+        let app = Router::new()
+            .route("/boom", get(boom))
+            .route("/alive", get(|| async { "ok" }))
+            .layer(CatchPanicLayer::custom(
+                |_panic: Box<dyn std::any::Any + Send + 'static>| {
+                    axum::http::Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(axum::body::Body::from(axum::body::Bytes::from_static(
+                            b"{\"error\":\"internal server error\"}",
+                        )))
+                        .unwrap()
+                },
+            ));
+
+        let mut req = axum::http::Request::builder()
+            .uri("/boom")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "panic must map to 500"
+        );
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let body = String::from_utf8_lossy(&bytes);
+        assert!(
+            body.contains("internal server error") && !body.contains("deliberate test panic"),
+            "panic body must be generic, got: {body}"
+        );
+
+        // The router is still alive after the panic.
+        let mut alive = axum::http::Request::builder()
+            .uri("/alive")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        alive.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(alive).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            axum::http::StatusCode::OK,
+            "server must continue serving after a handler panic"
+        );
     }
 }
