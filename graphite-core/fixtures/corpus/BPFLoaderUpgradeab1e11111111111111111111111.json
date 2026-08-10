@@ -1,0 +1,2307 @@
+[
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "f6ecc90adf507ef9a8d533f8ca530542f3e72a66fcdd5e110fe299a418a73f59",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "00",
+      "account_addresses": [
+        "D9kdXDkV65xQFhfiK47zrvG2zypy3cb43y1yxykfTT9G"
+      ],
+      "instruction_data": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "2ae56d614c9dba5c98b434914c81c6c074628b4e030973064ea9ba9012030276",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "00",
+      "account_addresses": [
+        "D9kdXDkV65xQFhfiK47zrvG2zypy3cb43y1yxykfTT9G"
+      ],
+      "instruction_data": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "4429c4c3954156349dd8e14a7b73f1c0bdf44fb2f10da3259f0b777527878ee3",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "00",
+      "account_addresses": [
+        "D9kdXDkV65xQFhfiK47zrvG2zypy3cb43y1yxykfTT9G"
+      ],
+      "instruction_data": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "9d05f27e779af19e6459c9a1b64ee0d216e40dd8031e125b9e925306017de45a",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "00",
+      "account_addresses": [
+        "D9kdXDkV65xQFhfiK47zrvG2zypy3cb43y1yxykfTT9G",
+        "7qnWLVtwGhZM53bNmANcPGcD7MooxZRMxH17oppoRerC",
+        "Cgt4YFUYCEvAcKumPtGD5E6sWPzw5SGvUV8MEySZRSD4",
+        "6kP7Fsj77hRtVJHaykCV9fV4qUJYtJqLUznz2sHeKiFB",
+        "CiVgJNC3Q5Tjp3JxoF8o3crBk8FPz8VvYQm1eNKjNgNy",
+        "5Tdz3SWESXFDvb6nPHhSX7Vs5izya4GuLSaFj8PY6gic",
+        "7HXXec8VWNExa6dA9Zb6Xts49X2kN3QDZRi4oi2MyoBV",
+        "22Au8HbxmtLLgZ318Ewd8FJHbFBbBWFgUVu8kaPB7foy",
+        "9rbttD2cxPEdypDL75ieakvKMUbitRdp6nAMMjEeqQNL"
+      ],
+      "instruction_data": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "0eb19d6493dcb685e73e0d70016f0a4f74e1de0119f97a8e522692c9e1ac5951",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "00000000",
+      "account_addresses": [
+        "D9kdXDkV65xQFhfiK47zrvG2zypy3cb43y1yxykfTT9G"
+      ],
+      "instruction_data": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "89a92b553b5340ff651f12c16e5b4264a541884dee12c4819b6b8b82287720ad",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "00ff00",
+      "account_addresses": [
+        "D9kdXDkV65xQFhfiK47zrvG2zypy3cb43y1yxykfTT9G"
+      ],
+      "instruction_data": [
+        0,
+        255,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "1bd1ebc1cfedf96e59e630c187a35187c5e905da15bb6658ca1aaea58e5ad6e3",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "deadbeefdeadbeef",
+      "account_addresses": [
+        "7zgCrd1aHzWoEYGHQv3vskcvKPhbcdZUgCT3ggjdoHw6",
+        "5T7K316kmDvEiHHcPutLsGd9eexHkcsTvnLqP8tFpB5g"
+      ],
+      "instruction_data": null,
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "77414f219100edf12dac81946df5c90d65ade2ede59150aa9f797a2b0375ba06",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "01",
+      "account_addresses": [
+        "ED7AZs33C3RWAi65LyHR9axMAYyw8urjLbqF9haKraHE"
+      ],
+      "instruction_data": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "25d6fdcff5899436efd29338904f5466eff33f8010aa03e597b655014049d3ee",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "01",
+      "account_addresses": [
+        "ED7AZs33C3RWAi65LyHR9axMAYyw8urjLbqF9haKraHE"
+      ],
+      "instruction_data": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "f6315d000b4f60710e690e5d43ddabc847b5bb6b311a0c084ca5d60cef290a5e",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "01",
+      "account_addresses": [
+        "ED7AZs33C3RWAi65LyHR9axMAYyw8urjLbqF9haKraHE"
+      ],
+      "instruction_data": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "31076b332b39ccdc9a785e6b3ffc85342758ed0e2e56853acf1bdfb11b525008",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "01",
+      "account_addresses": [
+        "ED7AZs33C3RWAi65LyHR9axMAYyw8urjLbqF9haKraHE",
+        "7qnWLVtwGhZM53bNmANcPGcD7MooxZRMxH17oppoRerC",
+        "Cgt4YFUYCEvAcKumPtGD5E6sWPzw5SGvUV8MEySZRSD4",
+        "6kP7Fsj77hRtVJHaykCV9fV4qUJYtJqLUznz2sHeKiFB",
+        "CiVgJNC3Q5Tjp3JxoF8o3crBk8FPz8VvYQm1eNKjNgNy",
+        "5Tdz3SWESXFDvb6nPHhSX7Vs5izya4GuLSaFj8PY6gic",
+        "7HXXec8VWNExa6dA9Zb6Xts49X2kN3QDZRi4oi2MyoBV",
+        "22Au8HbxmtLLgZ318Ewd8FJHbFBbBWFgUVu8kaPB7foy",
+        "9rbttD2cxPEdypDL75ieakvKMUbitRdp6nAMMjEeqQNL"
+      ],
+      "instruction_data": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "010ea82e62034242369f35eb53d7ef611638379be8186aa7ae4307d0860be021",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "01000000",
+      "account_addresses": [
+        "ED7AZs33C3RWAi65LyHR9axMAYyw8urjLbqF9haKraHE"
+      ],
+      "instruction_data": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "0e77b4a25a727b36d659dcf03073e3d71ab8c45d8aa9ed1a087acb9671de4fa1",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "01ff00",
+      "account_addresses": [
+        "ED7AZs33C3RWAi65LyHR9axMAYyw8urjLbqF9haKraHE"
+      ],
+      "instruction_data": [
+        1,
+        255,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "628c63565a562db75df126fd1d0780610fda0b4c175086b6e0817f78a815bd34",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "02",
+      "account_addresses": [
+        "DWQnAMnEM6tFSkGmGR4paqPUSSrEHLSnoqCMa2tsfY6h",
+        "5nZqpUmFonkp4MqHV3K6y6QouAfa1CEbHoVgvzpTcF7Z",
+        "7eyjFry8WH9RfSMsEWZWiqQaE42LdLCyTSbZJX6dSXPe",
+        "5xRhEJoeEryqR8KMia6J4vqq9tZeEGDG57GKa6y2Bg2T",
+        "6cZt9pWseUJKnbAqzPxSCJPEb82Ngk6biPcs7gRyDxPa",
+        "8XeQ8kdbzXwz8w6BgyGHXdWsUuHi42d8gorx5tbBu696"
+      ],
+      "instruction_data": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "6fdd56efb5c254c4cdccddbdf9e05aeed8c7081b1ca06bb4c7f6e2b3ad3048d2",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "02",
+      "account_addresses": [
+        "DWQnAMnEM6tFSkGmGR4paqPUSSrEHLSnoqCMa2tsfY6h",
+        "5nZqpUmFonkp4MqHV3K6y6QouAfa1CEbHoVgvzpTcF7Z",
+        "7eyjFry8WH9RfSMsEWZWiqQaE42LdLCyTSbZJX6dSXPe",
+        "5xRhEJoeEryqR8KMia6J4vqq9tZeEGDG57GKa6y2Bg2T",
+        "6cZt9pWseUJKnbAqzPxSCJPEb82Ngk6biPcs7gRyDxPa",
+        "8XeQ8kdbzXwz8w6BgyGHXdWsUuHi42d8gorx5tbBu696"
+      ],
+      "instruction_data": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "05001a9bd9c7a739f2390b72b124ebbec410a0de2a6bf9c5222c561933a78b19",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "02",
+      "account_addresses": [
+        "DWQnAMnEM6tFSkGmGR4paqPUSSrEHLSnoqCMa2tsfY6h",
+        "5nZqpUmFonkp4MqHV3K6y6QouAfa1CEbHoVgvzpTcF7Z",
+        "7eyjFry8WH9RfSMsEWZWiqQaE42LdLCyTSbZJX6dSXPe",
+        "5xRhEJoeEryqR8KMia6J4vqq9tZeEGDG57GKa6y2Bg2T",
+        "6cZt9pWseUJKnbAqzPxSCJPEb82Ngk6biPcs7gRyDxPa",
+        "8XeQ8kdbzXwz8w6BgyGHXdWsUuHi42d8gorx5tbBu696"
+      ],
+      "instruction_data": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "43fe2f989e4250c7f7fb90ff4ae9b9c943d3d45482e438c3334afb8ead3e214d",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "02",
+      "account_addresses": [
+        "DWQnAMnEM6tFSkGmGR4paqPUSSrEHLSnoqCMa2tsfY6h",
+        "5nZqpUmFonkp4MqHV3K6y6QouAfa1CEbHoVgvzpTcF7Z",
+        "7eyjFry8WH9RfSMsEWZWiqQaE42LdLCyTSbZJX6dSXPe",
+        "5xRhEJoeEryqR8KMia6J4vqq9tZeEGDG57GKa6y2Bg2T",
+        "6cZt9pWseUJKnbAqzPxSCJPEb82Ngk6biPcs7gRyDxPa",
+        "8XeQ8kdbzXwz8w6BgyGHXdWsUuHi42d8gorx5tbBu696",
+        "7qnWLVtwGhZM53bNmANcPGcD7MooxZRMxH17oppoRerC",
+        "Cgt4YFUYCEvAcKumPtGD5E6sWPzw5SGvUV8MEySZRSD4",
+        "6kP7Fsj77hRtVJHaykCV9fV4qUJYtJqLUznz2sHeKiFB",
+        "CiVgJNC3Q5Tjp3JxoF8o3crBk8FPz8VvYQm1eNKjNgNy",
+        "5Tdz3SWESXFDvb6nPHhSX7Vs5izya4GuLSaFj8PY6gic",
+        "7HXXec8VWNExa6dA9Zb6Xts49X2kN3QDZRi4oi2MyoBV",
+        "22Au8HbxmtLLgZ318Ewd8FJHbFBbBWFgUVu8kaPB7foy",
+        "9rbttD2cxPEdypDL75ieakvKMUbitRdp6nAMMjEeqQNL"
+      ],
+      "instruction_data": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "4d1ec6dae38fad04edd46f9cf6fb52bd7c9fb3198129c1d59f593edc86184815",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "02000000",
+      "account_addresses": [
+        "DWQnAMnEM6tFSkGmGR4paqPUSSrEHLSnoqCMa2tsfY6h",
+        "5nZqpUmFonkp4MqHV3K6y6QouAfa1CEbHoVgvzpTcF7Z",
+        "7eyjFry8WH9RfSMsEWZWiqQaE42LdLCyTSbZJX6dSXPe",
+        "5xRhEJoeEryqR8KMia6J4vqq9tZeEGDG57GKa6y2Bg2T",
+        "6cZt9pWseUJKnbAqzPxSCJPEb82Ngk6biPcs7gRyDxPa",
+        "8XeQ8kdbzXwz8w6BgyGHXdWsUuHi42d8gorx5tbBu696"
+      ],
+      "instruction_data": [
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "df3132207b0e3dd18c581a6cc0504bf2ed6648fb0665684bdb35e0ba0f553cad",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "02ff00",
+      "account_addresses": [
+        "DWQnAMnEM6tFSkGmGR4paqPUSSrEHLSnoqCMa2tsfY6h",
+        "5nZqpUmFonkp4MqHV3K6y6QouAfa1CEbHoVgvzpTcF7Z",
+        "7eyjFry8WH9RfSMsEWZWiqQaE42LdLCyTSbZJX6dSXPe",
+        "5xRhEJoeEryqR8KMia6J4vqq9tZeEGDG57GKa6y2Bg2T",
+        "6cZt9pWseUJKnbAqzPxSCJPEb82Ngk6biPcs7gRyDxPa",
+        "8XeQ8kdbzXwz8w6BgyGHXdWsUuHi42d8gorx5tbBu696"
+      ],
+      "instruction_data": [
+        2,
+        255,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "ee63ae50b775d80accf1cd204b1c63a446c875a1ec76751b1c1dde98efe81a80",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "03",
+      "account_addresses": [
+        "E3TznGi6xcM3hM3y33dHYBmvLkJZhz3FsSNiTZqLA8mW",
+        "C5Y9offfG78QR6ifYARv5JG2U14wf2SxQsPwh8Kq4umF",
+        "AZRCcpuyq5c3JtYpvtRT2gLbHKJc373ZghpD47p5RzuS",
+        "J9XJZQwvAkmgW4rWcva8fGBBpX4AkoMQ3Ui3S1gegLFD",
+        "BKYNdXYEzfZ1jXcMbAr6S57N6Y9uQb2Tzq9opicvAC79"
+      ],
+      "instruction_data": [
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "948d09c531de388433f98c8a1c5e24c6ead2e90ac4590050c382c28db7902b01",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "03",
+      "account_addresses": [
+        "E3TznGi6xcM3hM3y33dHYBmvLkJZhz3FsSNiTZqLA8mW",
+        "C5Y9offfG78QR6ifYARv5JG2U14wf2SxQsPwh8Kq4umF",
+        "AZRCcpuyq5c3JtYpvtRT2gLbHKJc373ZghpD47p5RzuS",
+        "J9XJZQwvAkmgW4rWcva8fGBBpX4AkoMQ3Ui3S1gegLFD",
+        "BKYNdXYEzfZ1jXcMbAr6S57N6Y9uQb2Tzq9opicvAC79"
+      ],
+      "instruction_data": [
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "3913dba2e633fce62b20c9d8b7124d1b71cedcd17a48290db468a0cae41b888e",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "03",
+      "account_addresses": [
+        "E3TznGi6xcM3hM3y33dHYBmvLkJZhz3FsSNiTZqLA8mW",
+        "C5Y9offfG78QR6ifYARv5JG2U14wf2SxQsPwh8Kq4umF",
+        "AZRCcpuyq5c3JtYpvtRT2gLbHKJc373ZghpD47p5RzuS",
+        "J9XJZQwvAkmgW4rWcva8fGBBpX4AkoMQ3Ui3S1gegLFD",
+        "BKYNdXYEzfZ1jXcMbAr6S57N6Y9uQb2Tzq9opicvAC79"
+      ],
+      "instruction_data": [
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "eaf26818fd7268209524ae0fec2f62739d61904811c74bb8b23bbc63cc681c20",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "03",
+      "account_addresses": [
+        "E3TznGi6xcM3hM3y33dHYBmvLkJZhz3FsSNiTZqLA8mW",
+        "C5Y9offfG78QR6ifYARv5JG2U14wf2SxQsPwh8Kq4umF",
+        "AZRCcpuyq5c3JtYpvtRT2gLbHKJc373ZghpD47p5RzuS",
+        "J9XJZQwvAkmgW4rWcva8fGBBpX4AkoMQ3Ui3S1gegLFD",
+        "BKYNdXYEzfZ1jXcMbAr6S57N6Y9uQb2Tzq9opicvAC79",
+        "7qnWLVtwGhZM53bNmANcPGcD7MooxZRMxH17oppoRerC",
+        "Cgt4YFUYCEvAcKumPtGD5E6sWPzw5SGvUV8MEySZRSD4",
+        "6kP7Fsj77hRtVJHaykCV9fV4qUJYtJqLUznz2sHeKiFB",
+        "CiVgJNC3Q5Tjp3JxoF8o3crBk8FPz8VvYQm1eNKjNgNy",
+        "5Tdz3SWESXFDvb6nPHhSX7Vs5izya4GuLSaFj8PY6gic",
+        "7HXXec8VWNExa6dA9Zb6Xts49X2kN3QDZRi4oi2MyoBV",
+        "22Au8HbxmtLLgZ318Ewd8FJHbFBbBWFgUVu8kaPB7foy",
+        "9rbttD2cxPEdypDL75ieakvKMUbitRdp6nAMMjEeqQNL"
+      ],
+      "instruction_data": [
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "de126f61a9752a0394f4897f4deb689608ae82c6ab6c534c63357d02dfcd0818",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "03000000",
+      "account_addresses": [
+        "E3TznGi6xcM3hM3y33dHYBmvLkJZhz3FsSNiTZqLA8mW",
+        "C5Y9offfG78QR6ifYARv5JG2U14wf2SxQsPwh8Kq4umF",
+        "AZRCcpuyq5c3JtYpvtRT2gLbHKJc373ZghpD47p5RzuS",
+        "J9XJZQwvAkmgW4rWcva8fGBBpX4AkoMQ3Ui3S1gegLFD",
+        "BKYNdXYEzfZ1jXcMbAr6S57N6Y9uQb2Tzq9opicvAC79"
+      ],
+      "instruction_data": [
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "cdd287ff6ecc10609557fd5522968f35ebed780107ff006a8f5a5eaae15d9c6c",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "03ff00",
+      "account_addresses": [
+        "E3TznGi6xcM3hM3y33dHYBmvLkJZhz3FsSNiTZqLA8mW",
+        "C5Y9offfG78QR6ifYARv5JG2U14wf2SxQsPwh8Kq4umF",
+        "AZRCcpuyq5c3JtYpvtRT2gLbHKJc373ZghpD47p5RzuS",
+        "J9XJZQwvAkmgW4rWcva8fGBBpX4AkoMQ3Ui3S1gegLFD",
+        "BKYNdXYEzfZ1jXcMbAr6S57N6Y9uQb2Tzq9opicvAC79"
+      ],
+      "instruction_data": [
+        3,
+        255,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "1ef078728cf7049f29dcdd604d6d642174830eadfc1515959dc8599e6f88164e",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "04",
+      "account_addresses": [
+        "FkioQ6qQTWES8HdcSwGXJWfZj4xyERLhEcyns2USBu2D",
+        "4bdun3nsUPunMcNzLFG3L7aDumbKV81se4gvukXz3Lwp",
+        "6fkcSg9B2JUGKT8hyJ4z2EHNH2RugkDioid29fjLtDH2"
+      ],
+      "instruction_data": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "72fdf9e0075e295343e985a20c07ce33e6f00d78d04985e74aa09ae0989dfb06",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "04",
+      "account_addresses": [
+        "FkioQ6qQTWES8HdcSwGXJWfZj4xyERLhEcyns2USBu2D",
+        "4bdun3nsUPunMcNzLFG3L7aDumbKV81se4gvukXz3Lwp",
+        "6fkcSg9B2JUGKT8hyJ4z2EHNH2RugkDioid29fjLtDH2"
+      ],
+      "instruction_data": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "7e82b4d606b8bcef37ad892135148bb87e8c6cf8ff392f7b1aa58b6ff6ab0a34",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "04",
+      "account_addresses": [
+        "FkioQ6qQTWES8HdcSwGXJWfZj4xyERLhEcyns2USBu2D",
+        "4bdun3nsUPunMcNzLFG3L7aDumbKV81se4gvukXz3Lwp",
+        "6fkcSg9B2JUGKT8hyJ4z2EHNH2RugkDioid29fjLtDH2"
+      ],
+      "instruction_data": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "a445f6813d2ab90224ce9442c7c1af272809d304ead32e43debdb98545d95498",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "04",
+      "account_addresses": [
+        "FkioQ6qQTWES8HdcSwGXJWfZj4xyERLhEcyns2USBu2D",
+        "4bdun3nsUPunMcNzLFG3L7aDumbKV81se4gvukXz3Lwp",
+        "6fkcSg9B2JUGKT8hyJ4z2EHNH2RugkDioid29fjLtDH2",
+        "7qnWLVtwGhZM53bNmANcPGcD7MooxZRMxH17oppoRerC",
+        "Cgt4YFUYCEvAcKumPtGD5E6sWPzw5SGvUV8MEySZRSD4",
+        "6kP7Fsj77hRtVJHaykCV9fV4qUJYtJqLUznz2sHeKiFB",
+        "CiVgJNC3Q5Tjp3JxoF8o3crBk8FPz8VvYQm1eNKjNgNy",
+        "5Tdz3SWESXFDvb6nPHhSX7Vs5izya4GuLSaFj8PY6gic",
+        "7HXXec8VWNExa6dA9Zb6Xts49X2kN3QDZRi4oi2MyoBV",
+        "22Au8HbxmtLLgZ318Ewd8FJHbFBbBWFgUVu8kaPB7foy",
+        "9rbttD2cxPEdypDL75ieakvKMUbitRdp6nAMMjEeqQNL"
+      ],
+      "instruction_data": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "1b7029e8c2c05e08bcae1f2e5c355322c9a991b4b6cf9ad7bb6f5ff2cd11ded0",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "04000000",
+      "account_addresses": [
+        "FkioQ6qQTWES8HdcSwGXJWfZj4xyERLhEcyns2USBu2D",
+        "4bdun3nsUPunMcNzLFG3L7aDumbKV81se4gvukXz3Lwp",
+        "6fkcSg9B2JUGKT8hyJ4z2EHNH2RugkDioid29fjLtDH2"
+      ],
+      "instruction_data": [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "50cbab44f14ed310ad776d27c43c409cbd2503ba866fcac85d069e1ad754d544",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "04ff00",
+      "account_addresses": [
+        "FkioQ6qQTWES8HdcSwGXJWfZj4xyERLhEcyns2USBu2D",
+        "4bdun3nsUPunMcNzLFG3L7aDumbKV81se4gvukXz3Lwp",
+        "6fkcSg9B2JUGKT8hyJ4z2EHNH2RugkDioid29fjLtDH2"
+      ],
+      "instruction_data": [
+        4,
+        255,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "6a81413ade71ee761140a1d1c40f1dd4fdefd82d538b67a4a200cd3a3eecfb6a",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "05",
+      "account_addresses": [
+        "6V2kfFjNqiYUwZmFuZqbTZaeJt5H24frbm2M7JZN1JKE",
+        "5N6PxHESGQjzuJv8tf9ba33V6jZPhdXF6jVmmFggEdo4",
+        "CXZXafZnQ8AWwHwnsQZ565s3XaGynfwWhXYBzLGvkriH"
+      ],
+      "instruction_data": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "64026b40c95637295cb71fcf2e8bc403dc61c8fd75629a5b6b9151b536bfccc6",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "05",
+      "account_addresses": [
+        "6V2kfFjNqiYUwZmFuZqbTZaeJt5H24frbm2M7JZN1JKE",
+        "5N6PxHESGQjzuJv8tf9ba33V6jZPhdXF6jVmmFggEdo4",
+        "CXZXafZnQ8AWwHwnsQZ565s3XaGynfwWhXYBzLGvkriH"
+      ],
+      "instruction_data": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "2bae2d786a055285fdefe17f349c93249834b4dd2ce50364d0c70ed20fad30a3",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "05",
+      "account_addresses": [
+        "6V2kfFjNqiYUwZmFuZqbTZaeJt5H24frbm2M7JZN1JKE",
+        "5N6PxHESGQjzuJv8tf9ba33V6jZPhdXF6jVmmFggEdo4",
+        "CXZXafZnQ8AWwHwnsQZ565s3XaGynfwWhXYBzLGvkriH"
+      ],
+      "instruction_data": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "a3a186e13f68a7d5946f2721b8b933a4648d8bd1bba7ed82802555e857249efd",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "05",
+      "account_addresses": [
+        "6V2kfFjNqiYUwZmFuZqbTZaeJt5H24frbm2M7JZN1JKE",
+        "5N6PxHESGQjzuJv8tf9ba33V6jZPhdXF6jVmmFggEdo4",
+        "CXZXafZnQ8AWwHwnsQZ565s3XaGynfwWhXYBzLGvkriH",
+        "7qnWLVtwGhZM53bNmANcPGcD7MooxZRMxH17oppoRerC",
+        "Cgt4YFUYCEvAcKumPtGD5E6sWPzw5SGvUV8MEySZRSD4",
+        "6kP7Fsj77hRtVJHaykCV9fV4qUJYtJqLUznz2sHeKiFB",
+        "CiVgJNC3Q5Tjp3JxoF8o3crBk8FPz8VvYQm1eNKjNgNy",
+        "5Tdz3SWESXFDvb6nPHhSX7Vs5izya4GuLSaFj8PY6gic",
+        "7HXXec8VWNExa6dA9Zb6Xts49X2kN3QDZRi4oi2MyoBV",
+        "22Au8HbxmtLLgZ318Ewd8FJHbFBbBWFgUVu8kaPB7foy",
+        "9rbttD2cxPEdypDL75ieakvKMUbitRdp6nAMMjEeqQNL"
+      ],
+      "instruction_data": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "62c6075c02f407f6d926e423aaeca646004b6985e4f465b1f3207d5ef09753dc",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "05000000",
+      "account_addresses": [
+        "6V2kfFjNqiYUwZmFuZqbTZaeJt5H24frbm2M7JZN1JKE",
+        "5N6PxHESGQjzuJv8tf9ba33V6jZPhdXF6jVmmFggEdo4",
+        "CXZXafZnQ8AWwHwnsQZ565s3XaGynfwWhXYBzLGvkriH"
+      ],
+      "instruction_data": [
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+    "version": "1.0.0",
+    "content_hash": "019869637a0cb497f46b843eb58b20be2bbeffd563dbaa0389c98458742d7816",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "05ff00",
+      "account_addresses": [
+        "6V2kfFjNqiYUwZmFuZqbTZaeJt5H24frbm2M7JZN1JKE",
+        "5N6PxHESGQjzuJv8tf9ba33V6jZPhdXF6jVmmFggEdo4",
+        "CXZXafZnQ8AWwHwnsQZ565s3XaGynfwWhXYBzLGvkriH"
+      ],
+      "instruction_data": [
+        5,
+        255,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  }
+]

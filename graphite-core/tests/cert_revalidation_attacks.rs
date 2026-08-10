@@ -528,6 +528,91 @@ fn cert_p0_4_untrusted_root_calling_token_still_blocked() {
 }
 
 #[test]
+fn cert_p0_4_manifest_declared_token_cpi_from_known_protocol_approved() {
+    // Check 1b manifest-aware refinement: a manifest-BACKED known protocol
+    // (Kamino lending, non-trusted root) whose manifest declares the Token
+    // CPI in allowed_cpis is authorized — the seed manifest is the curated
+    // trust anchor, and the CPI is the protocol's verified surface. Before
+    // the fix, EVERY Kamino/Drift/ATA/Metaplex token CPI was hard-blocked as
+    // "untrusted root" — a systematic false-positive class.
+    let input = risk_input(
+        "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD", // Kamino Lending
+        &["obligation", "reserve", "liquidity"],
+        &[TOKEN_PROGRAM],
+        &["debits accounts.liquidity"],
+        &[
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        ],
+        "",
+        "transfer",
+        "withdraw",
+    );
+    let v = assess(&input).unwrap();
+    assert!(
+        !is_blocked(&v),
+        "manifest-declared Token CPI from Kamino must not hard-block: {:?}",
+        v
+    );
+}
+
+#[test]
+fn cert_p0_4_ata_create_with_declared_token_cpi_approved() {
+    // ATA CreateAssociatedTokenAccount CPIs to System + Token to fund and
+    // initialize the associated account — the most basic legitimate
+    // operation in Solana. Its manifest declares both CPIs; it must approve.
+    let input = risk_input(
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", // ATA
+        &["wallet", "mint", "ata", "rent"],
+        &["11111111111111111111111111111111", TOKEN_PROGRAM],
+        &["creates associated token account"],
+        &[
+            "11111111111111111111111111111111",
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        ],
+        "",
+        "create",
+        "create",
+    );
+    let v = assess(&input).unwrap();
+    assert!(
+        !is_blocked(&v),
+        "ATA create with manifest-declared Token CPI must not hard-block: {:?}",
+        v
+    );
+}
+
+#[test]
+fn cert_p0_4_out_of_manifest_token_cpi_from_known_root_still_blocked() {
+    // The manifest-aware refinement must NOT become a bypass: a token CPI
+    // that the manifest does NOT declare, from a non-trusted root, is
+    // exactly the SetAuthority/CloseAccount smuggling vector — still
+    // fail-closed even when the root program itself is manifest-backed.
+    let input = risk_input(
+        "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD", // Kamino — known
+        &["obligation"],
+        &[TOKEN_PROGRAM],
+        &["debits accounts.obligation"],
+        &[], // manifest does NOT declare this CPI
+        "",
+        "transfer",
+        "",
+    );
+    let v = assess(&input).unwrap();
+    assert!(
+        matches!(
+            v,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::AuthorityHijack,
+                ..
+            }
+        ),
+        "out-of-manifest Token CPI from known non-trusted root must block: {:?}",
+        v
+    );
+}
+
+#[test]
 fn cert_p0_4_malicious_repeats_behind_trusted_root_still_caught() {
     // Even behind a TRUSTED DEX root, repeated visits to a SECURITY-RELEVANT
     // custom program must fire (infrastructure exclusion is per-TARGET, not

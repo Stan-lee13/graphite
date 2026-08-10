@@ -251,13 +251,29 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // This catches SetAuthority/CloseAccount via CPI from a custom contract.
     // Known DEX programs (Jupiter, Orca, Meteora) are whitelisted because
     // they legitimately CPI to SPL Token for transfers.
+    //
+    // Manifest-aware refinement (audit C4x): a MANIFEST-BACKED known
+    // protocol whose manifest declares the token CPI in `allowed_cpis` is
+    // authorized — seed manifests are the compile-time curated trust anchor,
+    // and the CPI is part of the protocol's verified instruction surface, not
+    // an attacker-injected call. Without this, legitimate lending (Kamino),
+    // perpetuals (Drift), ATA creation, and Metaplex metadata updates that
+    // CPI to Token/Token-2022 were hard-blocked as "untrusted root". The
+    // hard block remains for: (1) unknown programs (no manifest ⇒ empty
+    // allowed_cpis — the SetAuthority/CloseAccount smuggling vector), and
+    // (2) a token CPI that is NOT declared by the manifest (out-of-manifest
+    // behavior from a non-trusted root is exactly the vector Check 1b
+    // exists to catch). The CPI trace layer (Phase 2) independently gates
+    // risky instruction CONTENT inside allowed CPIs when a trace is present.
     if !TRUSTED_CPI_ROOTS.contains(&input.program_id.as_str()) {
         for cpi_target in &input.cpi_targets {
-            if RISKY_CPI_PROGRAMS.contains(&cpi_target.as_str()) {
+            if RISKY_CPI_PROGRAMS.contains(&cpi_target.as_str())
+                && !input.allowed_cpis.iter().any(|c| c == cpi_target)
+            {
                 return Ok(RiskVerdict::Blocked {
                     pattern: RiskPattern::AuthorityHijack,
                     reason: format!(
-                        "CPI target '{}' is a token program from untrusted root '{}' — cannot verify instruction inside CPI (possible SetAuthority/CloseAccount via CPI, P12 fail-closed)",
+                        "CPI target '{}' is a token program from untrusted root '{}' and is NOT declared in the manifest's allowed CPI list — cannot verify instruction inside CPI (possible SetAuthority/CloseAccount via CPI, P12 fail-closed)",
                         &cpi_target[..8.min(cpi_target.len())],
                         &input.program_id[..8.min(input.program_id.len())]
                     ),
@@ -347,7 +363,20 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // a swap route legitimately touches dozens of pool accounts while its
     // state changes describe only a few roles — the account:role ratio is
     // not a hidden-transfer signal for routing programs.
+    //
+    // Manifest-match exemption (audit C4x): when the account count is WITHIN
+    // the manifest's declared layout, every account is a declared role — the
+    // "hidden transfer" signal (accounts the manifest does not document) is
+    // structurally absent, so the account:role heuristic must not fire on
+    // legitimate lending (Kamino borrow touches 12 declared roles while its
+    // state changes name 3-4), perps (Drift), or any manifest-documented
+    // multi-account protocol. The heuristic exists to catch UNEXPECTED
+    // account proliferation; Check 3b still hard-blocks account counts
+    // beyond the manifest layout (+2 tolerance). An attacker cannot add
+    // hidden accounts within a manifest-matched layout.
     if !is_dex
+        && !manifest_account_match
+        && !input.variable_accounts
         && !input.expected_state_changes.is_empty()
         && detect_hidden_transfer(&input.accounts, &input.expected_state_changes)
     {
@@ -1556,14 +1585,76 @@ mod tests {
     #[test]
     fn test_cpi_level_authority_hijack_blocked() {
         // Attacker calls their own contract which CPIs to SPL Token SetAuthority.
-        // Even though the manifest allows CPI to SPL Token, the root program
-        // is not a trusted DEX — so the CPI-level check blocks it.
+        // The root program is not manifest-backed — `allowed_cpis` is EMPTY
+        // (verification.rs only fills it from a resolved manifest; an unknown
+        // program reaches the risk engine with no CPI authorization), so the
+        // CPI-level check hard-blocks the token CPI as AuthorityHijack.
         let input = RiskAssessmentInput {
             program_id: "attacker_contract".to_string(),
             accounts: vec!["a1".to_string()],
             cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
             expected_state_changes: vec!["change".to_string()],
+            allowed_cpis: vec![],
+            instruction_discriminator: "01".to_string(),
+            expected_account_count: None,
+            proposed_intent_type: String::new(),
+            variable_accounts: false,
+            extracted_output_token: None,
+            manifest_risk_class: String::new(),
+        };
+        let result = assess(&input).unwrap();
+        assert!(matches!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::AuthorityHijack,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_manifest_backed_non_dex_root_token_cpi_declared_is_allowed() {
+        // Kamino (lending — NOT a trusted DEX root) legitimately CPIs to SPL
+        // Token; its manifest declares the token CPI in `allowed_cpis`. Check
+        // 1b must NOT hard-block a manifest-declared CPI: seed manifests are
+        // the curated trust anchor, so the CPI is part of the protocol's
+        // verified instruction surface, not an attacker-injected call. The
+        // block remains for a token CPI that is NOT declared.
+        let input = RiskAssessmentInput {
+            program_id: "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD".to_string(),
+            accounts: vec!["a1".to_string(), "a2".to_string()],
+            cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
+            expected_state_changes: vec!["change".to_string()],
             allowed_cpis: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
+            instruction_discriminator: "01".to_string(),
+            expected_account_count: None,
+            proposed_intent_type: String::new(),
+            variable_accounts: false,
+            extracted_output_token: None,
+            manifest_risk_class: String::new(),
+        };
+        let result = assess(&input).unwrap();
+        assert_ne!(
+            result,
+            RiskVerdict::Blocked {
+                pattern: RiskPattern::AuthorityHijack,
+                reason: String::new(),
+            },
+            "manifest-declared token CPI from a manifest-backed root must not be AuthorityHijack"
+        );
+    }
+
+    #[test]
+    fn test_manifest_backed_root_token_cpi_undeclared_is_blocked() {
+        // Same manifest-backed root, but the token CPI is NOT in its
+        // manifest-declared allowed_cpis — out-of-manifest behavior from a
+        // non-trusted root is exactly the vector Check 1b exists to catch.
+        let input = RiskAssessmentInput {
+            program_id: "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD".to_string(),
+            accounts: vec!["a1".to_string(), "a2".to_string()],
+            cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
+            expected_state_changes: vec!["change".to_string()],
+            allowed_cpis: vec![],
             instruction_discriminator: "01".to_string(),
             expected_account_count: None,
             proposed_intent_type: String::new(),

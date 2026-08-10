@@ -1,0 +1,53 @@
+[
+  {
+    "program_id": "GaE1XtFQuW3DfNJrsAs5gATT1XeP2K5zipkmUTBqaDfr",
+    "version": "1.0.0",
+    "content_hash": "de045251db349f9a9a39715b6b9dbe6005f7a87c0815c48dc50a221b2b1c05a9",
+    "expected_approved": false,
+    "source": "real-mainnet-exploit:43MVswMUJwvjPAZqTPbKmGXaCbqshfQCPnBre9rEaEpmh3CbooYaivVw9k9cyVLSVnztVuBbQhySmQfVXA3AFDqy",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification holdout",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "GaE1XtFQuW3DfNJrsAs5gATT1XeP2K5zipkmUTBqaDfr",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "4e0aecf76d75154c",
+      "account_addresses": [
+        "HbtSzZgPZJabqWgXV9t7S4n6RwkmFuUDze1tQYX22oAP",
+        "73SbxtS2RLxbS6XJVUP9tGCpLpkb99KdJPHb1G3fxmA7",
+        "ndjGh8iMeCRUfAag1nTB8PbFaimDXYVB1ZpPdA6Viyh",
+        "9htfHryds3YLLjZZxa4RTyegFfsScvGcFTQyFCcVXUVm",
+        "HuCVrhcXQTt2T423KMisLNWiHgVaUeFnkXoZWMtFFbJ",
+        "9955r2AsxJcbuST11jeE39wGXeQX5FziNhjzeJMK1Zss",
+        "HbtSzZgPZJabqWgXV9t7S4n6RwkmFuUDze1tQYX22oAP",
+        "11111111111111111111111111111111"
+      ],
+      "instruction_data": null,
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  }
+]

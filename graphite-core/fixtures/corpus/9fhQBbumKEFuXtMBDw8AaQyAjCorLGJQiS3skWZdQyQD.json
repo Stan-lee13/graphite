@@ -1,0 +1,110 @@
+[
+  {
+    "program_id": "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD",
+    "version": "1.0.0",
+    "content_hash": "c078812bf4c5075ebe58d427392130cd092f8550ae6ef8882f86ae733044549d",
+    "expected_approved": false,
+    "source": "real-mainnet-exploit:51Ew8L1xkWrp1AjA38PhyVXeXALXfHaJsDnvoWs3fXqnUjJNYapau5i6TYPAxYMKpsvdCtaGpG5KWnDyyudyWpJA",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification holdout",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "d995828fdd34fc77",
+      "account_addresses": [
+        "6VVKJ44WTJGCksTGJHjf1kJWZaMf9Nswgj6w7Dtrw55D",
+        "CWMJcmst66LrhjhsH5bu1rzoWhVo58EM3E2dtmuZuz7d",
+        "BeJ6LQwNkvLnWPnC11mifTr7J33izAtKxN7t4D56MEYU",
+        "GfSYr6EA1bpwPWAnZ4ugf5tanUr7HChoULGMhV6xNKrt",
+        "7XiDGd21E1kpiJ866Qa1vuBVjx5TySmtt5arfQqbcZuQ",
+        "4AV2Qzp3N4c9RfzyEbNZs2wqWfW4EwKnnxFAZCndvfGh",
+        "2vV7xhCMWRrcLiwGoTaTRgvx98ku98TRJKPXhsS8jvBV",
+        "97rSMQUukMDjA7PYErccyx7ZxbHvSDaeXp2ig5BwSrTf",
+        "97rSMQUukMDjA7PYErccyx7ZxbHvSDaeXp2ig5BwSrTf",
+        "Gck5PWhKL4Qn87bhFwpL19Y5gkAbFN93GXXsTzuJ1VX4",
+        "11111111111111111111111111111111"
+      ],
+      "instruction_data": null,
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  },
+  {
+    "program_id": "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD",
+    "version": "1.0.0",
+    "content_hash": "32d36ad8a292bfd0652d2a23758164b8a6004d2768c672ea15f477acab58fe48",
+    "expected_approved": false,
+    "source": "real-mainnet-exploit:UCQpixCrp3LkffGXaiRmNYrMVPWRZ7F8owmYc64xSPhvtwheK9H6JZZ3H2xZ5WXx4V8eEK2DRVs3j3wKL8qJU2v",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification holdout",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "d995828fdd34fc77",
+      "account_addresses": [
+        "6VVKJ44WTJGCksTGJHjf1kJWZaMf9Nswgj6w7Dtrw55D",
+        "EepuHH4FvaY3Zq7ZKrnwuxFUKWeWoREVSiuowy6BQ9i7",
+        "6Q81mspTG1RnAMba6axxMZjrLZo8u6pYxVyiS45J6q5b",
+        "3LKYuUQR8RFsX9yFki1MaB9hfySWV2EELNeansbNxF6t",
+        "Fn69LgzPiiR9ei2z9dkRmCsfLEsSi5HQcvVYXncZAn7Y",
+        "4AV2Qzp3N4c9RfzyEbNZs2wqWfW4EwKnnxFAZCndvfGh",
+        "2vV7xhCMWRrcLiwGoTaTRgvx98ku98TRJKPXhsS8jvBV",
+        "97rSMQUukMDjA7PYErccyx7ZxbHvSDaeXp2ig5BwSrTf",
+        "97rSMQUukMDjA7PYErccyx7ZxbHvSDaeXp2ig5BwSrTf",
+        "Gck5PWhKL4Qn87bhFwpL19Y5gkAbFN93GXXsTzuJ1VX4",
+        "11111111111111111111111111111111"
+      ],
+      "instruction_data": null,
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  }
+]

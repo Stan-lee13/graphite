@@ -52,9 +52,14 @@ pub struct RegressionFixture {
     pub program_id: String,
     /// Protocol version label observed when the fixture was recorded.
     pub version: String,
-    /// Deterministic identity: sha256 of the canonical serialized input.
-    /// Used for append-only deduplication — a re-recorded outcome with the
-    /// same hash is dropped, never rewritten (P4).
+    /// Deterministic identity: sha256 of the canonical serialized input
+    /// PLUS the provenance source. Used for append-only deduplication — a
+    /// re-recorded outcome with the same hash is dropped, never rewritten
+    /// (P4). The provenance is part of the identity so two DISTINCT real
+    /// transactions with byte-identical instruction shapes (e.g. two
+    /// different signatures draining the same way) are distinct fixtures,
+    /// while re-recording the same input under the same provenance is a
+    /// duplicate.
     pub content_hash: String,
     /// The outcome recorded when the fixture was captured.
     pub expected_approved: bool,
@@ -69,10 +74,11 @@ pub struct RegressionFixture {
 
 impl RegressionFixture {
     /// Build a fixture, computing `content_hash` deterministically from the
-    /// input (sha256 of the canonical JSON serialization).
+    /// input plus its provenance (sha256 of the canonical JSON serialization
+    /// of input and source).
     pub fn new(input: VerificationInput, expected_approved: bool, source: &str) -> Self {
         let program_id = input.program_id.clone();
-        let content_hash = Self::content_hash(&input);
+        let content_hash = Self::content_hash(&input, source);
         Self {
             program_id,
             version: input.protocol_version.clone(),
@@ -84,13 +90,13 @@ impl RegressionFixture {
         }
     }
 
-    fn content_hash(input: &VerificationInput) -> String {
+    fn content_hash(input: &VerificationInput, source: &str) -> String {
         use sha2::{Digest, Sha256};
         // VerificationInput is a flat struct of Strings/Option/Vec — canonical
         // JSON serialization cannot fail for it (all fields are plain data).
         let canonical =
             serde_json::to_string(input).expect("VerificationInput is always serializable");
-        hex::encode(Sha256::digest(canonical.as_bytes()))
+        hex::encode(Sha256::digest(format!("{source}\n{canonical}").as_bytes()))
     }
 }
 

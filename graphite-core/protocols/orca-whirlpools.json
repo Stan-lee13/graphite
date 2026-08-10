@@ -537,43 +537,43 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "reward_owner_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "reward_vault",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -1026,8 +1026,8 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -1040,64 +1040,64 @@
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_lower",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_upper",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
@@ -2329,50 +2329,50 @@
    "accounts": [
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "lock_config",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3704,15 +3704,15 @@
     },
     {
      "name": "token_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3725,8 +3725,8 @@
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3739,29 +3739,29 @@
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_0",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_1",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_2",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3916,50 +3916,50 @@
    "accounts": [
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "receiver",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "destination_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "lock_config",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3993,22 +3993,22 @@
     },
     {
      "name": "token_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool_one",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "whirlpool_two",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4021,8 +4021,8 @@
     },
     {
      "name": "token_vault_one_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4035,8 +4035,8 @@
     },
     {
      "name": "token_vault_one_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4049,8 +4049,8 @@
     },
     {
      "name": "token_vault_two_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4063,50 +4063,50 @@
     },
     {
      "name": "token_vault_two_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_one_0",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_one_1",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_one_2",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_two_0",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_two_1",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_two_2",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },

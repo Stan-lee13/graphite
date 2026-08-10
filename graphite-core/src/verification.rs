@@ -881,15 +881,17 @@ impl GraphiteCore {
             .map(|c| c.to_lowercase())
             .collect();
 
-        // If state changes mention debit/credit/transfer/swap/stake,
-        // there should be at least 2 writable accounts
-        let needs_writable = changes_lower.iter().any(|c| {
-            c.contains("debit")
-                || c.contains("credit")
-                || c.contains("transfer")
-                || c.contains("swap")
-                || c.contains("stake")
-        });
+        // If state changes mention fund movement (debit/credit), there
+        // should be at least 2 writable accounts (source + destination).
+        // Audit refinement (C4x): "transfer"/"swap"/"stake" were over-broad
+        // triggers — a Stake DelegateStake legitimately writes ONE account
+        // (the stake account), Metaplex update metadata writes one, and a
+        // locked-position transfer writes one. The fund-movement wording
+        // (debit/credit) is what actually implies two writable sides, and
+        // the L7 risk engine independently gates real transfer semantics.
+        let needs_writable = changes_lower
+            .iter()
+            .any(|c| c.contains("debit") || c.contains("credit"));
 
         let writable_count = resolved_accounts.iter().filter(|a| a.is_writable).count();
 
@@ -904,13 +906,20 @@ impl GraphiteCore {
             );
         }
 
-        // If state changes mention signer/authority/delegate/approve,
-        // there should be at least 1 signer account
+        // If state changes mention an authority-changing/delegating action
+        // (signer, approve, delegate, assign), there should be at least 1
+        // signer account. Audit refinement (C4x): the bare noun "authority"
+        // over-triggered — SPL Token InitializeMint sets the mint_authority
+        // FIELD (data in the instruction) with no signer account on-chain,
+        // and the manifest's own account list reflects that. A real
+        // authority TRANSFER is phrased with an action verb (assign,
+        // transfer authority, approve, delegate) which the remaining
+        // triggers cover.
         let needs_signer = changes_lower.iter().any(|c| {
             c.contains("signer")
-                || c.contains("authority")
-                || c.contains("delegate")
                 || c.contains("approve")
+                || c.contains("delegate")
+                || c.contains("assign")
         });
 
         let signer_count = resolved_accounts.iter().filter(|a| a.is_signer).count();

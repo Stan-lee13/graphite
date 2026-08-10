@@ -1,0 +1,61 @@
+[
+  {
+    "program_id": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
+    "version": "1.0.0",
+    "content_hash": "bb263196ac84111bbef6e1e3df93e594a236febd0747e0ab857be4d61faa3025",
+    "expected_approved": false,
+    "source": "real-mainnet-exploit:2a9E4wCcJM9iCqbUZvNsbf7WWUBpvjseQryoSwEZncB71We2QpgU137cMZmf6Y5tD7EQP9dyHZkcWvrQMW5e2izf",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification holdout",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "78791792ad6ec7cd",
+      "account_addresses": [
+        "HodRZmgRq8wDuaA5vNLA64TuojwQuw8WA5Z1MfNRLYqx",
+        "GHDHUm2YiiUoTBxt3P7ZBQaPfogNXAHpUxwoYZSUoscn",
+        "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
+        "GHDHUm2YiiUoTBxt3P7ZBQaPfogNXAHpUxwoYZSUoscn",
+        "Gck5PWhKL4Qn87bhFwpL19Y5gkAbFN93GXXsTzuJ1VX4",
+        "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
+        "6jn6AkZpLiY8vrU1c5nF3D6osde8HCgrE4LpiD6kAFUv",
+        "5PsnkNGpsieWVqqcf25VxUhRhmoVGEe4saYvsMCZnH8X",
+        "CbNY3JiXdXNE9tPNEk1aRZVEkWdj2v7kfJLNQwZZgpXk",
+        "mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3",
+        "mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW",
+        "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
+        "11111111111111111111111111111111"
+      ],
+      "instruction_data": null,
+      "cpi_targets": [
+        "CoREENxT6tW1HoK8ypY1SxRMZTcVPm7R94rH4PZNhX7d",
+        "mnoopTCrg4p8ry25e4bcWA9XZjbNjMTfgYVGGEdRsf3",
+        "mcmt6YrQEMKw8Mw43FmpRLmf7BqRnFMKmAcbxE3xkAW",
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  }
+]
