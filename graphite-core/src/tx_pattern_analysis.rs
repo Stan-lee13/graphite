@@ -1,0 +1,620 @@
+//! Transaction Pattern Analysis — Phase 2 milestone.
+//!
+//! Two transaction-level detection layers that the single-instruction Risk
+//! Engine cannot express (ARCHITECTURE.md 3.21 is per-instruction):
+//!
+//! 1. **Multi-instruction transaction analysis** — coordinated mass-drain
+//!    patterns ACROSS multiple instructions inside ONE Solana transaction.
+//!    The real attack classes from the exploit corpus (SolPhishHunter
+//!    arXiv:2505.04094) are inherently multi-instruction: AAT drainers chain
+//!    an Approve with a Transfer in the same tx; authority-hijack drainers
+//!    chain SetAuthority with a Transfer; close-then-sweep chains CloseAccount
+//!    with a Transfer. No single-instruction check can see the coordination.
+//!
+//! 2. **CPI instruction trace analysis** — the hierarchical CPI tree of the
+//!    primary instruction. The flat `cpi_targets` list loses structure: an
+//!    unknown program invoked DEEP in a chain, a program revisited repeatedly
+//!    along one path (compositional drain), or a vanity-impersonated program
+//!    ID inside a legitimate-looking wrapper are all invisible to a flat
+//!    hop count.
+//!
+//! Findings are HARD GATES exactly like Risk Engine findings (SECURITY.md):
+//! a `Blocked` finding rejects the transaction regardless of confidence.
+
+use serde::{Deserialize, Serialize};
+
+/// A single compiled instruction inside a Solana transaction message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct TransactionInstruction {
+    pub program_id: String,
+    #[serde(default)]
+    pub instruction_discriminator: String,
+    #[serde(default)]
+    pub account_addresses: Vec<String>,
+    /// Flat CPI targets of this instruction (kept for parity with the
+    /// single-instruction input; the hierarchical trace lives in `CpiTraceNode`).
+    #[serde(default)]
+    pub cpi_targets: Vec<String>,
+}
+
+/// A node in the hierarchical CPI trace tree of the primary instruction.
+///
+/// `depth == 0` is the root (the instruction being verified); each child is
+/// one Cross-Program Invocation made by its parent, in order.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct CpiTraceNode {
+    pub program_id: String,
+    #[serde(default)]
+    pub instruction_discriminator: String,
+    pub depth: u32,
+    #[serde(default)]
+    pub children: Vec<CpiTraceNode>,
+}
+
+/// Severity of a transaction-level pattern finding.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PatternSeverity {
+    /// Hard gate — rejects the transaction (SECURITY.md).
+    Blocked,
+    /// Non-blocking signal surfaced in the report (P3 explainability).
+    Warning,
+}
+
+/// A finding from transaction-level pattern analysis.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PatternFinding {
+    /// Stable machine-readable class, e.g. "MultiInstructionDrain" or
+    /// "CpiTraceAnomaly".
+    pub pattern: String,
+    pub severity: PatternSeverity,
+    pub reason: String,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Discriminator / program constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
+pub const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+pub const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+pub const COMPUTE_BUDGET_PROGRAM: &str = "ComputeBudget111111111111111111111111111111";
+
+// SPL Token / Token-2022 discriminators (hex, matched by prefix per the
+// manifest convention `input.starts_with(needle)`).
+pub const DISC_TRANSFER: &str = "03";
+pub const DISC_TRANSFER_CHECKED: &str = "0c";
+pub const DISC_APPROVE: &str = "04";
+pub const DISC_APPROVE_CHECKED: &str = "0d";
+pub const DISC_SET_AUTHORITY: &str = "06";
+pub const DISC_CLOSE_ACCOUNT: &str = "09";
+// System Program discriminators.
+pub const DISC_SYSTEM_TRANSFER: &str = "02";
+
+/// Prefix match on lowercase discriminators, mirroring
+/// `crate::manifest::discriminator_matches` (a manifest disc like "0c"
+/// matches a real disc like "0c00000000000000").
+fn disc_matches(discriminator: &str, needle: &str) -> bool {
+    let disc = discriminator.to_lowercase();
+    !needle.is_empty() && disc.starts_with(needle)
+}
+
+/// True for SPL Token / Token-2022 programs.
+fn is_token_program(program_id: &str) -> bool {
+    program_id == TOKEN_PROGRAM || program_id == TOKEN_2022_PROGRAM
+}
+
+/// Transfer-family instruction (Transfer or TransferChecked) on a token
+/// program, or a System Program transfer.
+fn is_transfer_instruction(ix: &TransactionInstruction) -> bool {
+    if ix.program_id == SYSTEM_PROGRAM {
+        return disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_TRANSFER);
+    }
+    if is_token_program(&ix.program_id) {
+        return disc_matches(&ix.instruction_discriminator, DISC_TRANSFER)
+            || disc_matches(&ix.instruction_discriminator, DISC_TRANSFER_CHECKED);
+    }
+    false
+}
+
+fn is_approve_instruction(ix: &TransactionInstruction) -> bool {
+    is_token_program(&ix.program_id)
+        && (disc_matches(&ix.instruction_discriminator, DISC_APPROVE)
+            || disc_matches(&ix.instruction_discriminator, DISC_APPROVE_CHECKED))
+}
+
+fn is_set_authority_instruction(ix: &TransactionInstruction) -> bool {
+    is_token_program(&ix.program_id)
+        && disc_matches(&ix.instruction_discriminator, DISC_SET_AUTHORITY)
+}
+
+fn is_close_account_instruction(ix: &TransactionInstruction) -> bool {
+    is_token_program(&ix.program_id)
+        && disc_matches(&ix.instruction_discriminator, DISC_CLOSE_ACCOUNT)
+}
+
+/// The token account whose state the instruction acts on: for token-program
+/// instructions the SOURCE token account is accounts[0] (transfer source,
+/// approve source, the account whose authority changes, the account closed).
+fn primary_token_account(ix: &TransactionInstruction) -> Option<&str> {
+    if is_token_program(&ix.program_id) {
+        ix.account_addresses.first().map(|s| s.as_str())
+    } else {
+        None
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-instruction analysis
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Detect coordinated mass-drain patterns across the instructions of a single
+/// transaction. Requires at least two instructions; a single-instruction
+/// transaction is the Risk Engine's domain and yields no findings here.
+pub fn analyze_multi_instruction(
+    instructions: &[TransactionInstruction],
+) -> Vec<PatternFinding> {
+    if instructions.len() < 2 {
+        return Vec::new();
+    }
+
+    let mut findings = Vec::new();
+
+    // Rule 1: AAT — Approve-then-Transfer on the same token account.
+    // The SPL Token Approve grants a delegate authority over `source`; a
+    // Transfer spending that same account in the same tx is the AAT drainer
+    // class (approve a large allowance, then transfer it out).
+    for approve in instructions.iter().filter(|ix| is_approve_instruction(ix)) {
+        if let Some(approved_account) = primary_token_account(approve) {
+            let shared = instructions.iter().any(|ix| {
+                is_transfer_instruction(ix) && ix.account_addresses.iter().any(|a| a == approved_account)
+            });
+            if shared {
+                findings.push(PatternFinding {
+                    pattern: "MultiInstructionDrain".to_string(),
+                    severity: PatternSeverity::Blocked,
+                    reason: format!(
+                        "AAT drain signature: Approve on token account {approved_account} followed by a Transfer spending the same account in one transaction"
+                    ),
+                });
+            }
+        }
+    }
+
+    // Rule 2: Authority-hijack-then-Transfer. SetAuthority hands control of a
+    // token account to an attacker-controlled delegate; a Transfer of that
+    // account in the same tx executes the theft.
+    for hijack in instructions.iter().filter(|ix| is_set_authority_instruction(ix)) {
+        if let Some(target_account) = primary_token_account(hijack) {
+            let shared = instructions.iter().any(|ix| {
+                is_transfer_instruction(ix) && ix.account_addresses.iter().any(|a| a == target_account)
+            });
+            if shared {
+                findings.push(PatternFinding {
+                    pattern: "MultiInstructionDrain".to_string(),
+                    severity: PatternSeverity::Blocked,
+                    reason: format!(
+                        "Authority-hijack drain signature: SetAuthority on {target_account} followed by a Transfer of that account in one transaction"
+                    ),
+                });
+            }
+        }
+    }
+
+    // Rule 3: CloseAccount-then-Transfer. Closing a token account refunds its
+    // lamports to a destination; pairing it with a Transfer of the same token
+    // account is the close-and-sweep drain class.
+    for close in instructions.iter().filter(|ix| is_close_account_instruction(ix)) {
+        if let Some(closed_account) = primary_token_account(close) {
+            let shared = instructions.iter().any(|ix| {
+                is_transfer_instruction(ix) && ix.account_addresses.iter().any(|a| a == closed_account)
+            });
+            if shared {
+                findings.push(PatternFinding {
+                    pattern: "MultiInstructionDrain".to_string(),
+                    severity: PatternSeverity::Blocked,
+                    reason: format!(
+                        "Close-and-sweep drain signature: CloseAccount on {closed_account} paired with a Transfer of that account in one transaction"
+                    ),
+                });
+            }
+        }
+    }
+
+    // Rule 4: Mass multi-transfer sweep — three or more transfer instructions
+    // sweeping to distinct destinations in one transaction (STMT class).
+    let transfers: Vec<&TransactionInstruction> = instructions
+        .iter()
+        .filter(|ix| is_transfer_instruction(ix))
+        .collect();
+    if transfers.len() >= 3 {
+        let destinations: std::collections::HashSet<&str> = transfers
+            .iter()
+            .filter_map(|ix| ix.account_addresses.get(1).map(|s| s.as_str()))
+            .collect();
+        if destinations.len() >= 3 {
+            findings.push(PatternFinding {
+                pattern: "MultiInstructionDrain".to_string(),
+                severity: PatternSeverity::Blocked,
+                reason: format!(
+                    "Mass multi-transfer sweep: {} transfer instructions to {} distinct destinations in one transaction (STMT mass-drain class)",
+                    transfers.len(),
+                    destinations.len()
+                ),
+            });
+        }
+    }
+
+    findings
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CPI trace analysis
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The well-known system programs always trusted in a CPI chain (never
+/// flagged as "unknown program" — they are the substrate every Solana program
+/// runs on).
+pub fn system_programs() -> Vec<String> {
+    vec![
+        SYSTEM_PROGRAM.to_string(),
+        TOKEN_PROGRAM.to_string(),
+        TOKEN_2022_PROGRAM.to_string(),
+        COMPUTE_BUDGET_PROGRAM.to_string(),
+        // SPL Memo / associated-token-account / bpf loaders are manifest-
+        // registered in the seed set; the caller merges manifest program IDs
+        // into the known set, so the constants here stay minimal.
+    ]
+}
+
+/// Count occurrences of `program_id` along a single root-to-leaf path.
+fn path_occurrences(node: &CpiTraceNode, needle: &str, count: u32) -> u32 {
+    let mut c = count + u32::from(node.program_id == needle);
+    for child in &node.children {
+        c = c.max(path_occurrences(child, needle, c));
+    }
+    c
+}
+
+fn max_depth(node: &CpiTraceNode) -> u32 {
+    node.children
+        .iter()
+        .map(|c| max_depth(c))
+        .max()
+        .unwrap_or(node.depth)
+}
+
+/// A program ID that vanity-impersonates a known program: shares a long
+/// leading prefix (≈46+ bits — deliberate, not chance) with a known program
+/// but is not it. This is the SolPhishHunter ISA class applied to CPI
+/// targets instead of transfer destinations.
+fn impersonates(program_id: &str, known: &[String]) -> Option<String> {
+    const PREFIX_LEN: usize = 8;
+    if program_id.len() <= PREFIX_LEN {
+        return None;
+    }
+    known.iter().find(|k| {
+        k.len() > PREFIX_LEN
+            && k.as_str() != program_id
+            && k[..PREFIX_LEN] == program_id[..PREFIX_LEN]
+    })
+    .cloned()
+}
+
+/// Analyze the hierarchical CPI trace of the primary instruction against the
+/// set of trusted program IDs (manifest-registered programs + system
+/// programs). The root node is the instruction being verified; its unknown-
+/// protocol status is handled by the unknown-protocol ceiling downstream, so
+/// only nodes at depth >= 1 are scrutinized here.
+pub fn analyze_cpi_trace(
+    trace: &CpiTraceNode,
+    known_programs: &[String],
+) -> Vec<PatternFinding> {
+    let mut findings = Vec::new();
+
+    // Walk the tree once, collecting depth >= 1 nodes.
+    let mut nodes: Vec<&CpiTraceNode> = Vec::new();
+    let mut stack: Vec<&CpiTraceNode> = trace.children.iter().collect();
+    while let Some(node) = stack.pop() {
+        nodes.push(node);
+        stack.extend(node.children.iter());
+    }
+
+    // Rule 1: unknown program invoked deep in the chain — the highest-signal
+    // anomaly. A legitimate protocol invokes manifest-registered or system
+    // programs; an unregistered program inside the tree is unverified code
+    // being given execution (and authority over writable accounts).
+    for node in &nodes {
+        if !known_programs.iter().any(|k| k == &node.program_id) {
+            findings.push(PatternFinding {
+                pattern: "CpiTraceAnomaly".to_string(),
+                severity: PatternSeverity::Blocked,
+                reason: format!(
+                    "CPI trace invokes unknown program {} at depth {} — not in the manifest registry or well-known system programs",
+                    node.program_id, node.depth
+                ),
+            });
+        }
+    }
+
+    // Rule 2: repeated revisit along one path — the compositional drain
+    // signature (same program re-entered >= 3 times within a single chain).
+    for node in &nodes {
+        let occ = path_occurrences(node, &node.program_id, 0);
+        if occ >= 3 {
+            findings.push(PatternFinding {
+                pattern: "CpiTraceAnomaly".to_string(),
+                severity: PatternSeverity::Blocked,
+                reason: format!(
+                    "CPI trace re-enters program {} {} times along one path — compositional drain signature",
+                    node.program_id, occ
+                ),
+            });
+        }
+    }
+
+    // Rule 3: excessive chain depth — a warning, not a block: legitimate
+    // DEX routing can nest several levels, but unusually deep chains deserve
+    // an explicit report signal.
+    if max_depth(trace) >= 6 {
+        findings.push(PatternFinding {
+            pattern: "CpiTraceAnomaly".to_string(),
+            severity: PatternSeverity::Warning,
+            reason: format!(
+                "CPI trace depth {} exceeds the typical nesting bound — unusually deep chain",
+                max_depth(trace)
+            ),
+        });
+    }
+
+    // Rule 4: vanity-impersonated program inside the chain (ISA applied to
+    // CPI targets).
+    for node in &nodes {
+        if let Some(spoofed) = impersonates(&node.program_id, known_programs) {
+            findings.push(PatternFinding {
+                pattern: "CpiTraceAnomaly".to_string(),
+                severity: PatternSeverity::Blocked,
+                reason: format!(
+                    "CPI target {} vanity-impersonates known program {} (shared address prefix)",
+                    node.program_id, spoofed
+                ),
+            });
+        }
+    }
+
+    findings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ix(program: &str, disc: &str, accounts: &[&str]) -> TransactionInstruction {
+        TransactionInstruction {
+            program_id: program.to_string(),
+            instruction_discriminator: disc.to_string(),
+            account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
+            cpi_targets: vec![],
+        }
+    }
+
+    const SOURCE: &str = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    const DEST: &str = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+    const DEST2: &str = "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP";
+    const DEST3: &str = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
+
+    // ── Multi-instruction rules ─────────────────────────────────────────────
+
+    #[test]
+    fn single_instruction_is_risk_engine_domain() {
+        let txs = vec![ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST])];
+        assert!(analyze_multi_instruction(&txs).is_empty());
+    }
+
+    #[test]
+    fn approve_then_transfer_same_account_is_blocked() {
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]), // Approve
+            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST]),          // Transfer
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, PatternSeverity::Blocked);
+        assert!(findings[0].reason.contains("AAT drain"));
+    }
+
+    #[test]
+    fn approve_then_transfer_disjoint_accounts_is_clean() {
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "04", &[SOURCE, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST2, DEST3]),
+        ];
+        assert!(analyze_multi_instruction(&txs).is_empty());
+    }
+
+    #[test]
+    fn set_authority_then_transfer_is_blocked() {
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "06", &[SOURCE, DEST]),
+            ix(TOKEN_PROGRAM, "0c", &[SOURCE, DEST, DEST]), // transferChecked
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].reason.contains("Authority-hijack"));
+    }
+
+    #[test]
+    fn close_account_then_transfer_is_blocked() {
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "09", &[SOURCE, DEST]),
+            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].reason.contains("Close-and-sweep"));
+    }
+
+    #[test]
+    fn mass_multi_transfer_sweep_is_blocked() {
+        let txs = vec![
+            ix(SYSTEM_PROGRAM, "02", &[SOURCE, DEST]),
+            ix(SYSTEM_PROGRAM, "02", &[SOURCE, DEST2]),
+            ix(SYSTEM_PROGRAM, "02", &[SOURCE, DEST3]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].reason.contains("Mass multi-transfer sweep"));
+    }
+
+    #[test]
+    fn two_transfers_same_destination_is_clean() {
+        let txs = vec![
+            ix(SYSTEM_PROGRAM, "02", &[SOURCE, DEST]),
+            ix(SYSTEM_PROGRAM, "02", &[SOURCE, DEST]),
+        ];
+        assert!(analyze_multi_instruction(&txs).is_empty());
+    }
+
+    #[test]
+    fn token_2022_approve_is_detected() {
+        let txs = vec![
+            ix(TOKEN_2022_PROGRAM, "04", &[SOURCE, DEST, SOURCE]),
+            ix(TOKEN_2022_PROGRAM, "03", &[SOURCE, DEST]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(findings.len(), 1);
+    }
+
+    // ── CPI trace rules ─────────────────────────────────────────────────────
+
+    fn node(program: &str, depth: u32, children: Vec<CpiTraceNode>) -> CpiTraceNode {
+        CpiTraceNode {
+            program_id: program.to_string(),
+            instruction_discriminator: String::new(),
+            depth,
+            children,
+        }
+    }
+
+    #[test]
+    fn trace_with_known_programs_is_clean() {
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![node(TOKEN_PROGRAM, 1, vec![node(SYSTEM_PROGRAM, 2, vec![])])],
+        );
+        let known: Vec<String> = vec![TOKEN_PROGRAM.into(), SYSTEM_PROGRAM.into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        // Depth 2 — no finding. Unknown/revisit/impersonation all absent.
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn trace_invoking_unknown_program_is_blocked() {
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![node("unverified_malicious_program", 1, vec![])],
+        );
+        let known: Vec<String> = vec![TOKEN_PROGRAM.into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, PatternSeverity::Blocked);
+        assert!(findings[0].reason.contains("unknown program"));
+    }
+
+    #[test]
+    fn trace_unknown_root_is_not_flagged_by_trace_layer() {
+        // The root's unknown-protocol status is the unknown-protocol ceiling's
+        // domain, not the trace layer's — only depth >= 1 nodes are checked.
+        let trace = node(
+            "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+            0,
+            vec![node(TOKEN_PROGRAM, 1, vec![])],
+        );
+        let known: Vec<String> = vec![TOKEN_PROGRAM.into()];
+        assert!(analyze_cpi_trace(&trace, &known).is_empty());
+    }
+
+    #[test]
+    fn trace_repeated_revisit_is_blocked() {
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![
+                node("prog_a", 1, vec![node("prog_a", 2, vec![node("prog_a", 3, vec![])])]),
+            ],
+        );
+        let known: Vec<String> = vec![TOKEN_PROGRAM.into(), "prog_a".into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            findings.iter().any(|f| f.reason.contains("re-enters program prog_a 3 times")),
+            "expected revisit finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn trace_deep_chain_is_warning() {
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![node(
+                "prog_a",
+                1,
+                vec![node(
+                    "prog_b",
+                    2,
+                    vec![node(
+                        "prog_c",
+                        3,
+                        vec![node(
+                            "prog_d",
+                            4,
+                            vec![node("prog_e", 5, vec![node("prog_f", 6, vec![])])],
+                        )],
+                    )],
+                )],
+            )],
+        );
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "prog_a".into(),
+            "prog_b".into(),
+            "prog_c".into(),
+            "prog_d".into(),
+            "prog_e".into(),
+            "prog_f".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            findings.iter().any(|f| f.severity == PatternSeverity::Warning && f.reason.contains("depth 6")),
+            "expected depth warning, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn trace_impersonated_program_is_blocked() {
+        // "TokenkegQ..." is the real SPL Token address; a near-collision
+        // sharing its first 8 chars must be blocked.
+        let trace = node(
+            TOKEN_PROGRAM,
+            0,
+            vec![node("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DB", 1, vec![])],
+        );
+        let known: Vec<String> = vec![TOKEN_PROGRAM.into(), SYSTEM_PROGRAM.into()];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            findings.iter().any(|f| f.reason.contains("vanity-impersonates")),
+            "expected impersonation finding, got: {:?}",
+            findings
+        );
+    }
+
+    #[test]
+    fn system_programs_are_always_trusted() {
+        let known = system_programs();
+        assert!(known.contains(&SYSTEM_PROGRAM.to_string()));
+        assert!(known.contains(&TOKEN_PROGRAM.to_string()));
+    }
+}

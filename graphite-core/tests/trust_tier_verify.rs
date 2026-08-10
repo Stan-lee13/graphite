@@ -32,6 +32,8 @@ fn verify_manifest_trust_tier_used() {
         account_writes: 2,
         cpi_hops: 0,
         signed_transaction: None,
+        transaction_instructions: vec![],
+        cpi_trace: None,
     };
 
     let result = core.verify(&input).unwrap();
@@ -86,6 +88,8 @@ fn verify_unknown_protocol_still_capped() {
         account_writes: 0,
         cpi_hops: 0,
         signed_transaction: None,
+        transaction_instructions: vec![],
+        cpi_trace: None,
     };
 
     let result = core.verify(&input).unwrap();

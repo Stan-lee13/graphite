@@ -578,6 +578,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: cpi.len() as u32,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         }
     }
 

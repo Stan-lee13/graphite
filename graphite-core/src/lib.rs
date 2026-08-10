@@ -24,6 +24,7 @@ pub mod semantic_graph_store;
 pub mod simulation_integrity;
 pub mod solana_types;
 pub mod transaction_builder;
+pub mod tx_pattern_analysis;
 pub mod unknown_protocol_mode;
 pub mod verification;
 
@@ -57,6 +58,10 @@ pub use regression_engine::{
 pub use risk_engine::{
     assess, assess_with_warnings, RiskAssessmentDetail, RiskAssessmentInput, RiskPattern,
     RiskVerdict,
+};
+pub use tx_pattern_analysis::{
+    analyze_cpi_trace, analyze_multi_instruction, CpiTraceNode, PatternFinding,
+    PatternSeverity, TransactionInstruction,
 };
 pub use semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 pub use solana_types::{find_program_address, is_on_curve, AccountMeta, Instruction, Pubkey};

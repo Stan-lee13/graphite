@@ -74,6 +74,18 @@ pub struct VerificationInput {
     /// simulation will use `instruction_data` as a minimal payload.
     #[serde(default)]
     pub signed_transaction: Option<Vec<u8>>,
+    /// Phase 2: the COMPLETE list of instructions in the transaction,
+    /// including the primary instruction (whose fields above are the focused
+    /// view). When empty (the default, backward compatible), verification is
+    /// single-instruction. When 2+, the multi-instruction pattern analysis
+    /// layer detects coordinated mass-drain patterns across them.
+    #[serde(default)]
+    pub transaction_instructions: Vec<crate::tx_pattern_analysis::TransactionInstruction>,
+    /// Phase 2: the hierarchical CPI trace tree of the primary instruction.
+    /// When present, the CPI trace analysis layer scrutinizes it for unknown
+    /// programs, repeated revisits, excessive depth, and impersonation.
+    #[serde(default)]
+    pub cpi_trace: Option<crate::tx_pattern_analysis::CpiTraceNode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1374,7 +1386,79 @@ impl GraphiteCore {
             risk_verdict
         };
 
+        // Phase 2: Transaction-level pattern analysis — multi-instruction
+        // mass-drain detection and hierarchical CPI trace analysis. These
+        // layers see coordination the single-instruction Risk Engine cannot:
+        // an Approve + Transfer on the same account in one tx (AAT), a
+        // SetAuthority + Transfer (authority hijack + drain), a CloseAccount
+        // + Transfer (close-and-sweep), a mass multi-transfer sweep, or an
+        // unknown/revisited/impersonated program inside the CPI tree.
+        //
+        // Blocked findings are HARD GATES (SECURITY.md): they override a
+        // Passed risk verdict exactly like a plugin block. Warning findings
+        // never block — they are surfaced in the report (P3 explainability).
+        let mut pattern_findings: Vec<crate::tx_pattern_analysis::PatternFinding> = Vec::new();
+        if input.transaction_instructions.len() >= 2 {
+            pattern_findings.extend(crate::tx_pattern_analysis::analyze_multi_instruction(
+                &input.transaction_instructions,
+            ));
+        }
+        if let Some(trace) = &input.cpi_trace {
+            let mut known: Vec<String> = crate::tx_pattern_analysis::system_programs();
+            known.extend(self.registry.list().iter().map(|m| m.protocol.program_id.clone()));
+            pattern_findings.extend(crate::tx_pattern_analysis::analyze_cpi_trace(
+                trace,
+                &known,
+            ));
+        }
+        let blocked_pattern = pattern_findings.iter().find(|f| {
+            f.severity == crate::tx_pattern_analysis::PatternSeverity::Blocked
+        });
+        let risk_verdict = if let Some(f) = blocked_pattern {
+            let pattern = if f.pattern == "MultiInstructionDrain" {
+                RiskPattern::MultiInstructionDrain
+            } else {
+                RiskPattern::CpiTraceAnomaly
+            };
+            match risk_verdict {
+                RiskVerdict::Passed => RiskVerdict::Blocked {
+                    pattern,
+                    reason: f.reason.clone(),
+                },
+                // Already blocked by the single-instruction engine or a
+                // plugin: keep the primary reason, the pattern finding is
+                // appended to the summary below as corroborating evidence.
+                RiskVerdict::Blocked {
+                    pattern: existing,
+                    ref reason,
+                } => RiskVerdict::Blocked {
+                    pattern: existing,
+                    reason: format!("{reason} | {}", f.reason),
+                },
+            }
+        } else {
+            risk_verdict
+        };
+
         let risk_summary = summarize_risk(&risk_verdict);
+
+        // Surface transaction-pattern findings (blocked + warnings) on the
+        // risk summary so the signal is never silently dropped (P3).
+        let risk_summary = if pattern_findings.is_empty() {
+            risk_summary
+        } else {
+            RiskVerdictSummary {
+                status: risk_summary.status.clone(),
+                findings: {
+                    let mut f = risk_summary.findings.clone();
+                    f.extend(pattern_findings.iter().map(|pf| RiskFinding {
+                        pattern: pf.pattern.clone(),
+                        reason: pf.reason.clone(),
+                    }));
+                    f
+                },
+            }
+        };
 
         // Step 3c.5: Add PDA mismatch findings to risk summary
         let risk_summary = if !pda_mismatches.is_empty() && risk_summary.status == "Clear" {
@@ -2367,6 +2451,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         }
     }
 
@@ -2448,6 +2534,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         };
         let result = core
             .verify(&input)
@@ -2521,6 +2609,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: 1,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         };
         let result = core.verify(&input).unwrap();
         // Should be blocked due to unverified CPI or authority-related patterns
@@ -2644,6 +2734,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -2704,6 +2796,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -2796,6 +2890,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: 0,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -2936,6 +3032,8 @@ mod tests {
             account_writes: 2,
             cpi_hops: 1,
             signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
         };
 
         let result = core.verify(&input).unwrap();

@@ -43,6 +43,8 @@ fn system_transfer(profile: WalletProfile) -> VerificationInput {
         account_writes: 2,
         cpi_hops: 0,
         signed_transaction: None,
+        transaction_instructions: vec![],
+        cpi_trace: None,
     }
 }
 

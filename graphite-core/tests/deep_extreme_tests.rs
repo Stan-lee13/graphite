@@ -51,6 +51,8 @@ fn make_input(
         account_writes: 0,
         cpi_hops: 0,
         signed_transaction: None,
+        transaction_instructions: vec![],
+        cpi_trace: None,
     }
 }
 

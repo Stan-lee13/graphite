@@ -149,6 +149,8 @@ fn valid_input_strategy() -> impl Strategy<Value = VerificationInput> {
                 account_writes: writes,
                 cpi_hops: hops,
                 signed_transaction: None,
+                transaction_instructions: vec![],
+                cpi_trace: None,
             },
         )
 }

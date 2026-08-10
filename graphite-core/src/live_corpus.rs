@@ -238,6 +238,8 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
         cpi_targets: vec![],
         wallet_profile: corpus_wallet_profile(),
         behavior_evidence: Default::default(),
+        transaction_instructions: vec![],
+        cpi_trace: None,
         compute_units,
         account_writes: 0,
         cpi_hops: 0,

@@ -32,6 +32,14 @@ pub enum RiskPattern {
     /// system account (trailing 11111 or Compu prefix) — SolPhishHunter
     /// arXiv:2505.04094 attack class.
     Impersonation,
+    /// Coordinated mass-drain pattern across MULTIPLE instructions in one
+    /// transaction (Phase 2): approve-then-transfer, authority-hijack-then-
+    /// drain, close-and-sweep, or mass multi-transfer sweep.
+    MultiInstructionDrain,
+    /// Malicious shape in the hierarchical CPI trace (Phase 2): unknown
+    /// program invoked in the chain, repeated revisits (compositional drain),
+    /// or vanity-impersonated program inside the tree.
+    CpiTraceAnomaly,
 }
 
 /// Verdict from risk assessment.
@@ -635,6 +643,8 @@ impl RiskPattern {
             RiskPattern::MaliciousAccountChange => "MaliciousAccountChange",
             RiskPattern::CompositionalDrainPattern => "CompositionalDrainPattern",
             RiskPattern::Impersonation => "Impersonation",
+            RiskPattern::MultiInstructionDrain => "MultiInstructionDrain",
+            RiskPattern::CpiTraceAnomaly => "CpiTraceAnomaly",
         }
     }
 }

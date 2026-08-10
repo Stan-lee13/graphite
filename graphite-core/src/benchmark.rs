@@ -392,6 +392,8 @@ fn make_input_with_intent(
         account_writes: 2,
         cpi_hops: cpi_targets.len() as u32,
         signed_transaction: None,
+        transaction_instructions: vec![],
+        cpi_trace: None,
     }
 }
 
