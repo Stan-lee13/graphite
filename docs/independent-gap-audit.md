@@ -1,6 +1,8 @@
 # Graphite — Independent Gap Analysis, Web Research & Production Readiness Audit
 
 **Date:** 2026-08-08 (third audit cycle)
+
+> **Update (2026-08-10, C28–C33):** the "synced" numbers in §Docs-vs-reality are superseded — now 902 tests / 22 manifests / 561 instructions / 13 risk checks; the benchmark is no longer all-synthetic (3 REAL mainnet exploit cases, C30) and the composition test pins 3 REAL + 2 SYNTHETIC; MAD baseline (C28) and multi-instruction + CPI trace analysis (C29) shipped; the risk-engine exact-equality discriminator bypass (C33) is fixed and regression-pinned.
 **Method:** clean-slate repo inspection (no prior reports trusted), live Solana RPC probing, web research on the 2022–2026 exploit/ecosystem record, benchmark deconstruction, and first-principles architecture comparison.
 **Branch:** `phase2-development` → merged to `main` as `03b15b6` (prior cycle) + this cycle's commit.
 

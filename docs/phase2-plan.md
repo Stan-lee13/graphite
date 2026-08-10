@@ -3,6 +3,8 @@
 **Branch:** `phase2-development` (created from `main` @ `0a143fe`, tag `v0.1.0-alpha`)
 **Target release:** `v0.2.0-beta`
 
+> **Update (2026-08-10, C28–C33):** stale numbers below are superseded — 902 Rust tests / 0 failures (were 844/861); benchmark is now 3 REAL mainnet exploit cases + 2 SYNTHETIC, honestly labeled, avg latency ~2.1ms (C30); MAD robust baseline shipped (C28); multi-instruction + CPI trace analysis shipped (C29); risk-engine discriminator-width bypass fixed (C33). See ROADMAP + GRAPHITE_FINAL_CERTIFICATION_REPORT §0a.
+
 ---
 
 ## Phase 1.5 Completion Summary (2026-08-07)

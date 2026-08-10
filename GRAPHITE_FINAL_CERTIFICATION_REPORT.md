@@ -9,6 +9,32 @@
 
 ---
 
+## 0a. Phase 2 Update (2026-08-10, C28–C33)
+
+This update supersedes the stale numbers in the sections below.
+
+- **Tests:** 902 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 27 Python; 9 AuditBind; TS + Dashboard typecheck clean.
+- **Manifests:** 22 verified manifests / 561 instructions (Drift + Kamino on-boarded C27).
+- **Benchmark:** 16 scored cases, 100% precision/recall. Composition changed (C30): **3 REAL mainnet exploit cases** (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) + 2 SYNTHETIC, honestly labeled. **Avg latency ~2.1ms** with the real-data cases; the ~850μs figure below predates them (and partly reflected error-path blocks fixed in C30).
+
+**§5 Remaining Risks — RESOLVED since this report:**
+
+1. Multi-instruction analysis → **DONE (C29)**: 5 hard-gate rules (AAT approve+transfer, authority-hijack, close-and-sweep, mass multi-transfer sweep, AAT ownership-theft via System assign).
+2. TrustTierCeiling breakdown → **FIXED**: the reduction is reported from the raw pre-cap score whenever it exceeds 0.001.
+3. Baseline poisoning / MAD → **DONE (C28)**: robust median/MAD z-score (`0.6745·(x−median)/MAD`) over a bounded 256-sample window, record-after-check, RPC-only accumulator writes.
+5. CORS → **FIXED**: `GRAPHITE_CORS_ORIGINS` env (comma-separated), denied by default.
+
+**§5 Remaining Risks — STILL OPEN:**
+
+4. Reverse-prefix discriminator matching (no minimum hex length on prefix matches) — accepted by design for SPL Token's 1-byte selectors; C33 unified the Risk Engine onto the manifest's prefix convention, but the ambiguity itself remains a known tradeoff.
+6. **Missing `CatchPanicLayer`** on the Axum router — still open.
+
+**New security fix (C33, forensic audit):** the Risk Engine's intent-mismatch gates compared discriminators by exact equality while the manifest resolver prefix-matches — a padded 8-byte selector (e.g. `0600000000000000`) could evade them. Fixed with unified prefix matching; two regression tests; verified end-to-end via CLI and HTTP server.
+
+**Phase 2 status:** multi-instruction + CPI trace analysis (C29), robust MAD baseline (C28), and real mainnet benchmark data (C30) are DONE. Remaining: L3/L8 production activation, 1,000+ regression fixtures, public deployment, Phase 2 certification + v0.2.0-beta tag.
+
+---
+
 ## 0. Phase 1.5 Completion Update (2026-08-07)
 
 This report originally certified Phase 1/1.5 at commit `e39c32d` (634 tests). Since then the following was completed and live-verified; this update supersedes the stale numbers in the original sections below.
