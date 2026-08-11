@@ -147,54 +147,66 @@ All 11 patterns are real detection logic — not stubs, not placeholders.
 ```
 graphite/
 │
-├── graphite-core/              ← Rust verification engine (the heart)
+├── graphite-core/                  ← Rust verification engine (the heart)
 │   ├── src/
-│   │   ├── verification.rs      ← 8-layer pipeline orchestrator
-│   │   ├── account_resolution.rs← L1: PDA derivation, account matching
-│   │   ├── risk_engine.rs       ← L7: 11 attack pattern detectors (13 checks)
-│   │   ├── confidence_engine.rs ← Weighted signal scoring + tier ceilings
-│   │   ├── policy_engine.rs     ← L6: Per-wallet policy profiles
-│   │   ├── simulation_integrity.rs ← L3: Compute/write/CPI z-score
-│   │   ├── semantic_graph_store.rs ← Trust tier computation
-│   │   ├── transaction_builder.rs  ← Canonical serialization
-│   │   ├── unknown_protocol_mode.rs ← 0.55 confidence cap (P6/P12)
-│   │   ├── server.rs            ← HTTP API (axum)
-│   │   ├── regression_engine.rs ← P10 promotion gate + fixture corpus
-│   │   ├── manifest_registry.rs ← Signed community manifests (G5/P7/P10/P11)
+│   │   ├── verification.rs         ← 8-layer pipeline orchestrator
+│   │   ├── account_resolution.rs  ← L1: PDA derivation (Solana hash-chain), account matching
+│   │   ├── risk_engine.rs         ← L7: 11 attack pattern detectors (13 checks)
+│   │   ├── confidence_engine.rs   ← L6: Weighted signal scoring + tier ceilings
+│   │   ├── policy_engine.rs       ← L6: Per-wallet policy profiles
+│   │   ├── simulation_integrity.rs← L3: 3-signal z-score (compute/writes/CPI) + MAD baseline
+│   │   ├── semantic_graph_store.rs← L5: Trust tier computation, append-only storage
+│   │   ├── transaction_builder.rs ← Canonical serialization, compute budget estimate
+│   │   ├── unknown_protocol_mode.rs← 0.55 confidence cap (P6/P12)
+│   │   ├── tx_pattern_analysis.rs ← Multi-instruction drain + CPI trace analysis (C29)
+│   │   ├── manifest.rs            ← Protocol manifest loading + registry
+│   │   ├── manifest_registry.rs   ← Signed community manifest submissions (G5/P7/P10/P11)
+│   │   ├── regression_engine.rs   ← P10 promotion gate + fixture corpus replay
 │   │   ├── plugin_orchestrator.rs ← P8 plugin framework (sole plugin caller)
-│   │   ├── plugins/             ← Built-in plugins: FakeRewardsDrainer (L7),
-│   │   │                          VerificationEventLogger (analytics)
-│   │   ├── benchmark.rs         ← P16-compliant benchmark suite
-│   │   └── cli.rs               ← CLI (clap)
-│   ├── protocols/               ← 22 JSON protocol manifests (561 instructions)
-│   └── tests/                   ← 976 tests (unit + adversarial + exploit)
+│   │   ├── plugins/               ← Built-in: FakeRewardsDrainer (L7), EventLogger (analytics)
+│   │   ├── live_corpus.rs         ← Live RPC fixture seeding + devnet verification
+│   │   ├── rpc_client.rs          ← Solana RPC client (L3 simulation + L8 execution)
+│   │   ├── durable.rs             ← Snapshot persistence + restart recovery
+│   │   ├── solana_types.rs        ← PDA derivation, base58, type primitives
+│   │   ├── server.rs              ← HTTP API (axum): /verify, /manifests, /health, /api/*
+│   │   ├── benchmark.rs           ← P16-compliant benchmark (16 scored + 2 baselines)
+│   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
+│   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
+│   ├── protocols/                 ← 22 JSON protocol manifests (561 instructions)
+│   └── tests/                     ← 976 tests (unit + adversarial + exploit + live RPC)
 │
-├── dashboard/                   ← React + TS dashboard (5 views, polls /api/*)
+├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
 ├── sdk/
-│   ├── typescript/              ← TS SDK (GraphiteClient)
-│   └── go/                      ← Go SDK (full VerificationResult parity)
+│   ├── typescript/                ← TS SDK (GraphiteClient + AuditBind middleware)
+│   └── go/                        ← Go SDK (16-field VerificationResult parity)
 │
 ├── integrations/
-│   └── solana-agent-kit/        ← SAK v2 integration (verified execution gate)
-│       ├── graphite-sak-bridge.ts ← Pre-flight verification before SAK executes
-│       └── demo.ts              ← End-to-end demo
+│   └── solana-agent-kit/          ← SAK v2 integration (verified execution gate)
+│       ├── graphite-sak-bridge.ts ← Pre-flight Graphite verification before SAK executes
+│       ├── auditbind.ts           ← TOCTOU prevention: re-hash signed tx vs approved content_hash
+│       ├── demo.ts               ← End-to-end demo
+│       ├── devnet-test.ts         ← Live devnet test suite (5 finalized txs)
+│       └── mainnet-benchmark.ts   ← Real mainnet exploit benchmark runner
 │
-├── python-ai-layer/            ← Advisory intent parser (P1: AI never decides)
+├── python-ai-layer/               ← Advisory intent parser (P1: AI never decides)
 │   ├── intent_parser.py
 │   └── test_intent_parser.py
 │
-├── examples/                   ← Sample verification inputs/outputs
-├── schemas/                    ← JSON schemas for API contracts
-├── docs/                       ← Audit reports, certification, grant proposal
+├── examples/                      ← Sample verification inputs/outputs
+├── schemas/                       ← JSON schemas (proposed-intent, verification-result)
+├── docs/                          ← Audit reports, certification, grant proposal
+├── .github/                       ← CI workflow + issue/PR templates
 │
-├── ARCHITECTURE.md             ← System design specification
-├── ROADMAP.md                  ← Phase 1 (done) → Phase 2 (in progress) → Phase 3+
-├── SECURITY.md                 ← Security policy + known limitations
-├── CONTRIBUTING.md             ← How to contribute
-└── README.md                   ← You are here
+├── ARCHITECTURE.md                ← System design specification
+├── ROADMAP.md                     ← Phase 1 (done) → Phase 2 (in progress) → Phase 3+
+├── SECURITY.md                    ← Security policy + known limitations
+├── CONTRIBUTING.md                 ← How to contribute
+├── GRAPHITE_FINAL_CERTIFICATION_REPORT.md ← Phase 2 certification
+├── Dockerfile                     ← Multi-stage container build
+├── docker-compose.yml             ← One-command deploy
+└── README.md                      ← You are here
 ```
-
 ---
 
 ## Quick Start
