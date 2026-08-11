@@ -51,7 +51,7 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-22 JSON manifests in `protocols/` (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Tier-1: Drift, Kamino — all confirmed executable on mainnet). Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets. 561 instructions total.
+28 JSON manifests in `protocols/` (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Tier-1: Drift, Kamino + Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi — all confirmed executable on mainnet). Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets. 695 instructions total.
 
 All program IDs verified against official on-chain sources (pinned by `test_all_seed_manifest_program_ids_are_canonical`). See `CONTRIBUTING.md` for how to add a new manifest.
 

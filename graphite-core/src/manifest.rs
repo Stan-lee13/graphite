@@ -286,6 +286,12 @@ pub fn load_seed_manifests() -> ManifestRegistry {
         "../protocols/metaplex-token-metadata.json",
         "../protocols/drift.json",
         "../protocols/kamino-lending.json",
+        "../protocols/phoenix.json",
+        "../protocols/openbook-v2.json",
+        "../protocols/switchboard-v2.json",
+        "../protocols/jupiter-limit.json",
+        "../protocols/solend.json",
+        "../protocols/marginfi-v2.json",
     ];
 
     for p in &seed_paths {
@@ -356,6 +362,24 @@ pub fn load_seed_manifests() -> ManifestRegistry {
                 "../protocols/kamino-lending.json" => {
                     registry.load_from_json(include_str!("../protocols/kamino-lending.json"))
                 }
+                "../protocols/phoenix.json" => {
+                    registry.load_from_json(include_str!("../protocols/phoenix.json"))
+                }
+                "../protocols/openbook-v2.json" => {
+                    registry.load_from_json(include_str!("../protocols/openbook-v2.json"))
+                }
+                "../protocols/switchboard-v2.json" => {
+                    registry.load_from_json(include_str!("../protocols/switchboard-v2.json"))
+                }
+                "../protocols/jupiter-limit.json" => {
+                    registry.load_from_json(include_str!("../protocols/jupiter-limit.json"))
+                }
+                "../protocols/solend.json" => {
+                    registry.load_from_json(include_str!("../protocols/solend.json"))
+                }
+                "../protocols/marginfi-v2.json" => {
+                    registry.load_from_json(include_str!("../protocols/marginfi-v2.json"))
+                }
                 _ => unreachable!(),
             };
 
@@ -372,6 +396,7 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+    use std::collections::BTreeSet;
 
     /// camelCase -> snake_case (Anchor IDL display name -> Rust fn name), the
     /// names used in the sha256("global:<name>") discriminator derivation.
@@ -879,8 +904,8 @@ mod tests {
         let programs = verified["programs"].as_array().expect("programs array");
         assert_eq!(
             programs.len(),
-            22,
-            "verified registry must list exactly the 22 seed programs (C27 added Drift + Kamino)"
+            28,
+            "verified registry must list exactly the 28 seed programs (C27 added Drift + Kamino, C46 added Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi)"
         );
 
         let mut verified_by_id: std::collections::BTreeMap<&str, &str> =
@@ -1006,6 +1031,179 @@ mod tests {
                  MemoSq4gq was wrongly removed by C1 and is EXEC on mainnet)"
             );
         }
+    }
+
+    /// C46 — the 6 newly onboarded protocol manifests must be GROUNDED:
+    ///  1. every program ID appears in verified_program_ids.json (on-chain
+    ///     evidence: getAccountInfo executable=true, 2026-08-10),
+    ///  2. every instruction has a valid-hex discriminator and at least one
+    ///     account,
+    ///  3. pinned known-answer discriminators, derived independently from the
+    ///     official IDLs (sha256("global:"+snake_case)[..8] for Anchor-style
+    ///     programs; 1-byte tags for the native shank Phoenix program),
+    ///  4. the derivation mode per program is asserted (Phoenix must be a
+    ///     1-byte tag — its native encoding is NOT Anchor hashed; a wrong
+    ///     derivation would silently break detection for every instruction).
+    #[test]
+    fn test_new_protocol_manifests_are_grounded() {
+        let verified: serde_json::Value =
+            serde_json::from_str(include_str!("../protocols/verified_program_ids.json"))
+                .expect("verified_program_ids.json must be valid JSON");
+        let verified_ids: BTreeSet<&str> = verified["programs"]
+            .as_array()
+            .expect("programs array")
+            .iter()
+            .map(|p| p["program_id"].as_str().expect("program_id"))
+            .collect();
+
+        let registry = load_seed_manifests();
+        let new_programs = [
+            ("Phoenix", "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY"),
+            ("OpenBook V2", "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb"),
+            ("Switchboard", "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f"),
+            (
+                "Jupiter Limit Order",
+                "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu",
+            ),
+            ("Solend", "So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo"),
+            ("Marginfi", "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA"),
+        ];
+        for (name, id) in new_programs {
+            assert!(
+                verified_ids.contains(id),
+                "new program '{name}' ({id}) missing from verified_program_ids.json — \
+                 on-chain evidence required before onboarding"
+            );
+            let m = registry
+                .get(id)
+                .unwrap_or_else(|| panic!("manifest for '{name}' not registered"));
+            assert_eq!(m.protocol.name, name, "manifest name mismatch for {id}");
+            assert!(
+                !m.instructions.is_empty(),
+                "manifest '{name}' has no instructions"
+            );
+            for ix in &m.instructions {
+                hex::decode(&ix.discriminator).unwrap_or_else(|e| {
+                    panic!(
+                        "{name} instruction '{}' has invalid discriminator hex: {e}",
+                        ix.name
+                    )
+                });
+                assert!(
+                    !ix.accounts.is_empty(),
+                    "{name} '{}' has no accounts",
+                    ix.name
+                );
+            }
+        }
+
+        // Independently-derived known-answer pins (official IDLs).
+        fn anchor_disc(name: &str) -> String {
+            let mut h = Sha256::new();
+            h.update(b"global:");
+            h.update(name.as_bytes());
+            hex::encode(&h.finalize()[..8])
+        }
+        let pins: &[(&str, &str, &str)] = &[
+            // Phoenix: 1-byte shank tags (NOT Anchor-hashed — verified against
+            // live mainnet: 0x09=CancelUpToWithFreeFunds, 0x0f=Log,
+            // 0x10=PlaceMultiplePostOnlyOrders).
+            ("PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", "Swap", "00"),
+            (
+                "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY",
+                "PlaceLimitOrder",
+                "02",
+            ),
+            (
+                "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY",
+                "CancelUpToWithFreeFunds",
+                "09",
+            ),
+            // OpenBook v2: sha256("global:" + snake_case) — verified on-chain
+            // (placeTakeOrder -> place_take_order observed 032c47031ac7cb55).
+            (
+                "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb",
+                "place_take_order",
+                "032c47031ac7cb55",
+            ),
+            (
+                "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb",
+                "cancel_all_and_place_orders",
+                "809bde3cba28e132",
+            ),
+            (
+                "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb",
+                "settle_funds",
+                "ee40a3604bab1021",
+            ),
+            // Switchboard: Anchor convention.
+            (
+                "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f",
+                "aggregator_init",
+                "c829580b2415b56e",
+            ),
+            (
+                "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f",
+                "vrf_request_randomness",
+                "e6790ea41cde7576",
+            ),
+            // Jupiter Limit Order: Anchor convention, snake_case names.
+            (
+                "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu",
+                "initialize_order",
+                "856e4aaf709ff59f",
+            ),
+            (
+                "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu",
+                "flash_fill_order",
+                "fc681286a44e128c",
+            ),
+        ];
+        for (pid, name, expected) in pins {
+            let m = registry.get(pid).expect("pinned program registered");
+            let ix = m
+                .instructions
+                .iter()
+                .find(|i| i.name == *name)
+                .unwrap_or_else(|| panic!("pinned instruction '{name}' missing from {pid}"));
+            if ix.discriminator.len() == 16 {
+                assert_eq!(
+                    ix.discriminator,
+                    anchor_disc(name),
+                    "discriminator for {pid} {name} must equal sha256('global:'+name)[..8]"
+                );
+            }
+            assert_eq!(
+                ix.discriminator, *expected,
+                "known-answer mismatch for {pid} {name}"
+            );
+        }
+
+        // Native / on-chain-observed discriminators (non-Anchor).
+        let solend = registry
+            .get("So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo")
+            .expect("solend registered");
+        let borrow = solend
+            .instructions
+            .iter()
+            .find(|i| i.name == "BorrowObligationLiquidity")
+            .expect("solend BorrowObligationLiquidity");
+        assert_eq!(
+            borrow.discriminator, "0a",
+            "Solend tag 10 (official SDK unpack)"
+        );
+        let mf = registry
+            .get("MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA")
+            .expect("marginfi registered");
+        let mf_borrow = mf
+            .instructions
+            .iter()
+            .find(|i| i.name == "lending_account_borrow")
+            .expect("marginfi lending_account_borrow");
+        assert_eq!(
+            mf_borrow.discriminator, "047e74353005d41f",
+            "marginfi borrow discriminator observed on mainnet"
+        );
     }
 
     /// The exact regression this pin guards: a manifest whose program_id does

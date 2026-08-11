@@ -4,8 +4,8 @@
 **Date:** August 10, 2026
 **Auditor:** Codebuff (independent revalidation pass C39–C42)
 **Base:** 948 tests / 0 failures / 0 clippy / 0 warnings (claimed at C38)
-**Final:** 984 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
-**Manifests:** 22 / 561 instructions
+**Final:** 987 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
+**Manifests:** 28 / 695 instructions
 **Commits audited and extended:** C39 (fresh adversarial pass), C40 (L3/L8 live RPC validation),
 C41 (2,181-fixture regression corpus + 4 root fixes it surfaced), C42 (Kamino V2 real layouts,
 registry determinism fix, universal-CPI audit test)
@@ -21,7 +21,7 @@ registry determinism fix, universal-CPI audit test)
   shapes the original suite did not use. One real residual was found and fixed: a
   whitespace-padded discriminator (`"03 "`) passed the risk engine's hex handling — the
   manifest gate now fails it closed end-to-end.
-- **22 manifests / 561 instructions** — confirmed; every program ID base58-decodes to 32
+- **28 manifests / 695 instructions** — confirmed; every program ID base58-decodes to 32
   bytes (this revalidation's structural audit).
 - **Benchmark 100% precision/recall on 16 scored cases** — confirmed; 18 cases total
   (3 REAL mainnet exploits + 2 SYNTHETIC honestly labeled + 13 constructed).
@@ -52,7 +52,7 @@ registry determinism fix, universal-CPI audit test)
 
 | Split | Count | Content | Provenance |
 |---|---|---|---|
-| dev | 2,112 | Manifest-driven canonical + structural variants (width, near-prefix, no-intent, intent-mismatch, account-overflow, unknown-instruction) for every instruction of all 22 manifests | synthetic-manifest |
+| dev | 2,112 | Manifest-driven canonical + structural variants (width, near-prefix, no-intent, intent-mismatch, account-overflow, unknown-instruction) for every instruction of all 28 manifests | synthetic-manifest |
 | regression | 31 | Re-pinned attack classes: P0-1..P0-4, Phase 2 multi-instruction + CPI-trace, risk-class gates, ordering | synthetic-attack / synthetic-benign |
 | holdout | 38 | 35 real mainnet exploit signatures (SolPhishHunter arXiv:2505.04094) + 3 real mainnet successful transactions (Jupiter swap, pump.fun, System) | real-mainnet |
 
@@ -177,7 +177,7 @@ warranted by measurement.**
   reverse-prefix discriminator ambiguity (accepted design tradeoff for SPL Token 1-byte
   selectors); intent parser is a pattern matcher, not an LLM — intent signals are advisory
   inputs, never unconditional authorization (Check 10 still gates high-risk classes).
-- **Remaining assumptions:** manifest correctness = on-chain truth (22 manifests audited;
+- **Remaining assumptions:** manifest correctness = on-chain truth (28 manifests audited;
   registry growth requires the G5 signed-submission gate); L3/L8 correctness depends on RPC
   honesty — anti-poisoning and no-fabrication properties are enforced and live-verified.
 - **Universal-CPI audit (mandate 13):** the infrastructure exclusion (Token/Token-2022/
@@ -193,7 +193,7 @@ warranted by measurement.**
 |---|---|---|---|---|
 | Phase 1 — 8-layer verification engine | verification.rs L1–L8 | benchmark 16/16 correct | 984 tests | Complete |
 | Phase 1 — risk engine (8+ patterns) | risk_engine.rs (checks 1–10 + Phase 2 gates) | 100% precision/recall | p0/cert suites, corpus | Complete |
-| Phase 1 — 22 manifests / 561 instructions | manifest.rs registry + JSON | IDs verified executable on mainnet (getAccountInfo) | structural audit, prefix tests | Strong |
+| Phase 1 — 28 manifests / 695 instructions | manifest.rs registry + JSON | IDs verified executable on mainnet (getAccountInfo) | structural audit, prefix tests | Strong |
 | Phase 1.5 — server hardening (auth/rate-limit/CORS/audit log) | server.rs env-config | /health + concurrent storm | hardening tests | Complete |
 | Phase 1.5 — SAK integration | integrations/solana-agent-kit | 5 finalized devnet txs | integration tests | Complete |
 | Phase 1.5 — content_hash determinism (P2) | verification.rs + regression_engine.rs | same input → same hash | P2 tests | Complete |

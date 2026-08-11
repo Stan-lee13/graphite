@@ -783,6 +783,9 @@ pub fn is_swap_program(program_id: &str) -> bool {
         "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
         "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA (periodic swaps)
         "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (bonding-curve buy/sell)
+        "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", // Phoenix spot DEX
+        "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb", // OpenBook V2 CLOB
+        "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu", // Jupiter Limit Order
     ];
     SWAP_PROGRAMS.contains(&program_id)
 }

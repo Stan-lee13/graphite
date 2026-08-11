@@ -578,4 +578,337 @@ mod tests {
             "mutated instruction data must yield a different PDA (mismatch detected)"
         );
     }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Drift + Kamino PDA grounding (C46) — every seed template and every
+    // known-answer PDA below was verified against the OFFICIAL sources:
+    //   Drift:  velocity-exchange/protocol-v2 (IDL + sdk/src/addresses/pda.ts)
+    //   Kamino: Kamino-Finance/klend libs/klend-interface/src/pda.rs
+    //           (+ klend-sdk codegen + live on-chain decoded streams)
+    // Known-answer addresses are computed with the OFFICIAL
+    // `@solana/web3.js` PublicKey.findProgramAddressSync — an independent
+    // implementation — for real accounts (the Kamino mainnet lending market
+    // and USDC reserve from the klend docs, and the Graphite devnet wallet).
+    // ───────────────────────────────────────────────────────────────────────
+
+    const DRIFT_PROGRAM: &str = "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH";
+    const KAMINO_PROGRAM: &str = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+    const WALLET: &str = "CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR";
+    const KAMINO_MARKET: &str = "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF";
+    const KAMINO_RESERVE: &str = "D6q6wuQSrifJKZYpR1M8R4YawnLDtDsMmWM1NbBmgJ59";
+    const SEED1: &str = "11111111111111111111111111111111";
+    const SEED2: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+    // JS-SDK pinned known answers (findProgramAddressSync).
+    const DRIFT_SPOT_MARKET_VAULT_1: &str = "DfYCNezifxAEsQbAJ1b3j6PX3JVBe8fu11KBhxsbw5d2";
+    const DRIFT_USER_0: &str = "5FVw4c5aD1QfaEKqb57LGio6zLTxH2hR29Vuk9MuUPHM";
+    const DRIFT_USER_STATS: &str = "E493Zerg74mec5ZvtxhPr5wwKKyfEScU2f3fpkmkWn8J";
+    const DRIFT_SIGNER: &str = "JCNCMFXo5M5qwUPg2Utu1u6YWp3MbygxqBsBeXXJfrw";
+    const KAMINO_LMA: &str = "9DrvZvyWh1HuAoZxvYWMvkf2XCzryCpGgHqrMjyDWpmo";
+    const KAMINO_OBLIGATION: &str = "FH2DWzAo5fpCYwV8by18u6AmGKGFvzt4Un3nbSdz16FT";
+    const KAMINO_RESERVE_LIQ_SUPPLY: &str = "JCdAwUu36ka4C9BjeZfMRSx549PmBSqEMzppjjzsMQRZ";
+    const KAMINO_FEE_RECEIVER: &str = "FRhpLGAS3sYQLevt7tqkrkT8GT2BYNBnwcjM3Zbyqixq";
+    const KAMINO_RESERVE_COLL_MINT: &str = "847kVN2ycaJxTMz3XDjFKGpVRhE2PdwmDrugMBg7C318";
+    const KAMINO_RESERVE_COLL_SUPPLY: &str = "CeHP7ew8VbF3a4QyEqsVntnrZsKdR9zcY1jXid9hyZDq";
+    const KAMINO_USER_META: &str = "HEJjihkfYGrRJJosvyGUQ1pGUoffEGis9a2ZpvNectbw";
+
+    fn resolve_real(
+        program: &str,
+        disc: &str,
+        accounts: &[&str],
+        data: Option<Vec<u8>>,
+    ) -> AccountResolutionResult {
+        let registry = load_seed_manifests();
+        let input = AccountResolutionInput {
+            program_id: program.to_string(),
+            instruction_discriminator: disc.to_string(),
+            account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
+            instruction_data: data,
+        };
+        resolve_accounts(&input, &registry).unwrap()
+    }
+
+    fn seeds_of(program: &str, disc: &str, account_idx: usize) -> Vec<String> {
+        let registry = load_seed_manifests();
+        let ix = registry
+            .find_instruction(program, disc)
+            .unwrap_or_else(|| panic!("{program} {disc} not in seed manifests"));
+        ix.accounts[account_idx].pda_seeds.clone()
+    }
+
+    #[test]
+    fn test_drift_pda_templates_match_official_sdk() {
+        // deposit/transferDeposit/withdraw: marketIndex is the FIRST arg
+        // (u16 LE at instruction bytes 8..10) — verified in the IDL.
+        assert_eq!(
+            seeds_of(DRIFT_PROGRAM, "f223c68952e1f2b6", 4), // deposit spotMarketVault
+            vec!["spot_market_vault", "{instruction_data:8:10}"]
+        );
+        assert_eq!(
+            seeds_of(DRIFT_PROGRAM, "b712469c946da122", 4), // withdraw spotMarketVault
+            vec!["spot_market_vault", "{instruction_data:8:10}"]
+        );
+        // initializeUser: [b"user", authority, subAccountId u16 LE]; the IDL
+        // places authority at account index 3 and subAccountId as the first
+        // arg (bytes 8..10).
+        assert_eq!(
+            seeds_of(DRIFT_PROGRAM, "6f11b9fa3c7a26fe", 0), // user
+            vec!["user", "{account_3}", "{instruction_data:8:10}"]
+        );
+        // initializeUserStats: [b"user_stats", authority]; authority at index 2.
+        assert_eq!(
+            seeds_of(DRIFT_PROGRAM, "fef34862fb82a8d5", 0), // userStats
+            vec!["user_stats", "{account_2}"]
+        );
+        // drift_signer: [b"drift_signer"] — SDK pda.ts getDriftSignerPublicKey.
+        assert_eq!(
+            seeds_of(DRIFT_PROGRAM, "b712469c946da122", 5), // withdraw driftSigner
+            vec!["drift_signer"]
+        );
+    }
+
+    #[test]
+    fn test_drift_spot_market_vault_derives_js_sdk_known_answer() {
+        // deposit(marketIndex=1, amount=0, reduceOnly=false):
+        // 8-byte disc + [01 00] at bytes 8..10.
+        let mut data = vec![0u8; 19];
+        data[0..8].copy_from_slice(&hex::decode("f223c68952e1f2b6").unwrap());
+        data[8] = 0x01;
+        data[9] = 0x00; // marketIndex = 1 (u16 LE)
+        let r = resolve_real(
+            DRIFT_PROGRAM,
+            "f223c68952e1f2b6",
+            &[
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                DRIFT_SPOT_MARKET_VAULT_1,
+                WALLET,
+                WALLET,
+            ],
+            Some(data),
+        );
+        assert!(!r.resolved_accounts[4].pda_mismatch, "vault PDA must match");
+        assert_eq!(r.resolved_accounts[4].address, DRIFT_SPOT_MARKET_VAULT_1);
+    }
+
+    #[test]
+    fn test_drift_user_derives_js_sdk_known_answer() {
+        // initializeUser(subAccountId=0, name=[0;32]): [b"user", authority,
+        // 00 00] where authority is account index 3.
+        let mut data = vec![0u8; 42];
+        data[0..8].copy_from_slice(&hex::decode("6f11b9fa3c7a26fe").unwrap());
+        let r = resolve_real(
+            DRIFT_PROGRAM,
+            "6f11b9fa3c7a26fe",
+            &[DRIFT_USER_0, WALLET, WALLET, WALLET, WALLET, WALLET, WALLET],
+            Some(data),
+        );
+        assert!(!r.resolved_accounts[0].pda_mismatch, "user PDA must match");
+        assert_eq!(r.resolved_accounts[0].address, DRIFT_USER_0);
+    }
+
+    #[test]
+    fn test_drift_user_stats_derives_js_sdk_known_answer() {
+        // initializeUserStats(): [b"user_stats", authority] with authority at
+        // account index 2.
+        let data = hex::decode("fef34862fb82a8d5").unwrap();
+        let r = resolve_real(
+            DRIFT_PROGRAM,
+            "fef34862fb82a8d5",
+            &[DRIFT_USER_STATS, WALLET, WALLET, WALLET, WALLET, WALLET],
+            Some(data),
+        );
+        assert!(
+            !r.resolved_accounts[0].pda_mismatch,
+            "user_stats PDA must match"
+        );
+        assert_eq!(r.resolved_accounts[0].address, DRIFT_USER_STATS);
+    }
+
+    #[test]
+    fn test_drift_signer_derives_js_sdk_known_answer() {
+        // withdraw(marketIndex=1): drift_signer = [b"drift_signer"].
+        let mut data = vec![0u8; 19];
+        data[0..8].copy_from_slice(&hex::decode("b712469c946da122").unwrap());
+        data[8] = 0x01;
+        let r = resolve_real(
+            DRIFT_PROGRAM,
+            "b712469c946da122",
+            &[
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                DRIFT_SPOT_MARKET_VAULT_1,
+                DRIFT_SIGNER,
+                WALLET,
+                WALLET,
+            ],
+            Some(data),
+        );
+        assert!(
+            !r.resolved_accounts[5].pda_mismatch,
+            "drift_signer PDA must match"
+        );
+        assert_eq!(r.resolved_accounts[5].address, DRIFT_SIGNER);
+    }
+
+    #[test]
+    fn test_kamino_pda_templates_match_official_pda_rs() {
+        // borrowObligationLiquidity lendingMarketAuthority: pda.rs
+        // lending_market_authority = [b"lma", lending_market]; lending market
+        // is account index 2 in this instruction.
+        assert_eq!(
+            seeds_of(KAMINO_PROGRAM, "797f12cc49f5e141", 3), // lendingMarketAuthority
+            vec!["lma", "{account_2}"]
+        );
+        // initObligation obligation: pda.rs obligation(tag, id, owner,
+        // lending_market, seed1, seed2) — the manifest carries the six seeds
+        // with tag/id from instruction bytes 8..10 and owner/market/seed1/
+        // seed2 from account indices 0/3/4/5 (codegen-verified order).
+        assert_eq!(
+            seeds_of(KAMINO_PROGRAM, "fb0ae74c1b0b9f60", 2),
+            vec![
+                "{instruction_data:8:9}",
+                "{instruction_data:9:10}",
+                "{account_0}",
+                "{account_3}",
+                "{account_4}",
+                "{account_5}"
+            ]
+        );
+        // initReserve reserve PDAs: pda.rs reserve_liquidity_supply / fee /
+        // coll_mint / coll_supply, all seeded with the reserve account at
+        // account index 3 (IDL-verified).
+        for (idx, prefix) in [
+            (5, "reserve_liq_supply"),
+            (6, "fee_receiver"),
+            (7, "reserve_coll_mint"),
+            (8, "reserve_coll_supply"),
+        ] {
+            assert_eq!(
+                seeds_of(KAMINO_PROGRAM, "8af547e19904032b", idx),
+                vec![prefix, "{account_3}"]
+            );
+        }
+        // initUserMetadata userMetadata: pda.rs user_metadata = [b"user_meta",
+        // owner]; owner is account index 0 (on-chain decoded stream: 6 accounts,
+        // owner first).
+        assert_eq!(
+            seeds_of(KAMINO_PROGRAM, "75a9b045c5170fa2", 2),
+            vec!["user_meta", "{account_0}"]
+        );
+    }
+
+    #[test]
+    fn test_kamino_lma_derives_js_sdk_known_answer() {
+        // borrowObligationLiquidity: [b"lma", lending_market] — lendingMarket
+        // at account index 2.
+        let r = resolve_real(
+            KAMINO_PROGRAM,
+            "797f12cc49f5e141",
+            &[
+                WALLET,
+                WALLET,
+                KAMINO_MARKET,
+                KAMINO_LMA,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+            ],
+            None,
+        );
+        assert!(!r.resolved_accounts[3].pda_mismatch, "lma PDA must match");
+        assert_eq!(r.resolved_accounts[3].address, KAMINO_LMA);
+    }
+
+    #[test]
+    fn test_kamino_obligation_derives_js_sdk_known_answer() {
+        // initObligation(tag=0, id=0): seeds [00, 00, owner(acct0), market(
+        // acct3), seed1(acct4), seed2(acct5)].
+        let mut data = vec![0u8; 10];
+        data[0..8].copy_from_slice(&hex::decode("fb0ae74c1b0b9f60").unwrap());
+        let r = resolve_real(
+            KAMINO_PROGRAM,
+            "fb0ae74c1b0b9f60",
+            &[
+                WALLET,
+                WALLET,
+                KAMINO_OBLIGATION,
+                KAMINO_MARKET,
+                SEED1,
+                SEED2,
+                WALLET,
+                WALLET,
+                WALLET,
+            ],
+            Some(data),
+        );
+        assert!(
+            !r.resolved_accounts[2].pda_mismatch,
+            "obligation PDA must match"
+        );
+        assert_eq!(r.resolved_accounts[2].address, KAMINO_OBLIGATION);
+    }
+
+    #[test]
+    fn test_kamino_reserve_pdas_derive_js_sdk_known_answers() {
+        // initReserve: four PDAs seeded with the reserve account (index 3).
+        let r = resolve_real(
+            KAMINO_PROGRAM,
+            "8af547e19904032b",
+            &[
+                WALLET,
+                WALLET,
+                WALLET,
+                KAMINO_RESERVE,
+                WALLET,
+                KAMINO_RESERVE_LIQ_SUPPLY,
+                KAMINO_FEE_RECEIVER,
+                KAMINO_RESERVE_COLL_MINT,
+                KAMINO_RESERVE_COLL_SUPPLY,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+            ],
+            None,
+        );
+        for (idx, expected) in [
+            (5, KAMINO_RESERVE_LIQ_SUPPLY),
+            (6, KAMINO_FEE_RECEIVER),
+            (7, KAMINO_RESERVE_COLL_MINT),
+            (8, KAMINO_RESERVE_COLL_SUPPLY),
+        ] {
+            assert!(
+                !r.resolved_accounts[idx].pda_mismatch,
+                "reserve PDA {idx} must match"
+            );
+            assert_eq!(r.resolved_accounts[idx].address, expected);
+        }
+    }
+
+    #[test]
+    fn test_kamino_user_metadata_derives_js_sdk_known_answer() {
+        // initUserMetadata: [b"user_meta", owner] — owner at account index 0.
+        let r = resolve_real(
+            KAMINO_PROGRAM,
+            "75a9b045c5170fa2",
+            &[WALLET, WALLET, KAMINO_USER_META, WALLET, WALLET, WALLET],
+            None,
+        );
+        assert!(
+            !r.resolved_accounts[2].pda_mismatch,
+            "user_metadata PDA must match"
+        );
+        assert_eq!(r.resolved_accounts[2].address, KAMINO_USER_META);
+    }
 }

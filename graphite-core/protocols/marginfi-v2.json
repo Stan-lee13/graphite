@@ -1,0 +1,247 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Marginfi",
+  "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
+  "website": "https://www.marginfi.com",
+  "github": "https://github.com/mrgn-xyz/marginfi-v2",
+  "category": "lending"
+ },
+ "version": {
+  "label": "marginfi-v2",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "lending_account_borrow",
+   "discriminator": "047e74353005d41f",
+   "accounts": [
+    {
+     "name": "account_0",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_1",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_2",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_3",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_4",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_5",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_6",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_7",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "discriminator + account layout captured from live mainnet transactions"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "lending_account_start_flashloan",
+   "discriminator": "0e8321dc51bab46b",
+   "accounts": [
+    {
+     "name": "account_0",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_1",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_2",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "discriminator + account layout captured from live mainnet transactions"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "onchain_observed_shape_7acct",
+   "discriminator": "4fd1acb1de33ad97",
+   "accounts": [
+    {
+     "name": "account_0",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_1",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_2",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_3",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_4",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_5",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_6",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "discriminator + account layout captured from live mainnet transactions"
+   ],
+   "risk_class": ""
+  },
+  {
+   "name": "lending_account_end_flashloan",
+   "discriminator": "697cc96a9902089c",
+   "accounts": [
+    {
+     "name": "account_0",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_1",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_2",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_3",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "discriminator + account layout captured from live mainnet transactions"
+   ],
+   "risk_class": "transfer"
+  }
+ ],
+ "trust_tier": "OfficialManifest",
+ "verification": {
+  "program_id_verified_on_chain": true,
+  "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true",
+  "discriminators_source": "live mainnet transactions (marginfi publishes no IDL file); discriminators match sha256('global:'+instruction) prefix",
+  "verified_at": "2026-08-10",
+  "notes": "4 instruction shapes captured from live mainnet transactions (incl. inner CPIs); marginfi does not publish an official IDL file."
+ }
+}

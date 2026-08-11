@@ -1,0 +1,1172 @@
+{
+ "InitLendingMarket": {
+  "tag": 0,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Lending market account - uninitialized."
+   ],
+   [
+    1,
+    "",
+    "Rent sysvar."
+   ],
+   [
+    2,
+    "",
+    "Token program id."
+   ],
+   [
+    3,
+    "",
+    "Oracle program id."
+   ],
+   [
+    4,
+    "",
+    "Switchboard Oracle program id."
+   ]
+  ]
+ },
+ "SetLendingMarketOwnerAndConfig": {
+  "tag": 1,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Lending market account."
+   ],
+   [
+    1,
+    "signer",
+    "Current owner."
+   ]
+  ]
+ },
+ "InitReserve": {
+  "tag": 2,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination collateral token account - uninitialized."
+   ],
+   [
+    2,
+    "writable",
+    "Reserve account - uninitialized."
+   ],
+   [
+    3,
+    "",
+    "Reserve liquidity SPL Token mint."
+   ],
+   [
+    4,
+    "writable",
+    "Reserve liquidity supply SPL Token account - uninitialized."
+   ],
+   [
+    5,
+    "writable",
+    "Reserve liquidity fee receiver - uninitialized."
+   ],
+   [
+    6,
+    "writable",
+    "Reserve collateral SPL Token mint - uninitialized."
+   ],
+   [
+    7,
+    "writable",
+    "Reserve collateral token supply - uninitialized."
+   ],
+   [
+    8,
+    "",
+    "Pyth product account."
+   ],
+   [
+    9,
+    "",
+    "Pyth price account."
+   ],
+   [
+    10,
+    "",
+    "Switchboard price feed account. used as a backup oracle"
+   ],
+   [
+    11,
+    "",
+    "Lending market account."
+   ],
+   [
+    12,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    13,
+    "signer",
+    "Lending market owner."
+   ],
+   [
+    14,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    15,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    16,
+    "",
+    "Rent sysvar."
+   ],
+   [
+    17,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "RefreshReserve": {
+  "tag": 3,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    1,
+    "",
+    "Pyth Reserve liquidity oracle account."
+   ],
+   [
+    2,
+    "",
+    "Switchboard Reserve liquidity oracle account."
+   ],
+   [
+    3,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ]
+  ]
+ },
+ "DepositReserveLiquidity": {
+  "tag": 4,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination collateral token account."
+   ],
+   [
+    2,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    3,
+    "writable",
+    "Reserve liquidity supply SPL Token account."
+   ],
+   [
+    4,
+    "writable",
+    "Reserve collateral SPL Token mint."
+   ],
+   [
+    5,
+    "",
+    "Lending market account."
+   ],
+   [
+    6,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    7,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    8,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    9,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "RedeemReserveCollateral": {
+  "tag": 5,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source collateral token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination liquidity token account."
+   ],
+   [
+    2,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    3,
+    "writable",
+    "Reserve collateral SPL Token mint."
+   ],
+   [
+    4,
+    "writable",
+    "Reserve liquidity supply SPL Token account."
+   ],
+   [
+    5,
+    "",
+    "Lending market account."
+   ],
+   [
+    6,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    7,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    8,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    9,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "InitObligation": {
+  "tag": 6,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Obligation account - uninitialized."
+   ],
+   [
+    1,
+    "",
+    "Lending market account."
+   ],
+   [
+    2,
+    "signer",
+    "Obligation owner."
+   ],
+   [
+    3,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    4,
+    "",
+    "Rent sysvar."
+   ],
+   [
+    5,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "RefreshObligation": {
+  "tag": 7,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Obligation account."
+   ],
+   [
+    1,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ]
+  ]
+ },
+ "DepositObligationCollateral": {
+  "tag": 8,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source collateral token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination deposit reserve collateral supply SPL Token account."
+   ],
+   [
+    2,
+    "writable",
+    "Deposit reserve account."
+   ],
+   [
+    3,
+    "writable",
+    "Obligation account."
+   ],
+   [
+    4,
+    "",
+    "Lending market account."
+   ],
+   [
+    5,
+    "signer",
+    "Obligation owner."
+   ],
+   [
+    6,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    7,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    8,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "WithdrawObligationCollateral": {
+  "tag": 9,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source withdraw reserve collateral supply SPL Token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination collateral token account."
+   ],
+   [
+    2,
+    "",
+    "Withdraw reserve account - refreshed."
+   ],
+   [
+    3,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    4,
+    "",
+    "Lending market account."
+   ],
+   [
+    5,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    6,
+    "signer",
+    "Obligation owner."
+   ],
+   [
+    7,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    8,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "BorrowObligationLiquidity": {
+  "tag": 10,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source borrow reserve liquidity supply SPL Token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination liquidity token account."
+   ],
+   [
+    2,
+    "writable",
+    "Borrow reserve account - refreshed."
+   ],
+   [
+    3,
+    "writable",
+    "Borrow reserve liquidity fee receiver account."
+   ],
+   [
+    4,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    5,
+    "",
+    "Lending market account."
+   ],
+   [
+    6,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    7,
+    "signer",
+    "Obligation owner."
+   ],
+   [
+    8,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    9,
+    "",
+    "Token program id."
+   ],
+   [
+    10,
+    "optional, writable",
+    "Host fee receiver account."
+   ]
+  ]
+ },
+ "RepayObligationLiquidity": {
+  "tag": 11,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination repay reserve liquidity supply SPL Token account."
+   ],
+   [
+    2,
+    "writable",
+    "Repay reserve account - refreshed."
+   ],
+   [
+    3,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    4,
+    "",
+    "Lending market account."
+   ],
+   [
+    5,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    6,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    7,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "LiquidateObligation": {
+  "tag": 12,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination collateral token account."
+   ],
+   [
+    2,
+    "writable",
+    "Repay reserve account - refreshed."
+   ],
+   [
+    3,
+    "writable",
+    "Repay reserve liquidity supply SPL Token account."
+   ],
+   [
+    4,
+    "",
+    "Withdraw reserve account - refreshed."
+   ],
+   [
+    5,
+    "writable",
+    "Withdraw reserve collateral supply SPL Token account."
+   ],
+   [
+    6,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    7,
+    "",
+    "Lending market account."
+   ],
+   [
+    8,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    9,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    10,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    11,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "FlashLoan": {
+  "tag": 13,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination liquidity token account."
+   ],
+   [
+    2,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    3,
+    "writable",
+    "Flash loan fee receiver account."
+   ],
+   [
+    4,
+    "writable",
+    "Host fee receiver."
+   ],
+   [
+    5,
+    "",
+    "Lending market account."
+   ],
+   [
+    6,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    7,
+    "",
+    "Token program id."
+   ],
+   [
+    8,
+    "",
+    "Flash loan receiver program id."
+   ],
+   [
+    0,
+    "writable",
+    "Source liquidity (matching the destination from above)."
+   ],
+   [
+    1,
+    "writable",
+    "Destination liquidity (matching the source from above)."
+   ],
+   [
+    2,
+    "",
+    "Token program id"
+   ]
+  ]
+ },
+ "DepositReserveLiquidityAndObligationCollateral": {
+  "tag": 14,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination collateral token account."
+   ],
+   [
+    2,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    3,
+    "writable",
+    "Reserve liquidity supply SPL Token account."
+   ],
+   [
+    4,
+    "writable",
+    "Reserve collateral SPL Token mint."
+   ],
+   [
+    5,
+    "",
+    "Lending market account."
+   ],
+   [
+    6,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    7,
+    "writable",
+    "Destination deposit reserve collateral supply SPL Token account."
+   ],
+   [
+    8,
+    "writable",
+    "Obligation account."
+   ],
+   [
+    9,
+    "signer",
+    "Obligation owner."
+   ],
+   [
+    10,
+    "",
+    "Pyth price oracle account."
+   ],
+   [
+    11,
+    "",
+    "Switchboard price feed oracle account."
+   ],
+   [
+    12,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    13,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    14,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "WithdrawObligationCollateralAndRedeemReserveCollateral": {
+  "tag": 15,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source withdraw reserve collateral supply SPL Token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination collateral token account."
+   ],
+   [
+    2,
+    "writable",
+    "Withdraw reserve account - refreshed."
+   ],
+   [
+    3,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    4,
+    "",
+    "Lending market account."
+   ],
+   [
+    5,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    6,
+    "writable",
+    "User liquidity token account."
+   ],
+   [
+    7,
+    "writable",
+    "Reserve collateral SPL Token mint."
+   ],
+   [
+    8,
+    "writable",
+    "Reserve liquidity supply SPL Token account."
+   ],
+   [
+    9,
+    "signer",
+    "Obligation owner"
+   ],
+   [
+    10,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    11,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ],
+   [
+    12,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "UpdateReserveConfig": {
+  "tag": 16,
+  "accts": [
+   [
+    1,
+    "writable",
+    "Reserve account - refreshed"
+   ],
+   [
+    2,
+    "",
+    "Lending market account."
+   ],
+   [
+    3,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    4,
+    "signer",
+    "Lending market owner."
+   ],
+   [
+    5,
+    "",
+    "Pyth product key."
+   ],
+   [
+    6,
+    "",
+    "Pyth price key."
+   ],
+   [
+    7,
+    "",
+    "Switchboard key."
+   ]
+  ]
+ },
+ "LiquidateObligationAndRedeemReserveCollateral": {
+  "tag": 17,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination collateral token account."
+   ],
+   [
+    2,
+    "writable",
+    "Destination liquidity token account."
+   ],
+   [
+    3,
+    "writable",
+    "Repay reserve account - refreshed."
+   ],
+   [
+    4,
+    "writable",
+    "Repay reserve liquidity supply SPL Token account."
+   ],
+   [
+    5,
+    "writable",
+    "Withdraw reserve account - refreshed."
+   ],
+   [
+    6,
+    "writable",
+    "Withdraw reserve collateral SPL Token mint."
+   ],
+   [
+    7,
+    "writable",
+    "Withdraw reserve collateral supply SPL Token account."
+   ],
+   [
+    8,
+    "writable",
+    "Withdraw reserve liquidity supply SPL Token account."
+   ],
+   [
+    9,
+    "writable",
+    "Withdraw reserve liquidity fee receiver account."
+   ],
+   [
+    10,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    11,
+    "",
+    "Lending market account."
+   ],
+   [
+    12,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    13,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    14,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "RedeemFees": {
+  "tag": 18,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    1,
+    "writable",
+    "Borrow reserve liquidity fee receiver account."
+   ],
+   [
+    2,
+    "writable",
+    "Reserve liquidity supply SPL Token account."
+   ],
+   [
+    3,
+    "",
+    "Lending market account."
+   ],
+   [
+    4,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    5,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "FlashBorrowReserveLiquidity": {
+  "tag": 19,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination liquidity token account."
+   ],
+   [
+    2,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    3,
+    "",
+    "Lending market account."
+   ],
+   [
+    4,
+    "",
+    "Derived lending market authority."
+   ],
+   [
+    5,
+    "",
+    "Instructions sysvar."
+   ],
+   [
+    6,
+    "",
+    "Token program id."
+   ],
+   [
+    7,
+    "",
+    "Clock sysvar (optional, will be removed soon)."
+   ]
+  ]
+ },
+ "FlashRepayReserveLiquidity": {
+  "tag": 20,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination liquidity token account."
+   ],
+   [
+    2,
+    "writable",
+    "Flash loan fee receiver account."
+   ],
+   [
+    3,
+    "writable",
+    "Host fee receiver."
+   ],
+   [
+    4,
+    "writable",
+    "Reserve account."
+   ],
+   [
+    5,
+    "",
+    "Lending market account."
+   ],
+   [
+    6,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    7,
+    "",
+    "Instructions sysvar."
+   ],
+   [
+    8,
+    "",
+    "Token program id."
+   ]
+  ]
+ },
+ "ForgiveDebt": {
+  "tag": 21,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    1,
+    "writable",
+    "Reserve account - refreshed."
+   ],
+   [
+    2,
+    "",
+    "Lending Market account."
+   ],
+   [
+    3,
+    "signer",
+    "Lending Market owner."
+   ]
+  ]
+ },
+ "UpdateMarketMetadata": {
+  "tag": 22,
+  "accts": [
+   [
+    0,
+    "",
+    "Lending market account."
+   ],
+   [
+    1,
+    "signer",
+    "Lending market owner."
+   ],
+   [
+    2,
+    "writable",
+    "Lending market metadata account."
+   ],
+   [
+    3,
+    "",
+    "System program"
+   ]
+  ]
+ },
+ "SetObligationCloseabilityStatus": {
+  "tag": 23,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Obligation account - refreshed."
+   ],
+   [
+    1,
+    "",
+    "Lending market account."
+   ],
+   [
+    2,
+    "",
+    "Reserve account - refreshed."
+   ],
+   [
+    3,
+    "signer",
+    "risk authority of lending market or lending market owner"
+   ]
+  ]
+ },
+ "DonateToReserve": {
+  "tag": 24,
+  "accts": [
+   [
+    0,
+    "writable",
+    "Source liquidity token account."
+   ],
+   [
+    1,
+    "writable",
+    "Destination reserve liquidity supply SPL Token account."
+   ],
+   [
+    2,
+    "writable",
+    "Repay reserve account - refreshed."
+   ],
+   [
+    3,
+    "",
+    "Lending market account."
+   ],
+   [
+    4,
+    "signer",
+    "User transfer authority ($authority)."
+   ],
+   [
+    5,
+    "",
+    "Token program id."
+   ]
+  ]
+ }
+}

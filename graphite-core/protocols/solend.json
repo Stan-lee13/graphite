@@ -1,0 +1,1335 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Solend",
+  "program_id": "So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo",
+  "website": "https://solend.fi",
+  "github": "https://github.com/solendprotocol/solana-program-library",
+  "category": "lending"
+ },
+ "version": {
+  "label": "solend-token-lending",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "InitLendingMarket",
+   "discriminator": "00",
+   "accounts": [
+    {
+     "name": "Lending market account - uninitialized",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Rent sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Oracle program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Switchboard Oracle program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Lending market account - uninitialized"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "SetLendingMarketOwnerAndConfig",
+   "discriminator": "01",
+   "accounts": [
+    {
+     "name": "Lending market account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Current owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Lending market account"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": ""
+  },
+  {
+   "name": "InitReserve",
+   "discriminator": "02",
+   "accounts": [
+    {
+     "name": "Source liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination collateral token account - uninitial",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve account - uninitialized",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve liquidity SPL Token mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve liquidity supply SPL Token account - uni",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve liquidity fee receiver - uninitialized",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve collateral SPL Token mint - uninitialize",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve collateral token supply - uninitialized",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Pyth product account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Pyth price account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Switchboard price feed account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Derived lending market authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "User transfer authority ($authority)",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Rent sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source liquidity token account, Destination collateral token account - uninitial, Reserve account - uninitialized, Reserve liquidity supply SPL Token account - uni, Reserve liquidity fee receiver - uninitialized, Reserve collateral SPL Token mint - uninitialize, Reserve collateral token supply - uninitialized"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "RefreshReserve",
+   "discriminator": "03",
+   "accounts": [
+    {
+     "name": "Reserve account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Pyth reserve liquidity oracle account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Switchboard reserve liquidity oracle account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Reserve account"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": ""
+  },
+  {
+   "name": "DepositReserveLiquidity",
+   "discriminator": "04",
+   "accounts": [
+    {
+     "name": "Source liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination collateral token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve liquidity supply SPL Token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve collateral SPL Token mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Derived lending market authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "User transfer authority ($authority)",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source liquidity token account, Destination collateral token account, Reserve account, Reserve liquidity supply SPL Token account, Reserve collateral SPL Token mint"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "RedeemReserveCollateral",
+   "discriminator": "05",
+   "accounts": [
+    {
+     "name": "Source collateral token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve collateral SPL Token mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve liquidity supply SPL Token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Derived lending market authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "User transfer authority ($authority)",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source collateral token account, Destination liquidity token account, Reserve account, Reserve collateral SPL Token mint, Reserve liquidity supply SPL Token account"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "InitObligation",
+   "discriminator": "06",
+   "accounts": [
+    {
+     "name": "Obligation account - uninitialized",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Rent sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Obligation account - uninitialized"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "RefreshObligation",
+   "discriminator": "07",
+   "accounts": [
+    {
+     "name": "Obligation account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Obligation account"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": ""
+  },
+  {
+   "name": "DepositObligationCollateral",
+   "discriminator": "08",
+   "accounts": [
+    {
+     "name": "Source collateral token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination deposit reserve collateral supply SP",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Deposit reserve account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "User transfer authority ($authority)",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source collateral token account, Destination deposit reserve collateral supply SP, Deposit reserve account, Obligation account"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "WithdrawObligationCollateral",
+   "discriminator": "09",
+   "accounts": [
+    {
+     "name": "Source withdraw reserve collateral supply SPL To",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination collateral token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Withdraw reserve account - refreshed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation account - refreshed",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Derived lending market authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source withdraw reserve collateral supply SPL To, Destination collateral token account, Obligation account - refreshed"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "BorrowObligationLiquidity",
+   "discriminator": "0a",
+   "accounts": [
+    {
+     "name": "account_0",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_1",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_2",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_3",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_4",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_5",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_6",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_7",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_8",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_9",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_10",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_11",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: account_1, account_4, account_7, account_11"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "RepayObligationLiquidity",
+   "discriminator": "0b",
+   "accounts": [
+    {
+     "name": "Source liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination repay reserve liquidity supply SPL T",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Repay reserve account - refreshed",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation account - refreshed",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "User transfer authority ($authority)",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source liquidity token account, Destination repay reserve liquidity supply SPL T, Repay reserve account - refreshed, Obligation account - refreshed"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "LiquidateObligation",
+   "discriminator": "0c",
+   "accounts": [
+    {
+     "name": "Source liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination collateral token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Repay reserve account - refreshed",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Repay reserve liquidity supply SPL Token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Withdraw reserve account - refreshed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Withdraw reserve collateral supply SPL Token acc",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation account - refreshed",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Derived lending market authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "User transfer authority ($authority)",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source liquidity token account, Destination collateral token account, Repay reserve account - refreshed, Repay reserve liquidity supply SPL Token account, Withdraw reserve collateral supply SPL Token acc, Obligation account - refreshed"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "FlashLoan",
+   "discriminator": "0d",
+   "accounts": [
+    {
+     "name": "Source liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Flash loan fee receiver account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Host fee receiver",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Derived lending market authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Flash loan receiver program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Source liquidity (matching the destination from ",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination liquidity (matching the source from ",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source liquidity token account, Destination liquidity token account, Reserve account, Flash loan fee receiver account, Host fee receiver, Source liquidity (matching the destination from , Destination liquidity (matching the source from "
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "DepositReserveLiquidityAndObligationCollateral",
+   "discriminator": "0e",
+   "accounts": [
+    {
+     "name": "account_0",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_1",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_2",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_3",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_4",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_5",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_6",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_7",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_8",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_9",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_10",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_11",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_12",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "account_13",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: account_0, account_1, account_8, account_9, account_12"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "WithdrawObligationCollateralAndRedeemReserveCollateral",
+   "discriminator": "0f",
+   "accounts": [
+    {
+     "name": "Source withdraw reserve collateral supply SPL To",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Destination collateral token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Withdraw reserve account - refreshed",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation account - refreshed",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Lending market account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Derived lending market authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "User liquidity token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve collateral SPL Token mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Reserve liquidity supply SPL Token account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Obligation owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "User transfer authority ($authority)",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "Clock sysvar (optional, will be removed soon)",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "Token program id",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "moves user funds between token accounts",
+    "modifies writable accounts: Source withdraw reserve collateral supply SPL To, Destination collateral token account, Withdraw reserve account - refreshed, Obligation account - refreshed, User liquidity token account, Reserve collateral SPL Token mint, Reserve liquidity supply SPL Token account"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111"
+   ],
+   "risk_rules": [
+    "instruction tags from official Solend SDK unpack()"
+   ],
+   "risk_class": "withdraw"
+  }
+ ],
+ "trust_tier": "OfficialManifest",
+ "verification": {
+  "program_id_verified_on_chain": true,
+  "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true",
+  "discriminators_source": "official solendprotocol/solana-program-library token-lending/sdk/src/instruction.rs unpack() (1-byte tags)",
+  "verified_at": "2026-08-10",
+  "notes": "layout captured from live mainnet transactions; layout from official SDK doc comments (may omit sysvar/program accounts) Tags 10 and 14 cross-checked against live mainnet transactions."
+ }
+}

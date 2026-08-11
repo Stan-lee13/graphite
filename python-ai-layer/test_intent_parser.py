@@ -276,9 +276,15 @@ def test_program_ids_match_manifests():
         "metaplex-token-metadata.json": None,
         "drift.json": None,
         "kamino-lending.json": None,
+        "phoenix.json": None,
+        "openbook-v2.json": None,
+        "switchboard-v2.json": None,
+        "jupiter-limit.json": None,
+        "solend.json": None,
+        "marginfi-v2.json": None,
     }
     expected_manifests = set(manifest_to_intent.keys())
-    assert len(expected_manifests) == 22, f"expected 22 manifests (C27 added Drift + Kamino), map has {len(expected_manifests)}"
+    assert len(expected_manifests) == 28, f"expected 28 manifests (C46 added Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi), map has {len(expected_manifests)}"
 
     all_manifests = sorted(glob.glob(os.path.join(manifest_dir, "*.json")))
     all_manifests = [p for p in all_manifests if os.path.basename(p) != "verified_program_ids.json"]

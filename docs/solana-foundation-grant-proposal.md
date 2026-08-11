@@ -26,8 +26,8 @@ phishing specifically "exploits weaknesses in transaction simulations" (Scam Sni
 
 Graphite is not a research prototype. It is a working, tested, and live-validated system:
 
-- **984 tests / 0 failures / 0 clippy warnings / 0 compiler warnings**, fmt clean.
-- **22 protocol manifests / 561 verified instructions**, every program ID verified
+- **987 tests / 0 failures / 0 clippy warnings / 0 compiler warnings**, fmt clean.
+- **28 protocol manifests / 695 verified instructions**, every program ID verified
   executable on mainnet.
 - **A 2,181-fixture regression corpus** — dev, regression, and a real holdout of 38
   independently labeled transactions (35 real mainnet exploit signatures from a
@@ -141,7 +141,7 @@ Key properties:
 | Real data | 3 real mainnet exploits blocked in benchmark (Wormhole $320M, CLINKSINK, SlowMist AAT); 35 real exploit signatures in holdout, 0 false negatives |
 | Live validation | L3 on real devnet RPC; L8 on real mainnet RPC; SAK integration = 5 finalized devnet transactions |
 | Corpus | 2,181 deterministic fixtures (dev / regression / holdout), byte-identical across runs |
-| Manifests | 22 protocols, 561 instructions, program IDs verified executable on mainnet |
+| Manifests | 28 protocols, 695 instructions, program IDs verified executable on mainnet |
 | Security | Two independent adversarial audits; 4 P0 + 1 P1 classes root-fixed and re-attacked with fresh variants |
 | Performance | ~1.8ms p50 / ~2.8ms p95 / ~3.0ms p99 verification — 0.5% of Solana's 400ms block budget |
 | Integrations | TypeScript SDK, Go SDK, Python advisory layer, React dashboard, HTTP server, Dockerfile, SolanaAgentKit integration |

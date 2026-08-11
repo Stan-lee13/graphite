@@ -84,8 +84,8 @@ fn test_all_20_manifests_load_with_valid_pubkeys() {
     let manifests = registry.list();
     assert_eq!(
         manifests.len(),
-        22,
-        "expected exactly 22 seed manifests (18 + Tier-0: ATA, Compute Budget, BPF Loader, BPF Loader Upgradeable); C27 added Drift + Kamino Lending"
+        28,
+        "expected exactly 28 seed manifests (22 + 6 new: Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi)"
     );
 
     for m in &manifests {
@@ -925,9 +925,11 @@ fn test_all_protocols_verifiable() {
     let core = GraphiteCore::default();
     let registry = load_seed_manifests();
 
-    // Generate enough dummy accounts for each protocol
+    // Generate enough dummy accounts for each protocol (max across all
+    // manifests is Kamino liquidateObligationAndRedeemReserveCollateralV2
+    // with 25 accounts).
     let dummy = "11111111111111111111111111111111";
-    let dummy_accounts: Vec<&str> = vec![dummy; 20];
+    let dummy_accounts: Vec<&str> = vec![dummy; 32];
 
     for m in registry.list() {
         // Compute Budget instructions carry zero accounts by design and never

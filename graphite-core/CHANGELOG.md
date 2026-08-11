@@ -3,9 +3,11 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C47: 984 tests, 22 manifests, 561 instructions, 14 risk checks] — 2026-08-11
+## [Current State — C49: 987 tests, 28 manifests, 695 instructions, 14 risk checks] — 2026-08-12
 
-### Summary of all changes C28–C45
+### Summary of all changes C28–C49
+
+- **C46**: Six new protocol manifests grounded in official sources — **Phoenix** (28 ix, native shank 1-byte tags verified from live mainnet), **OpenBook V2** (29 ix, Anchor snake_case discriminators verified on-chain), **Switchboard** (48 ix), **Jupiter Limit Order** (9 ix), **Solend** (16 ix, layouts from official SDK doc comments with full readonly accounts; tags from official `unpack()`), **Marginfi** (4 ix, real mainnet shapes observed on-chain). All 6 program IDs verified executable on mainnet and pinned in `verified_program_ids.json`; discriminator derivation mode per program asserted by `test_new_protocol_manifests_are_grounded`. Drift + Kamino PDA seeds verified against official sources (IDLs + SDK codegen) and pinned with JS-SDK known answers in `account_resolution.rs`.
 
 - **C28**: MAD (median absolute deviation) baseline for simulation integrity — replaces mean/stddev with robust statistics resistant to poisoning. Simulation z-score now uses MAD-based outlier detection.
 - **C29**: Multi-instruction transaction analysis + CPI instruction trace analysis — 2 new RiskPattern variants (MultiInstructionDrain, CpiTraceAnomaly). Coordinated mass-drain detection across instructions in one tx (approve-then-transfer, authority-hijack-then-drain, close-and-sweep, mass multi-transfer sweep). Hierarchical CPI tree analysis for unknown, re-entered, or vanity-impersonated programs.
@@ -22,9 +24,9 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C44**: Encoding-explicit manifest reads in Python test (Windows-locale fix — `encoding="utf-8"` on all `open()` calls).
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
-### Current numbers (C45)
-- **984 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
-- **22 protocol manifests**, 561 instructions, all program IDs verified executable on mainnet
+### Current numbers (C49)
+- **987 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
+- **28 protocol manifests**, 695 instructions, all program IDs verified executable on mainnet
 - **11 risk patterns / 14 risk checks** (was 9/9)
 - **2,181-fixture corpus**: 0 false negatives on 38-fixture holdout
 - **3 REAL mainnet exploits** scored in benchmark (Wormhole $320M, CLINKSINK STMT, SlowMist AAT)
