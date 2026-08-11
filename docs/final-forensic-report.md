@@ -39,7 +39,7 @@ AI Agent (untrusted) ──NL──▶ Python AI Layer (advisory labeler, :8081)
                  ├─ L5 Semantic Verification (intent vs manifest behavior)
                  ├─ L6 Policy Verification (confidence + profile threshold + tier)  ← FINAL GATE
                  ├─ L7 Risk Verification (9 hard-gate patterns, runs early)
-                 └─ L8 Execution Verification (honest "not yet verified" until Phase 3)
+                 └─ L8 Execution Verification (honest "until live-validated (C40)" until Phase 3)
                      │ approved + content_hash (deterministic, client-reproducible)
                      ▼
               AuditBind (re-hash the exact instruction → compare content_hash; fail-closed)
@@ -70,7 +70,7 @@ AI Agent (untrusted) ──NL──▶ Python AI Layer (advisory labeler, :8081)
 
 **Phase 2 — milestones (verified):**
 - Registry `verified_program_ids.json` is the single source of truth; bidirectional pin test (Rust+Python) + blessed-canonical-set test (11 core IDs can never vanish).
-- 20 manifests, 261 instructions (Orca rebuilt to its full 66-instruction IDL surface by C25); all 20 program IDs verified executable on mainnet (2026-08-08).
+- 22 manifests, 561 instructions (Orca rebuilt to its full 66-instruction IDL surface by C25); all 22 program IDs verified executable on mainnet (2026-08-08).
 - Squads V4 rebuilt from official IDL (C18) — 36 instructions, snake_case-hash discriminators, 4 chain-verified.
 - Dynamic PDA: multisigCreateV2 grounded (`["multisig","multisig",create_key]`), spoof-flagging proven. Vault/transaction PDAs need account-state seeds beyond the template engine (documented).
 - Exploit corpus: 35 real pinned malicious txs (SolPhishHunter arXiv:2505.04094) → **100% recall**; ISA blocks now principled (Impersonation rule).
@@ -92,7 +92,7 @@ Source: `ARCHITECTURE.md` (the canonical skill) + `SECURITY.md`.
 | Server hardening table | Matches code | ✅ Aligned |
 | "15 manifests / 819 tests" | 20 / 852 | ❌ Stale → **fixed this cycle** |
 | "`POST /manifests`" | `GET /manifests` | ❌ Stale → **fixed this cycle** |
-| "8 attack patterns" | 9 (Impersonation added) | ❌ Stale → **fixed this cycle** |
+| "8 attack patterns" | 11 (Impersonation added) | ❌ Stale → **fixed this cycle** |
 | SECURITY.md duplicate header | Duplicated | ❌ **fixed this cycle** |
 | "TOCTOU gap — Phase 2 AuditBind" | AuditBind shipped; **residual gap on SAK swap path** | ⚠️ Corrected + documented this cycle |
 
@@ -149,7 +149,7 @@ Source: `ARCHITECTURE.md` (the canonical skill) + `SECURITY.md`.
 2. **No live public deployment** (P2, operator action) — Dockerfile/compose ready, never deployed; branch protection not enabled.
 3. **L8 execution verification not wired** (honest "inconclusive") — post-submission confirmation is Phase 3.
 4. **Cold-start confidence ceiling** (by design, P7) — fresh node caps at 0.44 < 0.80 TradingBot threshold; steady-state proven by seeded regression test; needs evidence accumulation + attached RPC for L3.
-5. **Protocol surface thin vs. ecosystem** — 20 manifests / 261 instructions; Drift, Kamino, Pyth, Raydium CLMM IDs verified on-chain but manifests not yet built; every unknown program fails closed (safe but restrictive).
+5. **Protocol surface thin vs. ecosystem** — 22 manifests / 561 instructions; Drift and Kamino built and verified (C27/C42); Pyth, Raydium CLMM remain for future expansion; every unknown program fails closed (safe but restrictive).
 6. **Vault/transaction PDAs** need account-state seeds beyond the template engine (documented).
 
 **What would change the verdict:** close the swap-path TOCTOU (execute the bound instruction), deploy publicly with a warmed evidence store, wire L8, and add the Tier-1 manifests.

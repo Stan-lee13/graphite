@@ -3,7 +3,7 @@
 **Branch:** `phase2-development` (created from `main` @ `0a143fe`, tag `v0.1.0-alpha`)
 **Target release:** `v0.2.0-beta`
 
-> **Update (2026-08-10, C28–C33):** stale numbers below are superseded — 902 Rust tests / 0 failures (were 844/861); benchmark is now 3 REAL mainnet exploit cases + 2 SYNTHETIC, honestly labeled, avg latency ~2.1ms (C30); MAD robust baseline shipped (C28); multi-instruction + CPI trace analysis shipped (C29); risk-engine discriminator-width bypass fixed (C33). See ROADMAP + GRAPHITE_FINAL_CERTIFICATION_REPORT §0a.
+> **Update (2026-08-10, C28–C33):** stale numbers below are superseded — 976 Rust tests / 0 failures (were 844/861); benchmark is now 3 REAL mainnet exploit cases + 2 SYNTHETIC, honestly labeled, avg latency ~2.1ms (C30); MAD robust baseline shipped (C28); multi-instruction + CPI trace analysis shipped (C29); risk-engine discriminator-width bypass fixed (C33). See ROADMAP + GRAPHITE_FINAL_CERTIFICATION_REPORT §0a.
 
 ---
 
@@ -14,7 +14,7 @@ Phase 1.5 is **closed and devnet-verified** before Phase 2 development begins:
 - **844 Rust tests**, 0 failures; clippy 0 warnings; fmt clean; no-default-features builds
 - **RPC client live-verified** against Helius mainnet + devnet — 6 parsing/retry defects fixed (`get_slot` u64 parse, `get_account` null check, `get_oracle_price` placeholder removed, `is_account_frozen` byte 108, `post_rpc` exponential backoff, `max_retries` honored)
 - **Server hardening shipped**: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log (approved/blocked/400/500), graceful shutdown
-- **L3/L8 honest states**: L3 provenance-aware tri-state (`Passed`/`Failed`/`Inconclusive`); L8 honestly "not yet verified" with audit-trail event
+- **L3/L8 honest states**: L3 provenance-aware tri-state (`Passed`/`Failed`/`Inconclusive`); L8 honestly "live-validated against mainnet RPC (C40)" with audit-trail event
 - **Novel instruction fail-closed (P12)**: unknown discriminator on known protocol with high-risk intent → BLOCKED
 - **Validation & determinism**: whitespace-only `program_id` rejection; proptest suite (512 cases); PDA known-answer tests vs `@solana/web3.js`; all-11 manifest ID pin test
 - **SAK integration verified on Solana devnet**: 5 finalized transactions (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`), pipeline confirmed end-to-end
@@ -314,7 +314,7 @@ this milestone's gates meaningful:
 - **Design hardening:** the graph-evidence readout binds each `graph()` guard to
   a temporary — an inline struct-literal readout deadlocked on the non-reentrant
   std Mutex (caught by the aggressive test cycle).
-- **Verification:** 861 tests / 0 failures,
+- **Verification:** 976 tests / 0 failures,
   clippy 0 warnings, fmt clean, all CI feature gates pass, live CLI smoke tests.
 
 ---

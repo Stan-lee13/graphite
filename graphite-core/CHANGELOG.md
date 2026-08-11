@@ -3,6 +3,37 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Current State — C45: 976 tests, 22 manifests, 561 instructions, 13 risk checks] — 2026-08-11
+
+### Summary of all changes C28–C45
+
+- **C28**: MAD (median absolute deviation) baseline for simulation integrity — replaces mean/stddev with robust statistics resistant to poisoning. Simulation z-score now uses MAD-based outlier detection.
+- **C29**: Multi-instruction transaction analysis + CPI instruction trace analysis — 2 new RiskPattern variants (MultiInstructionDrain, CpiTraceAnomaly). Coordinated mass-drain detection across instructions in one tx (approve-then-transfer, authority-hijack-then-drain, close-and-sweep, mass multi-transfer sweep). Hierarchical CPI tree analysis for unknown, re-entered, or vanity-impersonated programs.
+- **C30**: Real mainnet exploit data pinned in benchmark — 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) replace 3 of 5 SYNTHETIC reconstructions. 2 SYNTHETIC remain, honestly labeled. Avg latency ~2.1ms (up from sub-ms, due to real-data cases).
+- **C33**: Risk-engine discriminator-width bypass fix (CVE-class) — prefix-matching allowed short discriminators to match longer ones, bypassing detection. Now exact-match only.
+- **C36**: P1 remediation — CPI flattening, instruction ordering, hidden-transfer semantics, swap classification.
+- **C37**: CatchPanicLayer added to production router; formal discriminator-length decision (exact match, no prefix).
+- **C38**: Phase 2 gates — real L8 execution verification (reports Confirmed/Unknown/Unavailable from mainnet RPC) + manifest-declared risk-class engine expansion.
+- **C39**: Certification revalidation — fresh adversarial pass + malformed-discriminator fail-closed.
+- **C40**: Live mainnet/devnet validation — L3 simulateTransaction on real devnet RPC; L8 execution verification on real mainnet RPC (Confirmed/UnknownSignature/Unavailable, honestly reported).
+- **C41**: 2,181-fixture regression corpus — dev ~2,112 + regression 31 + holdout 38 (35 real SolPhishHunter mainnet exploit signatures from arXiv:2505.04094 + 3 real mainnet txs). 0 false negatives on holdout. Root fixes surfaced by the corpus.
+- **C42**: Kamino V2 real layouts from live on-chain decoded streams; registry determinism fix; universal-CPI audit test.
+- **C43**: Phase 2 certification report + ROADMAP sync.
+- **C44**: Encoding-explicit manifest reads in Python test (Windows-locale fix — `encoding="utf-8"` on all `open()` calls).
+- **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
+
+### Current numbers (C45)
+- **976 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
+- **22 protocol manifests**, 561 instructions, all program IDs verified executable on mainnet
+- **11 risk patterns / 13 risk checks** (was 9/9)
+- **2,181-fixture corpus**: 0 false negatives on 38-fixture holdout
+- **3 REAL mainnet exploits** scored in benchmark (Wormhole $320M, CLINKSINK STMT, SlowMist AAT)
+- **L3 live-validated** on devnet RPC; **L8 live-validated** on mainnet RPC
+- **SAK integration verified** on devnet (5 finalized transactions)
+- **Go SDK**: 9 tests, 16-field parity; **Python AI layer**: 8 tests; **TS SDK**: compiles clean
+
+Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
+
 ## [Round Six — C27: Drift + Kamino Lending on-boarded from official IDLs with live-verified discriminators and source-scoped PDA grounding] — 2026-08-09
 
 ### Two new BattleTested manifests: Drift Perpetuals (249 ix) + Kamino Lending (51 ix)

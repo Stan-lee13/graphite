@@ -2,16 +2,16 @@
 
 # Graphite
 
-**Transaction intent verification for Solana AI agents.**
+**Deterministic semantic verification for Solana AI agents.**
 
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-861_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-976_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
-[![Protocols](https://img.shields.io/badge/Protocol_Manifests-20-blue?style=flat-square)](graphite-core/protocols/)
-[![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-9-red?style=flat-square)](graphite-core/src/risk_engine.rs)
-[![Version](https://img.shields.io/badge/Version-v0.1.1--alpha-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
+[![Protocols](https://img.shields.io/badge/Protocol_Manifests-22-blue?style=flat-square)](graphite-core/protocols/)
+[![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-11-red?style=flat-square)](graphite-core/src/risk_engine.rs)
+[![Version](https://img.shields.io/badge/Version-v0.2.0--beta-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
 
 </div>
 
@@ -61,12 +61,12 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 861 tests — zero setup
+# Run 976 tests — zero setup
 cargo test --release
 
 # Output:
-# running 861 tests
-# test result: ok. 861 passed; 0 failed; 3 ignored
+# running 976 tests
+# test result: ok. 976 passed; 0 failed; 0 ignored
 
 # Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
@@ -89,11 +89,11 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 | L7 | Risk Verification | Run Risk Engine — forbidden patterns, compositional risk | Forbidden pattern → block |
 | L8 | Execution Verification | Post-submission: confirm on-chain result matches prediction | Mismatch → audit trail flag |
 
-**Phase 1.5 status:** L1-L2, L4-L7 active. L3 is active whenever an RPC client is attached (`GRAPHITE_RPC_URL`) — verified end-to-end on Solana devnet. L8 reports an honest **"not yet verified"** state until live execution is wired (Phase 2).
+**Current status:** L1–L7 active. L3 live-validated against real Solana devnet RPC (C40). L8 live-validated against real mainnet RPC — reports honest execution status (Confirmed / Unknown / Unavailable). Both L3 and L8 production default-on wiring shipped; public deployment endpoint pending.
 
 ---
 
-## Risk Engine — 8 Attack Patterns
+## Risk Engine — 11 Attack Patterns (13 Risk Checks)
 
 | Pattern | What It Catches |
 |--------|----------------|
@@ -105,12 +105,15 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 | **PermissionEscalation** | SPL Token Approve instruction when intent is "transfer" |
 | **MaliciousAccountChange** | CloseAccount/Allocate when intent is not "close" |
 | **CompositionalDrainPattern** | Deep CPI chains (5+) from untrusted roots, or repeated program revisits |
+| **Impersonation** | Fund movement to/from vanity addresses impersonating official system accounts (SolPhishHunter class) |
+| **MultiInstructionDrain** | Coordinated mass-drain across multiple instructions in one tx (approve-then-transfer, authority-hijack-then-drain, close-and-sweep, mass multi-transfer sweep) |
+| **CpiTraceAnomaly** | Malicious shape in hierarchical CPI trace — unknown program, repeated revisits, or vanity-impersonated program in the tree |
 
-All 8 patterns are real detection logic — not stubs, not placeholders.
+All 11 patterns are real detection logic — not stubs, not placeholders.
 
 ---
 
-## Supported Protocols (20 Manifests)
+## Supported Protocols (22 Manifests / 561 Instructions)
 
 | Protocol | Program ID | Trust Tier |
 |----------|-----------|------------|
@@ -134,6 +137,8 @@ All 8 patterns are real detection logic — not stubs, not placeholders.
 | Jupiter DCA | `DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M` | Official Manifest |
 | Wormhole Core | `worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth` | Official Manifest |
 | Metaplex Token Metadata | `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s` | Official Manifest |
+| Drift Protocol | `dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH` | Official Manifest |
+| Kamino Lending | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` | Official Manifest |
 
 ---
 
@@ -146,7 +151,7 @@ graphite/
 │   ├── src/
 │   │   ├── verification.rs      ← 8-layer pipeline orchestrator
 │   │   ├── account_resolution.rs← L1: PDA derivation, account matching
-│   │   ├── risk_engine.rs       ← L7: 8 attack pattern detectors
+│   │   ├── risk_engine.rs       ← L7: 11 attack pattern detectors (13 checks)
 │   │   ├── confidence_engine.rs ← Weighted signal scoring + tier ceilings
 │   │   ├── policy_engine.rs     ← L6: Per-wallet policy profiles
 │   │   ├── simulation_integrity.rs ← L3: Compute/write/CPI z-score
@@ -161,8 +166,8 @@ graphite/
 │   │   │                          VerificationEventLogger (analytics)
 │   │   ├── benchmark.rs         ← P16-compliant benchmark suite
 │   │   └── cli.rs               ← CLI (clap)
-│   ├── protocols/               ← 20 JSON protocol manifests
-│   └── tests/                   ← 861 tests (unit + adversarial + exploit)
+│   ├── protocols/               ← 22 JSON protocol manifests (561 instructions)
+│   └── tests/                   ← 976 tests (unit + adversarial + exploit)
 │
 ├── dashboard/                   ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -181,10 +186,10 @@ graphite/
 │
 ├── examples/                   ← Sample verification inputs/outputs
 ├── schemas/                    ← JSON schemas for API contracts
-├── docs/                       ← Audit reports, Phase 2 plans
+├── docs/                       ← Audit reports, certification, grant proposal
 │
 ├── ARCHITECTURE.md             ← System design specification
-├── ROADMAP.md                  ← Phase 1 (done) → Phase 2 (planned) → Phase 3+
+├── ROADMAP.md                  ← Phase 1 (done) → Phase 2 (in progress) → Phase 3+
 ├── SECURITY.md                 ← Security policy + known limitations
 ├── CONTRIBUTING.md             ← How to contribute
 └── README.md                   ← You are here
@@ -225,7 +230,8 @@ GRAPHITE_API_KEY=$(openssl rand -hex 32) GRAPHITE_RATE_LIMIT=100 \
 curl -X POST http://localhost:7331/verify \
   -H "Content-Type: application/json" \
   -d @../examples/verify-input.json | jq .
-```> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold). On a fresh Core (no earned evidence) the achievable confidence for a known protocol is ~0.44, so this example returns **BLOCKED** — that is the engine being honest, not a bug. The confidence signals are *earned*, not asserted: `SimulationMatch`, `HistoricalVolume`, and `CommunityVerification` read from the Semantic Graph's internal accumulator (RPC-verified baselines and Behavior evidence), so the presets become satisfiable as the graph accumulates verified history. To see an immediate approval on a fresh core, set a calibrated profile:
+```
+> ⚠️ The example input uses the `TradingBot` profile (0.80 threshold). On a fresh Core (no earned evidence) the achievable confidence for a known protocol is ~0.44, so this example returns **BLOCKED** — that is the engine being honest, not a bug. The confidence signals are *earned*, not asserted: `SimulationMatch`, `HistoricalVolume`, and `CommunityVerification` read from the Semantic Graph's internal accumulator (RPC-verified baselines and Behavior evidence), so the presets become satisfiable as the graph accumulates verified history. To see an immediate approval on a fresh core, set a calibrated profile:
 > 
 > ```bash
 > jq '.wallet_profile = {"Custom": {"min_confidence": 0.40, "min_trust_tier": "OfficialManifest"}}' ../examples/verify-input.json | curl -X POST http://localhost:7331/verify -H "Content-Type: application/json" -d @- | jq .approved
@@ -287,24 +293,25 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 
 ---
 
-## Honest Status (Phase 1.5)
+## Honest Status
 
 What we **do not** claim:
 
 - The benchmark is 16 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a statistical evaluation on unseen data. "100% precision / 100% recall on the scored benchmark cases" is the honest claim. Composition (C30): 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X — pinned from `tests/real_onchain_exploits.rs`, reproducible offline) + 2 SYNTHETIC drainer cases, honestly labeled. Avg latency ~2.1ms with the real-data cases (release build); the earlier sub-ms figure predates them.
 - 5 exploit reconstructions use real program IDs but fabricated account structures. They are labeled "SYNTHETIC" per P16, not "real mainnet data."
-- L3 (Simulation) is active when an RPC client is attached and was verified against real Solana devnet transactions (Aug 7, 2026). L8 (Execution Verification) still requires live execution infrastructure and honestly reports **"not yet verified"** until then (Phase 2).
+- L3 (Simulation) is active when an RPC client is attached and was verified against real Solana devnet transactions (Aug 7, 2026). L8 (Execution Verification) was live-validated against real mainnet RPC (C40) and reports honest execution status — Confirmed / Unknown / Unavailable. Production default-on wiring for both remains pending public deployment.
 - No instruction data semantic parsing beyond discriminator matching (Phase 2).
 
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.60, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming unlocks at simulation-validated evidence (≈ 0.66), Treasury at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 902 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
-- 13 risk checks are real detection logic, not stubs (plus Phase 2 multi-instruction + CPI-trace rules).
-- 22 protocol manifests / 561 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27).
+- 976 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
+- 13 risk checks (11 risk patterns) are real detection logic, not stubs. Multi-instruction drain and CPI trace analysis shipped (C29).
+- 22 protocol manifests / 561 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
-- Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm.
+- Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).
+- 2,181-fixture regression corpus (C41): dev ~2,112 + regression 31 + holdout 38 (35 real mainnet exploit signatures + 3 real mainnet txs), independently labeled, 0 false negatives.
 
 ---
 
@@ -313,7 +320,7 @@ What we **do** claim:
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, 8-layer pipeline, subsystem specs |
-| [ROADMAP.md](ROADMAP.md) | Phase 1 (done) → Phase 2 (planned) → Phase 3+ |
+| [ROADMAP.md](ROADMAP.md) | Phase 1 (done) → Phase 2 (in progress) → Phase 3+ |
 | [SECURITY.md](SECURITY.md) | Security policy, known limitations, reporting |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, PR checklist, Constitution principles |
 | [Engineering Skill](https://github.com/Stan-lee13/graphite-engineering-skill) | The skill that builds Graphite — Constitution, personas, checklists |

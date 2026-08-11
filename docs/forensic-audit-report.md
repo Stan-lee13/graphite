@@ -67,7 +67,7 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 - **Problem:** the gap audit's Tier-0 list (ATA, ComputeBudget, BPFLoader) was explicitly missing — the foundational programs present in nearly every modern mainnet transaction were unpinned (unknown-protocol mode at 0.55 confidence instead of manifest matching).
 - **Root cause:** protocol expansion had targeted DEX/DeFi protocols; the boring-but-ubiquitous system programs were never covered.
 - **Impact:** ComputeBudget instructions (priority fees, compute limits — present in all three pinned fixtures) and ATA creates (present in the Jupiter fixture) fell to unknown-protocol handling; BPF Loader Upgrade/SetAuthority — the program-upgrade / authority-abuse attack surface — were unmodeled.
-- **Fix:** 4 new Tier-0 manifests with discriminator surfaces from the official sources, each ID verified EXEC on mainnet 2026-08-08: ATA (0x00/0x01/0x02 — 0x01 observed live), Compute Budget (0x01–0x04 — 0x02/0x03/0x04 observed live), BPF Loader classic (0x00/0x01), BPF Loader Upgradeable (0x00–0x05). Added to registry, blessed set, seed loader, and both cross-checks (16 → 20 manifests).
+- **Fix:** 4 new Tier-0 manifests with discriminator surfaces from the official sources, each ID verified EXEC on mainnet 2026-08-08: ATA (0x00/0x01/0x02 — 0x01 observed live), Compute Budget (0x01–0x04 — 0x02/0x03/0x04 observed live), BPF Loader classic (0x00/0x01), BPF Loader Upgradeable (0x00–0x05). Added to registry, blessed set, seed loader, and both cross-checks (16 → 20 manifests (now 22 with Drift+Kamino C27/C42)).
 - **Regression test:** `test_tier0_manifest_discriminators_match_real_mainnet_fixtures` parses the pinned mainnet fixtures and asserts every observed ComputeBudget/ATA discriminator byte resolves to a manifest instruction with an EQUAL discriminator — grounded in real chain data, not self-reference. Compute Budget's zero-account instructions are documented (they take no accounts by design; the pipeline correctly rejects a standalone empty plan).
 
 ### C18. SQUADS MANIFEST WAS FABRICATED — WRONG DISCRIMINATORS + 18 NON-EXISTENT INSTRUCTIONS (fixed) + DYNAMIC PDA GROUNDED
@@ -151,7 +151,7 @@ All checks below ran against **live Solana RPC** (api.mainnet-beta.solana.com / 
 
 | Requirement (roadmap) | Status | Evidence | Missing work |
 |---|---|---|---|
-| 20 manifests, IDs on-chain verified | **Implemented** (corrected) | live getAccountInfo 20/20 EXEC re-verified 2026-08-08; memo swap fixed; C10 corrected the "retired" prose; C16 restored the classic SPL memo; C17 added Tier-0 (ATA, Compute Budget, BPF Loaders) | — |
+| 22 manifests, IDs on-chain verified | **Implemented** (corrected) | live getAccountInfo 22/22 EXEC re-verified 2026-08-08; memo swap fixed; C10 corrected the "retired" prose; C16 restored the classic SPL memo; C17 added Tier-0 (ATA, Compute Budget, BPF Loaders) | — |
 | Feed actual transaction data through Graphite | **Implemented** (new) | `live_corpus.rs`, `regression seed-live`, 30 live devnet verifies, 3 pinned real mainnet fixtures | — |
 | Regression Engine corpus + replay + P10 gate | **Implemented** | 20 real fixtures replayed 100%, PROMOTE; deterministic replay | 1,000-fixture volume (data acquisition), 10k cost model |
 | Manifest Registry: signed submissions, G5, P7/P10/P11 | **Implemented** (operator path, new CLI) | register-reviewer / submit / reviewers live-verified ACCEPT/REJECT | PR-based community workflow + on-chain stake lookup (Phase 3 by design) |

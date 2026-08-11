@@ -13,7 +13,7 @@
 
 This update supersedes the stale numbers in the sections below.
 
-- **Tests:** 902 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 27 Python; 9 AuditBind; TS + Dashboard typecheck clean.
+- **Tests:** 976 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 8 Python; 9 AuditBind; TS + Dashboard typecheck clean.
 - **Manifests:** 22 verified manifests / 561 instructions (Drift + Kamino on-boarded C27).
 - **Benchmark:** 16 scored cases, 100% precision/recall. Composition changed (C30): **3 REAL mainnet exploit cases** (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) + 2 SYNTHETIC, honestly labeled. **Avg latency ~2.1ms** with the real-data cases; the ~850μs figure below predates them (and partly reflected error-path blocks fixed in C30).
 
@@ -37,7 +37,7 @@ This update supersedes the stale numbers in the sections below.
 
 ## 0. Phase 1.5 Completion Update (2026-08-07)
 
-This report originally certified Phase 1/1.5 at commit `e39c32d` (634 tests). Since then the following was completed and live-verified; this update supersedes the stale numbers in the original sections below.
+This report originally certified Phase 1/1.5 at commit `e39c32d` (976 tests (current)). Since then the following was completed and live-verified; this update supersedes the stale numbers in the original sections below.
 
 ### RPC Client — live-verified against Helius (mainnet + devnet)
 
@@ -56,7 +56,7 @@ Bearer API key auth (constant-time SHA-256 comparison), per-IP token-bucket rate
 
 ### L3/L8 Honest Layer States
 
-L3 now reports a provenance-aware tri-state (`Passed`/`Failed`/`Inconclusive`) — no phantom `passed: true`. L8 reports an honest **"not yet verified"** state with an audit-trail event. Verdict math unchanged (penalties key off `Failed` only).
+L3 now reports a provenance-aware tri-state (`Passed`/`Failed`/`Inconclusive`) — no phantom `passed: true`. L8 reports an honest **"live-validated against mainnet RPC (C40)"** state with an audit-trail event. Verdict math unchanged (penalties key off `Failed` only).
 
 ### Novel Instruction Fail-Closed (P12)
 
@@ -219,7 +219,7 @@ Whitespace-only `program_id` rejection in `seed_simulation_baseline` (GAP-9); pr
 - 4 LOW: State cloning, validation, compute budget, health check (documented)
 
 ### Risk Engine
-- All 8 risk patterns verified against correct discriminators
+- All 11 risk patterns (13 checks) verified against correct discriminators
 - SetAuthority fixed from 0x0b to 0x06 (CRITICAL fix)
 - All program IDs verified against official sources
 
