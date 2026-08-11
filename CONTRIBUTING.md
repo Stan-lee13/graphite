@@ -52,7 +52,7 @@ Every merge to `phase2-development` (and every `hotfix/*` to `main`) must pass t
 
 - [ ] `cargo fmt --all -- --check` clean (0 diffs)
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)
-- [ ] `cargo test --release` passes (0 failures — currently 818 tests; `--include-ignored` for the live devnet corpus)
+- [ ] `cargo test --release` passes (0 failures — currently 984 tests; `--include-ignored` for the live devnet corpus)
 - [ ] `cargo check --no-default-features` builds (embedded-use contract; async code is gated behind `--features rpc`)
 - [ ] TypeScript SDK `npm run build` / `tsc --noEmit` clean
 - [ ] Go SDK `go test ./...` passes

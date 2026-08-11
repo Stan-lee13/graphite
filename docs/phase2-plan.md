@@ -3,7 +3,7 @@
 **Branch:** `phase2-development` (created from `main` @ `0a143fe`, tag `v0.1.0-alpha`)
 **Target release:** `v0.2.0-beta`
 
-> **Update (2026-08-10, C28–C33):** stale numbers below are superseded — 976 Rust tests / 0 failures (were 844/861); benchmark is now 3 REAL mainnet exploit cases + 2 SYNTHETIC, honestly labeled, avg latency ~2.1ms (C30); MAD robust baseline shipped (C28); multi-instruction + CPI trace analysis shipped (C29); risk-engine discriminator-width bypass fixed (C33). See ROADMAP + GRAPHITE_FINAL_CERTIFICATION_REPORT §0a.
+> **Update (2026-08-10, C28–C33):** stale numbers below are superseded — 984 Rust tests / 0 failures (were 844/861); benchmark is now 3 REAL mainnet exploit cases + 2 SYNTHETIC, honestly labeled, avg latency ~2.1ms (C30); MAD robust baseline shipped (C28); multi-instruction + CPI trace analysis shipped (C29); risk-engine discriminator-width bypass fixed (C33). See ROADMAP + GRAPHITE_FINAL_CERTIFICATION_REPORT §0a.
 
 ---
 
@@ -58,7 +58,7 @@ These principles mechanically constrain HOW Phase 2 features must be built:
 | Regression Engine | Yes — corpus + replay + P10 gate (`src/regression_engine.rs`) | ~330 | Core implemented 2026-08-07: append-only fixture corpus, deterministic replay, `decide_promotion` (99.5%), benchmark-seeded initial corpus (~16 fixtures), `graphite regression` CLI gate, 12 tests. 1,000 real fixtures still requires live data volume |
 | Plugin Orchestrator | Yes — `src/plugin_orchestrator.rs` + `src/plugins/` | ~900 | ✅ **Core implemented 2026-08-07**: 6 plugin traits (Protocol/Simulation/Verifier/Risk/Policy/Analytics), `PluginContext` input-only surface, `PluginVerdict` (no pass variant — P8 by construction), panic-isolated execution, file-based discovery + review gate (only `approved` manifests activate), idempotent name-dedup registration, 2 real plugins (FakeRewardsDrainer L7 risk — real claim+debit semantic-inversion detection; VerificationEventLogger — ring-buffer + JSONL file sinks), wired into every layer (L2/L4/L5 folds, L3 sim notes/blocks, L6 policy veto, L7 risk findings, L8, analytics), `graphite plugins --dir` CLI, `GRAPHITE_PLUGINS_DIR`/`GRAPHITE_PLUGIN_EVENTS_FILE` server env, benchmark plugin-overhead section, 56 new tests. Remaining (Phase 3): true third-party (non-Graphite) plugin submissions through a public registry workflow |
 | Manifest Registry | Yes — `src/manifest_registry.rs` (community engine) + `manifest.rs` (runtime loader) | — | Core implemented 2026-08-07: signed submissions (ed25519), G5 reputation ledger, P7 tier wiring, P4 version lineage, P10 gate. Remaining: PR workflow + on-chain stake lookup (Phase 3) |
-| Self-Healing | Yes — quarantine works | 342 | No production data volume yet |
+| Self-Healing | Removed (dead code) | 0 | Module removed in Phase 1 audit — was never wired into the verification pipeline. Semantic graph quarantine still exists in  |
 | Dashboard | No | 0 | Everything |
 | Go SDK | Yes — 10/10 tests | — | ✅ Parity complete (ResolvedAccount, BuiltTransaction, VerificationBreakdownItem, ProtocolManifest added) |
 
@@ -314,7 +314,7 @@ this milestone's gates meaningful:
 - **Design hardening:** the graph-evidence readout binds each `graph()` guard to
   a temporary — an inline struct-literal readout deadlocked on the non-reentrant
   std Mutex (caught by the aggressive test cycle).
-- **Verification:** 976 tests / 0 failures,
+- **Verification:** 984 tests / 0 failures,
   clippy 0 warnings, fmt clean, all CI feature gates pass, live CLI smoke tests.
 
 ---

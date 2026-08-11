@@ -5,7 +5,7 @@
 - [x] Core verification engine (Rust)
 - [x] 8-layer pipeline (L1-L7 active, L3/L8 live-validated in Phase 2)
 - [x] 22 protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Drift + Kamino)
-- [x] Risk engine: 11 attack pattern detectors (13 risk checks)
+- [x] Risk engine: 11 attack pattern detectors (14 risk checks)
 - [x] Confidence engine with 0.55 cap on unknown protocols (P6/P12)
 - [x] Policy engine: 4 wallet profiles (Treasury, TradingBot, Gaming, Enterprise)
 - [x] Policy engine real integrations: evidence signals read the Semantic Graph accumulator (G4), all 4 presets satisfiable/differentiable, CLI `--profile` + `profiles`, 14 profile-matrix tests
@@ -14,15 +14,17 @@
 - [x] Python advisory layer (separate process — P1 compliance)
 - [x] HTTP server (axum) + CLI (clap)
 - [x] Dockerfile + .dockerignore
-- [x] 976 unit/integration tests passing, 0 clippy warnings (2026-08-11)
+- [x] 984 unit/integration tests passing, 0 clippy warnings (2026-08-11)
 
 ### Phase 1 Honest Status
 
 The benchmark is 16 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a
 statistical evaluation on unseen data. "100% precision / 100% recall on scored cases" is
-the honest claim. The 5 exploit reconstructions (CLINKSINK, AAT, Wormhole) use real
-program IDs but fabricated account structures and no instruction data bytes.
-They are labeled "SYNTHETIC" per P16.
+the honest claim. Of the exploit cases, 2 are SYNTHETIC reconstructions (CLINKSINK-style,
+AAT-style) using real program IDs but fabricated account structures and no
+instruction data bytes. The other 3 are REAL mainnet data (Wormhole $320M hack,
+CLINKSINK STMT drainer TX 64tsGGe, SlowMist AAT drainer TX 524t8LW) with actual
+instruction data from published security research. All are labeled per P16.
 
 ### TOCTOU Mitigation (Phase 1.5 Partial)
 
@@ -67,7 +69,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 976 tests passing, 0 clippy warnings, fmt clean (2026-08-11)
+- [x] 984 tests passing, 0 clippy warnings, fmt clean (2026-08-11)
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 

@@ -7,8 +7,9 @@ The Rust verification engine — the heart of Graphite.
 | Module | Responsibility | Layer |
 |--------|---------------|-------|
 | `account_resolution` | PDA derivation (Solana hash-chain algorithm), account role validation | L1 |
+| `verification` | 8-layer pipeline orchestrator (L1–L8) — implements L2 Instruction Verification and L4 State Verification inline | L2/L4 |
 | `transaction_builder` | Canonical serialization, compute budget estimate | — |
-| `risk_engine` | 11 attack pattern detectors (13 risk checks, hard gate) | L7 |
+| `risk_engine` | 11 attack pattern detectors (14 risk checks, hard gate) | L7 |
 | `confidence_engine` | Weighted signal scoring + trust tier ceilings | L6 |
 | `policy_engine` | Per-wallet profile thresholds (Treasury, TradingBot, Gaming, Enterprise) | L6 |
 | `simulation_integrity` | 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm + MAD baseline | L3 |
@@ -21,12 +22,17 @@ The Rust verification engine — the heart of Graphite.
 | `plugins` | Built-in plugins: FakeRewardsDrainer (L7 risk), VerificationEventLogger (analytics) | L7/L8 |
 | `benchmark` | P16-compliant benchmark suite (16 scored cases + 2 baseline comparisons + plugin overhead) | — |
 | `cli` | CLI interface (clap) | — |
+| `durable` | Append-only audit trail (P4) | — |
+| `live_corpus` | Pinned real on-chain transaction corpus for regression testing | — |
+| `manifest` | Runtime manifest loader (compile-time include_str! baking) | — |
+| `rpc_client` | Solana RPC client for live L3/L8 verification | — |
+| `tx_pattern_analysis` | Multi-instruction + CPI trace analysis (C29) | — |
 
 ## Build
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 976 tests (0 failures, 0 ignored)
+cargo test --release     # 984 tests (0 failures, 0 ignored)
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 

@@ -5,7 +5,7 @@
 **Repository:** github.com/Stan-lee13/graphite  
 **Constitution Principle:** P16 — No public performance claim without a linked, reproducible benchmark run backing the exact number.
 
-> **Update (2026-08-10, C28–C33):** the benchmark composition table below is superseded — the 5 SYNTHETIC drainer cases are now 3 REAL mainnet exploits (STMT 64tsGGe, AAT 524t8LW, Wormhole 5fKWY7X) + 2 SYNTHETIC (C30); avg latency ~2.1ms with real-data cases; 976 tests / 0 failures; 22 manifests / 561 instructions; 13 risk checks; MAD baseline (C28), multi-instruction + CPI trace (C29), discriminator-width fix (C33).
+> **Update (2026-08-10, C28–C33):** the benchmark composition table below is superseded — the 5 SYNTHETIC drainer cases are now 3 REAL mainnet exploits (STMT 64tsGGe, AAT 524t8LW, Wormhole 5fKWY7X) + 2 SYNTHETIC (C30); avg latency ~2.1ms with real-data cases; 984 tests / 0 failures; 22 manifests / 561 instructions; 14 risk checks; MAD baseline (C28), multi-instruction + CPI trace (C29), discriminator-width fix (C33).
 
 ---
 
@@ -15,7 +15,7 @@ Graphite v0.1.0-alpha is the first frozen release of a transaction intent verifi
 
 **Key results:**
 - **818 Rust tests** (175 unit + 618 integration/adversarial), **0 failures** (820 with `--include-ignored`)
-- **7 Python AI layer tests**, 0 failures
+- **27 Python AI layer tests**, 0 failures
 - **10 Go SDK tests**, 0 failures (verified in CI)
 - **TypeScript SDK**: clean compile (tsc --noEmit)
 - **16 scored benchmark cases** (safe + malicious) + 2 baseline comparisons, **100% precision, 100% recall**
@@ -194,7 +194,7 @@ The adversarial/exploit test suites cover 9 attack categories:
 
 ## 7. Known Limitations
 
-1. **Synthetic benchmark corpus** — 11 of the 16 scored benchmark cases use hand-crafted accounts (the 5 exploit reconstructions use real program IDs and are labeled SYNTHETIC per P16). Live on-chain verification is now exercised separately via `tests/live_transactions.rs` (real devnet corpus through the full pipeline) and the SAK devnet integration. Real on-chain instruction-level verification for drainer programs requires protocol manifests (Phase 2).
+1. **Synthetic benchmark corpus** — 11 of the 16 scored benchmark cases use hand-crafted accounts (2 SYNTHETIC exploit reconstructions use real program IDs with fabricated accounts, labeled per P16; 3 REAL mainnet exploit cases use actual instruction data from published security research). Live on-chain verification is now exercised separately via `tests/live_transactions.rs` (real devnet corpus through the full pipeline) and the SAK devnet integration. Real on-chain instruction-level verification for drainer programs requires protocol manifests (Phase 2).
 
 2. **Protocol expansion** — 15 protocol manifests are included (11 Phase 1 seed + 4 added in Phase 2 Month 1). Expansion to 20 continues with community-contributed manifests.
 

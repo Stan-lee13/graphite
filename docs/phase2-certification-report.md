@@ -4,7 +4,7 @@
 **Date:** August 10, 2026
 **Auditor:** Codebuff (independent revalidation pass C39–C42)
 **Base:** 948 tests / 0 failures / 0 clippy / 0 warnings (claimed at C38)
-**Final:** 976 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
+**Final:** 984 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
 **Manifests:** 22 / 561 instructions
 **Commits audited and extended:** C39 (fresh adversarial pass), C40 (L3/L8 live RPC validation),
 C41 (2,181-fixture regression corpus + 4 root fixes it surfaced), C42 (Kamino V2 real layouts,
@@ -191,7 +191,7 @@ warranted by measurement.**
 
 | Requirement | Implementation | Runtime evidence | Test evidence | Status |
 |---|---|---|---|---|
-| Phase 1 — 8-layer verification engine | verification.rs L1–L8 | benchmark 16/16 correct | 976 tests | Complete |
+| Phase 1 — 8-layer verification engine | verification.rs L1–L8 | benchmark 16/16 correct | 984 tests | Complete |
 | Phase 1 — risk engine (8+ patterns) | risk_engine.rs (checks 1–10 + Phase 2 gates) | 100% precision/recall | p0/cert suites, corpus | Complete |
 | Phase 1 — 22 manifests / 561 instructions | manifest.rs registry + JSON | IDs verified executable on mainnet (getAccountInfo) | structural audit, prefix tests | Strong |
 | Phase 1.5 — server hardening (auth/rate-limit/CORS/audit log) | server.rs env-config | /health + concurrent storm | hardening tests | Complete |

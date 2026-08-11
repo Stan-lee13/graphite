@@ -3,7 +3,7 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C45: 976 tests, 22 manifests, 561 instructions, 13 risk checks] — 2026-08-11
+## [Current State — C47: 984 tests, 22 manifests, 561 instructions, 14 risk checks] — 2026-08-11
 
 ### Summary of all changes C28–C45
 
@@ -23,14 +23,14 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
 ### Current numbers (C45)
-- **976 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
+- **984 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
 - **22 protocol manifests**, 561 instructions, all program IDs verified executable on mainnet
-- **11 risk patterns / 13 risk checks** (was 9/9)
+- **11 risk patterns / 14 risk checks** (was 9/9)
 - **2,181-fixture corpus**: 0 false negatives on 38-fixture holdout
 - **3 REAL mainnet exploits** scored in benchmark (Wormhole $320M, CLINKSINK STMT, SlowMist AAT)
 - **L3 live-validated** on devnet RPC; **L8 live-validated** on mainnet RPC
 - **SAK integration verified** on devnet (5 finalized transactions)
-- **Go SDK**: 9 tests, 16-field parity; **Python AI layer**: 8 tests; **TS SDK**: compiles clean
+- **Go SDK**: 10 tests, 16-field parity; **Python AI layer**: 27 tests; **TS SDK**: compiles clean
 
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
@@ -291,10 +291,12 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 
 ### Dead Code Removed
 - **cpi_chain.rs** — CPI chain checking is done inline in risk_engine.rs.
-- **regression_engine.rs** — Phase 2+ reference implementation, never called.
-- **plugin_orchestrator.rs** — Phase 2+ reference implementation, never called.
 - **self_healing.rs** — Phase 2+ reference implementation, never called.
 - **Fake SAK integration** — HTTP wrapper that did NOT import solana-agent-kit.
+
+### Later Re-Integrated
+- **regression_engine.rs** — Was initially removed, later re-implemented as an active module (P10 promotion gate, fixture corpus replay, `graphite regression` CLI gate, 12 tests).
+- **plugin_orchestrator.rs** — Was initially removed, later re-implemented as an active module (6 plugin traits, panic-isolated execution, 2 real plugins, 56 tests).
 
 ### Test Quality
 - **35 zero-assertion tests fixed.** Every test now has real assertions.

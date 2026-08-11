@@ -33,7 +33,7 @@ The pipeline executes in order. Each layer is tracked in the verification result
 4. **L4 State Verification** — Diffs pre/post account state against the manifest's expected state changes
 5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program. The intent vocabulary is exactly: `swap|trade|exchange`, `transfer|send`, `stake|delegate`, `close|close_account`, `create|create_account`, `approve|revoke` (anything else fails closed). The advisory labeler (v2, C21) emits only this vocabulary.
 6. **L6 Policy Verification** — Computes confidence (0.0–1.0 from weighted signals + tier ceilings) and applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Gaming 60%, Enterprise 99%) and trust tier requirements
-7. **L7 Risk Verification** — Pattern-matches against 11 known attack patterns (13 risk checks, hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack, FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, Impersonation (system-account impersonation — SolPhishHunter arXiv:2505.04094), MultiInstructionDrain (C29), and CpiTraceAnomaly (C29). Runs early for fail-fast but is reported at L7 per architecture spec.
+7. **L7 Risk Verification** — Pattern-matches against 11 known attack patterns (14 risk checks, hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack, FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, Impersonation (system-account impersonation — SolPhishHunter arXiv:2505.04094), MultiInstructionDrain (C29), and CpiTraceAnomaly (C29). Runs early for fail-fast but is reported at L7 per architecture spec.
 8. **L8 Execution Verification** — Post-submission: confirm finalized on-chain result matches prediction. Live-validated against real mainnet RPC (C40) — reports honest execution status (Confirmed / Unknown / Unavailable). Production default-on wiring pending public deployment.
 
 ### Key Properties
@@ -67,7 +67,7 @@ The axum-based HTTP server exposes `POST /verify`, `GET /manifests` (listing), `
 ## What Graphite Does NOT Do (Honest)
 
 - Does NOT parse instruction data semantics beyond the discriminator (instruction bytes are not analyzed for meaning)
-- Does NOT detect novel attack patterns (only the 11 known patterns / 13 checks are matched)
+- Does NOT detect novel attack patterns (only the 11 known patterns / 14 checks are matched)
 - Does NOT use AI/ML in the verification path (deterministic pattern matching only; the Python layer is an advisory labeler)
 - Does NOT treat the advisory labeler's suggestions as decisions — a wrong suggestion simply fails to match and the verification blocks (P1)
 - Does NOT work on chains other than Solana (SVM-specific, complete rewrite needed)
@@ -84,7 +84,7 @@ graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
 │   ├── protocols/          # 22 JSON protocol manifests (561 instructions)
-│   ├── tests/              # 976 tests (unit + adversarial + exploit + pinned real corpus)
+│   ├── tests/              # 984 tests (unit + adversarial + exploit + pinned real corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)
