@@ -14,7 +14,7 @@
 - [x] Python advisory layer (separate process — P1 compliance)
 - [x] HTTP server (axum) + CLI (clap)
 - [x] Dockerfile + .dockerignore
-- [x] 984 unit/integration tests passing, 0 clippy warnings (2026-08-11)
+- [x] 1012 unit/integration tests passing, 0 clippy warnings (2026-08-11)
 
 ### Phase 1 Honest Status
 
@@ -69,7 +69,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 984 tests passing, 0 clippy warnings, fmt clean (2026-08-11)
+- [x] 1012 tests passing, 0 clippy warnings, fmt clean (2026-08-11)
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 

@@ -9,7 +9,7 @@
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-984_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1012_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-22-blue?style=flat-square)](graphite-core/protocols/)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-11-red?style=flat-square)](graphite-core/src/risk_engine.rs)
@@ -63,12 +63,12 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 984 tests — zero setup
+# Run 1012 tests — zero setup
 cargo test --release
 
 # Output:
-# running 984 tests
-# test result: ok. 984 passed; 0 failed; 0 ignored
+# running 1012 tests
+# test result: ok. 1012 passed; 0 failed; 0 ignored
 
 # Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
@@ -115,7 +115,7 @@ All 11 patterns are real detection logic — not stubs, not placeholders.
 
 ---
 
-## Supported Protocols (22 Manifests / 561 Instructions)
+## Supported Protocols (28 Manifests / 695 Instructions)
 
 | Protocol | Program ID | Trust Tier |
 |----------|-----------|------------|
@@ -141,6 +141,12 @@ All 11 patterns are real detection logic — not stubs, not placeholders.
 | Metaplex Token Metadata | `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s` | Official Manifest |
 | Drift Protocol | `dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH` | Official Manifest |
 | Kamino Lending | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` | Official Manifest |
+| Phoenix | `PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY` | Official Manifest |
+| OpenBook V2 | `opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb` | Official Manifest |
+| Switchboard | `SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f` | Official Manifest |
+| Jupiter Limit Order | `jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu` | Official Manifest |
+| Solend | `So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo` | Official Manifest |
+| Marginfi | `MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA` | Official Manifest |
 
 ---
 
@@ -174,8 +180,8 @@ graphite/
 │   │   ├── benchmark.rs           ← P16-compliant benchmark (16 scored + 2 baselines)
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
-│   ├── protocols/                 ← 22 JSON protocol manifests (561 instructions)
-│   └── tests/                     ← 984 tests (unit + adversarial + exploit + live RPC)
+│   ├── protocols/                 ← 28 JSON protocol manifests (695 instructions)
+│   └── tests/                     ← 1012 tests (unit + adversarial + exploit + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -319,9 +325,9 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.60, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming unlocks at simulation-validated evidence (≈ 0.66), Treasury at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 984 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
+- 1012 Rust tests, 0 failures, 0 clippy warnings — every test has real assertions.
 - 14 risk checks (11 risk patterns) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
-- 22 protocol manifests / 561 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42).
+- 28 protocol manifests / 695 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).

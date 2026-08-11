@@ -3,7 +3,7 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C49: 987 tests, 28 manifests, 695 instructions, 14 risk checks] — 2026-08-12
+## [Current State — C50: 1012 tests, 28 manifests, 695 instructions, 14 risk checks] — 2026-08-12
 
 ### Summary of all changes C28–C49
 
@@ -25,7 +25,7 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
 ### Current numbers (C49)
-- **987 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
+- **1012 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
 - **28 protocol manifests**, 695 instructions, all program IDs verified executable on mainnet
 - **11 risk patterns / 14 risk checks** (was 9/9)
 - **2,181-fixture corpus**: 0 false negatives on 38-fixture holdout

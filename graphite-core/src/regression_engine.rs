@@ -432,7 +432,7 @@ mod tests {
     fn malicious_set_authority() -> VerificationInput {
         make_input(
             TOKEN,
-            "0b",
+            "06",
             &[
                 "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
                 "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
