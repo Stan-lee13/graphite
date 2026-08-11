@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/brand/graphite-logo-256.png" alt="Graphite logo" width="140" />
+
 # Graphite
 
 **Deterministic semantic verification for Solana AI agents.**
