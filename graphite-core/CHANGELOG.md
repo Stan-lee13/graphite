@@ -3,9 +3,17 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C52: 993 tests, 28 manifests, 695 instructions, 14 risk checks, 37-entry exploit corpus] — 2026-08-12
+## [Current State — C53: 999 tests, 28 manifests, 695 instructions, 14 risk checks, 37-entry exploit corpus] — 2026-08-12
 
-### Summary of all changes C28–C51
+### Summary of all changes C28–C52
+
+- **C53**: Independent-audit remediation — 3 real logic bugs fixed, the Manifest Registry wired into verification, docs synced.
+  - **Gaming profile was unsatisfiable for its own minimum tier (FIXED)**: Gaming required `min_confidence 0.60` but the HeuristicInferred P6 ceiling is 0.55 — the profile could never approve the very tier it names as its minimum. Lowered Gaming to 0.55 (exactly the ceiling); the P6 security bound is untouched (the ceiling itself was NOT raised). New tests: `test_gaming_approves_heuristic_inferred_at_ceiling` + `test_gaming_still_rejects_below_threshold_and_unknown_tier`.
+  - **`TrustTier::from_manifest_str` promoted malformed manifests (FIXED)**: empty/unrecognized `trust_tier` strings defaulted to `HeuristicInferred` (Tier 1) — a manifest declaring no (or a garbage) trust level cleared profiles requiring HeuristicInferred. Now fail-closed to `Unknown` (Tier 0). New test: `test_from_manifest_str_empty_and_unrecognized_default_to_unknown`.
+  - **Spurious `ceiling_triggered` from float accumulation (FIXED)**: the production signal weights (0.20×3 + 0.15×2 + 0.10) sum to 1.0000000000000002 in f64, so a perfect signal set produced confidence 1.0000000000000002 — flagged as `ceiling_triggered = true` against the 1.0 BattleTested ceiling even though nothing was ever capped. Confidence is now clamped to [0,1] before the ceiling comparison. New test: `test_battle_tested_ceiling_not_flagged_by_float_accumulation`.
+  - **Manifest Registry NOT wired into verification (FIXED)**: community-accepted manifests lived only in the registry engine/dashboard and never reached the runtime registry, so accepted community protocols still resolved as unknown at verification time. Accepted submissions now persist their full manifest; `ManifestRegistry::merge_community` merges them into the runtime registry **seed-wins** (a compile-time seed manifest can never be overridden; each community manifest is re-validated before insertion); `GraphiteCore::merge_community_manifests` exposes it; the server and `graphite verify` both load the shared registry state (`registry_state.json` / `GRAPHITE_REGISTRY_STATE`) at startup. New tests: `accepted_manifest_survives_snapshot_roundtrip` + `accepted_community_manifest_reaches_verification_registry` (end-to-end).
+  - **Docs synced**: ROADMAP protocol count 22 → 28, Go SDK parity 16 → 19 fields, cert report CatchPanicLayer marked FIXED (installed at server.rs), README risk-pattern provenance clarified (9 risk-engine + 2 pattern-analysis).
+  - Suite: **999 passed / 0 failed / 9 ignored**, 0 clippy, fmt clean.
 
 - **C52**: Dynamic PDA grounding for Squads V4 + Jupiter DCA + live-RPC exploit corpus expansion.
   - **Jupiter DCA manifest rebuilt from the official DCA SDK IDL**: real defects fixed — account order now matches on-chain (`dca` FIRST, then user/inputMint/outputMint; previously `user` was first), account lists completed (openDca has 12 accounts; the manifest carried only 5), and the `dca` PDA now declares `pda_seeds: ["dca", user, inputMint, outputMint, uid]` where `uid` = `{instruction_data:8:16}` (u64 LE applicationIdx). PDA derivation **verified against live mainnet**: `findProgramAddressSync` with the real seed tuple derives exactly the live account `Ck1Ct3vsMfzxeEM2RmKmTS4FVXoCB3YAUunKVFyNsFiq` from real tx data. Raw evidence: `scripts/dca_idl.json` + `scripts/dca_real_account.json`.
@@ -32,8 +40,8 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C44**: Encoding-explicit manifest reads in Python test (Windows-locale fix — `encoding="utf-8"` on all `open()` calls).
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
-### Current numbers (C52)
-- **993 Rust tests passing** (1002 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
+### Current numbers (C53)
+- **999 Rust tests passing** (1008 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
 - **28 protocol manifests**, 695 instructions, all program IDs verified executable on mainnet
 - **11 risk patterns / 14 risk checks** (was 9/9)
 - **2,747-fixture corpus**: 0 false negatives on 40-fixture holdout (38 real-exploit + real txs)

@@ -63,7 +63,7 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 993 tests — zero setup (1002 total; 9 network-dependent tests ignored
+# Run 999 tests — zero setup (1008 total; 9 network-dependent tests ignored
 # unless run explicitly with a live RPC)
 cargo test --release
 
@@ -112,7 +112,7 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 | **MultiInstructionDrain** | Coordinated mass-drain across multiple instructions in one tx (approve-then-transfer, authority-hijack-then-drain, close-and-sweep, mass multi-transfer sweep) |
 | **CpiTraceAnomaly** | Malicious shape in hierarchical CPI trace — unknown program, repeated revisits, or vanity-impersonated program in the tree |
 
-All 11 patterns are real detection logic — not stubs, not placeholders.
+All 11 patterns are real detection logic — not stubs, not placeholders. Nine are emitted by the single-instruction risk engine (`risk_engine.rs`); `MultiInstructionDrain` and `CpiTraceAnomaly` are emitted by the transaction-level and CPI-trace analyzers (`tx_pattern_analysis.rs`) and mapped onto the same `RiskPattern` enum in the orchestrator.
 
 ---
 
@@ -182,13 +182,13 @@ graphite/
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
 │   ├── protocols/                 ← 28 JSON protocol manifests (695 instructions)
-│   └── tests/                     ← 993 tests (unit + adversarial + exploit + live RPC)
+│   └── tests/                     ← 999 tests (unit + adversarial + exploit + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
 ├── sdk/
 │   ├── typescript/                ← TS SDK (GraphiteClient + AuditBind middleware)
-│   └── go/                        ← Go SDK (16-field VerificationResult parity)
+│   └── go/                        ← Go SDK (19-field VerificationResult parity)
 │
 ├── integrations/
 │   └── solana-agent-kit/          ← SAK v2 integration (verified execution gate)
@@ -326,7 +326,7 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.60, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming unlocks at simulation-validated evidence (≈ 0.66), Treasury at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 993 Rust tests passing (1002 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
+- 999 Rust tests passing (1008 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
 - 14 risk checks (11 risk patterns) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
 - 28 protocol manifests / 695 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.

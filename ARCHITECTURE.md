@@ -84,11 +84,11 @@ graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
 │   ├── protocols/          # 28 JSON protocol manifests (695 instructions)
-│   ├── tests/              # 993 tests (unit + adversarial + exploit + pinned real corpus)
+│   ├── tests/              # 999 tests (unit + adversarial + exploit + pinned real corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)
-│   └── go/                 # Go SDK (16-field VerificationResult parity)
+│   └── go/                 # Go SDK (19-field VerificationResult parity)
 ├── integrations/
 │   └── solana-agent-kit/   # SAK v2 integration (verified execution gate)
 ├── python-ai-layer/        # Advisory intent parser (separate process, P1)

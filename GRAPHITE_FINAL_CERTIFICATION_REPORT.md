@@ -13,7 +13,7 @@
 
 This update supersedes the stale numbers in the sections below.
 
-- **Tests:** 993 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 27 Python; 9 AuditBind; TS + Dashboard typecheck clean.
+- **Tests:** 999 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 27 Python; 9 AuditBind; TS + Dashboard typecheck clean.
 - **Manifests:** 28 verified manifests / 695 instructions (Drift + Kamino on-boarded C27; Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi on-boarded C46).
 - **Benchmark:** 18 scored cases, 100% precision/recall. Composition (C52): **5 REAL mainnet exploit cases** (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87) + 2 SYNTHETIC, honestly labeled. **Avg latency ~2.1ms** with the real-data cases; the ~850μs figure below predates them (and partly reflected error-path blocks fixed in C30).
 
@@ -27,7 +27,7 @@ This update supersedes the stale numbers in the sections below.
 **§5 Remaining Risks — STILL OPEN:**
 
 4. Reverse-prefix discriminator matching (no minimum hex length on prefix matches) — accepted by design for SPL Token's 1-byte selectors; C33 unified the Risk Engine onto the manifest's prefix convention, but the ambiguity itself remains a known tradeoff.
-6. **Missing `CatchPanicLayer`** on the Axum router — still open.
+6. ~~Missing `CatchPanicLayer`~~ → **FIXED**: `CatchPanicLayer::custom` is installed on the production Axum router (`server.rs`); handler panics are caught, logged, and returned as 500s instead of crashing the process.
 
 **New security fix (C33, forensic audit):** the Risk Engine's intent-mismatch gates compared discriminators by exact equality while the manifest resolver prefix-matches — a padded 8-byte selector (e.g. `0600000000000000`) could evade them. Fixed with unified prefix matching; two regression tests; verified end-to-end via CLI and HTTP server.
 

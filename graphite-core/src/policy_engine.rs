@@ -110,7 +110,7 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
     let (min_confidence, min_trust_tier) = match input.profile {
         WalletProfile::Treasury => (0.95, TrustTier::CommunityVerified),
         WalletProfile::TradingBot => (0.80, TrustTier::SimulationValidated),
-        WalletProfile::Gaming => (0.60, TrustTier::HeuristicInferred),
+        WalletProfile::Gaming => (0.55, TrustTier::HeuristicInferred),
         WalletProfile::Enterprise => (0.99, TrustTier::BattleTested),
         WalletProfile::Custom {
             min_confidence,
@@ -272,6 +272,74 @@ mod tests {
         assert!(matches!(
             result,
             PolicyVerdict::RejectedBelowThreshold { .. }
+        ));
+    }
+
+    /// C53: Gaming must be able to approve a HeuristicInferred-tier protocol
+    /// at its P6 ceiling. Previously Gaming required 0.60 confidence but the
+    /// HeuristicInferred ceiling is 0.55 — the profile could never approve
+    /// the very tier it names as its minimum. Now Gaming accepts 0.55
+    /// (exactly the HeuristicInferred ceiling).
+    #[test]
+    fn test_gaming_approves_heuristic_inferred_at_ceiling() {
+        let confidence_result = ConfidenceResult {
+            confidence: 0.55, // exactly the HeuristicInferred P6 ceiling
+            breakdown: vec![],
+            trust_tier_applied: TrustTier::HeuristicInferred,
+            ceiling_triggered: true,
+            ceiling_applied: crate::confidence_engine::ceilings::UNKNOWN_OR_HEURISTIC_MAX,
+        };
+
+        let input = PolicyInput {
+            confidence_result,
+            risk_verdict: RiskVerdict::Passed,
+            profile: WalletProfile::Gaming,
+        };
+
+        let result = evaluate_policy(&input).unwrap();
+        assert_eq!(result, PolicyVerdict::Approved);
+    }
+
+    /// C53 companion: Gaming must still REJECT a protocol that is only
+    /// HeuristicInferred when confidence is below the (lowered) 0.55 bar,
+    /// and must still reject Unknown-tier protocols entirely (Unknown <
+    /// the HeuristicInferred minimum).
+    #[test]
+    fn test_gaming_still_rejects_below_threshold_and_unknown_tier() {
+        // Confidence 0.54 < 0.55 bar.
+        let low_conf = ConfidenceResult {
+            confidence: 0.54,
+            breakdown: vec![],
+            trust_tier_applied: TrustTier::HeuristicInferred,
+            ceiling_triggered: false,
+            ceiling_applied: 1.0,
+        };
+        let input = PolicyInput {
+            confidence_result: low_conf,
+            risk_verdict: RiskVerdict::Passed,
+            profile: WalletProfile::Gaming,
+        };
+        assert!(matches!(
+            evaluate_policy(&input).unwrap(),
+            PolicyVerdict::RejectedBelowThreshold { .. }
+        ));
+
+        // Unknown tier < Gaming's HeuristicInferred minimum.
+        let unknown_tier = ConfidenceResult {
+            confidence: 0.55,
+            breakdown: vec![],
+            trust_tier_applied: TrustTier::Unknown,
+            ceiling_triggered: false,
+            ceiling_applied: 1.0,
+        };
+        let input = PolicyInput {
+            confidence_result: unknown_tier,
+            risk_verdict: RiskVerdict::Passed,
+            profile: WalletProfile::Gaming,
+        };
+        assert!(matches!(
+            evaluate_policy(&input).unwrap(),
+            PolicyVerdict::RejectedBelowTrustTier { .. }
         ));
     }
 }

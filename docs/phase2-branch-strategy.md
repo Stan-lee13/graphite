@@ -52,7 +52,7 @@ Added 3 missing Go types that the TypeScript SDK already had:
 - `BuiltTransaction` (with nested `BuiltAccountMeta`)
 - `VerificationBreakdownItem` (confidence breakdown per signal)
 
-**Result:** All 16 fields in Rust `VerificationResult` now have matching Go types.
+**Result:** All 19 fields in Rust `VerificationResult` now have matching Go types.
 JSON deserialization no longer silently drops data. 9 tests (up from 7),
 including roundtrip fidelity test proving no data loss.
 

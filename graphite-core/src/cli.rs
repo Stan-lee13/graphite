@@ -164,7 +164,29 @@ pub enum RegistryAction {
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         CliCommand::Verify { input, profile } => {
-            let core = GraphiteCore::new();
+            let mut core = GraphiteCore::new();
+            // C53: merge community-accepted manifests from the registry state
+            // (same contract as the server: `registry_state.json` or
+            // GRAPHITE_REGISTRY_STATE) so `graphite verify` sees the same
+            // registry as the running server. A missing or corrupt file is
+            // non-fatal — verification still runs against the seed registry.
+            let registry_path = registry_state_path(None);
+            match load_registry(&registry_path) {
+                Ok(engine) => {
+                    let merged = core.merge_community_manifests(&engine);
+                    if merged > 0 {
+                        eprintln!(
+                            "merged {merged} community-accepted manifest(s) from {}",
+                            registry_path.display()
+                        );
+                    }
+                }
+                Err(e) => eprintln!(
+                    "warning: registry state unreadable ({}): {}",
+                    registry_path.display(),
+                    e
+                ),
+            }
             let mut input = *input;
             // Apply the --profile override (fail-closed on unknown names).
             if let Some(profile) = resolve_profile(&profile)? {
@@ -203,7 +225,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             println!(
                 "  {:<12} {:<10.2} {:<26} {:<34}",
                 "Gaming",
-                0.60,
+                0.55,
                 "HeuristicInferred (T1)",
                 "fast-mode game transactions; lowest requirements"
             );

@@ -4,7 +4,7 @@
 **Date:** August 10, 2026
 **Auditor:** Codebuff (independent revalidation pass C39–C42)
 **Base:** 948 tests / 0 failures / 0 clippy / 0 warnings (claimed at C38)
-**Final:** 993 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
+**Final:** 999 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
 **Manifests:** 28 / 695 instructions
 **Commits audited and extended:** C39 (fresh adversarial pass), C40 (L3/L8 live RPC validation),
 C41 (2,181-fixture regression corpus + 4 root fixes it surfaced), C42 (Kamino V2 real layouts,

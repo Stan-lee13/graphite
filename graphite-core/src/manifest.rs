@@ -149,6 +149,29 @@ impl ManifestRegistry {
         self.manifests.values().collect()
     }
 
+    /// Merge community-accepted manifests from the Manifest Registry engine
+    /// into this registry (C53). SEED-WINS: a program ID already present
+    /// (a compile-time seed manifest) is never overridden by a community
+    /// submission — the seed set is the reviewed trust anchor. Each manifest
+    /// is schema-validated before insertion; an invalid one is skipped, so a
+    /// malformed submission can never poison the runtime registry. Returns
+    /// the number of manifests merged.
+    pub fn merge_community(&mut self, manifests: &[ProtocolManifest]) -> usize {
+        let mut merged = 0;
+        for m in manifests {
+            let key = m.protocol.program_id.clone();
+            if self.manifests.contains_key(&key) {
+                continue; // seed-wins: never override a seed manifest
+            }
+            if self.validate(m).is_err() {
+                continue; // fail-closed: skip malformed submissions
+            }
+            self.manifests.insert(key, m.clone());
+            merged += 1;
+        }
+        merged
+    }
+
     /// Find an instruction definition by discriminator (hex), allowing
     /// exact or input-starts-with-manifest matches for short discriminators.
     pub fn find_instruction<'a>(

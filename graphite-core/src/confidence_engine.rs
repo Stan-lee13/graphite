@@ -87,8 +87,13 @@ impl TrustTier {
             "OfficialManifest" => TrustTier::OfficialManifest,
             "HeuristicInferred" => TrustTier::HeuristicInferred,
             "Unknown" => TrustTier::Unknown,
-            "" => TrustTier::HeuristicInferred, // No tier declared — under-trust
-            _ => TrustTier::HeuristicInferred,  // Unrecognized — under-trust (P6)
+            // Fail-closed (P12): a manifest with an empty or unrecognized
+            // trust_tier must NOT be promoted above the least-trusted tier.
+            // Defaulting to HeuristicInferred (Tier 1) would let a malformed
+            // manifest clear profiles that require HeuristicInferred (e.g.
+            // Gaming) despite declaring no (or an invalid) trust level.
+            "" => TrustTier::Unknown,
+            _ => TrustTier::Unknown,
         }
     }
 }
@@ -205,6 +210,15 @@ pub fn compute_confidence(
     if confidence.is_nan() || confidence.is_infinite() {
         confidence = 0.0; // Degrade to zero confidence (P12: fail safe)
     }
+
+    // Clamp to [0, 1]: the weighted sum of in-range signals can only exceed
+    // 1.0 by floating-point accumulation error (weights validate to ~1.0
+    // within tolerance, e.g. the production 0.20+0.20+0.20+0.15+0.15+0.10
+    // sums to 1.0000000000000002 in f64). A confidence of
+    // 1.0000000000000002 must NOT set `ceiling_triggered = true` against a
+    // 1.0 (BattleTested) ceiling — that is a spurious "artificially capped"
+    // flag on a score that never truly exceeded 1.0.
+    confidence = confidence.clamp(0.0, 1.0);
 
     // Apply tier-based ceiling (Constitution P6).
     //
@@ -391,5 +405,87 @@ mod tests {
 
         assert!(result.ceiling_triggered);
         assert_eq!(result.confidence, ceilings::SIMULATION_VALIDATED_MAX);
+    }
+
+    /// C53: the production signal weights (0.20+0.20+0.20+0.15+0.15+0.10)
+    /// sum to 1.0000000000000002 in f64. With every signal at 1.0, the raw
+    /// weighted score is 1.0000000000000002 — a hair above the BattleTested
+    /// ceiling of 1.0. The clamp must prevent a spurious
+    /// `ceiling_triggered = true` (the ceiling never actually capped
+    /// anything; the excess is pure float accumulation error).
+    #[test]
+    fn test_battle_tested_ceiling_not_flagged_by_float_accumulation() {
+        // Exact production weight set from verification.rs::build_signals.
+        let signals = vec![
+            WeightedSignal {
+                kind: SignalKind::ManifestMatch,
+                value: 1.0,
+                weight: 0.20,
+            },
+            WeightedSignal {
+                kind: SignalKind::TrustTierLevel,
+                value: 1.0,
+                weight: 0.20,
+            },
+            WeightedSignal {
+                kind: SignalKind::SimulationMatch,
+                value: 1.0,
+                weight: 0.20,
+            },
+            WeightedSignal {
+                kind: SignalKind::HistoricalVolume,
+                value: 1.0,
+                weight: 0.15,
+            },
+            WeightedSignal {
+                kind: SignalKind::CommunityVerification,
+                value: 1.0,
+                weight: 0.15,
+            },
+            WeightedSignal {
+                kind: SignalKind::IntentAlignment,
+                value: 1.0,
+                weight: 0.10,
+            },
+        ];
+
+        let result = compute_confidence(&signals, TrustTier::BattleTested)
+            .expect("computation should succeed");
+
+        assert_eq!(result.confidence, 1.0);
+        assert!(
+            !result.ceiling_triggered,
+            "float accumulation must not flag ceiling_triggered at BattleTested (ceiling 1.0): {:?}",
+            result
+        );
+    }
+
+    /// C53: a manifest with an empty or unrecognized trust_tier must be
+    /// parsed as `Unknown` (Tier 0, fail-closed P12), NOT promoted to
+    /// `HeuristicInferred` (Tier 1). Previously a malformed manifest cleared
+    /// profiles that require HeuristicInferred despite declaring no (or an
+    /// invalid) trust level.
+    #[test]
+    fn test_from_manifest_str_empty_and_unrecognized_default_to_unknown() {
+        assert_eq!(TrustTier::from_manifest_str(""), TrustTier::Unknown);
+        assert_eq!(TrustTier::from_manifest_str("   "), TrustTier::Unknown);
+        assert_eq!(
+            TrustTier::from_manifest_str("GarbageTier"),
+            TrustTier::Unknown
+        );
+        // Known tiers still parse correctly.
+        assert_eq!(TrustTier::from_manifest_str("Unknown"), TrustTier::Unknown);
+        assert_eq!(
+            TrustTier::from_manifest_str("HeuristicInferred"),
+            TrustTier::HeuristicInferred
+        );
+        assert_eq!(
+            TrustTier::from_manifest_str("OfficialManifest"),
+            TrustTier::OfficialManifest
+        );
+        assert_eq!(
+            TrustTier::from_manifest_str("BattleTested"),
+            TrustTier::BattleTested
+        );
     }
 }

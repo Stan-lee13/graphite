@@ -134,6 +134,11 @@ pub struct RegistryRecord {
     pub trust_tier: TrustTier,
     /// "signed" (registered-reporter signature) or "community" (attestations).
     pub source: String,
+    /// The full accepted manifest, retained so community-accepted manifests
+    /// can be merged into the runtime verification registry (C53). `None`
+    /// for records persisted before this field existed (serde default).
+    #[serde(default)]
+    pub manifest: Option<ProtocolManifest>,
 }
 
 /// The community Manifest Registry engine.
@@ -189,6 +194,15 @@ impl ManifestRegistryEngine {
             .iter()
             .rev()
             .find(|r| r.program_id == program_id)
+    }
+
+    /// Accepted manifests retained in the acceptance log, in acceptance
+    /// order. Records persisted before the `manifest` field existed (serde
+    /// default `None`) are skipped. The verification core merges these into
+    /// its runtime registry (C53) so community-accepted protocols actually
+    /// resolve at verification time, not just in the dashboard.
+    pub fn accepted_manifests(&self) -> impl Iterator<Item = &ProtocolManifest> {
+        self.records.iter().filter_map(|r| r.manifest.as_ref())
     }
 
     /// Submit a community manifest.
@@ -283,6 +297,7 @@ impl ManifestRegistryEngine {
             } else {
                 "community".to_string()
             },
+            manifest: Some(submission.manifest.clone()),
         });
 
         Ok(RegistryDecision::Accepted {
@@ -1158,5 +1173,133 @@ mod tests {
             )
             .unwrap();
         assert_eq!(d1, d2, "same submission ⇒ same decision (P2)");
+    }
+
+    /// C53: an accepted submission must persist its full manifest so the
+    /// verification core can merge it into the runtime registry (Finding 3 —
+    /// the registry was previously only a dashboard, never wired into
+    /// verification). The snapshot round-trip must carry the manifest.
+    #[test]
+    fn accepted_manifest_survives_snapshot_roundtrip() {
+        let mut engine = ManifestRegistryEngine::new();
+        let signer = key(60);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let program = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+        let mut store = SemanticGraphStore::new();
+        engine
+            .submit(
+                &mut store,
+                signed_submission(program, "v1.0", &signer),
+                None,
+            )
+            .unwrap();
+
+        // Accepted manifests must be visible before and after the round-trip.
+        assert_eq!(engine.accepted_manifests().count(), 1);
+        assert_eq!(
+            engine
+                .accepted_manifests()
+                .next()
+                .unwrap()
+                .protocol
+                .program_id,
+            program
+        );
+
+        let json = engine.to_json().unwrap();
+        let restored = ManifestRegistryEngine::from_json(&json).unwrap();
+        assert_eq!(restored.accepted_manifests().count(), 1);
+        assert_eq!(
+            restored
+                .accepted_manifests()
+                .next()
+                .unwrap()
+                .protocol
+                .program_id,
+            program
+        );
+    }
+
+    /// C53 end-to-end: a community-accepted manifest merges into a fresh
+    /// GraphiteCore's runtime registry (seed-wins: the seed manifest for the
+    /// same program is NOT overridden), and verification resolves the
+    /// community-accepted program as a known protocol — proving the registry
+    /// now feeds the verification path, not just the dashboard.
+    #[test]
+    fn accepted_community_manifest_reaches_verification_registry() {
+        use crate::manifest::load_seed_manifests;
+
+        // A program with a seed manifest (Jupiter V6) and a real mainnet
+        // program with NO seed manifest (CLINKSINK drainer — a valid 32-byte
+        // base58 pubkey, never seed-manifested).
+        let seed_program = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+        let community_program = "4PG6e97DLCn2PRN4ZMmTLg83jsetrDkvamr3JiXoiffa";
+
+        let mut engine = ManifestRegistryEngine::new();
+        let signer = key(61);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let mut store = SemanticGraphStore::new();
+        // Submit a manifest for the community program AND an attempted
+        // override of the seed program.
+        engine
+            .submit(
+                &mut store,
+                signed_submission(community_program, "v1.0", &signer),
+                None,
+            )
+            .unwrap();
+        engine
+            .submit(
+                &mut store,
+                signed_submission(seed_program, "v1.0", &signer),
+                None,
+            )
+            .unwrap();
+
+        let mut registry = load_seed_manifests();
+        let seed_disc = registry
+            .get(seed_program)
+            .expect("seed manifest present")
+            .instructions
+            .first()
+            .map(|i| i.discriminator.clone());
+
+        let merged =
+            registry.merge_community(&engine.accepted_manifests().cloned().collect::<Vec<_>>());
+        // Only the brand-new community program merges; the seed program's
+        // manifest is untouched (seed-wins).
+        assert_eq!(merged, 1);
+        assert!(registry.get(community_program).is_some());
+        let seed = registry.get(seed_program).expect("seed still present");
+        assert_eq!(
+            seed.instructions.first().map(|i| i.discriminator.clone()),
+            seed_disc,
+            "community submission must NOT override the seed manifest"
+        );
+
+        // End-to-end: the merged manifest is visible through a GraphiteCore
+        // that merges the engine, and verification resolves the community
+        // program as a known protocol (manifest_found = true).
+        let mut core = crate::verification::GraphiteCore::new();
+        let n = core.merge_community_manifests(&engine);
+        assert_eq!(n, 1, "one new community program merges into the core");
+        let result = core
+            .verify(&make_fixture_input(
+                community_program,
+                "01",
+                "transfer",
+                &[],
+                &["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
+            ))
+            .unwrap();
+        assert!(
+            result.manifest_found,
+            "community-accepted program must resolve as a known protocol (C53): {}",
+            result.summary
+        );
     }
 }

@@ -275,16 +275,49 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
+    // Manifest Registry state (shared contract with the CLI: default
+    // `registry_state.json`, override `GRAPHITE_REGISTRY_STATE`). Community
+    // submissions accepted via `graphite registry submit` survive restarts
+    // and are (C53) merged into the VERIFICATION core's registry, so accepted
+    // community manifests resolve at verification time — not just in the
+    // dashboard. A corrupt file fails loud (tracing error) rather than
+    // silently resetting reviewer reputations.
+    let registry_state_path = std::env::var("GRAPHITE_REGISTRY_STATE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("registry_state.json"));
+    let registry_engine = match std::fs::read_to_string(&registry_state_path) {
+        Ok(json) => match crate::manifest_registry::ManifestRegistryEngine::from_json(&json) {
+            Ok(engine) => {
+                tracing_log(&format!(
+                    "manifest registry: loaded {} accepted record(s) from {}",
+                    engine.records().len(),
+                    registry_state_path.display()
+                ));
+                engine
+            }
+            Err(e) => {
+                tracing_log(&format!(
+                    "manifest registry: CORRUPT state file {} — starting fresh: {}",
+                    registry_state_path.display(),
+                    e
+                ));
+                crate::manifest_registry::ManifestRegistryEngine::new()
+            }
+        },
+        Err(_) => crate::manifest_registry::ManifestRegistryEngine::new(),
+    };
+    let merged = core.merge_community_manifests(&registry_engine);
+    if merged > 0 {
+        tracing_log(&format!(
+            "manifest registry: merged {merged} community-accepted manifest(s) into the verification registry (C53)"
+        ));
+    }
+
     let state = AppState {
         core,
         api_key: api_key.clone(),
         audit,
-        // Fresh engine per process: submissions and reviewer registrations are
-        // operator/PR-flow writes (Phase 2/3); the dashboard reads current
-        // state. Persistence is intentionally deferred to the PR workflow
-        // milestone — nothing is lost because nothing is writable over HTTP
-        // yet (read-only surface, P4).
-        registry_engine: crate::manifest_registry::ManifestRegistryEngine::new(),
+        registry_engine,
         rate: RateLimiter::new(rate_per_sec),
         trust_proxy,
     };

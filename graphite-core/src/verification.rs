@@ -686,6 +686,18 @@ impl GraphiteCore {
         &self.registry
     }
 
+    /// Merge community-accepted manifests from the Manifest Registry engine
+    /// into this core's runtime registry (C53). Seed-wins: a compile-time
+    /// seed manifest is never overridden by a community submission. Returns
+    /// the number of community manifests merged.
+    pub fn merge_community_manifests(
+        &mut self,
+        engine: &crate::manifest_registry::ManifestRegistryEngine,
+    ) -> usize {
+        let manifests: Vec<_> = engine.accepted_manifests().cloned().collect();
+        self.registry.merge_community(&manifests)
+    }
+
     /// Access the plugin orchestrator (P8 surface).
     pub fn plugins(&self) -> &crate::plugin_orchestrator::PluginOrchestrator {
         &self.plugins
