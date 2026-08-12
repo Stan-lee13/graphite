@@ -3,9 +3,12 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C50: 1012 tests, 28 manifests, 695 instructions, 14 risk checks] — 2026-08-12
+## [Current State — C51: 987 tests, 28 manifests, 695 instructions, 14 risk checks] — 2026-08-12
 
-### Summary of all changes C28–C49
+### Summary of all changes C28–C50
+
+- **C50**: Independent audit sync — regression_engine SetAuthority discriminator corrected `0b` (ThawAccount) → `06` (SetAuthority): the test was passing for the wrong reason (account-count error on ThawAccount, not the AuthorityHijack pattern). Now genuinely exercises the SetAuthority authority-hijack path. Cargo.toml version 0.1.0 → 0.1.1 (matches v0.1.1-alpha tag). README protocol table gained the 6 C46 protocols.
+- **C51**: Audit-correction pass — corrected the C50 test count (1012 → 987 passed / 995 running, 8 network-dependent ignored; the 1012 figure was not reproducible) and the README Protocol_Manifests badge (22 → 28, missed by C50).
 
 - **C46**: Six new protocol manifests grounded in official sources — **Phoenix** (28 ix, native shank 1-byte tags verified from live mainnet), **OpenBook V2** (29 ix, Anchor snake_case discriminators verified on-chain), **Switchboard** (48 ix), **Jupiter Limit Order** (9 ix), **Solend** (16 ix, layouts from official SDK doc comments with full readonly accounts; tags from official `unpack()`), **Marginfi** (4 ix, real mainnet shapes observed on-chain). All 6 program IDs verified executable on mainnet and pinned in `verified_program_ids.json`; discriminator derivation mode per program asserted by `test_new_protocol_manifests_are_grounded`. Drift + Kamino PDA seeds verified against official sources (IDLs + SDK codegen) and pinned with JS-SDK known answers in `account_resolution.rs`.
 
@@ -24,8 +27,8 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C44**: Encoding-explicit manifest reads in Python test (Windows-locale fix — `encoding="utf-8"` on all `open()` calls).
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
-### Current numbers (C49)
-- **1012 Rust tests**, 0 failures, 0 clippy warnings, fmt clean
+### Current numbers (C51)
+- **987 Rust tests passing** (995 running; 8 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
 - **28 protocol manifests**, 695 instructions, all program IDs verified executable on mainnet
 - **11 risk patterns / 14 risk checks** (was 9/9)
 - **2,181-fixture corpus**: 0 false negatives on 38-fixture holdout

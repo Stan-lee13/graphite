@@ -26,7 +26,7 @@ phishing specifically "exploits weaknesses in transaction simulations" (Scam Sni
 
 Graphite is not a research prototype. It is a working, tested, and live-validated system:
 
-- **1012 tests / 0 failures / 0 clippy warnings / 0 compiler warnings**, fmt clean.
+- **987 tests / 0 failures / 0 clippy warnings / 0 compiler warnings**, fmt clean.
 - **28 protocol manifests / 695 verified instructions**, every program ID verified
   executable on mainnet.
 - **A 2,181-fixture regression corpus** — dev, regression, and a real holdout of 38
@@ -137,7 +137,7 @@ Key properties:
 
 | Claim | Evidence |
 |---|---|
-| Correctness | 1012 tests / 0 failures / 0 clippy / 0 warnings; benchmark 100% precision & recall on 16 scored cases |
+| Correctness | 987 tests / 0 failures / 0 clippy / 0 warnings; benchmark 100% precision & recall on 16 scored cases |
 | Real data | 3 real mainnet exploits blocked in benchmark (Wormhole $320M, CLINKSINK, SlowMist AAT); 35 real exploit signatures in holdout, 0 false negatives |
 | Live validation | L3 on real devnet RPC; L8 on real mainnet RPC; SAK integration = 5 finalized devnet transactions |
 | Corpus | 2,181 deterministic fixtures (dev / regression / holdout), byte-identical across runs |
@@ -221,7 +221,7 @@ Foundation's milestone model). Rationale in §8.
 We request **$120,000 over three milestones**. Reasoning:
 
 - **What remains is not research risk — it is delivery cost.** The core is built and
-  tested (1012 tests, two audits, live RPC validation). The remaining work — deployment,
+  tested (987 tests, two audits, live RPC validation). The remaining work — deployment,
   professional audit, corpus expansion, integrations — is well-scoped execution.
 - **Professional security audit** of a Rust verification engine of this surface area
   realistically costs $30k–$60k; our M1 allocates ~$30k toward it (rest internal).

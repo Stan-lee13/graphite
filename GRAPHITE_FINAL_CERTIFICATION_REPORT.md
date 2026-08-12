@@ -13,7 +13,7 @@
 
 This update supersedes the stale numbers in the sections below.
 
-- **Tests:** 1012 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 8 Python; 9 AuditBind; TS + Dashboard typecheck clean.
+- **Tests:** 987 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 8 Python; 9 AuditBind; TS + Dashboard typecheck clean.
 - **Manifests:** 28 verified manifests / 695 instructions (Drift + Kamino on-boarded C27; Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi on-boarded C46).
 - **Benchmark:** 16 scored cases, 100% precision/recall. Composition changed (C30): **3 REAL mainnet exploit cases** (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) + 2 SYNTHETIC, honestly labeled. **Avg latency ~2.1ms** with the real-data cases; the ~850μs figure below predates them (and partly reflected error-path blocks fixed in C30).
 
@@ -37,7 +37,7 @@ This update supersedes the stale numbers in the sections below.
 
 ## 0. Phase 1.5 Completion Update (2026-08-07)
 
-This report originally certified Phase 1/1.5 at commit `e39c32d` (1012 tests (current)). Since then the following was completed and live-verified; this update supersedes the stale numbers in the original sections below.
+This report originally certified Phase 1/1.5 at commit `e39c32d` (987 tests (current)). Since then the following was completed and live-verified; this update supersedes the stale numbers in the original sections below.
 
 ### RPC Client — live-verified against Helius (mainnet + devnet)
 
