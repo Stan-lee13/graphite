@@ -3,10 +3,11 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C53: 999 tests, 28 manifests, 695 instructions, 14 risk checks, 37-entry exploit corpus] — 2026-08-12
+## [Current State — C54: 999 tests, 28 manifests, 695 instructions, 14 risk checks, 37-entry exploit corpus, deployment verified, v0.2.0-beta] — 2026-08-12
 
-### Summary of all changes C28–C52
+### Summary of all changes C28–C54
 
+- **C54**: Deployment verification — Phase 2's last exit item closed with runtime evidence. Three real Dockerfile defects found and fixed: (1) toolchain pinned at `rust:1.82` could not build the locked dependency tree (`clap_lex 1.1.0` requires Cargo's `edition2024`, stabilized in 1.85) → `rust:1.97-bookworm`; (2) `--features server` never built the `graphite` binary (`required-features = ["cli"]`) → both build steps use `--features server,cli`; (3) cargo's `target/` lands under the manifest's workspace root, so the `COPY` path was always wrong → `CARGO_TARGET_DIR` pinned in the builder stage. Image now builds (185MB), container runs non-root (uid 999), HEALTHCHECK healthy. Live security tests against the deployed container: auth 401s, rate limiting 429 on a concurrent burst, CORS default-deny + allowlist, audit log append-only JSONL, malformed/oversized bodies → 422/413 with the server surviving. Certification report upgraded CONDITIONAL GO → GO (§7/§10/§11); ROADMAP Phase 2 marked COMPLETE; Cargo.toml 0.1.1 → 0.2.0-beta and tagged `v0.2.0-beta`.
 - **C53**: Independent-audit remediation — 3 real logic bugs fixed, the Manifest Registry wired into verification, docs synced.
   - **Gaming profile was unsatisfiable for its own minimum tier (FIXED)**: Gaming required `min_confidence 0.60` but the HeuristicInferred P6 ceiling is 0.55 — the profile could never approve the very tier it names as its minimum. Lowered Gaming to 0.55 (exactly the ceiling); the P6 security bound is untouched (the ceiling itself was NOT raised). New tests: `test_gaming_approves_heuristic_inferred_at_ceiling` + `test_gaming_still_rejects_below_threshold_and_unknown_tier`.
   - **`TrustTier::from_manifest_str` promoted malformed manifests (FIXED)**: empty/unrecognized `trust_tier` strings defaulted to `HeuristicInferred` (Tier 1) — a manifest declaring no (or a garbage) trust level cleared profiles requiring HeuristicInferred. Now fail-closed to `Unknown` (Tier 0). New test: `test_from_manifest_str_empty_and_unrecognized_default_to_unknown`.
@@ -40,7 +41,7 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C44**: Encoding-explicit manifest reads in Python test (Windows-locale fix — `encoding="utf-8"` on all `open()` calls).
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
-### Current numbers (C53)
+### Current numbers (C54)
 - **999 Rust tests passing** (1008 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
 - **28 protocol manifests**, 695 instructions, all program IDs verified executable on mainnet
 - **11 risk patterns / 14 risk checks** (was 9/9)

@@ -4,22 +4,25 @@
 # Constitution P1: Only deterministic Rust core. Python AI Layer runs separately.
 # Manifests are compile-time baked via include_str! (P12 fail-closed).
 
-FROM rust:1.82-bookworm AS builder
+FROM rust:1.97-bookworm AS builder
 WORKDIR /usr/src/graphite
+# Cargo places target/ under the workspace root (graphite-core/) unless told
+# otherwise; pin it so the COPY below can find the binary.
+ENV CARGO_TARGET_DIR=/usr/src/graphite/target
 
 # Copy Cargo.toml and Cargo.lock for dependency caching
 COPY graphite-core/Cargo.toml graphite-core/Cargo.lock ./graphite-core/
 
 # Pre-build dependencies with dummy source
 RUN mkdir -p graphite-core/src && echo "pub fn _dummy() {}" > graphite-core/src/lib.rs
-RUN cargo build --manifest-path graphite-core/Cargo.toml --release --features server 2>/dev/null || true
+RUN cargo build --manifest-path graphite-core/Cargo.toml --release --features server,cli 2>/dev/null || true
 
 # Copy actual source and protocols (needed for include_str! at compile time)
 COPY graphite-core/src ./graphite-core/src
 COPY graphite-core/protocols ./graphite-core/protocols
 
 # Build the real binary
-RUN touch graphite-core/src/lib.rs && cargo build --manifest-path graphite-core/Cargo.toml --release --features server
+RUN touch graphite-core/src/lib.rs && cargo build --manifest-path graphite-core/Cargo.toml --release --features server,cli
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && apt-get clean

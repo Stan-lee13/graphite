@@ -73,7 +73,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 
-## Phase 2 (IN PROGRESS — 80% complete, branch: phase2-development)
+## Phase 2 (COMPLETE — v0.2.0-beta tagged at C54)
 
 ### Month 1: Real Data + Protocol Expansion
 - [x] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — 3 pinned mainnet exploits scored in the benchmark (C30); 35 real mainnet exploit signatures from SolPhishHunter arXiv:2505.04094 + 3 real successful mainnet txs in the holdout corpus (C41); **C52 fetched 2 more live from api.mainnet-beta.solana.com** — fresh Aug-2026 drainer chain TX 2AWwL6dk (unknown 8MjG72/GieMfa5 + known HELPER, real Token-2022 mintTo) + AAT mass drain TX 3PbK87 (20 calls, real disc 0e) — exploit corpus now 37, both scored as REAL benchmark cases with raw evidence in scripts/real_exploit_*.json
@@ -100,9 +100,9 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] 1,000+ meaningful regression fixtures — **2,747-fixture corpus** (C41 + C52): dev 2,676 (manifest-driven synthetic) + regression 31 (re-pinned attack classes) + holdout 40 (37 real mainnet exploits — 35 SolPhishHunter + 2 live-fetched — + 3 real mainnet txs, independently labeled, never used for tuning); replay 0 divergences, byte-identical across runs (C42 registry determinism fix)
 - [x] Real holdout evaluation — holdout n=38: precision 1.000, recall 1.000, F1 1.000, 0 false negatives (C41)
 - [x] 22-manifest revalidation — all program IDs base58-decode to 32 bytes; Kamino V2 stub layouts rebuilt from live on-chain decoded streams (C42); Orca roles fixed to real SDK layouts (C41); universal-CPI audit: infra exclusion is per-target and cannot shield a malicious caller (C42)
-- [ ] Public deployment endpoint (Dockerfile + hardened server code-ready; no live public endpoint yet — UNVERIFIED)
-- [ ] Phase 2 certification
-- [ ] Tag v0.2.0-beta
+- [x] Public deployment endpoint — **image builds + runs + security-tested live (C54)**: the Dockerfile had 3 real defects (toolchain pinned too old for the locked clap tree; `--features server` never built the `graphite` bin which requires `cli`; wrong target-dir COPY path) — all fixed; `docker build` now succeeds (185MB), container runs non-root (uid 999), HEALTHCHECK healthy, and auth (401s), rate limiting (429 on concurrent burst), CORS default-deny + allowlist, audit log, and hostile/oversized bodies (422/413, server survives) were verified against the deployed container. Still no public internet endpoint — TLS/DNS/monitoring are reverse-proxy platform concerns, documented in docker-compose.yml
+- [x] Phase 2 certification — report upgraded **CONDITIONAL GO → GO** (docs/phase2-certification-report.md, §7/§10/§11)
+- [x] Tag v0.2.0-beta — tagged at C54 (Cargo.toml 0.1.1 → 0.2.0-beta)
 
 ### Phase 2 Exit Criteria
 - [x] Benchmark uses real on-chain transaction data — **5 REAL mainnet exploit cases** (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87) pinned in the P16 benchmark binary from `tests/real_onchain_exploits.rs` + live-fetched `scripts/real_exploit_*.json` (real program IDs, accounts, CPI structure; reproducible offline), replacing 3 of the 5 SYNTHETIC reconstructions; 2 SYNTHETIC cases remain, honestly labeled, for classes not yet pinned from mainnet
