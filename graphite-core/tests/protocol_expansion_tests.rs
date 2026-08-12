@@ -20,6 +20,17 @@ const JUPITER_DCA: &str = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M";
 const WORMHOLE: &str = "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth";
 const METAPLEX: &str = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";
 
+fn dca_input(discriminator: &str, intent: &str) -> VerificationInput {
+    // Jupiter DCA layouts carry 12-15 accounts per the official IDL (C52).
+    let mut input = base_input(JUPITER_DCA, discriminator, intent);
+    while input.account_addresses.len() < 15 {
+        input
+            .account_addresses
+            .push("4rQz2f4Wc1y7DpQ8v6mW2nN5uM3sR9bHjC1kTv8XwYdL".to_string());
+    }
+    input
+}
+
 fn base_input(program_id: &str, discriminator: &str, intent: &str) -> VerificationInput {
     VerificationInput {
         program_id: program_id.to_string(),
@@ -99,7 +110,7 @@ fn pump_fun_swap_intent_mismatch_is_flagged() {
 #[test]
 fn jupiter_dca_close_intent_is_accepted() {
     let core = GraphiteCore::new();
-    let input = base_input(JUPITER_DCA, "16072162a8b722f3", "close");
+    let input = dca_input("16072162a8b722f3", "close");
     let result = core.verify(&input).expect("verify should not fail");
     assert!(
         result.layers.iter().any(|l| l.layer.contains("L1")),
@@ -539,7 +550,7 @@ fn jupiter_dca_discriminators_pin_onchain_verified_values() {
     // A corrected value resolves and passes the pipeline as a close.
     let core = GraphiteCore::new();
     let r = core
-        .verify(&base_input(JUPITER_DCA, "16072162a8b722f3", "close"))
+        .verify(&dca_input("16072162a8b722f3", "close"))
         .expect("verify must not fail");
     assert_ne!(
         r.risk_verdict.status, "Blocked",

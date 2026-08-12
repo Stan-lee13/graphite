@@ -1,0 +1,49 @@
+[
+  {
+    "program_id": "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+    "version": "1.0.0",
+    "content_hash": "0a5be5e267146880e1af4db2ef1f9c2249d1e0dfaece432acbd438920837e251",
+    "expected_approved": false,
+    "source": "real-mainnet-exploit:3PbK87xn2yGs1m4nUgaGjrLwmTChPFgGg3aLwpi8NY7nWF78cY5ZQwvM1kLSGFd5hVdnmJ9BP19vkbpsji2DiK3A",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification holdout",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "0e00000000000000",
+      "account_addresses": [
+        "Fxc7Tpt1qqbrSc7hM7MSvvTs5jFVaa1iGaMeNevoNAV3",
+        "AzFiF4NEcaZJzao28Hm4vYtKttqfUh31qFq3oSmZVj31",
+        "Gk6tB9ZsPirFqWC1DEUynh9oLJGDEKeAntaz2xQNzuyV",
+        "11111111111111111111111111111111"
+      ],
+      "instruction_data": null,
+      "cpi_targets": [
+        "11111111111111111111111111111111"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null
+    }
+  }
+]

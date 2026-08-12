@@ -32,7 +32,7 @@ The Rust verification engine — the heart of Graphite.
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 984 tests (0 failures, 0 ignored)
+cargo test --release     # 993 tests (0 failures, 9 network-dependent ignored)
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 

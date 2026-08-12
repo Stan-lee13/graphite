@@ -636,6 +636,174 @@ mod tests {
         ix.accounts[account_idx].pda_seeds.clone()
     }
 
+    // ───────────────────────────────────────────────────────────────────────
+    // Jupiter DCA + Squads V4 PDA grounding (C52) — seed templates and
+    // known-answer addresses verified against OFFICIAL sources AND live
+    // mainnet accounts:
+    //   Jupiter DCA: official IDL (jupiter-python-sdk embedded IDL, program
+    //     DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M) + a real mainnet DCA
+    //     account (Ck1Ct3vsMfzxeEM2RmKmTS4FVXoCB3YAUunKVFyNsFiq, whose stored
+    //     user/inputMint/outputMint/idx were read off-chain) — the JS-SDK
+    //     derivation ["dca", user, inputMint, outputMint, uid] reproduces the
+    //     on-chain address exactly.
+    //   Squads V4: official sdk/multisig/src/pda.ts getMultisigPda
+    //     ["multisig", "multisig", createKey] + a real mainnet multisig
+    //     (DDV1BEtsuZWM7mLAzmdur6VR6XWcZkXyZ1mUK2H58yqk, whose stored
+    //     create_key 7vp2dDTnHgQHifJd8nCZxToUrQybe3MpWpa6ttnu5Jam was read
+    //     off-chain) — matches the manifest seed template exactly.
+    // ───────────────────────────────────────────────────────────────────────
+    const DCA_PROGRAM: &str = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M";
+    const SQUADS_PROGRAM: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
+
+    // Real mainnet DCA account + its stored fields (read from account data).
+    const DCA_REAL_ACCOUNT: &str = "Ck1Ct3vsMfzxeEM2RmKmTS4FVXoCB3YAUunKVFyNsFiq";
+    const DCA_REAL_USER: &str = "DodwnsRtPbkzJHC4AcoXdmT92GUUsRDQ6FxJfM4UDcem";
+    const DCA_REAL_INPUT_MINT: &str = "So11111111111111111111111111111111111111112";
+    const DCA_REAL_OUTPUT_MINT: &str = "DitHyRMQiSDhn5cnKMJV2CDDt6sVct96YrECiM49pump";
+    const DCA_REAL_UID: u64 = 1_786_396_192;
+
+    // Real mainnet Squads multisig + its stored create_key.
+    const SQUADS_REAL_MULTISIG: &str = "DDV1BEtsuZWM7mLAzmdur6VR6XWcZkXyZ1mUK2H58yqk";
+    const SQUADS_REAL_CREATE_KEY: &str = "7vp2dDTnHgQHifJd8nCZxToUrQybe3MpWpa6ttnu5Jam";
+
+    #[test]
+    fn test_dca_seed_templates_match_official_idl() {
+        // openDca (disc 2441b93601d264a3): dca account is at index 1 in the
+        // official IDL order [dca(0), user(1), inputMint(2), outputMint(3), ...]
+        // with seeds ["dca", user, inputMint, outputMint, applicationIdx].
+        assert_eq!(
+            seeds_of(DCA_PROGRAM, "2441b93601d264a3", 0),
+            vec![
+                "dca",
+                "{account_1}",
+                "{account_2}",
+                "{account_3}",
+                "{instruction_data:8:16}"
+            ]
+        );
+        // openDcaV2 (disc 8e772b6da2340bb1): [dca(0), user(1), payer(2),
+        // inputMint(3), outputMint(4), ...].
+        assert_eq!(
+            seeds_of(DCA_PROGRAM, "8e772b6da2340bb1", 0),
+            vec![
+                "dca",
+                "{account_1}",
+                "{account_3}",
+                "{account_4}",
+                "{instruction_data:8:16}"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_dca_pda_derives_real_mainnet_account() {
+        // openDca with uid = the real account's idx: instruction data is the
+        // 8-byte disc + applicationIdx (u64 LE) at bytes 8..16.
+        let mut data = vec![0u8; 16];
+        data[0..8].copy_from_slice(&hex::decode("2441b93601d264a3").unwrap());
+        data[8..16].copy_from_slice(&DCA_REAL_UID.to_le_bytes());
+        // IDL account order: [dca, user, inputMint, outputMint, ...].
+        let r = resolve_real(
+            DCA_PROGRAM,
+            "2441b93601d264a3",
+            &[
+                DCA_REAL_ACCOUNT,
+                DCA_REAL_USER,
+                DCA_REAL_INPUT_MINT,
+                DCA_REAL_OUTPUT_MINT,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+            ],
+            Some(data.clone()),
+        );
+        assert!(
+            !r.resolved_accounts[0].pda_mismatch,
+            "dca PDA must match the real mainnet account"
+        );
+        assert_eq!(r.resolved_accounts[0].address, DCA_REAL_ACCOUNT);
+        // The passed dca address differs from a derived one => mismatch flagged.
+        let r2 = resolve_real(
+            DCA_PROGRAM,
+            "2441b93601d264a3",
+            &[
+                WALLET, // WRONG dca address
+                DCA_REAL_USER,
+                DCA_REAL_INPUT_MINT,
+                DCA_REAL_OUTPUT_MINT,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+                WALLET,
+            ],
+            Some(data.clone()),
+        );
+        assert!(
+            r2.resolved_accounts[0].pda_mismatch,
+            "wrong dca address must be flagged as a PDA mismatch"
+        );
+    }
+
+    #[test]
+    fn test_squads_multisig_seed_template_matches_official_sdk() {
+        // multisigCreateV2 (disc 32ddc75d28f58be9): multisig is account index
+        // 2, createKey at index 3; seeds ["multisig", "multisig", createKey]
+        // per official sdk/multisig/src/pda.ts getMultisigPda.
+        assert_eq!(
+            seeds_of(SQUADS_PROGRAM, "32ddc75d28f58be9", 2),
+            vec!["multisig", "multisig", "{account_3}"]
+        );
+    }
+
+    #[test]
+    fn test_squads_multisig_derives_real_mainnet_account() {
+        let r = resolve_real(
+            SQUADS_PROGRAM,
+            "32ddc75d28f58be9",
+            &[
+                WALLET,                 // programConfig
+                WALLET,                 // treasury
+                SQUADS_REAL_MULTISIG,   // multisig (the real on-chain PDA)
+                SQUADS_REAL_CREATE_KEY, // createKey
+                WALLET,                 // creator
+                WALLET,                 // systemProgram
+            ],
+            None,
+        );
+        assert!(
+            !r.resolved_accounts[2].pda_mismatch,
+            "multisig PDA must match the real mainnet multisig"
+        );
+        assert_eq!(r.resolved_accounts[2].address, SQUADS_REAL_MULTISIG);
+        // A different create_key must fail the derivation.
+        let r2 = resolve_real(
+            SQUADS_PROGRAM,
+            "32ddc75d28f58be9",
+            &[
+                WALLET,
+                WALLET,
+                WALLET, // WRONG multisig address
+                SQUADS_REAL_CREATE_KEY,
+                WALLET,
+                WALLET,
+            ],
+            None,
+        );
+        assert!(
+            r2.resolved_accounts[2].pda_mismatch,
+            "wrong multisig address must be flagged as a PDA mismatch"
+        );
+    }
+
     #[test]
     fn test_drift_pda_templates_match_official_sdk() {
         // deposit/transferDeposit/withdraw: marketIndex is the FIRST arg

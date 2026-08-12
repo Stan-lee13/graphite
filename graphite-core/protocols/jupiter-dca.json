@@ -4,8 +4,7 @@
   "name": "Jupiter DCA",
   "program_id": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
   "website": "https://jup.ag",
-  "github": "https://github.com/jup-ag/dca-cpi",
-  "idl_source": "https://raw.githubusercontent.com/jup-ag/dca-cpi/master/idl.json",
+  "github": "https://github.com/jup-ag",
   "category": "swap"
  },
  "version": {
@@ -19,6 +18,19 @@
    "discriminator": "2441b93601d264a3",
    "accounts": [
     {
+     "name": "dca",
+     "role": "pda",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [
+      "dca",
+      "{account_1}",
+      "{account_2}",
+      "{account_3}",
+      "{instruction_data:8:16}"
+     ]
+    },
+    {
      "name": "user",
      "role": "signer",
      "is_writable": true,
@@ -26,28 +38,70 @@
      "pda_seeds": []
     },
     {
-     "name": "dca",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "user_ata",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "input_mint",
+     "name": "inputMint",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "output_mint",
+     "name": "outputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "inAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -55,58 +109,134 @@
     }
    ],
    "expected_state_changes": [
-    "creates a new DCA account with the schedule parameters from instruction data",
-    "transfers the input_amount from user_ata into the DCA escrow"
+    "modifies writable accounts: dca, user, userAta, inAta, outAta"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "11111111111111111111111111111111"
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "user must be signer and the owner of user_ata",
-    "escrow transfer amount must equal data.input_amount",
-    "RISK: if escrow recipient is not the DCA program PDA, flag MaliciousAccountChange"
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "create"
+   "risk_class": "periodic_swap"
   },
   {
    "name": "openDcaV2",
    "discriminator": "8e772b6da2340bb1",
    "accounts": [
     {
+     "name": "dca",
+     "role": "pda",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [
+      "dca",
+      "{account_1}",
+      "{account_3}",
+      "{account_4}",
+      "{instruction_data:8:16}"
+     ]
+    },
+    {
      "name": "user",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "dca",
+     "name": "inputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userAta",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "user_ata",
+     "name": "inAta",
      "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "creates a new DCA account (v2 params: flexible interval configuration)",
-    "transfers the input_amount from user_ata into the DCA escrow"
+    "modifies writable accounts: dca, payer, userAta, inAta, outAta"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "11111111111111111111111111111111"
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "user must be signer and the owner of user_ata",
-    "escrow transfer amount must equal data.input_amount"
-   ]
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
+   ],
+   "risk_class": "periodic_swap"
   },
   {
    "name": "closeDca",
@@ -125,59 +255,99 @@
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
+    },
+    {
+     "name": "inputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "inAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userInAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userOutAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "closes the DCA account",
-    "returns escrow funds to accounts.user"
+    "modifies writable accounts: user, dca, inAta, outAta, userInAta, userOutAta",
+    "moves user funds between token accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "11111111111111111111111111111111"
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "only the DCA owner may close",
-    "RISK: refund recipient must be accounts.user — if funds go elsewhere, flag CompositionalDrain"
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "drain"
-  },
-  {
-   "name": "deposit",
-   "discriminator": "f223c68952e1f2b6",
-   "accounts": [
-    {
-     "name": "user",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "dca",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "user_ata",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "adds funds to the DCA escrow",
-    "debits accounts.user_ata by data.amount"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-   ],
-   "risk_rules": [
-    "only the DCA owner may deposit",
-    "deposit amount must match data.amount"
-   ]
+   "risk_class": ""
   },
   {
    "name": "withdraw",
@@ -198,29 +368,94 @@
      "pda_seeds": []
     },
     {
-     "name": "user_ata",
+     "name": "inputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dcaAta",
      "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userInAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userOutAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "withdraws unswapped input tokens from the DCA escrow",
-    "credits accounts.user_ata by data.amount"
+    "modifies writable accounts: user, dca, dcaAta, userInAta, userOutAta",
+    "moves user funds between token accounts"
    ],
    "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "only the DCA owner may withdraw",
-    "RISK: withdrawal recipient must be user_ata owned by accounts.user — flag if diverted"
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "withdraw"
+   "risk_class": ""
   },
   {
-   "name": "endAndClose",
-   "discriminator": "537da645f7fc6785",
+   "name": "deposit",
+   "discriminator": "f223c68952e1f2b6",
    "accounts": [
     {
      "name": "user",
@@ -235,21 +470,57 @@
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
+    },
+    {
+     "name": "inAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userInAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "ends the DCA schedule",
-    "closes the DCA account and returns remaining escrow to the owner"
+    "modifies writable accounts: user, dca, inAta, userInAta",
+    "moves user funds between token accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "11111111111111111111111111111111"
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "only the DCA owner may end the schedule",
-    "RISK: refund recipient must be accounts.user"
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "drain"
+   "risk_class": "periodic_swap"
   },
   {
    "name": "withdrawFees",
@@ -263,24 +534,69 @@
      "pda_seeds": []
     },
     {
-     "name": "fee_vault",
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "feeAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "programFeeAta",
      "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "adminFeeAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "transfers accumulated protocol fees from the fee vault to admin"
+    "modifies writable accounts: admin, programFeeAta, adminFeeAta",
+    "moves user funds between token accounts"
    ],
    "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "admin-only instruction",
-    "RISK: unexpected fee withdrawal — flag PermissionEscalation"
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "withdraw"
+   "risk_class": ""
   },
   {
    "name": "initiateFlashFill",
@@ -301,32 +617,76 @@
      "pda_seeds": []
     },
     {
-     "name": "in_ata",
+     "name": "inputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "keeperInAta",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "keeper_in_ata",
+     "name": "inAta",
      "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outAta",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "instructionsSysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "keeper flash-borrows the DCA input position from in_ata to keeper_in_ata",
-    "records the borrow so fulfill_flash_fill must repay it"
+    "modifies writable accounts: keeper, dca, keeperInAta, inAta",
+    "moves user funds between token accounts"
    ],
    "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "keeper-initiated flash fill must be repaid by a matching fulfill_flash_fill",
-    "RISK: borrowed input tokens must return to the DCA in_ata — if the repayment path is missing or diverted, flag FlashLoanAbuse"
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "fulfillFlashFill",
@@ -347,31 +707,111 @@
      "pda_seeds": []
     },
     {
-     "name": "in_ata",
+     "name": "inputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "keeperInAta",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "inAta",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outAta",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "feeAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "feeAta",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "out_ata",
-     "role": "writable",
-     "is_writable": true,
+     "name": "instructionsSysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "repays the flash loan into the DCA in_ata",
-    "executes the scheduled swap and credits output to the DCA out_ata"
+    "modifies writable accounts: keeper, dca, feeAta",
+    "moves user funds between token accounts"
    ],
    "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "repay amount must equal the recorded borrow (keeper must not short-change the DCA)",
-    "RISK: swap output must land in the DCA out_ata — if diverted to the keeper or a third party, flag CompositionalDrain"
-   ]
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
+   ],
+   "risk_class": ""
   },
   {
    "name": "transfer",
@@ -399,39 +839,216 @@
      "pda_seeds": []
     },
     {
-     "name": "dca_out_ata",
+     "name": "outputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dcaOutAta",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "user_out_ata",
+     "name": "userOutAta",
      "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "intermediateAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "keeper moves the DCA output from dca_out_ata to the owner's user_out_ata"
+    "modifies writable accounts: keeper, dca, user, dcaOutAta, userOutAta, intermediateAccount",
+    "moves user funds between token accounts"
    ],
    "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
    ],
    "risk_rules": [
-    "transfer recipient must be the DCA owner's user_out_ata",
-    "RISK: if the output is diverted from the owner, flag CompositionalDrain"
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
+  },
+  {
+   "name": "endAndClose",
+   "discriminator": "537da645f7fc6785",
+   "accounts": [
+    {
+     "name": "keeper",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dca",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "inputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outputMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "inAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "outAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userOutAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "initUserOutAta",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "intermediateAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: keeper, dca, inAta, outAta, user, userOutAta, initUserOutAta, intermediateAccount",
+    "moves user funds between token accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
+    "RISK: verify user signer matches the DCA account's recorded user"
+   ],
+   "risk_class": ""
   }
  ],
  "trust_tier": "OfficialManifest",
  "verification": {
   "program_id_verified_on_chain": true,
   "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07",
-  "discriminators_source": "C22.4 re-verification (2026-08-09): deployed program confirmed standard Anchor (sha256(\"global:\"+snake_case)[:8])",
-  "verified_at": "2026-08-09",
-  "notes": "CORRECTED 2026-08-09: the previous discriminator table (ee26b3c8..., 459dd6dd..., etc.) was never observed on-chain — it was produced by base64-decoding base58 instruction data (the same decode artifact class as the Jupiter V6 C22.3 finding) and does not match the deployed program. On-chain census of real DCA txs (base58-correct decode) shows the deployed program is STANDARD ANCHOR: initiate_flash_fill=8fcd03bfa2d7f531, fulfill_flash_fill=7340e24e21d369a2, transfer=a334c8e78c0345ba all observed live; the remaining instructions follow the same snake_case convention (open_dca=2441b93601d264a3, open_dca_v2=8e772b6da2340bb1, close_dca=16072162a8b722f3, withdraw=b712469c946da122, deposit=f223c68952e1f2b6, withdraw_fees=c6d4ab6d90d7ae59, end_and_close=537da645f7fc6785). The three fill-path instructions (initiateFlashFill, fulfillFlashFill, transfer) were previously MISSING entirely — the dominant live DCA traffic (keeper fills) was falling to unknown-protocol mode; they are now declared."
+  "discriminators_source": "C52: rebuilt from official DCA IDL (jupiter-python-sdk embedded IDL, 0xTaoDev/jupiter-python-sdk). Discriminators = sha256('global:'+snake_case)[:8], verified on-chain (initiate_flash_fill 8fcd03bfa2d7f531 observed in a real mainnet tx). Account layouts now match the IDL (previously user-first/truncated \u2014 a positional-mapping defect). dca PDA seeds ['dca', user, inputMint, outputMint, uid(applicationIdx u64 LE at data[8:16])] verified against a live mainnet DCA account (Ck1Ct3vsMfzxeEM2RmKmTS4FVXoCB3YAUunKVFyNsFiq) with the official @solana/web3.js findProgramAddressSync.",
+  "verified_at": "2026-08-12",
+  "notes": "Rebuilt C52 from official IDL after audit found account-order/count mismatches vs on-chain txs."
  }
 }

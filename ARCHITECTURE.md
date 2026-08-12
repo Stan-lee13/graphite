@@ -84,7 +84,7 @@ graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
 │   ├── protocols/          # 28 JSON protocol manifests (695 instructions)
-│   ├── tests/              # 984 tests (unit + adversarial + exploit + pinned real corpus)
+│   ├── tests/              # 993 tests (unit + adversarial + exploit + pinned real corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)

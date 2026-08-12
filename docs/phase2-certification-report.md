@@ -4,11 +4,12 @@
 **Date:** August 10, 2026
 **Auditor:** Codebuff (independent revalidation pass C39–C42)
 **Base:** 948 tests / 0 failures / 0 clippy / 0 warnings (claimed at C38)
-**Final:** 987 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
+**Final:** 993 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
 **Manifests:** 28 / 695 instructions
 **Commits audited and extended:** C39 (fresh adversarial pass), C40 (L3/L8 live RPC validation),
 C41 (2,181-fixture regression corpus + 4 root fixes it surfaced), C42 (Kamino V2 real layouts,
-registry determinism fix, universal-CPI audit test)
+registry determinism fix, universal-CPI audit test), C52 (Jupiter DCA + Squads V4 PDA grounding
+verified against live mainnet; 2 live-fetched exploits → 37-entry corpus, 5 REAL benchmark cases)
 
 ---
 
@@ -23,8 +24,8 @@ registry determinism fix, universal-CPI audit test)
   manifest gate now fails it closed end-to-end.
 - **28 manifests / 695 instructions** — confirmed; every program ID base58-decodes to 32
   bytes (this revalidation's structural audit).
-- **Benchmark 100% precision/recall on 16 scored cases** — confirmed; 18 cases total
-  (3 REAL mainnet exploits + 2 SYNTHETIC honestly labeled + 13 constructed).
+- **Benchmark 100% precision/recall on 18 scored cases** — confirmed; 20 cases total
+  (5 REAL mainnet exploits + 2 SYNTHETIC honestly labeled + 13 constructed).
 - **L3 genuinely wired / L8 post-submission path implemented** — confirmed, and now
   **live-validated** (see §5/§6).
 
@@ -54,7 +55,7 @@ registry determinism fix, universal-CPI audit test)
 |---|---|---|---|
 | dev | 2,112 | Manifest-driven canonical + structural variants (width, near-prefix, no-intent, intent-mismatch, account-overflow, unknown-instruction) for every instruction of all 28 manifests | synthetic-manifest |
 | regression | 31 | Re-pinned attack classes: P0-1..P0-4, Phase 2 multi-instruction + CPI-trace, risk-class gates, ordering | synthetic-attack / synthetic-benign |
-| holdout | 38 | 35 real mainnet exploit signatures (SolPhishHunter arXiv:2505.04094) + 3 real mainnet successful transactions (Jupiter swap, pump.fun, System) | real-mainnet |
+| holdout | 40 | 37 real mainnet exploit signatures (35 SolPhishHunter arXiv:2505.04094 + 2 live-fetched from api.mainnet-beta.solana.com: Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87) + 3 real mainnet successful transactions (Jupiter swap, pump.fun, System) | real-mainnet |
 
 **Total: 2,181 fixtures, 20+ distinct programs.**
 

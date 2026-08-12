@@ -3,12 +3,12 @@
  "protocol": {
   "name": "Squads V4 Multisig",
   "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
-  "note": "Rebuilt from the official squads_multisig_program IDL v2.1.0 (Squads-Protocol/v4 main) on 2026-08-08 (C18): the previous manifest carried fabricated camelCase-hash discriminators and 18 v1-era instructions that do not exist in the deployed program. Every discriminator below = sha256('global:'+snake_case(IDL name))[:8]; four chain-verified against live mainnet txs (multisigCreateV2 32ddc75d28f58be9, vaultTransactionCreate 30fa4ea8d0e2dad3, proposalCreate dc3c49e01e6c4f9f, proposalApprove 9025a488bcd82af8). Multisig PDA seeds from the official SDK (pda.ts): ['multisig','multisig',create_key], IDL-confirmed ('createKey ... used as a seed for the Multisig PDA').",
-  "website": "https://docs.squads.so",
-  "github": "https://github.com/Squads-Protocol/v4"
+  "website": "https://squads.so",
+  "github": "https://github.com/Squads-Protocol/v4",
+  "category": "multisig"
  },
  "version": {
-  "label": "2.1.0",
+  "label": "4.0.0",
   "effective_from_slot": 0,
   "previous_version_ref": null
  },
@@ -18,7 +18,7 @@
    "discriminator": "b8bcc6c3cd7c75d8",
    "accounts": [
     {
-     "name": "program_config",
+     "name": "programConfig",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -32,7 +32,7 @@
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -40,17 +40,25 @@
     }
    ],
    "expected_state_changes": [
-    "Initialize the program config."
+    "modifies writable accounts: programConfig, initializer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "programConfigSetAuthority",
    "discriminator": "eef224b5208fd84b",
    "accounts": [
     {
-     "name": "program_config",
+     "name": "programConfig",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -58,25 +66,32 @@
     },
     {
      "name": "authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "Set the `authority` parameter of the program config."
+    "modifies writable accounts: programConfig"
    ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "authority"
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "programConfigSetMultisigCreationFee",
    "discriminator": "65a0f93f9ad7990d",
    "accounts": [
     {
-     "name": "program_config",
+     "name": "programConfig",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -84,25 +99,32 @@
     },
     {
      "name": "authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "Set the `multisig_creation_fee` parameter of the program config."
+    "modifies writable accounts: programConfig"
    ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "authority"
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "programConfigSetTreasury",
    "discriminator": "6f2ef37590bca26b",
    "accounts": [
     {
-     "name": "program_config",
+     "name": "programConfig",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -110,18 +132,25 @@
     },
     {
      "name": "authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "Set the `treasury` parameter of the program config."
+    "modifies writable accounts: programConfig"
    ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "authority"
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigCreate",
@@ -136,18 +165,25 @@
     }
    ],
    "expected_state_changes": [
-    "Create a multisig."
+    "no writable accounts; no fund movement or authority change declared"
    ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "create"
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigCreateV2",
    "discriminator": "32ddc75d28f58be9",
    "accounts": [
     {
-     "name": "program_config",
+     "name": "programConfig",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -172,8 +208,8 @@
      ]
     },
     {
-     "name": "create_key",
-     "role": "readonly",
+     "name": "createKey",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
@@ -186,7 +222,7 @@
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -194,14 +230,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a multisig."
+    "modifies writable accounts: treasury, multisig, creator"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "create_key must be signer (prevents front-running of the multisig PDA)",
-    "RISK: verify configured threshold is not 1-of-1 (single-signer multisig defeats purpose)"
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
    ],
-   "risk_class": "create"
+   "risk_class": ""
   },
   {
    "name": "multisigAddMember",
@@ -215,21 +255,21 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -237,10 +277,18 @@
     }
    ],
    "expected_state_changes": [
-    "Add a new member to the controlled multisig."
+    "modifies writable accounts: multisig, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigRemoveMember",
@@ -254,21 +302,21 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -276,10 +324,18 @@
     }
    ],
    "expected_state_changes": [
-    "Remove a member/key from the controlled multisig."
+    "modifies writable accounts: multisig, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigSetTimeLock",
@@ -293,21 +349,21 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -315,11 +371,18 @@
     }
    ],
    "expected_state_changes": [
-    "Set the `time_lock` config parameter for the controlled multisig."
+    "modifies writable accounts: multisig, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "authority"
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigChangeThreshold",
@@ -333,21 +396,21 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -355,12 +418,18 @@
     }
    ],
    "expected_state_changes": [
-    "Set the `threshold` config parameter for the controlled multisig."
+    "modifies writable accounts: multisig, rentPayer"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "threshold change can alter signing requirements — monitor for 1-of-1 downgrade"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigSetConfigAuthority",
@@ -374,21 +443,21 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -396,11 +465,18 @@
     }
    ],
    "expected_state_changes": [
-    "Set the multisig `config_authority`."
+    "modifies writable accounts: multisig, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "authority"
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigSetRentCollector",
@@ -414,21 +490,21 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -436,12 +512,18 @@
     }
    ],
    "expected_state_changes": [
-    "Set the multisig `rent_collector`."
+    "modifies writable accounts: multisig, rentPayer"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "rent collector receives closed-account rent — unexpected collector = fund diversion"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigAddSpendingLimit",
@@ -455,28 +537,28 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "spending_limit",
+     "name": "spendingLimit",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -484,10 +566,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a new spending limit for the controlled multisig."
+    "modifies writable accounts: spendingLimit, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "multisigRemoveSpendingLimit",
@@ -501,21 +591,21 @@
      "pda_seeds": []
     },
     {
-     "name": "config_authority",
-     "role": "readonly",
+     "name": "configAuthority",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "spending_limit",
+     "name": "spendingLimit",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "rent_collector",
+     "name": "rentCollector",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -523,10 +613,18 @@
     }
    ],
    "expected_state_changes": [
-    "Remove the spending limit from the controlled multisig."
+    "modifies writable accounts: spendingLimit, rentCollector"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "configTransactionCreate",
@@ -548,20 +646,20 @@
     },
     {
      "name": "creator",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -569,10 +667,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a new config transaction."
+    "modifies writable accounts: multisig, transaction, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "configTransactionExecute",
@@ -587,7 +693,7 @@
     },
     {
      "name": "member",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
@@ -607,14 +713,14 @@
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -622,12 +728,19 @@
     }
    ],
    "expected_state_changes": [
-    "Execute a config transaction."
+    "modifies writable accounts: multisig, proposal, rentPayer",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "executes a config change (threshold, members, rent collector) — verify the target state"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "vaultTransactionCreate",
@@ -649,20 +762,20 @@
     },
     {
      "name": "creator",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -670,13 +783,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a new vault transaction."
+    "modifies writable accounts: multisig, transaction, rentPayer"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "creator must be a member of the multisig",
-    "draft transaction is a proposal of future vault instructions — approval/execution is where funds move"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": "multisig_execution"
   },
   {
    "name": "transactionBufferCreate",
@@ -690,7 +808,7 @@
      "pda_seeds": []
     },
     {
-     "name": "transaction_buffer",
+     "name": "transactionBuffer",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -698,20 +816,20 @@
     },
     {
      "name": "creator",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -719,10 +837,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a transaction buffer account."
+    "modifies writable accounts: transactionBuffer, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "transactionBufferClose",
@@ -736,7 +862,7 @@
      "pda_seeds": []
     },
     {
-     "name": "transaction_buffer",
+     "name": "transactionBuffer",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -744,17 +870,26 @@
     },
     {
      "name": "creator",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "Close a transaction buffer account."
+    "modifies writable accounts: transactionBuffer",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "transactionBufferExtend",
@@ -768,7 +903,7 @@
      "pda_seeds": []
     },
     {
-     "name": "transaction_buffer",
+     "name": "transactionBuffer",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -776,31 +911,39 @@
     },
     {
      "name": "creator",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "Extend a transaction buffer account."
+    "modifies writable accounts: transactionBuffer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "vaultTransactionCreateFromBuffer",
    "discriminator": "de36954457f630e7",
    "accounts": [
     {
-     "name": "vault_transaction_create",
+     "name": "vaultTransactionCreate",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "transaction_buffer",
+     "name": "transactionBuffer",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -815,10 +958,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a new vault transaction from a completed transaction buffer."
+    "modifies writable accounts: transactionBuffer, creator"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": "multisig_execution"
   },
   {
    "name": "vaultTransactionExecute",
@@ -847,21 +998,26 @@
     },
     {
      "name": "member",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "Execute a vault transaction."
+    "modifies writable accounts: proposal",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "EXECUTES the transaction's instructions from the vault — verify the inner CPI/instruction list",
-    "high-impact: any member-approved execution moves vault funds"
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
    ],
-   "risk_class": "transfer"
+   "risk_class": "multisig_execution"
   },
   {
    "name": "batchCreate",
@@ -883,20 +1039,20 @@
     },
     {
      "name": "creator",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -904,10 +1060,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a new batch."
+    "modifies writable accounts: multisig, batch, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "batchAddTransaction",
@@ -943,20 +1107,20 @@
     },
     {
      "name": "member",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -964,10 +1128,18 @@
     }
    ],
    "expected_state_changes": [
-    "Add a transaction to the batch."
+    "modifies writable accounts: batch, transaction, rentPayer"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "batchExecuteTransaction",
@@ -982,7 +1154,7 @@
     },
     {
      "name": "member",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
@@ -1010,12 +1182,19 @@
     }
    ],
    "expected_state_changes": [
-    "Execute a transaction from the batch."
+    "modifies writable accounts: proposal, batch",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "executes batched vault transactions — verify each inner transaction"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": "multisig_execution"
   },
   {
    "name": "proposalCreate",
@@ -1037,20 +1216,20 @@
     },
     {
      "name": "creator",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "rent_payer",
+     "name": "rentPayer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1058,13 +1237,18 @@
     }
    ],
    "expected_state_changes": [
-    "Create a new multisig proposal."
+    "modifies writable accounts: proposal, rentPayer"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "creator must be a member",
-    "proposal carries the transaction index to approve/execute"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "proposalActivate",
@@ -1093,10 +1277,18 @@
     }
    ],
    "expected_state_changes": [
-    "Update status of a multisig proposal from `Draft` to `Active`."
+    "modifies writable accounts: member, proposal"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "proposalApprove",
@@ -1125,12 +1317,18 @@
     }
    ],
    "expected_state_changes": [
-    "Approve a multisig proposal on behalf of the `member`."
+    "modifies writable accounts: member, proposal"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "approver must be a member; threshold approvals unlock execution"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "proposalReject",
@@ -1159,10 +1357,18 @@
     }
    ],
    "expected_state_changes": [
-    "Reject a multisig proposal on behalf of the `member`."
+    "modifies writable accounts: member, proposal"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "proposalCancel",
@@ -1191,24 +1397,32 @@
     }
    ],
    "expected_state_changes": [
-    "Cancel a multisig proposal on behalf of the `member`."
+    "modifies writable accounts: member, proposal"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "proposalCancelV2",
    "discriminator": "cd29c23ddc8b10f7",
    "accounts": [
     {
-     "name": "proposal_vote",
+     "name": "proposalVote",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1216,12 +1430,18 @@
     }
    ],
    "expected_state_changes": [
-    "Cancel a multisig proposal on behalf of the `member`."
+    "no writable accounts; no fund movement or authority change declared"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "cancellation by a member or config authority is a governance action"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "spendingLimitUse",
@@ -1236,13 +1456,13 @@
     },
     {
      "name": "member",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "spending_limit",
+     "name": "spendingLimit",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -1263,7 +1483,7 @@
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1277,21 +1497,21 @@
      "pda_seeds": []
     },
     {
-     "name": "vault_token_account",
+     "name": "vaultTokenAccount",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "destination_token_account",
+     "name": "destinationTokenAccount",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "token_program",
+     "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1299,12 +1519,18 @@
     }
    ],
    "expected_state_changes": [
-    "Use a spending limit to transfer tokens from a multisig vault to a destination account."
+    "modifies writable accounts: spendingLimit, vault, destination, vaultTokenAccount, destinationTokenAccount"
    ],
-   "allowed_cpis": [],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
    "risk_rules": [
-    "consumes a spending-limit allowance — verify limit, amount, and vault"
-   ]
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "configTransactionAccountsClose",
@@ -1332,14 +1558,14 @@
      "pda_seeds": []
     },
     {
-     "name": "rent_collector",
+     "name": "rentCollector",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1347,10 +1573,19 @@
     }
    ],
    "expected_state_changes": [
-    "Closes a `ConfigTransaction` and the corresponding `Proposal`."
+    "modifies writable accounts: proposal, transaction, rentCollector",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "vaultTransactionAccountsClose",
@@ -1378,14 +1613,14 @@
      "pda_seeds": []
     },
     {
-     "name": "rent_collector",
+     "name": "rentCollector",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1393,10 +1628,19 @@
     }
    ],
    "expected_state_changes": [
-    "Closes a `VaultTransaction` and the corresponding `Proposal`."
+    "modifies writable accounts: proposal, transaction, rentCollector",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": "multisig_execution"
   },
   {
    "name": "vaultBatchTransactionAccountClose",
@@ -1431,14 +1675,14 @@
      "pda_seeds": []
     },
     {
-     "name": "rent_collector",
+     "name": "rentCollector",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1446,10 +1690,19 @@
     }
    ],
    "expected_state_changes": [
-    "Closes a `VaultBatchTransaction` belonging to the `batch` and `proposal`."
+    "modifies writable accounts: batch, transaction, rentCollector",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   },
   {
    "name": "batchAccountsClose",
@@ -1477,14 +1730,14 @@
      "pda_seeds": []
     },
     {
-     "name": "rent_collector",
+     "name": "rentCollector",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "system_program",
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1492,11 +1745,27 @@
     }
    ],
    "expected_state_changes": [
-    "Closes Batch and the corresponding Proposal accounts for proposals in terminal states:"
+    "modifies writable accounts: proposal, batch, rentCollector",
+    "moves user funds between token accounts"
    ],
-   "allowed_cpis": [],
-   "risk_rules": []
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "11111111111111111111111111111111",
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+   ],
+   "risk_rules": [
+    "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
+    "RISK: verify multisig PDA and member/config signers"
+   ],
+   "risk_class": ""
   }
  ],
- "trust_tier": "OfficialManifest"
+ "trust_tier": "OfficialManifest",
+ "verification": {
+  "program_id_verified_on_chain": true,
+  "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true",
+  "discriminators_source": "C52: rebuilt from official Squads Protocol v4 IDL (Squads-Protocol/v4 sdk/multisig/idl/squads_multisig_program.json). Discriminators = sha256('global:'+snake_case)[:8] verified on-chain (proposalApprove 9025a488bcd82af8 observed in a real mainnet tx). Account roles corrected from the IDL (previously many signers were marked readonly). multisig PDA seeds ['multisig', 'multisig', create_key] verified against live mainnet multisig DDV1BEtsuZWM7mLAzmdur6VR6XWcZkXyZ1mUK2H58yqk (create_key 7vp2dDTnHgQHifJd8nCZxToUrQybe3MpWpa6ttnu5Jam) via @solana/web3.js findProgramAddressSync.",
+  "verified_at": "2026-08-12",
+  "notes": "Rebuilt C52 from official IDL after audit found signer-role mismatches."
+ }
 }

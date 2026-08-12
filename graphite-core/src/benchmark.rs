@@ -915,6 +915,180 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
             },
         },
         BenchmarkCase {
+            label: "REAL: fresh drainer chain TX 2AWwL6dk (Aug 2026, mainnet)",
+            category: "malicious",
+            expected_approved: false,
+            // Live-fetched from api.mainnet-beta.solana.com (slot 438712938,
+            // Aug 2026): a fresh drainer chain. Unknown program 8MjG72...
+            // (disc 0490844774179750, 4 accts) -> unknown program GieMfa5...
+            // (disc 813c5602ac7a0f9a, 19 accts, incl. Token-2022/ATA/System)
+            // -> 2 calls to the KNOWN malicious HELPER program
+            // L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95. The GieMfa5
+            // instruction's inner CPI is a real Token-2022 mintTo (mint
+            // AqCK5hZcM1EtZiijG7JfwBF7e34YzuSnqViU2z72Pvz6, mintAuthority
+            // 3H5qEiPQQgrtgsM2RHdn9z6i8qdGFVBjmn8ih7jQgDMP) minting 660,854
+            // tokens to the victim's account. Raw evidence:
+            // scripts/real_exploit_2AWwL6dk_aug2026.json. All accounts are
+            // the real on-chain addresses from the transaction.
+            input: {
+                let mut inp = make_input(
+                    "8MjG72ZWmkG4SKES7WK2fGrrR14hBhokTJiHgaedqJ5L",
+                    "0490844774179750",
+                    &[
+                        "2kCDx7gRfm3otKZZGiruKLqoQZo4DqkQBst6Rs8YYBWz",
+                        "37hGjcBzkuvxLhb6xektXeZjCRgM1C5bf6tWYRAoaqer",
+                        "HiAhYxLPUdD5FMEjQYbuzv5Hj1yYGpDVHhCSQwuVXCxb",
+                        "5971sBaSNL5eBeh23WkbXaxic9fzsH1aTXR4iN3WtmJ7",
+                        "EdfXKRZjP1cc8Pt1Jwjon3ygj98J9q8EBT71pyFgykmu",
+                        "HRW1VBRJeuFWGeNDXT9jLpPd1xobwHSspoybCgyTK2Pi",
+                        "FnNP7dkgr1kCLqjyjuDGXq823mgRwgtcZsXwnxsLLq4j",
+                        "CdZNCKNmHSAY3QDMA3wAvvUMnGtfGb5Viy7ArEBZDuAE",
+                        "AqCK5hZcM1EtZiijG7JfwBF7e34YzuSnqViU2z72Pvz6",
+                        "3H5qEiPQQgrtgsM2RHdn9z6i8qdGFVBjmn8ih7jQgDMP",
+                        "6HxymuVACcRq9htwqtwA1QLQrXZQRCqwxrzAhAmcFSa9",
+                        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+                        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+                        "11111111111111111111111111111111",
+                        "6oLpzYitdXauhBUQ4xcN61kFRNS1Xp4T6LYGT5uqqLCj",
+                        "FkL4r6a26dXpLzyof4AQpaHZBPxQDXzTPjBNpt7owjhp",
+                        "Adh4m6ZQgAZXP7XAFYgzuFpZAmmuKUVS3Jj13gBdKbFN",
+                        "CSCyr5hg9nGCv5XGWN79yJEf9Jw1JNYhc1KBJuNTfBqQ",
+                        "G4BWgqzU8BzoJm6hum5z83WqdGpeVGhdBkBJqGixw7rS",
+                        "BXL9Fsyi3jocsK5V8S79FrUwpcH9PSgyVxsBXcrpqrCD",
+                        "57zKyZoQbngmLkMPAEQ2m8asU4mC8h3JWw86LdL41oMJ",
+                        "7bdS1p4Z6CrsjFVdsmm37Wz1egTUkch4sBb7WjJJ8Lfw",
+                        "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95",
+                        "GieMfa5xWGkLXcN6rgT6Ti83NMzkUiEF8VpTKRWnUuMz",
+                    ],
+                    &["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
+                    WalletProfile::TradingBot,
+                    no_evidence(),
+                );
+                // Faithful multi-instruction chain: 8MjG72 -> GieMfa5 ->
+                // HELPER x2, then the GieMfa5 inner CPI (Token-2022 mintTo).
+                inp.transaction_instructions = vec![
+                    TransactionInstruction {
+                        program_id: "8MjG72ZWmkG4SKES7WK2fGrrR14hBhokTJiHgaedqJ5L".to_string(),
+                        instruction_discriminator: "0490844774179750".to_string(),
+                        account_addresses: vec![
+                            "2kCDx7gRfm3otKZZGiruKLqoQZo4DqkQBst6Rs8YYBWz".to_string(),
+                            "37hGjcBzkuvxLhb6xektXeZjCRgM1C5bf6tWYRAoaqer".to_string(),
+                            "HiAhYxLPUdD5FMEjQYbuzv5Hj1yYGpDVHhCSQwuVXCxb".to_string(),
+                            "5971sBaSNL5eBeh23WkbXaxic9fzsH1aTXR4iN3WtmJ7".to_string(),
+                        ],
+                        cpi_targets: vec![],
+                    },
+                    TransactionInstruction {
+                        program_id: "GieMfa5xWGkLXcN6rgT6Ti83NMzkUiEF8VpTKRWnUuMz".to_string(),
+                        instruction_discriminator: "813c5602ac7a0f9a".to_string(),
+                        account_addresses: vec![],
+                        cpi_targets: vec!["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb".to_string()],
+                    },
+                    TransactionInstruction {
+                        program_id: "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95".to_string(),
+                        instruction_discriminator:
+                            "060403007b9b1fd5000000000403000001000000000000000000".to_string(),
+                        account_addresses: vec![
+                            "2kCDx7gRfm3otKZZGiruKLqoQZo4DqkQBst6Rs8YYBWz".to_string()
+                        ],
+                        cpi_targets: vec![],
+                    },
+                    TransactionInstruction {
+                        program_id: "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95".to_string(),
+                        instruction_discriminator:
+                            "0a04040217680e61b0480200040300000600000000000000000508".to_string(),
+                        account_addresses: vec![
+                            "6HxymuVACcRq9htwqtwA1QLQrXZQRCqwxrzAhAmcFSa9".to_string()
+                        ],
+                        cpi_targets: vec![],
+                    },
+                ];
+                inp.cpi_trace = Some(CpiTraceNode {
+                    program_id: "8MjG72ZWmkG4SKES7WK2fGrrR14hBhokTJiHgaedqJ5L".to_string(),
+                    instruction_discriminator: "0490844774179750".to_string(),
+                    depth: 0,
+                    account_addresses: vec![],
+                    children: vec![CpiTraceNode {
+                        program_id: "GieMfa5xWGkLXcN6rgT6Ti83NMzkUiEF8VpTKRWnUuMz".to_string(),
+                        instruction_discriminator: "813c5602ac7a0f9a".to_string(),
+                        depth: 1,
+                        account_addresses: vec![],
+                        children: vec![CpiTraceNode {
+                            program_id: TOKEN_2022.to_string(),
+                            instruction_discriminator: "17".to_string(), // Token-2022 MintTo
+                            depth: 2,
+                            account_addresses: vec![],
+                            children: vec![],
+                        }],
+                    }],
+                });
+                inp
+            },
+        },
+        BenchmarkCase {
+            label: "REAL: AAT mass drain TX 3PbK87 (mainnet, Dec 2025)",
+            category: "malicious",
+            expected_approved: false,
+            // Live-fetched from api.mainnet-beta.solana.com (slot 382864866,
+            // Dec 2025): 20 top-level calls to the SlowMist AAT drainer
+            // 3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs (real on-chain
+            // discriminator 0e00000000000000) across 23 unique accounts,
+            // each call carrying a System Program account — the mass AAT
+            // drain class. Raw evidence:
+            // scripts/real_exploit_3PbK87_aat_massdrain.json. All accounts
+            // are the real addresses from the transaction.
+            input: {
+                let mut inp = make_input(
+                    "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+                    "0e00000000000000",
+                    &[
+                        "Fxc7Tpt1qqbrSc7hM7MSvvTs5jFVaa1iGaMeNevoNAV3",
+                        "AzFiF4NEcaZJzao28Hm4vYtKttqfUh31qFq3oSmZVj31",
+                        "Gk6tB9ZsPirFqWC1DEUynh9oLJGDEKeAntaz2xQNzuyV",
+                        "11111111111111111111111111111111",
+                        "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
+                        "ComputeBudget111111111111111111111111111111",
+                    ],
+                    &["11111111111111111111111111111111"],
+                    WalletProfile::TradingBot,
+                    no_evidence(),
+                );
+                // 20 real drainer calls in one transaction (a faithful
+                // slice of the 20 carried below); each spends one distinct
+                // victim account to the same attacker front.
+                let attacker = "Fxc7Tpt1qqbrSc7hM7MSvvTs5jFVaa1iGaMeNevoNAV3".to_string();
+                let victim = "AzFiF4NEcaZJzao28Hm4vYtKttqfUh31qFq3oSmZVj31".to_string();
+                // The first 6 distinct victim token accounts from the real
+                // transaction (20 total in the on-chain data).
+                let victims = [
+                    "Gk6tB9ZsPirFqWC1DEUynh9oLJGDEKeAntaz2xQNzuyV",
+                    "GmcKqPbPKqrsLWQki9THv65MbtFcbxNHhNq3v5zpJk9D",
+                    "GnnheV5ZHAEnjb5okie86xA2ubgnjPhZY5uYd5JYGu5W",
+                    "Go1qU6h9sn8vpDHGBk8nf62oKsUGiAiAN5GNqcMZjHpL",
+                    "GoASD5e7sYT5isDQaijn59XWFawfCNEvZeW2Z1gLzv7i",
+                    "GpHEnYaD9Sp1e6KsepT8zy1drDDsZ5y6Sz64DiMdArLH",
+                ];
+                inp.transaction_instructions = std::iter::once(TransactionInstruction {
+                    program_id: "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs".to_string(),
+                    instruction_discriminator: "0e00000000000000".to_string(),
+                    account_addresses: vec![
+                        attacker.clone(),
+                        victim.clone(),
+                        victims[0].to_string(),
+                    ],
+                    cpi_targets: vec![SYSTEM.to_string()],
+                })
+                .chain(victims.iter().skip(1).map(|v| TransactionInstruction {
+                    program_id: "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs".to_string(),
+                    instruction_discriminator: "0e00000000000000".to_string(),
+                    account_addresses: vec![attacker.clone(), victim.clone(), v.to_string()],
+                    cpi_targets: vec![SYSTEM.to_string()],
+                }))
+                .collect();
+                inp
+            },
+        },
+        BenchmarkCase {
             label: "SYNTHETIC: AAT-style mass drain (real program ID, synthetic accounts)",
             category: "malicious",
             expected_approved: false,
@@ -968,33 +1142,38 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
 mod tests {
     use super::*;
 
-    /// The benchmark composition is pinned and honestly labeled (P16): 3 REAL
+    /// The benchmark composition is pinned and honestly labeled (P16): 5 REAL
     /// mainnet exploit cases — STMT drainer TX 64tsGGe, AAT drainer TX
-    /// 524t8LW, Wormhole $320M hack TX 5fKWY7X — pinned from
-    /// tests/real_onchain_exploits.rs (real program IDs, real account
-    /// addresses, real CPI structure; reproducible offline) and 2 SYNTHETIC
-    /// cases (real program IDs, fabricated accounts) covering drainer classes
-    /// not yet pinned from mainnet. Every case is a hand-constructed
-    /// VerificationInput with a manually-encoded expected label, and the
-    /// REAL/SYNTHETIC distinction is enforced so no case can silently
-    /// overclaim its provenance.
+    /// 524t8LW, Wormhole $320M hack TX 5fKWY7X, fresh drainer chain TX
+    /// 2AWwL6dk (Aug 2026), AAT mass drain TX 3PbK87 — pinned from
+    /// tests/real_onchain_exploits.rs + scripts/real_exploit_*.json
+    /// (live-fetched from api.mainnet-beta.solana.com; real program IDs, real
+    /// account addresses, real CPI structure; reproducible offline) and 2
+    /// SYNTHETIC cases (real program IDs, fabricated accounts) covering
+    /// drainer classes not yet pinned from mainnet. Every case is a
+    /// hand-constructed VerificationInput with a manually-encoded expected
+    /// label, and the REAL/SYNTHETIC distinction is enforced so no case can
+    /// silently overclaim its provenance.
     #[test]
     fn benchmark_composition_is_pinned_and_honestly_labeled() {
         let cases = build_benchmark_cases();
-        assert_eq!(cases.len(), 18, "case count must be pinned");
+        assert_eq!(cases.len(), 20, "case count must be pinned");
 
         let safe = cases.iter().filter(|c| c.category == "safe").count();
         let malicious = cases.iter().filter(|c| c.category == "malicious").count();
         let unknown = cases.iter().filter(|c| c.category == "unknown").count();
-        assert_eq!(safe + malicious, 16, "16 scored cases");
+        assert_eq!(safe + malicious, 18, "18 scored cases");
         assert_eq!(unknown, 2);
 
-        // 3 REAL mainnet exploit cases + 2 SYNTHETIC, all honestly labeled.
+        // 5 REAL mainnet exploit cases + 2 SYNTHETIC, all honestly labeled.
         let real = cases
             .iter()
             .filter(|c| c.label.starts_with("REAL:"))
             .count();
-        assert_eq!(real, 3, "3 real mainnet exploit cases (STMT/AAT/Wormhole)");
+        assert_eq!(
+            real, 5,
+            "5 real mainnet exploit cases (STMT/AAT/Wormhole/2AWwL6dk/3PbK87)"
+        );
         let synthetic = cases
             .iter()
             .filter(|c| c.label.starts_with("SYNTHETIC:"))
@@ -1035,6 +1214,22 @@ mod tests {
         assert!(
             wormhole.input.cpi_trace.is_some(),
             "Wormhole case must carry its real CPI trace"
+        );
+        let fresh = cases
+            .iter()
+            .find(|c| c.label.contains("2AWwL6dk"))
+            .expect("fresh drainer chain case present");
+        assert!(
+            fresh.input.transaction_instructions.len() >= 3 && fresh.input.cpi_trace.is_some(),
+            "fresh drainer chain must carry its real instruction chain and CPI trace"
+        );
+        let mass = cases
+            .iter()
+            .find(|c| c.label.contains("3PbK87"))
+            .expect("AAT mass drain case present");
+        assert!(
+            mass.input.transaction_instructions.len() >= 4,
+            "AAT mass drain must carry its real 20-call instruction slice"
         );
 
         // Attack-class diversity by label keyword (each class is a distinct

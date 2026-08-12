@@ -69,21 +69,21 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 987 tests passing, 0 clippy warnings, fmt clean (2026-08-11)
+- [x] 993 tests passing, 0 clippy warnings, fmt clean (2026-08-12)
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 
 ## Phase 2 (IN PROGRESS — 80% complete, branch: phase2-development)
 
 ### Month 1: Real Data + Protocol Expansion
-- [ ] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — 3 pinned mainnet exploits scored in the benchmark (C30); 35 real mainnet exploit signatures from SolPhishHunter arXiv:2505.04094 + 3 real successful mainnet txs in the holdout corpus (C41); live RPC fetch of additional raw bytes remains for corpus expansion
+- [x] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — 3 pinned mainnet exploits scored in the benchmark (C30); 35 real mainnet exploit signatures from SolPhishHunter arXiv:2505.04094 + 3 real successful mainnet txs in the holdout corpus (C41); **C52 fetched 2 more live from api.mainnet-beta.solana.com** — fresh Aug-2026 drainer chain TX 2AWwL6dk (unknown 8MjG72/GieMfa5 + known HELPER, real Token-2022 mintTo) + AAT mass drain TX 3PbK87 (20 calls, real disc 0e) — exploit corpus now 37, both scored as REAL benchmark cases with raw evidence in scripts/real_exploit_*.json
 - [x] Feed actual transaction data through Graphite (not synthetic reconstructions) — `src/live_corpus.rs` + `graphite regression seed-live` (2026-08-08): live devnet verified=20 / recorded=20, live test verified 10 real devnet txs, 3 pinned REAL mainnet fixtures (Jupiter swap, pump.fun market, System) through the full pipeline
 - [x] Add 6 more protocol manifests (Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — C27; Drift + Kamino — C42): 22 total, all program IDs confirmed executable on mainnet
 - [x] Regression Engine core: append-only fixture corpus, deterministic replay, P10 promotion gate (99.5%), benchmark-seeded initial corpus, `graphite regression` CLI gate — 12 tests (2026-08-07)
 - [x] Replace synthetic exploit tests with real on-chain data — 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) scored in the P16 benchmark binary, replacing 3 of 5 SYNTHETIC reconstructions (C30); 2 SYNTHETIC remain, honestly labeled
 - [x] Multi-instruction transaction analysis — coordinated mass-drain patterns ACROSS instructions in one tx (AAT approve+transfer, authority-hijack SetAuthority+Transfer, close-and-sweep, mass multi-transfer sweep, AAT ownership-theft via System assign) — hard gates (C29)
 - [x] CPI instruction trace analysis — unknown, re-entered (compositional), or vanity-impersonated programs in the hierarchical CPI tree; deep-chain warning — hard gates except the depth warning (C29)
-- [~] **Dynamic PDA seed resolution**: extraction capability implemented + tested (2026-08-08) — `{instruction_data}`, `{instruction_data:start:end}`, `{instruction_data:start}` templates, 5 tests with known-answer PDAs pinned from the official Solana JS SDK + a false-positive guard. Remaining: confirming real protocol seed layouts (Squads V4 devnet txs currently error; Jupiter DCA layout unmatched by candidates) — a Phase 3 IDL/source data task. (C42: Kamino V2 lending_market_authority PDA seeds verified and added.)
+- [x] **Dynamic PDA seed resolution**: extraction capability implemented + tested (2026-08-08) — `{instruction_data}`, `{instruction_data:start:end}`, `{instruction_data:start}` templates, 5 tests with known-answer PDAs pinned from the official Solana JS SDK + a false-positive guard. (C42: Kamino V2 lending_market_authority PDA seeds verified and added. **C52: Jupiter DCA + Squads V4 layouts confirmed from official IDL/source and VERIFIED against live mainnet** — DCA `["dca", user, inputMint, outputMint, uid]` derives exactly the live account; Squads `["multisig", "multisig", createKey]` derives exactly the real multisig; both manifests rebuilt with correct account order/roles; 4 new known-answer PDA tests.)
 
 ### Month 2: Manifest Registry + Plugin Framework
 - [x] Manifest Registry with signature verification + G5 reviewer reputation — `graphite registry register-reviewer|submit|reviewers` operator CLI (2026-08-08), live-verified signed submission ACCEPTED at derived tier
@@ -97,7 +97,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] L3 Simulation Verification live-validated against real RPC — `tests/l3_live_simulation.rs` (C40): real simulateTransaction returns a result, partial/no-baseline results are non-events, malformed payloads fail safely
 - [x] L8 Execution Verification live-validated against mainnet — `tests/l8_live_mainnet.rs` (C40): Confirmed (real signature, slot 438408575), UnknownSignature (fabricated), Unavailable (unreachable RPC)
 - [x] React dashboard showing live verification state (read-only /api endpoints + 5 views)
-- [x] 1,000+ meaningful regression fixtures — **2,181-fixture corpus** (C41): dev ~2,112 (manifest-driven synthetic) + regression 31 (re-pinned attack classes) + holdout 38 (35 real SolPhishHunter mainnet exploits + 3 real mainnet txs, independently labeled, never used for tuning); replay 0 divergences, byte-identical across runs (C42 registry determinism fix)
+- [x] 1,000+ meaningful regression fixtures — **2,747-fixture corpus** (C41 + C52): dev 2,676 (manifest-driven synthetic) + regression 31 (re-pinned attack classes) + holdout 40 (37 real mainnet exploits — 35 SolPhishHunter + 2 live-fetched — + 3 real mainnet txs, independently labeled, never used for tuning); replay 0 divergences, byte-identical across runs (C42 registry determinism fix)
 - [x] Real holdout evaluation — holdout n=38: precision 1.000, recall 1.000, F1 1.000, 0 false negatives (C41)
 - [x] 22-manifest revalidation — all program IDs base58-decode to 32 bytes; Kamino V2 stub layouts rebuilt from live on-chain decoded streams (C42); Orca roles fixed to real SDK layouts (C41); universal-CPI audit: infra exclusion is per-target and cannot shield a malicious caller (C42)
 - [ ] Public deployment endpoint (Dockerfile + hardened server code-ready; no live public endpoint yet — UNVERIFIED)
@@ -105,7 +105,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [ ] Tag v0.2.0-beta
 
 ### Phase 2 Exit Criteria
-- [x] Benchmark uses real on-chain transaction data — 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) pinned in the P16 benchmark binary from `tests/real_onchain_exploits.rs` (real program IDs, accounts, CPI structure; reproducible offline), replacing 3 of the 5 SYNTHETIC reconstructions; 2 SYNTHETIC cases remain, honestly labeled, for classes not yet pinned from mainnet
+- [x] Benchmark uses real on-chain transaction data — **5 REAL mainnet exploit cases** (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87) pinned in the P16 benchmark binary from `tests/real_onchain_exploits.rs` + live-fetched `scripts/real_exploit_*.json` (real program IDs, accounts, CPI structure; reproducible offline), replacing 3 of the 5 SYNTHETIC reconstructions; 2 SYNTHETIC cases remain, honestly labeled, for classes not yet pinned from mainnet
 - [x] SAK integration executes real devnet transactions after Graphite approval — 5 finalized devnet txs, re-verified on-chain 2026-08-08
 - [x] Protocol Manifest Registry accepts signed community submissions — CLI operator path live-verified (signed → ACCEPTED at derived tier; unregistered → REJECTED)
 - [x] Plugin framework has 2+ real plugins

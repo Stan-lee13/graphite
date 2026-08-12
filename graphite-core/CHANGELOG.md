@@ -3,10 +3,15 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C51: 987 tests, 28 manifests, 695 instructions, 14 risk checks] — 2026-08-12
+## [Current State — C52: 993 tests, 28 manifests, 695 instructions, 14 risk checks, 37-entry exploit corpus] — 2026-08-12
 
-### Summary of all changes C28–C50
+### Summary of all changes C28–C51
 
+- **C52**: Dynamic PDA grounding for Squads V4 + Jupiter DCA + live-RPC exploit corpus expansion.
+  - **Jupiter DCA manifest rebuilt from the official DCA SDK IDL**: real defects fixed — account order now matches on-chain (`dca` FIRST, then user/inputMint/outputMint; previously `user` was first), account lists completed (openDca has 12 accounts; the manifest carried only 5), and the `dca` PDA now declares `pda_seeds: ["dca", user, inputMint, outputMint, uid]` where `uid` = `{instruction_data:8:16}` (u64 LE applicationIdx). PDA derivation **verified against live mainnet**: `findProgramAddressSync` with the real seed tuple derives exactly the live account `Ck1Ct3vsMfzxeEM2RmKmTS4FVXoCB3YAUunKVFyNsFiq` from real tx data. Raw evidence: `scripts/dca_idl.json` + `scripts/dca_real_account.json`.
+  - **Squads V4 manifest rebuilt from the official v4 IDL**: seed template `["multisig", "multisig", createKey]` verified against the official `getMultisigPda` and **confirmed against live mainnet** — the derivation reproduces the real multisig `DDV1BEtsu…` from its own stored `create_key`. Role defects fixed (create_key/config_authority/creator/member are SIGNERS per the IDL, were marked readonly). Unverifiable vault-seed offsets rejected rather than kept (they would have false-blocked); only `multisigCreateV2` gets grounded seeds. Raw evidence: `scripts/squads_v4_idl.json` + `scripts/squads_real_pair.json`.
+  - **Live-RPC exploit corpus expansion (35 → 37)**: 2 new real mainnet exploit transactions fetched live from `api.mainnet-beta.solana.com` and pinned with full fidelity — TX `2AWwL6dk` (slot 438712938, Aug 2026): fresh drainer chain unknown program `8MjG72…` → `GieMfa5…` (19 accts, real Token-2022 `mintTo` of 660,854 tokens, mintAuthority `3H5qEiP…`) → 2 calls to the KNOWN malicious HELPER program `L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95`; TX `3PbK87` (slot 382864866, Dec 2025): 20 top-level calls to the SlowMist AAT drainer (real disc `0e00000000000000`) across 23 unique accounts. Both wired as REAL scored benchmark cases (benchmark: 5 REAL + 2 SYNTHETIC, 20 total) with real account addresses/CPI structure, pinning tests in `tests/real_onchain_exploits.rs`, and raw evidence under `scripts/real_exploit_*.json`. Benchmark remains 100% precision/recall on 18 scored cases.
+  - `test_new_protocol_manifests_are_grounded` + 4 new PDA known-answer tests; regression-engine seed pin updated 16 → 18.
 - **C50**: Independent audit sync — regression_engine SetAuthority discriminator corrected `0b` (ThawAccount) → `06` (SetAuthority): the test was passing for the wrong reason (account-count error on ThawAccount, not the AuthorityHijack pattern). Now genuinely exercises the SetAuthority authority-hijack path. Cargo.toml version 0.1.0 → 0.1.1 (matches v0.1.1-alpha tag). README protocol table gained the 6 C46 protocols.
 - **C51**: Audit-correction pass — corrected the C50 test count (1012 → 987 passed / 995 running, 8 network-dependent ignored; the 1012 figure was not reproducible) and the README Protocol_Manifests badge (22 → 28, missed by C50).
 
@@ -27,12 +32,13 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C44**: Encoding-explicit manifest reads in Python test (Windows-locale fix — `encoding="utf-8"` on all `open()` calls).
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
-### Current numbers (C51)
-- **987 Rust tests passing** (995 running; 8 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
+### Current numbers (C52)
+- **993 Rust tests passing** (1002 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
 - **28 protocol manifests**, 695 instructions, all program IDs verified executable on mainnet
 - **11 risk patterns / 14 risk checks** (was 9/9)
-- **2,181-fixture corpus**: 0 false negatives on 38-fixture holdout
-- **3 REAL mainnet exploits** scored in benchmark (Wormhole $320M, CLINKSINK STMT, SlowMist AAT)
+- **2,747-fixture corpus**: 0 false negatives on 40-fixture holdout (38 real-exploit + real txs)
+- **37-entry exploit corpus** (35 SolPhishHunter + 2 live-fetched from mainnet RPC)
+- **5 REAL mainnet exploits** scored in benchmark (Wormhole $320M, CLINKSINK STMT, SlowMist AAT, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87); 18 scored cases, 100% precision/recall
 - **L3 live-validated** on devnet RPC; **L8 live-validated** on mainnet RPC
 - **SAK integration verified** on devnet (5 finalized transactions)
 - **Go SDK**: 10 tests, 16-field parity; **Python AI layer**: 27 tests; **TS SDK**: compiles clean
