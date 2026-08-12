@@ -64,9 +64,39 @@ export interface VerificationInput {
   compute_units?: number;
   account_writes?: number;
   cpi_hops?: number;
+  /** Optional fully-signed transaction blob (binary). When provided, the
+   *  Core's RPC client simulates this exact blob (most accurate L3 result).
+   *  Serialized as a JSON array of bytes, NOT base64 (serde Vec<u8>). */
+  signed_transaction?: number[];
+  /** Phase 2: the COMPLETE list of instructions in the transaction, including
+   *  the primary instruction. When 2+, the multi-instruction pattern analysis
+   *  layer detects coordinated mass-drain patterns across them. */
+  transaction_instructions?: TransactionInstruction[];
+  /** Phase 2: the hierarchical CPI trace tree of the primary instruction. */
+  cpi_trace?: CpiTraceNode;
   /** Phase 1.5 simulation baselines are TRUSTED SERVER STATE (earned via
    *  RPC-verified usage or seeded by the operator) — never sent from the
    *  client. See GRAPHITE_RPC_URL and GraphiteCore::seed_simulation_baseline. */
+}
+
+/** A single compiled instruction inside a Solana transaction message
+ *  (Phase 2 multi-instruction analysis). Mirrors
+ *  graphite-core/src/tx_pattern_analysis.rs TransactionInstruction. */
+export interface TransactionInstruction {
+  program_id: string;
+  instruction_discriminator?: string;
+  account_addresses?: string[];
+  cpi_targets?: string[];
+}
+
+/** A node in the hierarchical CPI trace tree (depth 0 = root). Mirrors
+ *  graphite-core/src/tx_pattern_analysis.rs CpiTraceNode. */
+export interface CpiTraceNode {
+  program_id: string;
+  instruction_discriminator?: string;
+  depth: number;
+  account_addresses?: string[];
+  children?: CpiTraceNode[];
 }
 
 export type TrustTier =
@@ -174,6 +204,8 @@ export interface ProtocolManifest {
     program_id: string;
     website?: string;
     github?: string;
+    /** Functional classification ("swap", "lending", "bridge", "nft", ...). */
+    category?: string;
   };
   version: {
     label: string;

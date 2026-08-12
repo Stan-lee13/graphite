@@ -45,10 +45,31 @@ body {
 .brand h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
 .tagline { color: var(--text-dim); font-size: 12px; }
 
-.health { font-size: 12px; }
+.health { font-size: 12px; display: flex; align-items: center; gap: 14px; }
 .health-ok { color: var(--ok); }
 .health-bad { color: var(--block); }
 .health-unknown { color: var(--text-dim); }
+
+.api-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.api-key input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: var(--mono);
+  width: 210px;
+}
+.api-key input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.api-key input::placeholder { color: var(--text-dim); opacity: 0.7; }
 
 .tabs {
   display: flex;

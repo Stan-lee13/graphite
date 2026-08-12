@@ -2,6 +2,13 @@ import type { VerificationInput, VerificationResult, ProtocolManifest } from "./
 
 export interface GraphiteClientOptions {
   baseUrl: string;
+  /**
+   * Bearer API key for a secured Core server (GRAPHITE_API_KEY). When set,
+   * every authenticated request sends `Authorization: Bearer <apiKey>`. The
+   * `/health` endpoint stays open by design. Optional — a keyless dev Core
+   * works without it.
+   */
+  apiKey?: string;
 }
 
 /**
@@ -53,15 +60,25 @@ export function validateVerificationResult(value: unknown): string | null {
 
 export class GraphiteClient {
   private baseUrl: string;
+  private apiKey?: string;
 
   constructor(options: GraphiteClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
+    this.apiKey = options.apiKey?.trim() || undefined;
+  }
+
+  private headers(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { ...extra };
+    if (this.apiKey) {
+      headers["authorization"] = `Bearer ${this.apiKey}`;
+    }
+    return headers;
   }
 
   async verify(input: VerificationInput): Promise<VerificationResult> {
     const response = await fetch(`${this.baseUrl}/verify`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify(input),
     });
 
@@ -89,7 +106,9 @@ export class GraphiteClient {
   }
 
   async listManifests(): Promise<ProtocolManifest[]> {
-    const response = await fetch(`${this.baseUrl}/manifests`);
+    const response = await fetch(`${this.baseUrl}/manifests`, {
+      headers: this.headers(),
+    });
     if (!response.ok) throw new Error(`Failed to list manifests: ${response.status}`);
     return (await response.json()) as ProtocolManifest[];
   }

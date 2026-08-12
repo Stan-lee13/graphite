@@ -1,8 +1,27 @@
 {
   "$schema": "https://graphite.dev/schemas/verification-result-v1.json",
+  "title": "Graphite VerificationResult",
+  "description": "Output of the Graphite verification pipeline. Field parity with graphite-core/src/verification.rs VerificationResult (19 fields) and the TypeScript/Go SDKs. Security note: `approved` is the ONLY field a consumer may gate execution on; all other fields are evidence for audit.",
   "type": "object",
-  "required": ["confidence", "breakdown", "trust_tier", "risk_verdict", "audit_trail_id"],
+  "required": [
+    "approved",
+    "confidence",
+    "breakdown",
+    "trust_tier",
+    "risk_verdict",
+    "policy_verdict",
+    "audit_trail_id",
+    "content_hash",
+    "transaction",
+    "resolved_accounts",
+    "protocol_name",
+    "instruction_name",
+    "manifest_found",
+    "unknown_protocol",
+    "summary"
+  ],
   "properties": {
+    "approved": { "type": "boolean" },
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
     "breakdown": {
       "type": "array",
@@ -24,12 +43,90 @@
     },
     "risk_verdict": {
       "type": "object",
+      "required": ["status", "findings"],
       "properties": {
         "status": { "type": "string", "enum": ["Clear", "Blocked"] },
-        "findings": { "type": "array", "items": { "type": "object" } }
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern", "reason"],
+            "properties": {
+              "pattern": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        }
       }
     },
-    "policy_verdict": { "type": ["string", "null"] },
-    "audit_trail_id": { "type": "string" }
+    "policy_verdict": { "type": "string" },
+    "audit_trail_id": { "type": "string" },
+    "content_hash": { "type": "string", "minLength": 1 },
+    "transaction": {
+      "type": "object",
+      "required": ["program_id", "protocol_version", "instruction_name", "instruction_discriminator", "instruction_count", "account_count", "signer_count", "writable_count", "compute_budget_units", "accounts", "data_hex", "data_len"],
+      "properties": {
+        "program_id": { "type": "string" },
+        "protocol_version": { "type": "string" },
+        "instruction_name": { "type": "string" },
+        "instruction_discriminator": { "type": "string" },
+        "instruction_count": { "type": "integer", "minimum": 0 },
+        "account_count": { "type": "integer", "minimum": 0 },
+        "signer_count": { "type": "integer", "minimum": 0 },
+        "writable_count": { "type": "integer", "minimum": 0 },
+        "compute_budget_units": { "type": "integer", "minimum": 0 },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["address", "is_signer", "is_writable"],
+            "properties": {
+              "address": { "type": "string" },
+              "is_signer": { "type": "boolean" },
+              "is_writable": { "type": "boolean" }
+            }
+          }
+        },
+        "data_hex": { "type": "string" },
+        "data_len": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "resolved_accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["address", "role", "is_pda", "is_signer", "is_writable", "pda_seeds"],
+        "properties": {
+          "address": { "type": "string" },
+          "role": { "type": "string" },
+          "is_pda": { "type": "boolean" },
+          "is_signer": { "type": "boolean" },
+          "is_writable": { "type": "boolean" },
+          "pda_seeds": { "type": "array", "items": { "type": "string" } },
+          "pda_mismatch": { "type": "boolean" }
+        }
+      }
+    },
+    "protocol_name": { "type": "string" },
+    "instruction_name": { "type": "string" },
+    "manifest_found": { "type": "boolean" },
+    "unknown_protocol": { "type": "boolean" },
+    "manifest_version": { "type": ["string", "null"] },
+    "summary": { "type": "string" },
+    "simulation_flagged": { "type": ["boolean", "null"] },
+    "simulation_divergence": { "type": ["number", "null"] },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["layer", "passed", "reason"],
+        "properties": {
+          "layer": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "status": { "type": "string", "enum": ["passed", "failed", "inconclusive"] },
+          "reason": { "type": "string" }
+        }
+      }
+    }
   }
 }

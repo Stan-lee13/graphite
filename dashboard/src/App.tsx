@@ -4,6 +4,9 @@ import { ProtocolsView } from "./views/ProtocolsView";
 import { ConfidenceView } from "./views/ConfidenceView";
 import { ViolationsView } from "./views/ViolationsView";
 import { RegistryView } from "./views/RegistryView";
+import { setApiKey } from "./api";
+
+const KEY_STORAGE = "graphite_api_key";
 
 type Tab = "protocols" | "graph" | "confidence" | "violations" | "registry";
 
@@ -25,6 +28,7 @@ export function App() {
   const [tab, setTab] = useState<Tab>("protocols");
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState<string>(() => localStorage.getItem(KEY_STORAGE) ?? "");
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +62,21 @@ export function App() {
           <span className="tagline">Solana transaction verification · dashboard</span>
         </div>
         <div className="health">
+          <label className="api-key">
+            <span className="muted">API key</span>
+            <input
+              type="password"
+              value={apiKeyInput}
+              placeholder="optional — secured Core only"
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(e) => {
+                setApiKeyInput(e.target.value);
+                setApiKey(e.target.value);
+              }}
+              title="Core Bearer API key (GRAPHITE_API_KEY). Sent as Authorization: Bearer on /api/* requests. Stored locally in your browser."
+            />
+          </label>
           {health ? (
             <span className="health-ok">● {health.service} v{health.version} — {health.status}</span>
           ) : healthError ? (

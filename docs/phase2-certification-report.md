@@ -236,7 +236,7 @@ warranted by measurement.**
 
 | Requirement | Implementation | Runtime evidence | Test evidence | Status |
 |---|---|---|---|---|
-| Phase 1 — 8-layer verification engine | verification.rs L1–L8 | benchmark 16/16 correct | 987 tests | Complete |
+| Phase 1 — 8-layer verification engine | verification.rs L1–L8 | benchmark 16/16 correct | 999 tests | Complete |
 | Phase 1 — risk engine (8+ patterns) | risk_engine.rs (checks 1–10 + Phase 2 gates) | 100% precision/recall | p0/cert suites, corpus | Complete |
 | Phase 1 — 28 manifests / 695 instructions | manifest.rs registry + JSON | IDs verified executable on mainnet (getAccountInfo) | structural audit, prefix tests | Strong |
 | Phase 1.5 — server hardening (auth/rate-limit/CORS/audit log) | server.rs env-config | /health + concurrent storm | hardening tests | Complete |

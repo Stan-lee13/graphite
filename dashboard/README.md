@@ -30,9 +30,12 @@ npm run typecheck  # tsc --noEmit only
   `VITE_GRAPHITE_PROXY=http://host:port npm run dev`.
 - For a production deployment, serve `dist/` from any static host and set
   `VITE_GRAPHITE_API` at build time (default: same-origin `/api`).
-- If Core runs with `GRAPHITE_API_KEY`, configure the dashboard to send the
-  Bearer token (e.g. via a reverse proxy or a fetch wrapper) — all `/api/*`
-  routes require it by default.
+- If Core runs with `GRAPHITE_API_KEY`, enter the key in the header's **API
+  key** field (stored in localStorage, sent as `Authorization: Bearer` on
+  every `/api/*` request). `/health` stays open for load balancers, so the
+  header health indicator works without a key.
+- Direct cross-origin browser access needs `GRAPHITE_CORS_ORIGINS` on Core;
+  the dev proxy and same-origin production setups do not.
 
 ## Security & operational notes
 

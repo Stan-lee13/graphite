@@ -126,11 +126,15 @@ export class VerifiedSakAgent {
   static async create(config?: {
     privateKey?: string; rpcUrl?: string; openAiApiKey?: string;
     graphiteCoreUrl?: string; aiLayerUrl?: string; walletProfile?: WalletProfile;
+    /** Bearer API key for a secured Graphite Core (GRAPHITE_API_KEY). */
+    graphiteApiKey?: string;
   }): Promise<VerifiedSakAgent> {
     const privateKey = config?.privateKey ?? process.env.SOLANA_PRIVATE_KEY;
     const rpcUrl = config?.rpcUrl ?? process.env.SOLANA_RPC_URL;
     const openAiApiKey = config?.openAiApiKey ?? process.env.OPENAI_API_KEY;
     const graphiteCoreUrl = config?.graphiteCoreUrl ?? process.env.GRAPHITE_CORE_URL ?? "http://localhost:7331";
+    // Secured Core deployments require the Bearer key on /verify and /manifests.
+    const graphiteApiKey = config?.graphiteApiKey ?? process.env.GRAPHITE_API_KEY;
     // The Python AI Layer listens on 8081 by default (intent_parser.py --serve).
     const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://localhost:8081";
     // Phase 1 calibration: with the three evidence-derived confidence signals
@@ -166,7 +170,7 @@ export class VerifiedSakAgent {
       console.warn("[Graphite] SAK init failed — falling back to raw web3.js:", (err as Error).message?.slice(0, 80));
     }
 
-    const graphite = new GraphiteClient({ baseUrl: graphiteCoreUrl });
+    const graphite = new GraphiteClient({ baseUrl: graphiteCoreUrl, apiKey: graphiteApiKey });
     try { await graphite.health(); } catch {
       throw new Error(`Graphite Core not reachable at ${graphiteCoreUrl}. Start: cargo run --release -- server`);
     }

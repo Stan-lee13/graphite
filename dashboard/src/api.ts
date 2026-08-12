@@ -103,10 +103,26 @@ const API_BASE: string =
   (import.meta.env.VITE_GRAPHITE_API as string | undefined)?.replace(/\/$/, "") ??
   "/api";
 
+/**
+ * Bearer API key for a secured Core (GRAPHITE_API_KEY). All /api/* routes
+ * require it when the server runs with a key. Stored in localStorage so the
+ * operator enters it once; never logged. An empty key (dev Core) sends no
+ * Authorization header.
+ */
+const KEY_STORAGE = "graphite_api_key";
+let apiKey: string = localStorage.getItem(KEY_STORAGE) ?? "";
+
+/** Update the Bearer key used for subsequent requests (persisted). */
+export function setApiKey(key: string): void {
+  apiKey = key.trim();
+  if (apiKey) localStorage.setItem(KEY_STORAGE, apiKey);
+  else localStorage.removeItem(KEY_STORAGE);
+}
+
 async function get<T>(path: string): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, {
-    headers: { Accept: "application/json" },
-  });
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  const resp = await fetch(`${API_BASE}${path}`, { headers });
   if (!resp.ok) {
     throw new Error(`GET ${path} failed: HTTP ${resp.status} ${resp.statusText}`);
   }

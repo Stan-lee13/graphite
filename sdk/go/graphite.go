@@ -25,9 +25,14 @@ import (
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
+	// APIKey is the Bearer token for a secured Core server (GRAPHITE_API_KEY).
+	// When non-empty, Verify and ListManifests send
+	// `Authorization: Bearer <APIKey>`. /health stays open by design.
+	APIKey string
 }
 
-// NewClient creates a new Graphite client pointing at the Core server.
+// NewClient creates a new Graphite client pointing at the Core server
+// (no API key — for keyless dev deployments).
 func NewClient(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
@@ -35,6 +40,14 @@ func NewClient(baseURL string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// NewClientWithAPIKey creates a client for a secured Core deployment. The key
+// is sent as `Authorization: Bearer <key>` on every authenticated request.
+func NewClientWithAPIKey(baseURL, apiKey string) *Client {
+	c := NewClient(baseURL)
+	c.APIKey = apiKey
+	return c
 }
 
 // ProposedIntent is the natural language intent declaration.
@@ -128,8 +141,38 @@ type VerificationInput struct {
 	ComputeUnits            uint64               `json:"compute_units"`
 	AccountWrites           uint32               `json:"account_writes"`
 	CPIHops                 uint32               `json:"cpi_hops"`
+	// SignedTransaction is the optional fully-signed transaction blob (JSON
+	// array of bytes, NOT base64 — serde Vec<u8>). The Core simulates this
+	// exact blob for the most accurate L3 result.
+	SignedTransaction ByteArray `json:"signed_transaction,omitempty"`
+	// TransactionInstructions is the Phase 2 COMPLETE instruction list (2+
+	// entries trigger multi-instruction mass-drain pattern analysis).
+	TransactionInstructions []TransactionInstruction `json:"transaction_instructions,omitempty"`
+	// CpiTrace is the Phase 2 hierarchical CPI trace tree of the primary
+	// instruction (depth 0 = root).
+	CpiTrace *CpiTraceNode `json:"cpi_trace,omitempty"`
 	// Simulation baselines are TRUSTED SERVER STATE (earned via RPC-verified
 	// usage or seeded by the operator) — never sent from the client.
+}
+
+// TransactionInstruction is a single compiled instruction in a transaction
+// message (Phase 2 multi-instruction analysis). Mirrors
+// graphite-core/src/tx_pattern_analysis.rs TransactionInstruction.
+type TransactionInstruction struct {
+	ProgramID                string   `json:"program_id"`
+	InstructionDiscriminator string   `json:"instruction_discriminator,omitempty"`
+	AccountAddresses         []string `json:"account_addresses,omitempty"`
+	CPITargets               []string `json:"cpi_targets,omitempty"`
+}
+
+// CpiTraceNode is a node in the hierarchical CPI trace tree (depth 0 = root).
+// Mirrors graphite-core/src/tx_pattern_analysis.rs CpiTraceNode.
+type CpiTraceNode struct {
+	ProgramID                string         `json:"program_id"`
+	InstructionDiscriminator string         `json:"instruction_discriminator,omitempty"`
+	Depth                    uint32         `json:"depth"`
+	AccountAddresses         []string       `json:"account_addresses,omitempty"`
+	Children                 []CpiTraceNode `json:"children,omitempty"`
 }
 
 // ─── Result types (must match Rust VerificationResult exactly) ───
@@ -241,6 +284,7 @@ type ManifestProtocol struct {
 	ProgramID  string `json:"program_id"`
 	Website    string `json:"website,omitempty"`
 	Github     string `json:"github,omitempty"`
+	Category   string `json:"category,omitempty"`
 }
 
 // ManifestVersion is the version label of a protocol manifest.
@@ -278,11 +322,14 @@ func (c *Client) Verify(input *VerificationInput) (*VerificationResult, error) {
 		return nil, fmt.Errorf("marshal input: %w", err)
 	}
 
-	resp, err := c.HTTPClient.Post(
-		c.BaseURL+"/verify",
-		"application/json",
-		bytes.NewReader(body),
-	)
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/verify", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.setAuth(req)
+
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request: %w", err)
 	}
@@ -316,7 +363,13 @@ func (c *Client) Health() error {
 
 // ListManifests returns all loaded protocol manifests, typed.
 func (c *Client) ListManifests() ([]ProtocolManifest, error) {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/manifests")
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/manifests", nil)
+	if err != nil {
+		return nil, err
+	}
+	c.setAuth(req)
+
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -327,4 +380,11 @@ func (c *Client) ListManifests() ([]ProtocolManifest, error) {
 		return nil, err
 	}
 	return manifests, nil
+}
+
+// setAuth attaches the Bearer API key when one is configured.
+func (c *Client) setAuth(req *http.Request) {
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 }
