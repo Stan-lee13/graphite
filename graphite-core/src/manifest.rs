@@ -898,6 +898,114 @@ mod tests {
         }
     }
 
+    /// Grounds the C56 manifests (Marinade, SPL Stake Pool, Raydium
+    /// CLMM/CPMM) against REAL mainnet instruction data: each pinned
+    /// transaction's top-level invocation of the C56 program must resolve via
+    /// the registry to the EXACT instruction it actually executed on-chain.
+    ///
+    /// Why this exists (C57): the Stake-program audit found discriminators
+    /// that were never checked against real on-chain data were byte-swapped
+    /// for every instruction index >= 1, silently dropping instruction-level
+    /// verification. These C56 fixtures were fetched live via
+    /// getSignaturesForAddress and getTransaction on 2026-08-14 and verified
+    /// to resolve BEFORE pinning; this test keeps them honest on every CI run.
+    #[test]
+    fn test_c56_manifest_discriminators_match_real_mainnet_fixtures() {
+        let registry = load_seed_manifests();
+        // (fixture, C56 program, expected on-chain instruction name).
+        let cases: &[(&str, &str, &str)] = &[
+            (
+                "real_mainnet_marinade.json",
+                "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+                "liquidUnstake",
+            ),
+            (
+                "real_mainnet_stakepool.json",
+                "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+                "WithdrawSol",
+            ),
+            (
+                "real_mainnet_clmm.json",
+                "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+                "swap_v2",
+            ),
+            (
+                "real_mainnet_cpmm.json",
+                "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+                "swap_base_input",
+            ),
+        ];
+        // Load each fixture by name (include_str! needs a literal path, so
+        // the per-fixture loading is explicit below).
+        let fixtures = [
+            (
+                "real_mainnet_marinade.json",
+                include_str!("../tests/fixtures/real_mainnet_marinade.json"),
+            ),
+            (
+                "real_mainnet_stakepool.json",
+                include_str!("../tests/fixtures/real_mainnet_stakepool.json"),
+            ),
+            (
+                "real_mainnet_clmm.json",
+                include_str!("../tests/fixtures/real_mainnet_clmm.json"),
+            ),
+            (
+                "real_mainnet_cpmm.json",
+                include_str!("../tests/fixtures/real_mainnet_cpmm.json"),
+            ),
+        ];
+        for (fixture, pid, want_name) in cases {
+            let raw: serde_json::Value = serde_json::from_str(
+                fixtures
+                    .iter()
+                    .find(|(f, _)| f == fixture)
+                    .map(|(_, j)| *j)
+                    .expect("fixture in cases must exist in fixtures"),
+            )
+            .unwrap_or_else(|e| panic!("{fixture}: invalid JSON: {e}"));
+            let msg = &raw["transaction"]["message"];
+            let keys: Vec<String> = msg["accountKeys"]
+                .as_array()
+                .expect("accountKeys array")
+                .iter()
+                .map(|k| {
+                    k.as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| k["pubkey"].as_str().unwrap().to_string())
+                })
+                .collect();
+            let mut resolved = 0;
+            for ix in msg["instructions"].as_array().expect("instructions array") {
+                let idx = ix["programIdIndex"].as_u64().expect("programIdIndex") as usize;
+                if idx >= keys.len() || keys[idx] != *pid {
+                    continue;
+                }
+                let data_b58 = ix["data"].as_str().unwrap_or("");
+                let Some(bytes) = crate::solana_types::base58_decode(data_b58) else {
+                    continue;
+                };
+                if bytes.is_empty() {
+                    continue;
+                }
+                let hex = hex::encode(&bytes[..bytes.len().min(8)]);
+                let found = registry.find_instruction(pid, &hex).unwrap_or_else(|| {
+                    panic!("{fixture}: {pid} observed discriminator {hex} not resolved by any manifest")
+                });
+                assert_eq!(
+                    found.name, *want_name,
+                    "{fixture}: {pid} real on-chain data must resolve to {want_name}, got {}",
+                    found.name
+                );
+                resolved += 1;
+            }
+            assert_eq!(
+                resolved, 1,
+                "{fixture}: expected exactly one top-level {pid} invocation, saw {resolved}"
+            );
+        }
+    }
+
     #[test]
     fn test_metaplex_token_metadata_manifest_has_create() {
         let registry = load_seed_manifests();

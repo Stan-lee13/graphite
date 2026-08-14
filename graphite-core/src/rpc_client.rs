@@ -457,6 +457,34 @@ impl SolanaRpcClient {
         Ok(result)
     }
 
+    /// Recent signatures for an address/program (`getSignaturesForAddress`),
+    /// newest first, each with its error status. Used by the live protocol
+    /// corpus to find REAL transactions that invoke a specific manifest
+    /// program (per-protocol grounding).
+    pub async fn get_signatures_for_address(
+        &self,
+        address: &str,
+        limit: u64,
+    ) -> Result<serde_json::Value, RpcError> {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "getSignaturesForAddress",
+            "params": [address, {"limit": limit}]
+        });
+        self.post_rpc(body).await
+    }
+
+    /// Fetch one transaction by signature (`getTransaction`, encoding: json,
+    /// versioned transactions included). Returns the full result object
+    /// (`transaction`, `slot`, `blockTime`, `meta`) — the exact shape the
+    /// pinned mainnet fixtures and `tx_to_input` consume.
+    pub async fn get_transaction(&self, signature: &str) -> Result<serde_json::Value, RpcError> {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
+            "params": [signature, {"encoding": "json", "maxSupportedTransactionVersion": 0}]
+        });
+        self.post_rpc(body).await
+    }
+
     /// Get recent blockhash
     pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
         let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash","params":[{"commitment":self.config.commitment}]});

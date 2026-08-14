@@ -55,6 +55,15 @@ pub struct AccountResolutionResult {
     pub resolution_order: Vec<usize>,
     pub instruction_name: String,
     pub manifest_found: bool,
+    /// Set when the supplied account list is shorter than the manifest's
+    /// declared instruction accounts `(expected, actual)`. Real transactions
+    /// routinely reference Address Lookup Table entries the pure reader
+    /// cannot expand (and dedup can drop repeated keys), so a shortfall is a
+    /// RESOLUTION LIMITATION, not a spoofing signal: resolution continues
+    /// with the accounts present and the shortfall is surfaced as a risk
+    /// finding (C57) instead of a hard error. The over-count resource guard
+    /// (256-key protocol cap) remains a hard error upstream.
+    pub account_count_shortfall: Option<(usize, usize)>,
 }
 
 /// Resolve accounts using a manifest registry.
@@ -91,13 +100,17 @@ pub fn resolve_accounts(
             )
         })?;
 
-    // Check account count (manifest may have variable accounts, so only check minimum)
-    if pubkeys.len() < ix_def.accounts.len() {
-        return Err(AccountResolutionError::AccountCountMismatch {
-            expected: ix_def.accounts.len(),
-            actual: pubkeys.len(),
-        });
-    }
+    // Account-count shortfall (manifest may have variable accounts, so this
+    // only detects UNDER-supply). C57: real transactions can legitimately
+    // supply fewer accounts than the manifest declares — ALT-resolved
+    // positions are skipped by the reader and repeated keys are deduplicated
+    // — so a shortfall is surfaced as a finding on the result rather than a
+    // hard error (the over-count 256-key resource guard stays hard upstream).
+    let account_count_shortfall = if pubkeys.len() < ix_def.accounts.len() {
+        Some((ix_def.accounts.len(), pubkeys.len()))
+    } else {
+        None
+    };
 
     let mut resolved = Vec::with_capacity(pubkeys.len());
     let mut order = Vec::with_capacity(pubkeys.len());
@@ -168,6 +181,7 @@ pub fn resolve_accounts(
         resolution_order: order,
         instruction_name: ix_def.name.clone(),
         manifest_found: true,
+        account_count_shortfall,
     })
 }
 
@@ -193,6 +207,7 @@ fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionRe
         resolution_order: order,
         instruction_name: "Unknown".to_string(),
         manifest_found: false,
+        account_count_shortfall: None,
     }
 }
 

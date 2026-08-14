@@ -1187,6 +1187,7 @@ impl GraphiteCore {
                             pda_mismatch: false,
                         })
                         .collect(),
+                    account_count_shortfall: None,
                 }
             }
             Err(crate::account_resolution::AccountResolutionError::InvalidAddress(addr)) => {
@@ -1607,6 +1608,29 @@ impl GraphiteCore {
             }
         } else {
             risk_summary
+        };
+
+        // Step 3c.6: Account-count shortfall finding (C57). A real transaction
+        // may supply fewer accounts than the manifest declares because the
+        // pure reader skips ALT-resolved positions and deduplicates repeated
+        // keys — that is a RESOLUTION LIMITATION, not a spoofing signal, so it
+        // is surfaced as a non-blocking finding (P3: never silently dropped)
+        // and does NOT flip the status to Blocked.
+        let risk_summary = match resolution.account_count_shortfall {
+            Some((expected, actual)) => RiskVerdictSummary {
+                status: risk_summary.status.clone(),
+                findings: {
+                    let mut f = risk_summary.findings.clone();
+                    f.push(RiskFinding {
+                        pattern: "AccountCountShortfall".to_string(),
+                        reason: format!(
+                            "manifest declares {expected} accounts but {actual} were resolvable (ALT-resolved or deduplicated keys) — account-role analysis is partial"
+                        ),
+                    });
+                    f
+                },
+            },
+            None => risk_summary,
         };
 
         // Step 3.5: Simulation Integrity Check (Phase 1.5)

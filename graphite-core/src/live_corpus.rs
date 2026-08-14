@@ -22,9 +22,19 @@ use crate::rpc_client::SolanaRpcClient;
 use crate::verification::GraphiteCore;
 use crate::verification::{ProposedIntent, VerificationInput};
 
-/// Upper bound on account keys extracted per instruction (matches the original
-/// live-corpus reader; instruction account lists beyond this are truncated).
-pub const MAX_ACCOUNTS_PER_INSTRUCTION: usize = 8;
+/// Upper bound on account keys extracted per instruction (instruction account
+/// lists beyond this are truncated).
+///
+/// C57: raised from 8 to 32. The cap must be >= every manifest instruction's
+/// declared account count (largest today: Kamino 25, Raydium CLMM 22, CPMM 21)
+/// because `resolve_accounts` hard-fails when the supplied accounts are fewer
+/// than the manifest's declared list. At 8, every real transaction for a
+/// 10-22-account manifest instruction (Marinade liquidUnstake, Raydium
+/// swap_v2/swap_base_input, ...) failed with AccountCountMismatch and was
+/// silently dropped from the live corpus — the exact failure the pinned C56
+/// fixtures expose. 32 bounds the extracted list while covering all 33
+/// manifests (and the registry's own 256-account resource guard).
+pub const MAX_ACCOUNTS_PER_INSTRUCTION: usize = 32;
 
 /// Wallet profile used for corpus collection. Deliberately the same Phase-1
 /// honest default as the SAK bridge: `Custom { min_confidence: 0.40,
@@ -399,11 +409,20 @@ mod tests {
     }
 
     /// The pinned fixtures are REAL mainnet transactions (fetched live via
-    /// getSignaturesForAddress + getTransaction on 2026-08-08) stored in the
-    /// exact getBlock transaction-object shape the reader consumes.
+    /// getSignaturesForAddress + getTransaction on 2026-08-08; the C56
+    /// protocol fixtures 2026-08-14) stored in the exact getBlock
+    /// transaction-object shape the reader consumes.
     #[test]
     fn pinned_fixtures_are_real_mainnet_data() {
-        for name in ["pump", "jup", "system"] {
+        for name in [
+            "pump",
+            "jup",
+            "system",
+            "marinade",
+            "stakepool",
+            "clmm",
+            "cpmm",
+        ] {
             let v = load_fixture(name);
             let slot = v.get("slot").and_then(|s| s.as_u64()).unwrap_or(0);
             assert!(
@@ -436,10 +455,9 @@ mod tests {
             input.program_id, jup,
             "prefer-set must win over the System fee instruction"
         );
-        assert_eq!(
-            input.account_addresses.len(),
-            MAX_ACCOUNTS_PER_INSTRUCTION,
-            "40 account keys must be capped at the reader bound"
+        assert!(
+            input.account_addresses.len() >= 8,
+            "the 40-account route must be extracted in full (static keys only; ALT-resolved positions are skipped)"
         );
         assert!(input.compute_units > 0, "real tx must report compute usage");
     }
@@ -457,7 +475,10 @@ mod tests {
             input.program_id, "QZerdCbKWCo79xfPhapNaAB7aZerGyPMXaJjK1VTAYQ",
             "max-accounts fallback must pick the meaty router call over the fee"
         );
-        assert_eq!(input.account_addresses.len(), MAX_ACCOUNTS_PER_INSTRUCTION);
+        assert!(
+            input.account_addresses.len() >= 8,
+            "the 20-account router call must be extracted in full (C57: cap raised to cover manifest account lists)"
+        );
         assert!(input.compute_units > 0, "real tx must report compute usage");
     }
 
@@ -472,7 +493,10 @@ mod tests {
             input.program_id, "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
             "max-accounts fallback must beat the System fee payment"
         );
-        assert_eq!(input.account_addresses.len(), MAX_ACCOUNTS_PER_INSTRUCTION);
+        assert!(
+            input.account_addresses.len() >= 8,
+            "the 24-account AMM call must be extracted in full (C57: cap raised to cover manifest account lists)"
+        );
     }
 
     #[test]
@@ -513,6 +537,44 @@ mod tests {
         }
     }
 
+    /// C56 protocol fixtures (Marinade, SPL Stake Pool, Raydium CLMM/CPMM):
+    /// the production prefer-set must select each transaction's own C56
+    /// program invocation (liquidUnstake / WithdrawSol / swap_v2 /
+    /// swap_base_input), never the System fee payment or ComputeBudget setup.
+    #[test]
+    fn c56_fixtures_select_their_protocol_under_production_prefer_set() {
+        let core = GraphiteCore::new();
+        let expect = [
+            ("marinade", "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD"),
+            ("stakepool", "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy"),
+            ("clmm", "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"),
+            ("cpmm", "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C"),
+        ];
+        let prefer: Vec<String> = core
+            .list_manifests()
+            .iter()
+            .map(|m| m.protocol.program_id.clone())
+            .collect();
+        let prefer: Vec<&str> = prefer.iter().map(|s| s.as_str()).collect();
+        for (name, want) in expect {
+            let tx = load_fixture(name);
+            let input = tx_to_input(&tx, &prefer)
+                .unwrap_or_else(|| panic!("{name}: real tx must produce a VerificationInput"));
+            assert_eq!(
+                input.program_id, want,
+                "{name}: production prefer-set must select the C56 protocol call"
+            );
+            assert!(
+                input.account_addresses.len() >= 5,
+                "{name}: the selected instruction must be the protocol call"
+            );
+            assert!(
+                input.compute_units > 0,
+                "{name}: real tx reports compute usage"
+            );
+        }
+    }
+
     /// Full pipeline over a REAL mainnet transaction: structure invariants
     /// must hold (finite confidence in [0,1], 16-char content hash, and an
     /// approved result implies a Clear risk verdict).
@@ -532,6 +594,10 @@ mod tests {
             ("pump", "QZerdCbKWCo79xfPhapNaAB7aZerGyPMXaJjK1VTAYQ"),
             ("jup", "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"),
             ("system", "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"),
+            ("marinade", "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD"),
+            ("stakepool", "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy"),
+            ("clmm", "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"),
+            ("cpmm", "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C"),
         ];
         for (name, want_program) in expect_program {
             let tx = load_fixture(name);
@@ -576,7 +642,15 @@ mod tests {
             .map(|m| m.protocol.program_id.clone())
             .collect();
         let prefer: Vec<&str> = prefer.iter().map(|s| s.as_str()).collect();
-        for name in ["pump", "jup", "system"] {
+        for name in [
+            "pump",
+            "jup",
+            "system",
+            "marinade",
+            "stakepool",
+            "clmm",
+            "cpmm",
+        ] {
             let tx = load_fixture(name);
             let input =
                 tx_to_input(&tx, &prefer).unwrap_or_else(|| panic!("{name}: real tx must parse"));

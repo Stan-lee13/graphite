@@ -4123,7 +4123,7 @@
   {
     "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
     "version": "1.0.0",
-    "content_hash": "22a607aedb06fe2e05447f6b7c1a93a045eb00a76b870c314b8e0a4b3480928d",
+    "content_hash": "2ad7ec83f4b0475503b3ca73be0e9a0a572c527f8ca83f6eb5ac1a01d8515a2f",
     "expected_approved": true,
     "source": "real-mainnet-tx",
     "deprecated": false,
@@ -4145,7 +4145,9 @@
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
         "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf",
         "2dYfyhfoSoEApQL3iNqhHQso6waZjfH2rNtb9SiYS2FW",
-        "11111111111111111111111111111111"
+        "11111111111111111111111111111111",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "FK2CGUw85tEpoPEdgrtT4E9txB3E4jNdrTcwCxb7GYKa"
       ],
       "instruction_data": null,
       "cpi_targets": [],
