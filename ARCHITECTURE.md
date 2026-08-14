@@ -5,7 +5,7 @@
 Graphite is a deterministic semantic verification engine for Solana. It verifies
 that transactions constructed by AI agents match their declared intent by checking
 program IDs, CPI chains, account structures, cross-instruction patterns, and risk
-patterns against a curated knowledge base of 28 protocol manifests covering 695
+patterns against a curated knowledge base of 33 protocol manifests covering 803
 instructions.
 
 **Honest framing:** Graphite performs deterministic pattern matching on program
@@ -83,8 +83,8 @@ The axum-based HTTP server exposes `POST /verify`, `GET /manifests` (listing), `
 graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
-│   ├── protocols/          # 28 JSON protocol manifests (695 instructions)
-│   ├── tests/              # 999 tests (unit + adversarial + exploit + pinned real corpus)
+│   ├── protocols/          # 33 JSON protocol manifests (803 instructions)
+│   ├── tests/              # 1,007 tests (unit + adversarial + exploit + pinned real corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)

@@ -13,8 +13,8 @@
 
 This update supersedes the stale numbers in the sections below.
 
-- **Tests:** 999 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 27 Python; 9 AuditBind; TS + Dashboard typecheck clean.
-- **Manifests:** 28 verified manifests / 695 instructions (Drift + Kamino on-boarded C27; Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi on-boarded C46).
+- **Tests:** 1,007 Rust tests / 0 failures (were 818 at certification); clippy `-D warnings` clean, fmt clean; 27 Python; 9 AuditBind; TS + Dashboard typecheck clean.
+- **Manifests:** 33 verified manifests / 803 instructions (Drift + Kamino on-boarded C27; Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi on-boarded C46; Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2 on-boarded C56).
 - **Benchmark:** 18 scored cases, 100% precision/recall. Composition (C52): **5 REAL mainnet exploit cases** (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87) + 2 SYNTHETIC, honestly labeled. **Avg latency ~2.1ms** with the real-data cases; the ~850μs figure below predates them (and partly reflected error-path blocks fixed in C30).
 
 **§5 Remaining Risks — RESOLVED since this report:**

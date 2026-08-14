@@ -916,6 +916,51 @@ mod tests {
         assert_eq!(create.discriminator, "21");
     }
 
+    /// Pins the native Stake program's discriminators to the official u32-LE
+    /// layout (anza-xyz/agave sdk/program/src/stake/instruction.rs
+    /// `StakeInstruction` enum; cross-verified against the bytes emitted by
+    /// the official @solana/web3.js `StakeProgram`). The previous values for
+    /// index >= 1 were byte-swapped ("00000001" for Authorize), so every real
+    /// Authorize/Split/Merge/SetLockup/Checked transaction resolved as
+    /// unknown_instruction — silently losing instruction-level verification.
+    #[test]
+    fn test_stake_program_discriminators_match_official_u32_le_layout() {
+        let registry = load_seed_manifests();
+        let stake = registry
+            .get("Stake11111111111111111111111111111111111111")
+            .expect("Stake program manifest");
+        // (instruction name, official u32-LE discriminator).
+        let official: &[(&str, &str)] = &[
+            ("Initialize", "00000000"),
+            ("Authorize", "01000000"),
+            ("DelegateStake", "02000000"),
+            ("Split", "03000000"),
+            ("Withdraw", "04000000"),
+            ("Deactivate", "05000000"),
+            ("SetLockup", "06000000"),
+            ("Merge", "07000000"),
+            ("AuthorizeWithSeed", "08000000"),
+            ("InitializeChecked", "09000000"),
+            ("AuthorizeChecked", "0a000000"),
+            ("AuthorizeCheckedWithSeed", "0b000000"),
+            ("SetLockupChecked", "0c000000"),
+            ("GetMinimumDelegation", "0d000000"),
+            ("DeactivateDelinquent", "0e000000"),
+        ];
+        for (name, disc) in official {
+            let ix = stake
+                .instructions
+                .iter()
+                .find(|i| i.name == *name)
+                .unwrap_or_else(|| panic!("Stake manifest missing instruction {name}"));
+            assert_eq!(
+                ix.discriminator, *disc,
+                "Stake {} discriminator must be the official u32-LE value",
+                name
+            );
+        }
+    }
+
     /// Pins every seed manifest's program_id to its on-chain-verified
     /// canonical value (mainnet `getAccountInfo` → executable=true, checked
     /// 2026-08-06). A previous edit corrupted the Raydium manifest ID to a

@@ -4,7 +4,7 @@
 
 - [x] Core verification engine (Rust)
 - [x] 8-layer pipeline (L1-L7 active, L3/L8 live-validated in Phase 2)
-- [x] 28 protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Drift, Kamino, Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi)
+- [x] 33 protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Drift, Kamino, Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi + C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)
 - [x] Risk engine: 11 attack pattern detectors (14 risk checks)
 - [x] Confidence engine with 0.55 cap on unknown protocols (P6/P12)
 - [x] Policy engine: 4 wallet profiles (Treasury, TradingBot, Gaming, Enterprise)
@@ -69,7 +69,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 999 tests passing, 0 clippy warnings, fmt clean (2026-08-12)
+- [x] 1,007 tests passing, 0 clippy warnings, fmt clean (2026-08-12)
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 
@@ -78,7 +78,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 ### Month 1: Real Data + Protocol Expansion
 - [x] Fetch REAL exploit transactions from Solana RPC (raw instruction bytes) — 3 pinned mainnet exploits scored in the benchmark (C30); 35 real mainnet exploit signatures from SolPhishHunter arXiv:2505.04094 + 3 real successful mainnet txs in the holdout corpus (C41); **C52 fetched 2 more live from api.mainnet-beta.solana.com** — fresh Aug-2026 drainer chain TX 2AWwL6dk (unknown 8MjG72/GieMfa5 + known HELPER, real Token-2022 mintTo) + AAT mass drain TX 3PbK87 (20 calls, real disc 0e) — exploit corpus now 37, both scored as REAL benchmark cases with raw evidence in scripts/real_exploit_*.json
 - [x] Feed actual transaction data through Graphite (not synthetic reconstructions) — `src/live_corpus.rs` + `graphite regression seed-live` (2026-08-08): live devnet verified=20 / recorded=20, live test verified 10 real devnet txs, 3 pinned REAL mainnet fixtures (Jupiter swap, pump.fun market, System) through the full pipeline
-- [x] Add 6 more protocol manifests (Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — C27; Drift + Kamino — C42): 22 total at the time; **28 total with C46** (Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi), all program IDs confirmed executable on mainnet
+- [x] Add 6 more protocol manifests (Pump.fun, Jupiter DCA, Wormhole Core, Metaplex Token Metadata — C27; Drift + Kamino — C42): 22 total at the time; **28 total with C46** (Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi); **33 total with C56** (Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2), all program IDs confirmed executable on mainnet
 - [x] Regression Engine core: append-only fixture corpus, deterministic replay, P10 promotion gate (99.5%), benchmark-seeded initial corpus, `graphite regression` CLI gate — 12 tests (2026-08-07)
 - [x] Replace synthetic exploit tests with real on-chain data — 3 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X) scored in the P16 benchmark binary, replacing 3 of 5 SYNTHETIC reconstructions (C30); 2 SYNTHETIC remain, honestly labeled
 - [x] Multi-instruction transaction analysis — coordinated mass-drain patterns ACROSS instructions in one tx (AAT approve+transfer, authority-hijack SetAuthority+Transfer, close-and-sweep, mass multi-transfer sweep, AAT ownership-theft via System assign) — hard gates (C29)

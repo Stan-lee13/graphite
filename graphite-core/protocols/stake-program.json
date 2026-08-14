@@ -185,7 +185,7 @@
   },
   {
    "name": "Authorize",
-   "discriminator": "00000001",
+   "discriminator": "01000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -211,7 +211,7 @@
   },
   {
    "name": "Split",
-   "discriminator": "00000003",
+   "discriminator": "03000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -237,7 +237,7 @@
   },
   {
    "name": "SetLockup",
-   "discriminator": "00000006",
+   "discriminator": "06000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -263,7 +263,7 @@
   },
   {
    "name": "Merge",
-   "discriminator": "00000007",
+   "discriminator": "07000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -288,7 +288,7 @@
   },
   {
    "name": "AuthorizeWithSeed",
-   "discriminator": "00000008",
+   "discriminator": "08000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -313,7 +313,7 @@
   },
   {
    "name": "InitializeChecked",
-   "discriminator": "00000009",
+   "discriminator": "09000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -338,7 +338,7 @@
   },
   {
    "name": "AuthorizeChecked",
-   "discriminator": "0000000a",
+   "discriminator": "0a000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -364,7 +364,7 @@
   },
   {
    "name": "AuthorizeCheckedWithSeed",
-   "discriminator": "0000000b",
+   "discriminator": "0b000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -389,7 +389,7 @@
   },
   {
    "name": "SetLockupChecked",
-   "discriminator": "0000000c",
+   "discriminator": "0c000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -415,7 +415,7 @@
   },
   {
    "name": "GetMinimumDelegation",
-   "discriminator": "0000000d",
+   "discriminator": "0d000000",
    "accounts": [
     {
      "name": "user_authority",
@@ -440,7 +440,7 @@
   },
   {
    "name": "DeactivateDelinquent",
-   "discriminator": "0000000e",
+   "discriminator": "0e000000",
    "accounts": [
     {
      "name": "user_authority",
