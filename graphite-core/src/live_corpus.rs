@@ -21,6 +21,71 @@ use crate::rpc_client::SolanaRpcClient;
 #[cfg(feature = "rpc")]
 use crate::verification::GraphiteCore;
 use crate::verification::{ProposedIntent, VerificationInput};
+use std::sync::OnceLock;
+
+/// Programs whose instructions serve the "stake" intent — aligned with the
+/// risk engine's `program_supports_intent` "stake" arm and the AI layer's
+/// intent map: the native Stake program plus the two C56 liquid-staking
+/// programs.
+const STAKE_FAMILY: &[&str] = &[
+    "Stake11111111111111111111111111111111111111",
+    "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+    "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+];
+
+/// The C56 DEX programs reclassified from the "transfer" default to "swap"
+/// (their manifests' state changes carry credit/output wording, so FakeSwap
+/// stays satisfied — verified per manifest). Other swap programs keep the
+/// transfer default: their state-change wording was authored in earlier certs
+/// and reclassifying them risks FakeSwap/corpus churn outside this scope.
+const C56_SWAP_PROGRAMS: &[&str] = &[
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK", // Raydium CLMM
+    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C", // Raydium CPMM
+    "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", // Orca TokenSwap V2
+];
+
+/// Classify the proposed intent for a live-corpus transaction from the
+/// resolved instruction name (C58). The reader previously labeled every
+/// transaction "transfer", which is semantically wrong for staking and swap
+/// instructions AND caused L5 to hard-fail legitimate native-stake
+/// transactions (DelegateStake/Withdraw/Deactivate carry no transfer
+/// vocabulary, so L5 applied a -0.3 SemanticPenalty to every real one).
+///
+/// Classification rules:
+///   1. C56 DEX swap instructions -> "swap" (FakeSwap-safe: state changes
+///      carry credit/output wording).
+///   2. Stake-family instructions with stake vocabulary -> "stake". The
+///      keywords mirror the L5 "stake" list (stake/delegate/withdraw/
+///      deactivate/reward) plus the C56 staking surface
+///      (claim/unstake/redelegate/merge) so L5 stays satisfied.
+///   3. Everything else stays "transfer" — unchanged from pre-C58 corpus
+///      behavior (L5-compatible via fund-movement state-change wording).
+pub fn classify_intent(program_id: &str, instruction_name: &str) -> String {
+    let n = instruction_name.to_lowercase();
+    if C56_SWAP_PROGRAMS.contains(&program_id)
+        && ["swap", "route", "trade"].iter().any(|k| n.contains(k))
+    {
+        return "swap".to_string();
+    }
+    if STAKE_FAMILY.contains(&program_id)
+        && [
+            "stake",
+            "delegate",
+            "withdraw",
+            "deactivate",
+            "reward",
+            "claim",
+            "unstake",
+            "redelegate",
+            "merge",
+        ]
+        .iter()
+        .any(|k| n.contains(k))
+    {
+        return "stake".to_string();
+    }
+    "transfer".to_string()
+}
 
 /// Upper bound on account keys extracted per instruction (instruction account
 /// lists beyond this are truncated).
@@ -233,9 +298,21 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
         .unwrap_or("")
         .to_string();
 
+    // C58: classify the proposed intent from the resolved instruction name
+    // instead of labeling every transaction "transfer". The seed registry is
+    // compile-time embedded (include_str!) and cached; `find_instruction` is
+    // the same hardened prefix matcher the engine uses (deterministic, no I/O).
+    static SEED_REGISTRY: OnceLock<crate::manifest::ManifestRegistry> = OnceLock::new();
+    let ix_name = SEED_REGISTRY
+        .get_or_init(crate::manifest::load_seed_manifests)
+        .find_instruction(&program_id, &discriminator_hex)
+        .map(|ix| ix.name.clone())
+        .unwrap_or_default();
+    let intent_type = classify_intent(&program_id, &ix_name);
+
     Some(VerificationInput {
         proposed_intent: ProposedIntent {
-            intent_type: "transfer".to_string(),
+            intent_type,
             raw_natural_language: format!("live corpus {signature}"),
             confidence_of_parse: 0.5,
             extracted_parameters: None,
@@ -534,6 +611,113 @@ mod tests {
                 );
             }
             other => panic!("unexpected profile: {other:?}"),
+        }
+    }
+
+    /// C58: the corpus reader classifies the proposed intent from the
+    /// resolved instruction name — staking instructions get "stake", C56 DEX
+    /// swaps get "swap", and everything else keeps the L5-compatible
+    /// "transfer" default. Pins the classification so the live corpus never
+    /// silently regresses to labeling a DelegateStake as a transfer.
+    #[test]
+    fn classify_intent_pins_c56_and_native_stake_vocabulary() {
+        use crate::manifest::load_seed_manifests;
+        let registry = load_seed_manifests();
+        let cases = [
+            (
+                "Stake11111111111111111111111111111111111111",
+                "DelegateStake",
+                "stake",
+            ),
+            (
+                "Stake11111111111111111111111111111111111111",
+                "Withdraw",
+                "stake",
+            ),
+            (
+                "Stake11111111111111111111111111111111111111",
+                "Deactivate",
+                "stake",
+            ),
+            (
+                "Stake11111111111111111111111111111111111111",
+                "Authorize",
+                "transfer",
+            ),
+            (
+                "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+                "liquidUnstake",
+                "stake",
+            ),
+            (
+                "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+                "deposit",
+                "transfer",
+            ),
+            (
+                "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+                "WithdrawSol",
+                "stake",
+            ),
+            (
+                "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+                "DepositSol",
+                "transfer",
+            ),
+            (
+                "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+                "UpdateValidatorListBalance",
+                "transfer",
+            ),
+            (
+                "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+                "swap_v2",
+                "swap",
+            ),
+            (
+                "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+                "swap_base_input",
+                "swap",
+            ),
+            (
+                "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP",
+                "Swap",
+                "swap",
+            ),
+            (
+                "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+                "route",
+                "transfer",
+            ),
+        ];
+        for (pid, name, want) in cases {
+            assert_eq!(
+                classify_intent(pid, name),
+                want.to_string(),
+                "{pid}::{name} must classify as {want}"
+            );
+        }
+        // The resolved-name path must agree: real C56 instructions from the
+        // pinned fixtures classify through the registry exactly as above.
+        let expect = [
+            ("marinade", "liquidUnstake", "stake"),
+            ("stakepool", "WithdrawSol", "stake"),
+            ("clmm", "swap_v2", "swap"),
+            ("cpmm", "swap_base_input", "swap"),
+        ];
+        for (fixture, want_name, want_intent) in expect {
+            let tx = load_fixture(fixture);
+            let input = tx_to_input(&tx, &["11111111111111111111111111111111"])
+                .unwrap_or_else(|| panic!("{fixture}: real tx must parse"));
+            assert_eq!(
+                input.proposed_intent.intent_type, want_intent,
+                "{fixture}: reader must classify the resolved instruction as {want_intent}"
+            );
+            let resolved = registry
+                .find_instruction(&input.program_id, &input.instruction_discriminator)
+                .map(|ix| ix.name.as_str())
+                .unwrap_or("");
+            assert_eq!(resolved, want_name, "{fixture}: resolved instruction name");
         }
     }
 
