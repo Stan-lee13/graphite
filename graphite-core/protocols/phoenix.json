@@ -83,7 +83,8 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market, baseAccount, quoteAccount, baseVault, quoteVault",
-    "moves user funds between token accounts"
+    "moves user funds between token accounts",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -136,7 +137,8 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market",
-    "moves user funds between token accounts"
+    "moves user funds between token accounts",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [],
    "risk_rules": [

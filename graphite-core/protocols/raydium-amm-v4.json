@@ -363,7 +363,8 @@
     "pool_coin_token_account",
     "pool_pc_token_account",
     "user_source_token_account",
-    "user_dest_token_account"
+    "user_dest_token_account",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
@@ -504,7 +505,8 @@
     "pool_coin_token_account",
     "pool_pc_token_account",
     "user_source_token_account",
-    "user_dest_token_account"
+    "user_dest_token_account",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
@@ -575,7 +577,8 @@
     "pool_coin_token_account",
     "pool_pc_token_account",
     "user_source_token_account",
-    "user_dest_token_account"
+    "user_dest_token_account",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
@@ -646,7 +649,8 @@
     "pool_coin_token_account",
     "pool_pc_token_account",
     "user_source_token_account",
-    "user_dest_token_account"
+    "user_dest_token_account",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [],
    "risk_rules": [],

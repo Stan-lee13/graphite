@@ -404,7 +404,8 @@
     }
    ],
    "expected_state_changes": [
-    "Meteora DLMM instruction"
+    "Meteora DLMM instruction",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

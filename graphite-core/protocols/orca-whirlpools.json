@@ -3901,7 +3901,8 @@
     }
    ],
    "expected_state_changes": [
-    "Orca Whirlpools instruction"
+    "Orca Whirlpools instruction",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -4310,7 +4311,8 @@
     }
    ],
    "expected_state_changes": [
-    "whirlpool protocol state transition"
+    "whirlpool protocol state transition",
+    "credits the output token account with the received amount for the swap"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
