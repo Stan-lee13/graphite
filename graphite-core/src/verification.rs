@@ -837,13 +837,23 @@ impl GraphiteCore {
         let expected_accounts = ix.accounts.len();
         let actual_accounts = resolution.resolved_accounts.len();
         if actual_accounts < expected_accounts {
-            // Too few accounts is always a hard fail — missing required accounts
+            // C57: an account shortfall is a RESOLUTION LIMITATION, not an
+            // identity failure — real transactions legitimately supply fewer
+            // accounts than the manifest declares when optional accounts are
+            // omitted (e.g. stake-pool's sol_withdraw_authority), ALT-resolved
+            // positions are skipped by the pure reader, or repeated keys
+            // deduplicate. The discriminator — L2's actual job — matched. The
+            // shortfall is surfaced as an AccountCountShortfall risk finding
+            // upstream (P3: never silently dropped), so L2 passes with a note
+            // exactly like the surplus branch below. The previous hard FAIL
+            // applied a 0.20 confidence penalty to legitimate on-chain
+            // transactions (marinade/clmm/cpmm/stake-pool real txs).
             return PipelineLayerResult::new(
                 layer_name,
-                LayerStatus::Failed,
+                LayerStatus::Passed,
                 format!(
-                    "Account count insufficient: manifest requires {}, got {}",
-                    expected_accounts, actual_accounts
+                    "Instruction {} verified (manifest min: {}, actual: {} — account shortfall surfaced as finding)",
+                    ix.name, expected_accounts, actual_accounts
                 ),
             );
         } else if actual_accounts > expected_accounts && expected_accounts > 0 {

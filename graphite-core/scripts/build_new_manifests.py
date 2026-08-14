@@ -402,32 +402,197 @@ def main():
         "staking", "OfficialManifest", MARINADE_CLASS), "marinade.json")
 
     # ---- 4. SPL Stake Pool (native, source tags, explicit class map) ----
-    tags = [
-        "Initialize", "AddValidatorToPool", "RemoveValidatorFromPool",
-        "DecreaseValidatorStake", "IncreaseValidatorStake",
-        "SetPreferredValidator", "UpdateValidatorListBalance",
-        "UpdateStakePoolBalance", "CleanupRemovedValidatorEntries",
-        "DepositStake", "WithdrawStake", "SetManager", "SetFee",
-        "SetStaker", "DepositSol", "SetFundingAuthority", "WithdrawSol",
-        "CreateTokenMetadata", "UpdateTokenMetadata",
-        "IncreaseAdditionalValidatorStake", "DecreaseAdditionalValidatorStake",
-        "DecreaseValidatorStakeWithReserve", "Redelegate",
-        "DepositStakeWithSlippage", "WithdrawStakeWithSlippage",
-        "DepositSolWithSlippage", "WithdrawSolWithSlippage",
+    #
+    # C57 hardening: account lists are now the FULL official per-instruction
+    # lists (name, is_writable, is_signer) from solana-program/stake-pool
+    # program/src/instruction.rs (the `StakePoolInstruction` enum doc comments
+    # and builder fns, order-preserving). The previous single-`stake_pool`
+    # account per instruction left account-role analysis near-empty for real
+    # stake-pool transactions. UpdateValidatorListBalance appends N pairs of
+    # validator/transient stake accounts on-chain; the manifest declares the 7
+    # fixed accounts (extra accounts resolve as "extra" roles).
+    # Base lists shared by the WithSlippage variants (identical account sets).
+    _SP_DEPOSIT_STAKE = [
+        ("stake_pool", True, False), ("validator_list", True, False),
+        ("deposit_authority", False, True), ("withdraw_authority", False, False),
+        ("stake_account", True, False), ("validator_stake", True, False),
+        ("reserve_stake", True, False), ("user_pool_token_account", True, False),
+        ("fee_account", True, False), ("referral_account", True, False),
+        ("pool_mint", True, False), ("clock_sysvar", False, False),
+        ("stake_history_sysvar", False, False), ("token_program", False, False),
+        ("stake_program", False, False),
     ]
+    _SP_WITHDRAW_STAKE = [
+        ("stake_pool", True, False), ("validator_list", True, False),
+        ("withdraw_authority", False, False),
+        ("validator_or_reserve_stake", True, False),
+        ("new_stake_account", True, False), ("user_withdraw_authority", False, False),
+        ("user_transfer_authority", False, True), ("user_pool_token_account", True, False),
+        ("fee_account", True, False), ("pool_mint", True, False),
+        ("clock_sysvar", False, False), ("token_program", False, False),
+        ("stake_program", False, False),
+    ]
+    _SP_DEPOSIT_SOL = [
+        ("stake_pool", True, False), ("withdraw_authority", False, False),
+        ("reserve_stake", True, False), ("source", False, True),
+        ("user_pool_token_account", True, False), ("fee_account", True, False),
+        ("referral_account", True, False), ("pool_mint", True, False),
+        ("system_program", False, False), ("token_program", False, False),
+        ("sol_deposit_authority", False, False),
+    ]
+    _SP_WITHDRAW_SOL = [
+        ("stake_pool", True, False), ("withdraw_authority", False, False),
+        ("user_transfer_authority", False, True), ("user_pool_token_account", True, False),
+        ("reserve_stake", True, False), ("destination", True, False),
+        ("fee_account", True, False), ("pool_mint", True, False),
+        ("clock_sysvar", False, False), ("stake_history_sysvar", False, False),
+        ("stake_program", False, False), ("token_program", False, False),
+        ("sol_withdraw_authority", False, False),
+    ]
+    STAKE_POOL_ACCOUNTS = {
+        "Initialize": [
+            ("stake_pool", True, False), ("manager", False, True),
+            ("staker", False, False), ("withdraw_authority", False, False),
+            ("validator_list", True, False), ("reserve_stake", False, False),
+            ("pool_mint", True, False), ("manager_fee_account", True, False),
+            ("token_program", False, False), ("deposit_authority", False, False),
+        ],
+        "AddValidatorToPool": [
+            ("stake_pool", True, False), ("staker", False, True),
+            ("reserve_stake", True, False), ("withdraw_authority", False, False),
+            ("validator_list", True, False), ("stake_account", True, False),
+            ("validator", False, False), ("rent_sysvar", False, False),
+            ("clock_sysvar", False, False), ("stake_history_sysvar", False, False),
+            ("stake_config_sysvar", False, False), ("system_program", False, False),
+            ("stake_program", False, False),
+        ],
+        "RemoveValidatorFromPool": [
+            ("stake_pool", True, False), ("staker", False, True),
+            ("withdraw_authority", False, False), ("validator_list", True, False),
+            ("stake_account", True, False), ("transient_stake", True, False),
+            ("clock_sysvar", False, False), ("stake_program", False, False),
+        ],
+        "DecreaseValidatorStake": [
+            ("stake_pool", False, False), ("staker", False, True),
+            ("withdraw_authority", False, False), ("validator_list", True, False),
+            ("validator_stake", True, False), ("transient_stake", True, False),
+            ("clock_sysvar", False, False), ("rent_sysvar", False, False),
+            ("system_program", False, False), ("stake_program", False, False),
+        ],
+        "IncreaseValidatorStake": [
+            ("stake_pool", False, False), ("staker", False, True),
+            ("withdraw_authority", False, False), ("validator_list", True, False),
+            ("reserve_stake", True, False), ("transient_stake", True, False),
+            ("validator_stake", False, False), ("validator", False, False),
+            ("clock_sysvar", False, False), ("rent_sysvar", False, False),
+            ("stake_history_sysvar", False, False), ("stake_config_sysvar", False, False),
+            ("system_program", False, False), ("stake_program", False, False),
+        ],
+        "SetPreferredValidator": [
+            ("stake_pool", True, False), ("staker", False, True),
+            ("validator_list", False, False),
+        ],
+        "UpdateValidatorListBalance": [
+            ("stake_pool", False, False), ("withdraw_authority", False, False),
+            ("validator_list", True, False), ("reserve_stake", True, False),
+            ("clock_sysvar", False, False), ("stake_history_sysvar", False, False),
+            ("stake_program", False, False),
+        ],
+        "UpdateStakePoolBalance": [
+            ("stake_pool", True, False), ("withdraw_authority", False, False),
+            ("validator_list", True, False), ("reserve_stake", False, False),
+            ("fee_account", True, False), ("pool_mint", True, False),
+            ("token_program", False, False),
+        ],
+        "CleanupRemovedValidatorEntries": [
+            ("stake_pool", False, False), ("validator_list", True, False),
+        ],
+        "DepositStake": _SP_DEPOSIT_STAKE,
+        "WithdrawStake": _SP_WITHDRAW_STAKE,
+        "SetManager": [
+            ("stake_pool", True, False), ("manager", False, True),
+            ("new_manager", False, True), ("new_manager_fee_account", False, False),
+        ],
+        "SetFee": [
+            ("stake_pool", True, False), ("manager", False, True),
+        ],
+        "SetStaker": [
+            ("stake_pool", True, False), ("manager_or_staker", False, True),
+            ("new_staker", False, False),
+        ],
+        "DepositSol": _SP_DEPOSIT_SOL,
+        "SetFundingAuthority": [
+            ("stake_pool", True, False), ("manager", False, True),
+            ("new_authority", False, False),
+        ],
+        "WithdrawSol": _SP_WITHDRAW_SOL,
+        "CreateTokenMetadata": [
+            ("stake_pool", False, False), ("manager", False, True),
+            ("withdraw_authority", False, False), ("pool_mint", False, False),
+            ("payer", True, True), ("token_metadata_account", True, False),
+            ("metadata_program", False, False), ("system_program", False, False),
+        ],
+        "UpdateTokenMetadata": [
+            ("stake_pool", False, False), ("manager", False, True),
+            ("withdraw_authority", False, False), ("token_metadata_account", True, False),
+            ("metadata_program", False, False),
+        ],
+        "IncreaseAdditionalValidatorStake": [
+            ("stake_pool", False, False), ("staker", False, True),
+            ("withdraw_authority", False, False), ("validator_list", True, False),
+            ("reserve_stake", True, False), ("ephemeral_stake", True, False),
+            ("transient_stake", True, False), ("validator_stake", False, False),
+            ("validator", False, False), ("clock_sysvar", False, False),
+            ("stake_history_sysvar", False, False), ("stake_config_sysvar", False, False),
+            ("system_program", False, False), ("stake_program", False, False),
+        ],
+        "DecreaseAdditionalValidatorStake": [
+            ("stake_pool", False, False), ("staker", False, True),
+            ("withdraw_authority", False, False), ("validator_list", True, False),
+            ("reserve_stake", True, False), ("validator_stake", True, False),
+            ("ephemeral_stake", True, False), ("transient_stake", True, False),
+            ("clock_sysvar", False, False), ("stake_history_sysvar", False, False),
+            ("system_program", False, False), ("stake_program", False, False),
+        ],
+        "DecreaseValidatorStakeWithReserve": [
+            ("stake_pool", False, False), ("staker", False, True),
+            ("withdraw_authority", False, False), ("validator_list", True, False),
+            ("reserve_stake", True, False), ("validator_stake", True, False),
+            ("transient_stake", True, False), ("clock_sysvar", False, False),
+            ("stake_history_sysvar", False, False), ("system_program", False, False),
+            ("stake_program", False, False),
+        ],
+        "Redelegate": [
+            ("stake_pool", False, False), ("staker", False, True),
+            ("withdraw_authority", False, False), ("validator_list", True, False),
+            ("reserve_stake", True, False), ("source_validator_stake", True, False),
+            ("source_transient_stake", True, False), ("ephemeral_stake", True, False),
+            ("destination_transient_stake", True, False),
+            ("destination_validator_stake", False, False), ("validator", False, False),
+            ("clock_sysvar", False, False), ("stake_history_sysvar", False, False),
+            ("stake_config_sysvar", False, False), ("system_program", False, False),
+            ("stake_program", False, False),
+        ],
+        "DepositStakeWithSlippage": _SP_DEPOSIT_STAKE,
+        "WithdrawStakeWithSlippage": _SP_WITHDRAW_STAKE,
+        "DepositSolWithSlippage": _SP_DEPOSIT_SOL,
+        "WithdrawSolWithSlippage": _SP_WITHDRAW_SOL,
+    }
     def acct(name, role, writable, signer):
         return {"name": name, "role": role, "is_writable": writable,
                 "is_signer": signer, "pda_seeds": []}
+    def sp_acct(name, writable, signer):
+        return acct(name, role_of(writable, signer), writable, signer)
     stake_pool_ixs = []
-    for i, name in enumerate(tags):
+    for i, name in enumerate(STAKE_POOL_ACCOUNTS):
         cls = STAKE_POOL_CLASS[name]
         risk_class, _ = CLASSES[cls]
+        accts = [sp_acct(*a) for a in STAKE_POOL_ACCOUNTS[name]]
         stake_pool_ixs.append({
             "name": name,
             "discriminator": "%02x" % i,
-            "accounts": [acct("stake_pool", "writable", True, False)],
-            "expected_state_changes": state_changes(
-                [acct("stake_pool", "writable", True, False)], cls),
+            "accounts": accts,
+            "expected_state_changes": state_changes(accts, cls),
             "allowed_cpis": [STAKE_PROGRAM, TOKEN_PROGRAM],
             "risk_rules": [],
             "risk_class": risk_class,
