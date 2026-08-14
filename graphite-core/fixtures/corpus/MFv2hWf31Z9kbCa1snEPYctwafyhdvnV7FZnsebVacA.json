@@ -2,7 +2,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "1d1be7353cc53760afef8b6c2f08b02ec714b369e9f9497561a91dd8e0aa951d",
+    "content_hash": "935c77c6899223e57b4f86f74e12626e0f50b0fccbae704b28a45da1ffe18815",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -17,14 +17,14 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "047e74353005d41f",
       "account_addresses": [
-        "Bz6fZv6UbirY616EdWztQX4pzQ5LFp44uAZuHmEqGyQA",
-        "HFSju2q8LCNpuk6HF7xbBEDB1QYMjBrH4E2me22VFfmV",
-        "87uPWHZ5giiFQWh7Pu9x8w2QbtiqsyHf8qG4R1Bx1h4s",
-        "77VGLnPnX6s9ne6CwhJZcuGfUWnbfKRfyExuq7Dqbto4",
-        "FowfApMfk3X2XhrXGWcNxupka3ZimKYDQ1BWDvnxKvzR",
-        "8PPsoHSzTFNcxU4XZ5fcrVuNuNsQhLFYHvJcwjfc8ri2",
-        "BNwiFtKEwgrkXByht5DhcDfJXJC8K3WDSbUtkwUAmvap",
-        "48xYuY9uMdP534rypfEacpoAaEdCQT38gyLefZvhKC9u"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5",
+        "66TkAHbvRE5YbMEqVoftkvTZ33M1PJTEWUE3ENV3njCi",
+        "FthHg6h6Ene3SkdeSUTprKhzXWCe794WKV1EgmNoQ4Zh",
+        "D8374HCd9umK6vWtRYWC3CABJGCrPhvTWVufwbppXGZU",
+        "AsKyUxh9DXS5mg46YzEU2i2JbNyuWpaAGEkERzg98EqX",
+        "8bMhrdh3qbC4V64wvotZcggvQpQRRDsWWhHLuKhqhVsv",
+        "453ZXNVYV3q7UfzYnZpCpf5TX9mZf9GHAe3tsP2jsnTT",
+        "HYPDyT1y4aNiSgq1VWHbtemPHznW4cgXAJ6bB8ncDLkM"
       ],
       "instruction_data": [
         4,
@@ -71,7 +71,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "38536853853106230ccddc08e2f92a48773879c52827c49fa335b19c5fc596bc",
+    "content_hash": "c2a9dfb463d3c9549747427a8676986006939e9368ddf4ba60ed64c513dbf5e3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -86,14 +86,14 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "047e74353005d41f",
       "account_addresses": [
-        "Bz6fZv6UbirY616EdWztQX4pzQ5LFp44uAZuHmEqGyQA",
-        "HFSju2q8LCNpuk6HF7xbBEDB1QYMjBrH4E2me22VFfmV",
-        "87uPWHZ5giiFQWh7Pu9x8w2QbtiqsyHf8qG4R1Bx1h4s",
-        "77VGLnPnX6s9ne6CwhJZcuGfUWnbfKRfyExuq7Dqbto4",
-        "FowfApMfk3X2XhrXGWcNxupka3ZimKYDQ1BWDvnxKvzR",
-        "8PPsoHSzTFNcxU4XZ5fcrVuNuNsQhLFYHvJcwjfc8ri2",
-        "BNwiFtKEwgrkXByht5DhcDfJXJC8K3WDSbUtkwUAmvap",
-        "48xYuY9uMdP534rypfEacpoAaEdCQT38gyLefZvhKC9u"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5",
+        "66TkAHbvRE5YbMEqVoftkvTZ33M1PJTEWUE3ENV3njCi",
+        "FthHg6h6Ene3SkdeSUTprKhzXWCe794WKV1EgmNoQ4Zh",
+        "D8374HCd9umK6vWtRYWC3CABJGCrPhvTWVufwbppXGZU",
+        "AsKyUxh9DXS5mg46YzEU2i2JbNyuWpaAGEkERzg98EqX",
+        "8bMhrdh3qbC4V64wvotZcggvQpQRRDsWWhHLuKhqhVsv",
+        "453ZXNVYV3q7UfzYnZpCpf5TX9mZf9GHAe3tsP2jsnTT",
+        "HYPDyT1y4aNiSgq1VWHbtemPHznW4cgXAJ6bB8ncDLkM"
       ],
       "instruction_data": [
         4,
@@ -140,7 +140,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "ca1eb246f6922a4f7f658ed446803db81bbe5b35ba42240da437ad11d27f93ca",
+    "content_hash": "f591d4aaaf63c5c3425ed7b6cc3a29d39bad6f0573995415f343d1fd37738348",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -155,14 +155,14 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "047e74353005d41f",
       "account_addresses": [
-        "Bz6fZv6UbirY616EdWztQX4pzQ5LFp44uAZuHmEqGyQA",
-        "HFSju2q8LCNpuk6HF7xbBEDB1QYMjBrH4E2me22VFfmV",
-        "87uPWHZ5giiFQWh7Pu9x8w2QbtiqsyHf8qG4R1Bx1h4s",
-        "77VGLnPnX6s9ne6CwhJZcuGfUWnbfKRfyExuq7Dqbto4",
-        "FowfApMfk3X2XhrXGWcNxupka3ZimKYDQ1BWDvnxKvzR",
-        "8PPsoHSzTFNcxU4XZ5fcrVuNuNsQhLFYHvJcwjfc8ri2",
-        "BNwiFtKEwgrkXByht5DhcDfJXJC8K3WDSbUtkwUAmvap",
-        "48xYuY9uMdP534rypfEacpoAaEdCQT38gyLefZvhKC9u"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5",
+        "66TkAHbvRE5YbMEqVoftkvTZ33M1PJTEWUE3ENV3njCi",
+        "FthHg6h6Ene3SkdeSUTprKhzXWCe794WKV1EgmNoQ4Zh",
+        "D8374HCd9umK6vWtRYWC3CABJGCrPhvTWVufwbppXGZU",
+        "AsKyUxh9DXS5mg46YzEU2i2JbNyuWpaAGEkERzg98EqX",
+        "8bMhrdh3qbC4V64wvotZcggvQpQRRDsWWhHLuKhqhVsv",
+        "453ZXNVYV3q7UfzYnZpCpf5TX9mZf9GHAe3tsP2jsnTT",
+        "HYPDyT1y4aNiSgq1VWHbtemPHznW4cgXAJ6bB8ncDLkM"
       ],
       "instruction_data": [
         4,
@@ -209,7 +209,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "088cbbec2b656f051d879f78a47c1256f3af903695d67f376970ba6a24907517",
+    "content_hash": "367e862d7c399158cf2f61683a3219397163b25118c290d9ad2d4eb629975615",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -224,22 +224,22 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "047e74353005d41f",
       "account_addresses": [
-        "Bz6fZv6UbirY616EdWztQX4pzQ5LFp44uAZuHmEqGyQA",
-        "HFSju2q8LCNpuk6HF7xbBEDB1QYMjBrH4E2me22VFfmV",
-        "87uPWHZ5giiFQWh7Pu9x8w2QbtiqsyHf8qG4R1Bx1h4s",
-        "77VGLnPnX6s9ne6CwhJZcuGfUWnbfKRfyExuq7Dqbto4",
-        "FowfApMfk3X2XhrXGWcNxupka3ZimKYDQ1BWDvnxKvzR",
-        "8PPsoHSzTFNcxU4XZ5fcrVuNuNsQhLFYHvJcwjfc8ri2",
-        "BNwiFtKEwgrkXByht5DhcDfJXJC8K3WDSbUtkwUAmvap",
-        "48xYuY9uMdP534rypfEacpoAaEdCQT38gyLefZvhKC9u",
-        "4e1bqHakcsDBzyph16zc2cRGE3znDoWQBBQj7TYpGhd7",
-        "5wPyFL5xoUtKzfpSYfKonYRE38ZAdCqR1NhoP11soJfj",
-        "BAXpromiU1rExvm7QdPQizZhMavQeKyUxZzyDjNCJ2ww",
-        "BwN8cDBYSma5uoKPG58Xq2xQSVhH1LeGpQN8bhLPkGza",
-        "232PndSNJ5b71mQmeBzWvRanDbEwuVB2wqe3rU59vw82",
-        "H4bqcJygN7v1iq7urTAuisK6yRtCMKRFGjY1nxrfjjJr",
-        "76xBuHSLEi9XD2UGGMJ3DowArzJrd1CPf19eTNXLJyQQ",
-        "3dsBCMjGcxaKu9WKVnRkCd4gaXxrFKaCjCnnzUjeyf9j"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5",
+        "66TkAHbvRE5YbMEqVoftkvTZ33M1PJTEWUE3ENV3njCi",
+        "FthHg6h6Ene3SkdeSUTprKhzXWCe794WKV1EgmNoQ4Zh",
+        "D8374HCd9umK6vWtRYWC3CABJGCrPhvTWVufwbppXGZU",
+        "AsKyUxh9DXS5mg46YzEU2i2JbNyuWpaAGEkERzg98EqX",
+        "8bMhrdh3qbC4V64wvotZcggvQpQRRDsWWhHLuKhqhVsv",
+        "453ZXNVYV3q7UfzYnZpCpf5TX9mZf9GHAe3tsP2jsnTT",
+        "HYPDyT1y4aNiSgq1VWHbtemPHznW4cgXAJ6bB8ncDLkM",
+        "7FiN5uF4ADRojRF3jHWMS9x5bcgYF7sx6TVbCgNuar3R",
+        "7n93U9uj99SXuJ4ZvhG6zE25Bdx9AFSvRJzaBbRhvA7U",
+        "26HzZ7YdCVXQ3Ubz9gXUrSDeYZj8ekTrrykA8tnWU8b5",
+        "Dib5o6zAdC3LEMLsFyqrMVYBb8E39V6dhUpx9M9uJjwP",
+        "B3Up4AdHVvtvv6o7Y8zHSLCV3ECsyLCHMcA6sNhRN6KG",
+        "D2bKSk4GAQw3TbByUCE4oJu7pyKjZ6VRJf4dCH3AaBU8",
+        "21T56tTwRaspApu4R8Rho4vXStGbn94mgd2dJN39LTFS",
+        "7Mkw7Yojm1mJsPmxZTmFbkP9oeBkK6Np8idzwSV26fB6"
       ],
       "instruction_data": [
         4,
@@ -329,7 +329,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "e314365f49d1339ab11c4777540f2bf12c7ea8b7211c5442858c236f4740256d",
+    "content_hash": "94278f7be438cee3592745b059a8e7c6f04ec0f8e597ba91dff6b0971bd0d8de",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -344,9 +344,9 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "0e8321dc51bab46b",
       "account_addresses": [
-        "Fn2Dz5NY4J1rSaZz25VJMTzHCrQF34MqW8q2xFGmhf2D",
-        "AioLoeaFnj2E8X7RQLTyS8Y2bDbeh7bQgSYHGCZS6Zrv",
-        "FYPrsuViGrQVARJ8rh3BjzNwgPuekxY34wJhz9APgURU"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT",
+        "5wSVjP1UDPaNgCN6PqviYsp7SjiVsfrjjwwKXa23XRv4",
+        "5KSyH4YthteZasenbencG3dEcgLS138aRtwmKGo77sXY"
       ],
       "instruction_data": [
         14,
@@ -393,7 +393,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "d2f3eb29ead9f7e8c1f261ffad697cacbe03929c90e4931a8de014b00baf6b96",
+    "content_hash": "6209528220467d7d13ab95d85512da5eb7c3a1cbbb5d5002b61f33eacb566879",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -408,9 +408,9 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "0e8321dc51bab46b",
       "account_addresses": [
-        "Fn2Dz5NY4J1rSaZz25VJMTzHCrQF34MqW8q2xFGmhf2D",
-        "AioLoeaFnj2E8X7RQLTyS8Y2bDbeh7bQgSYHGCZS6Zrv",
-        "FYPrsuViGrQVARJ8rh3BjzNwgPuekxY34wJhz9APgURU"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT",
+        "5wSVjP1UDPaNgCN6PqviYsp7SjiVsfrjjwwKXa23XRv4",
+        "5KSyH4YthteZasenbencG3dEcgLS138aRtwmKGo77sXY"
       ],
       "instruction_data": [
         14,
@@ -457,7 +457,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "5ba25a58876303eb86231972ca27097961c7622fc668c3eed43b9653dd7d2b11",
+    "content_hash": "61149e7cc5615c6a3609fc1c4940b8b1fa64122437df16adf19c09e2bb306d74",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -472,9 +472,9 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "0e8321dc51bab46b",
       "account_addresses": [
-        "Fn2Dz5NY4J1rSaZz25VJMTzHCrQF34MqW8q2xFGmhf2D",
-        "AioLoeaFnj2E8X7RQLTyS8Y2bDbeh7bQgSYHGCZS6Zrv",
-        "FYPrsuViGrQVARJ8rh3BjzNwgPuekxY34wJhz9APgURU"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT",
+        "5wSVjP1UDPaNgCN6PqviYsp7SjiVsfrjjwwKXa23XRv4",
+        "5KSyH4YthteZasenbencG3dEcgLS138aRtwmKGo77sXY"
       ],
       "instruction_data": [
         14,
@@ -521,7 +521,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "3f0dfb62a5b351e3afba19dec7d97e12c1df5690008201e624e03ad2489a7320",
+    "content_hash": "36c616bc933439c7f1bf5c682d8ecc9dcaecec0dbd83d039ff6e01e2e1cf632f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -536,17 +536,17 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "0e8321dc51bab46b",
       "account_addresses": [
-        "Fn2Dz5NY4J1rSaZz25VJMTzHCrQF34MqW8q2xFGmhf2D",
-        "AioLoeaFnj2E8X7RQLTyS8Y2bDbeh7bQgSYHGCZS6Zrv",
-        "FYPrsuViGrQVARJ8rh3BjzNwgPuekxY34wJhz9APgURU",
-        "4e1bqHakcsDBzyph16zc2cRGE3znDoWQBBQj7TYpGhd7",
-        "5wPyFL5xoUtKzfpSYfKonYRE38ZAdCqR1NhoP11soJfj",
-        "BAXpromiU1rExvm7QdPQizZhMavQeKyUxZzyDjNCJ2ww",
-        "BwN8cDBYSma5uoKPG58Xq2xQSVhH1LeGpQN8bhLPkGza",
-        "232PndSNJ5b71mQmeBzWvRanDbEwuVB2wqe3rU59vw82",
-        "H4bqcJygN7v1iq7urTAuisK6yRtCMKRFGjY1nxrfjjJr",
-        "76xBuHSLEi9XD2UGGMJ3DowArzJrd1CPf19eTNXLJyQQ",
-        "3dsBCMjGcxaKu9WKVnRkCd4gaXxrFKaCjCnnzUjeyf9j"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT",
+        "5wSVjP1UDPaNgCN6PqviYsp7SjiVsfrjjwwKXa23XRv4",
+        "5KSyH4YthteZasenbencG3dEcgLS138aRtwmKGo77sXY",
+        "7FiN5uF4ADRojRF3jHWMS9x5bcgYF7sx6TVbCgNuar3R",
+        "7n93U9uj99SXuJ4ZvhG6zE25Bdx9AFSvRJzaBbRhvA7U",
+        "26HzZ7YdCVXQ3Ubz9gXUrSDeYZj8ekTrrykA8tnWU8b5",
+        "Dib5o6zAdC3LEMLsFyqrMVYBb8E39V6dhUpx9M9uJjwP",
+        "B3Up4AdHVvtvv6o7Y8zHSLCV3ECsyLCHMcA6sNhRN6KG",
+        "D2bKSk4GAQw3TbByUCE4oJu7pyKjZ6VRJf4dCH3AaBU8",
+        "21T56tTwRaspApu4R8Rho4vXStGbn94mgd2dJN39LTFS",
+        "7Mkw7Yojm1mJsPmxZTmFbkP9oeBkK6Np8idzwSV26fB6"
       ],
       "instruction_data": [
         14,
@@ -593,7 +593,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "423d7e7c866669e1122ffd15fe49866ca93bd347b2812674565f2b2b65f746e6",
+    "content_hash": "c27e055871655f1473bfb8958aeaa82be8147eb718dee2aa7bb0f70787d35878",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -608,13 +608,13 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "4fd1acb1de33ad97",
       "account_addresses": [
-        "4diaqdE11MmyMjywqofDiLvfFJ3Rwy2z2UbKPPa8V5Cg",
-        "DaSRxcSrYEfnSPwqQAZk7VhZ3BUK5pbSHjoJ42Kv48Qb",
-        "AhadyoYh9ZnysAs2RFsfHJ5ZbQnioNwWF2WUanQiLzze",
-        "5VbtB6yjaJYJ9ZGafe7LepPx89WXLgFiaBmB6Eud3BCd",
-        "TDK3r1crwRRPBQZD9bEreXkN8nE88qNUUhGVq51qkgZ",
-        "BkiT4RzHaHvAVJXxf4jkXMtfdfpNzTnyMsibySCsx1v5",
-        "ByVtgVhe6huSKTxtUN5KXeNzcSTyNXSfC5R1Q4rV3TwC"
+        "5TAyFwRZQSbFZngUrUEpqVQATRVAuz84R1ZXCVR61X89",
+        "3VvC76tnyMPHwhGBSZwLq5mg5fYDNwLmR5LNdAH9Z1Ma",
+        "HskYW4sm6fGoqAe4P3EzrYo6WmoJ2nhQQc55FfJ7f39Y",
+        "F9qHXrpFNNEPXtb9WfR3AhHM7KDcMQMGTzZwXFJ2pne9",
+        "7zBDW284c7tGMoJ5wdc4oZ3rpp68jyHhVAYZM3uR6Qao",
+        "DXHAEj8fCeguC4BDN3XWVEPq4PSpsmzcr2ewe9DYneXN",
+        "7vbEMFc8xPPDtn1pd6J2GsCHPqTAQkiyQHk29JcYnLMU"
       ],
       "instruction_data": [
         79,
@@ -661,7 +661,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "698692aabd2be55d740c0298ac01c7b70f0e230f292b665bc6f5ca271557c7c3",
+    "content_hash": "2638934d1669d07aa64dd273529725b997aa8202261820b1d940b324fd58b304",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -676,13 +676,13 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "4fd1acb1de33ad97",
       "account_addresses": [
-        "4diaqdE11MmyMjywqofDiLvfFJ3Rwy2z2UbKPPa8V5Cg",
-        "DaSRxcSrYEfnSPwqQAZk7VhZ3BUK5pbSHjoJ42Kv48Qb",
-        "AhadyoYh9ZnysAs2RFsfHJ5ZbQnioNwWF2WUanQiLzze",
-        "5VbtB6yjaJYJ9ZGafe7LepPx89WXLgFiaBmB6Eud3BCd",
-        "TDK3r1crwRRPBQZD9bEreXkN8nE88qNUUhGVq51qkgZ",
-        "BkiT4RzHaHvAVJXxf4jkXMtfdfpNzTnyMsibySCsx1v5",
-        "ByVtgVhe6huSKTxtUN5KXeNzcSTyNXSfC5R1Q4rV3TwC"
+        "5TAyFwRZQSbFZngUrUEpqVQATRVAuz84R1ZXCVR61X89",
+        "3VvC76tnyMPHwhGBSZwLq5mg5fYDNwLmR5LNdAH9Z1Ma",
+        "HskYW4sm6fGoqAe4P3EzrYo6WmoJ2nhQQc55FfJ7f39Y",
+        "F9qHXrpFNNEPXtb9WfR3AhHM7KDcMQMGTzZwXFJ2pne9",
+        "7zBDW284c7tGMoJ5wdc4oZ3rpp68jyHhVAYZM3uR6Qao",
+        "DXHAEj8fCeguC4BDN3XWVEPq4PSpsmzcr2ewe9DYneXN",
+        "7vbEMFc8xPPDtn1pd6J2GsCHPqTAQkiyQHk29JcYnLMU"
       ],
       "instruction_data": [
         79,
@@ -729,7 +729,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "679ae88b37191e592509a8f7e5ad1da8c77b58f7e33437dfc24205f7fd55ac3c",
+    "content_hash": "a33a1c8434d8b5095a215fadf24adaacb4f2f5df0d3d7f5170512c7b68228c14",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -744,13 +744,13 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "4fd1acb1de33ad97",
       "account_addresses": [
-        "4diaqdE11MmyMjywqofDiLvfFJ3Rwy2z2UbKPPa8V5Cg",
-        "DaSRxcSrYEfnSPwqQAZk7VhZ3BUK5pbSHjoJ42Kv48Qb",
-        "AhadyoYh9ZnysAs2RFsfHJ5ZbQnioNwWF2WUanQiLzze",
-        "5VbtB6yjaJYJ9ZGafe7LepPx89WXLgFiaBmB6Eud3BCd",
-        "TDK3r1crwRRPBQZD9bEreXkN8nE88qNUUhGVq51qkgZ",
-        "BkiT4RzHaHvAVJXxf4jkXMtfdfpNzTnyMsibySCsx1v5",
-        "ByVtgVhe6huSKTxtUN5KXeNzcSTyNXSfC5R1Q4rV3TwC"
+        "5TAyFwRZQSbFZngUrUEpqVQATRVAuz84R1ZXCVR61X89",
+        "3VvC76tnyMPHwhGBSZwLq5mg5fYDNwLmR5LNdAH9Z1Ma",
+        "HskYW4sm6fGoqAe4P3EzrYo6WmoJ2nhQQc55FfJ7f39Y",
+        "F9qHXrpFNNEPXtb9WfR3AhHM7KDcMQMGTzZwXFJ2pne9",
+        "7zBDW284c7tGMoJ5wdc4oZ3rpp68jyHhVAYZM3uR6Qao",
+        "DXHAEj8fCeguC4BDN3XWVEPq4PSpsmzcr2ewe9DYneXN",
+        "7vbEMFc8xPPDtn1pd6J2GsCHPqTAQkiyQHk29JcYnLMU"
       ],
       "instruction_data": [
         79,
@@ -797,7 +797,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "14cb1881301d3acbcd2ba57ebb51f8a7dd593b5bc7a34ee6cfa82255e42f1730",
+    "content_hash": "6273ea9b5cc91711806886b2d3c3fd6ce9fee737ed7f9a7f4ce7339cee63da30",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -812,21 +812,21 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "4fd1acb1de33ad97",
       "account_addresses": [
-        "4diaqdE11MmyMjywqofDiLvfFJ3Rwy2z2UbKPPa8V5Cg",
-        "DaSRxcSrYEfnSPwqQAZk7VhZ3BUK5pbSHjoJ42Kv48Qb",
-        "AhadyoYh9ZnysAs2RFsfHJ5ZbQnioNwWF2WUanQiLzze",
-        "5VbtB6yjaJYJ9ZGafe7LepPx89WXLgFiaBmB6Eud3BCd",
-        "TDK3r1crwRRPBQZD9bEreXkN8nE88qNUUhGVq51qkgZ",
-        "BkiT4RzHaHvAVJXxf4jkXMtfdfpNzTnyMsibySCsx1v5",
-        "ByVtgVhe6huSKTxtUN5KXeNzcSTyNXSfC5R1Q4rV3TwC",
-        "4e1bqHakcsDBzyph16zc2cRGE3znDoWQBBQj7TYpGhd7",
-        "5wPyFL5xoUtKzfpSYfKonYRE38ZAdCqR1NhoP11soJfj",
-        "BAXpromiU1rExvm7QdPQizZhMavQeKyUxZzyDjNCJ2ww",
-        "BwN8cDBYSma5uoKPG58Xq2xQSVhH1LeGpQN8bhLPkGza",
-        "232PndSNJ5b71mQmeBzWvRanDbEwuVB2wqe3rU59vw82",
-        "H4bqcJygN7v1iq7urTAuisK6yRtCMKRFGjY1nxrfjjJr",
-        "76xBuHSLEi9XD2UGGMJ3DowArzJrd1CPf19eTNXLJyQQ",
-        "3dsBCMjGcxaKu9WKVnRkCd4gaXxrFKaCjCnnzUjeyf9j"
+        "5TAyFwRZQSbFZngUrUEpqVQATRVAuz84R1ZXCVR61X89",
+        "3VvC76tnyMPHwhGBSZwLq5mg5fYDNwLmR5LNdAH9Z1Ma",
+        "HskYW4sm6fGoqAe4P3EzrYo6WmoJ2nhQQc55FfJ7f39Y",
+        "F9qHXrpFNNEPXtb9WfR3AhHM7KDcMQMGTzZwXFJ2pne9",
+        "7zBDW284c7tGMoJ5wdc4oZ3rpp68jyHhVAYZM3uR6Qao",
+        "DXHAEj8fCeguC4BDN3XWVEPq4PSpsmzcr2ewe9DYneXN",
+        "7vbEMFc8xPPDtn1pd6J2GsCHPqTAQkiyQHk29JcYnLMU",
+        "7FiN5uF4ADRojRF3jHWMS9x5bcgYF7sx6TVbCgNuar3R",
+        "7n93U9uj99SXuJ4ZvhG6zE25Bdx9AFSvRJzaBbRhvA7U",
+        "26HzZ7YdCVXQ3Ubz9gXUrSDeYZj8ekTrrykA8tnWU8b5",
+        "Dib5o6zAdC3LEMLsFyqrMVYBb8E39V6dhUpx9M9uJjwP",
+        "B3Up4AdHVvtvv6o7Y8zHSLCV3ECsyLCHMcA6sNhRN6KG",
+        "D2bKSk4GAQw3TbByUCE4oJu7pyKjZ6VRJf4dCH3AaBU8",
+        "21T56tTwRaspApu4R8Rho4vXStGbn94mgd2dJN39LTFS",
+        "7Mkw7Yojm1mJsPmxZTmFbkP9oeBkK6Np8idzwSV26fB6"
       ],
       "instruction_data": [
         79,
@@ -873,7 +873,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "37a47e2d7b1176b7aada623c5ceb221750bf8812e56d40d33975de5e09ed5714",
+    "content_hash": "4dacbf723889d0d4ba60248a722b97274c01636567819cf9a8a508b33b2e6624",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -888,10 +888,10 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "697cc96a9902089c",
       "account_addresses": [
-        "61QTsKixmqdYS3gUVRRXkLAwv8LuFewytEZS6ueY5dnK",
-        "JBrCyWamQzYwWpTkfgTzsxVCXDR61PAigLeFK5u368aN",
-        "DNtmrQYnbgbhN4ywjW9ujXh614oDRabVuRX4rDgdLBjR",
-        "7GkWJ4f246CgJ8T47Bc5tSdnZ6nYij65Gp3GSCU741C7"
+        "4AiNVdLQHGUacuySjUYQKB9j9A4MmgoiQ8qkjpoDhQty",
+        "CzQzbUVhoFtay86MeoQ1DCBEz66hb5p6HtoYYyoD5dw1",
+        "E3LBfCAMLniyHEebvEmU5dJa3KzzuDkicFphXr7qQ8hB",
+        "BnS4sbV5T7d8neqTTHWUjy94jKjQ31SHAs4LJwcE7VzC"
       ],
       "instruction_data": [
         105,
@@ -938,7 +938,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "54f98ebc83c7cd929c9fd4be0b15d3b08380e7b9d9fec674daa24c94ef5f30d2",
+    "content_hash": "5665692fa1aca336e4f07bb7cf55c1073ba95554f27b263298e9485c80bea628",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -953,10 +953,10 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "697cc96a9902089c",
       "account_addresses": [
-        "61QTsKixmqdYS3gUVRRXkLAwv8LuFewytEZS6ueY5dnK",
-        "JBrCyWamQzYwWpTkfgTzsxVCXDR61PAigLeFK5u368aN",
-        "DNtmrQYnbgbhN4ywjW9ujXh614oDRabVuRX4rDgdLBjR",
-        "7GkWJ4f246CgJ8T47Bc5tSdnZ6nYij65Gp3GSCU741C7"
+        "4AiNVdLQHGUacuySjUYQKB9j9A4MmgoiQ8qkjpoDhQty",
+        "CzQzbUVhoFtay86MeoQ1DCBEz66hb5p6HtoYYyoD5dw1",
+        "E3LBfCAMLniyHEebvEmU5dJa3KzzuDkicFphXr7qQ8hB",
+        "BnS4sbV5T7d8neqTTHWUjy94jKjQ31SHAs4LJwcE7VzC"
       ],
       "instruction_data": [
         105,
@@ -1003,7 +1003,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "fce246ba2462525662278e0c17b4d6bee9088b4f78b2e00f71b82397075b6ebb",
+    "content_hash": "65c6f4bff152a77eb49ba1503859994d456be9002223913849f521ee275c3e6c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1018,10 +1018,10 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "697cc96a9902089c",
       "account_addresses": [
-        "61QTsKixmqdYS3gUVRRXkLAwv8LuFewytEZS6ueY5dnK",
-        "JBrCyWamQzYwWpTkfgTzsxVCXDR61PAigLeFK5u368aN",
-        "DNtmrQYnbgbhN4ywjW9ujXh614oDRabVuRX4rDgdLBjR",
-        "7GkWJ4f246CgJ8T47Bc5tSdnZ6nYij65Gp3GSCU741C7"
+        "4AiNVdLQHGUacuySjUYQKB9j9A4MmgoiQ8qkjpoDhQty",
+        "CzQzbUVhoFtay86MeoQ1DCBEz66hb5p6HtoYYyoD5dw1",
+        "E3LBfCAMLniyHEebvEmU5dJa3KzzuDkicFphXr7qQ8hB",
+        "BnS4sbV5T7d8neqTTHWUjy94jKjQ31SHAs4LJwcE7VzC"
       ],
       "instruction_data": [
         105,
@@ -1068,7 +1068,7 @@
   {
     "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
     "version": "1.0.0",
-    "content_hash": "424ea479dc8d4ff1c543ebf8a145336ef8816ad4a817c9d96d729f81791e91e7",
+    "content_hash": "1bb0bca5c3ecac4c153eb89a59a19875165aa66e1eaf8bc8c2d0e1852a8aaf4d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1083,18 +1083,18 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "697cc96a9902089c",
       "account_addresses": [
-        "61QTsKixmqdYS3gUVRRXkLAwv8LuFewytEZS6ueY5dnK",
-        "JBrCyWamQzYwWpTkfgTzsxVCXDR61PAigLeFK5u368aN",
-        "DNtmrQYnbgbhN4ywjW9ujXh614oDRabVuRX4rDgdLBjR",
-        "7GkWJ4f246CgJ8T47Bc5tSdnZ6nYij65Gp3GSCU741C7",
-        "4e1bqHakcsDBzyph16zc2cRGE3znDoWQBBQj7TYpGhd7",
-        "5wPyFL5xoUtKzfpSYfKonYRE38ZAdCqR1NhoP11soJfj",
-        "BAXpromiU1rExvm7QdPQizZhMavQeKyUxZzyDjNCJ2ww",
-        "BwN8cDBYSma5uoKPG58Xq2xQSVhH1LeGpQN8bhLPkGza",
-        "232PndSNJ5b71mQmeBzWvRanDbEwuVB2wqe3rU59vw82",
-        "H4bqcJygN7v1iq7urTAuisK6yRtCMKRFGjY1nxrfjjJr",
-        "76xBuHSLEi9XD2UGGMJ3DowArzJrd1CPf19eTNXLJyQQ",
-        "3dsBCMjGcxaKu9WKVnRkCd4gaXxrFKaCjCnnzUjeyf9j"
+        "4AiNVdLQHGUacuySjUYQKB9j9A4MmgoiQ8qkjpoDhQty",
+        "CzQzbUVhoFtay86MeoQ1DCBEz66hb5p6HtoYYyoD5dw1",
+        "E3LBfCAMLniyHEebvEmU5dJa3KzzuDkicFphXr7qQ8hB",
+        "BnS4sbV5T7d8neqTTHWUjy94jKjQ31SHAs4LJwcE7VzC",
+        "7FiN5uF4ADRojRF3jHWMS9x5bcgYF7sx6TVbCgNuar3R",
+        "7n93U9uj99SXuJ4ZvhG6zE25Bdx9AFSvRJzaBbRhvA7U",
+        "26HzZ7YdCVXQ3Ubz9gXUrSDeYZj8ekTrrykA8tnWU8b5",
+        "Dib5o6zAdC3LEMLsFyqrMVYBb8E39V6dhUpx9M9uJjwP",
+        "B3Up4AdHVvtvv6o7Y8zHSLCV3ECsyLCHMcA6sNhRN6KG",
+        "D2bKSk4GAQw3TbByUCE4oJu7pyKjZ6VRJf4dCH3AaBU8",
+        "21T56tTwRaspApu4R8Rho4vXStGbn94mgd2dJN39LTFS",
+        "7Mkw7Yojm1mJsPmxZTmFbkP9oeBkK6Np8idzwSV26fB6"
       ],
       "instruction_data": [
         105,

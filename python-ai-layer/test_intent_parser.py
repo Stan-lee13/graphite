@@ -282,9 +282,14 @@ def test_program_ids_match_manifests():
         "jupiter-limit.json": None,
         "solend.json": None,
         "marginfi-v2.json": None,
+        "raydium-clmm.json": "swap",
+        "raydium-cpmm.json": "swap",
+        "marinade.json": "stake",
+        "spl-stake-pool.json": "stake",
+        "orca-tokenswap-v2.json": "swap",
     }
     expected_manifests = set(manifest_to_intent.keys())
-    assert len(expected_manifests) == 28, f"expected 28 manifests (C46 added Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi), map has {len(expected_manifests)}"
+    assert len(expected_manifests) == 33, f"expected 33 manifests (C46 added Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi; C56 added Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2), map has {len(expected_manifests)}"
 
     all_manifests = sorted(glob.glob(os.path.join(manifest_dir, "*.json")))
     all_manifests = [p for p in all_manifests if os.path.basename(p) != "verified_program_ids.json"]

@@ -155,6 +155,16 @@ const TRUSTED_CPI_ROOTS: &[&str] = &[
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads (multisig, CPIs to System)
     "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA (escrow CPIs to Token)
     "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (curve CPIs to Token)
+    // C56 (audit finding 1): these three DEXes were in SWAP_PROGRAMS but NOT
+    // in TRUSTED_CPI_ROOTS — a legit swap that CPIs SPL Token for the transfer
+    // was misflagged as AuthorityHijack. Same bug class as the old Raydium fix.
+    "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", // Phoenix spot DEX
+    "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb", // OpenBook V2 CLOB
+    "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu", // Jupiter Limit Order
+    // C56: newly onboarded swap programs (verified executable on mainnet).
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK", // Raydium CLMM
+    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C", // Raydium CPMM
+    "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", // Orca TokenSwap V2
 ];
 
 /// Trusted programs that naturally have high/variable account counts.
@@ -169,6 +179,12 @@ const DEX_PROGRAMS: &[&str] = &[
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads V4 (multisig)
     "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA
     "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (curve: many accounts)
+    "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", // Phoenix spot DEX
+    "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb", // OpenBook V2 CLOB
+    "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu", // Jupiter Limit Order
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK", // Raydium CLMM
+    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C", // Raydium CPMM
+    "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", // Orca TokenSwap V2
 ];
 
 /// Assess a transaction for adversarial risk patterns.
@@ -786,6 +802,9 @@ pub fn is_swap_program(program_id: &str) -> bool {
         "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", // Phoenix spot DEX
         "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb", // OpenBook V2 CLOB
         "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu", // Jupiter Limit Order
+        "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK", // Raydium CLMM
+        "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C", // Raydium CPMM
+        "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", // Orca TokenSwap V2
     ];
     SWAP_PROGRAMS.contains(&program_id)
 }
@@ -852,7 +871,13 @@ impl RiskPattern {
 fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
     match intent_type {
         "swap" | "trade" | "exchange" => is_swap_program(program_id),
-        "stake" | "delegate" => program_id == "Stake11111111111111111111111111111111111111",
+        "stake" | "delegate" => {
+            program_id == "Stake11111111111111111111111111111111111111"
+                // C56: liquid staking programs serve the "stake" intent (their
+                // manifests were onboarded and the AI layer maps them to stake).
+                || program_id == "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD"
+                || program_id == "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy"
+        }
         "close" | "close_account" => {
             program_id == "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
                 || program_id == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"

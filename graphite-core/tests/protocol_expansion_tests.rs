@@ -20,6 +20,14 @@ const JUPITER_DCA: &str = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M";
 const WORMHOLE: &str = "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth";
 const METAPLEX: &str = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";
 
+// C56: the five newly onboarded protocols (verified executable on mainnet
+// 2026-08-12; see scripts/build_new_manifests.py).
+const RAYDIUM_CLMM: &str = "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK";
+const RAYDIUM_CPMM: &str = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
+const MARINADE: &str = "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD";
+const SPL_STAKE_POOL: &str = "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy";
+const ORCA_TS_V2: &str = "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP";
+
 fn dca_input(discriminator: &str, intent: &str) -> VerificationInput {
     // Jupiter DCA layouts carry 12-15 accounts per the official IDL (C52).
     let mut input = base_input(JUPITER_DCA, discriminator, intent);
@@ -65,7 +73,7 @@ fn base_input(program_id: &str, discriminator: &str, intent: &str) -> Verificati
 #[test]
 fn all_new_manifests_are_loaded_and_instruction_surfaces_parse() {
     let registry = load_seed_manifests();
-    assert_eq!(registry.list().len(), 28, "expected 28 seed manifests (22 + Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi)");
+    assert_eq!(registry.list().len(), 33, "expected 33 seed manifests (22 + Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi + C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)");
     for id in [PUMP_FUN, JUPITER_DCA, WORMHOLE, METAPLEX] {
         let m = registry
             .get(id)
@@ -137,6 +145,36 @@ fn jupiter_dca_is_a_swap_program() {
         detect_intent_program_mismatch(JUPITER_DCA, "stake"),
         Some(RiskPattern::PermissionEscalation)
     ));
+}
+
+#[test]
+fn c56_new_protocols_accept_their_native_intents() {
+    // Marinade + SPL Stake Pool serve the "stake" intent (liquid staking).
+    assert!(
+        detect_intent_program_mismatch(MARINADE, "stake").is_none(),
+        "Marinade must accept the stake intent"
+    );
+    assert!(
+        detect_intent_program_mismatch(SPL_STAKE_POOL, "stake").is_none(),
+        "SPL Stake Pool must accept the stake intent"
+    );
+    // Staking programs are not swap programs.
+    assert!(matches!(
+        detect_intent_program_mismatch(MARINADE, "swap"),
+        Some(RiskPattern::PermissionEscalation)
+    ));
+    // The three new DEXes serve the swap intent.
+    for id in [RAYDIUM_CLMM, RAYDIUM_CPMM, ORCA_TS_V2] {
+        assert!(
+            detect_intent_program_mismatch(id, "swap").is_none(),
+            "{id} must accept the swap intent"
+        );
+        // ... and none of them is a staking program.
+        assert!(matches!(
+            detect_intent_program_mismatch(id, "stake"),
+            Some(RiskPattern::PermissionEscalation)
+        ));
+    }
 }
 
 #[test]

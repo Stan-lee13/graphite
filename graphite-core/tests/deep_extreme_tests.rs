@@ -84,8 +84,8 @@ fn test_all_20_manifests_load_with_valid_pubkeys() {
     let manifests = registry.list();
     assert_eq!(
         manifests.len(),
-        28,
-        "expected exactly 28 seed manifests (22 + 6 new: Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi)"
+        33,
+        "expected exactly 33 seed manifests (22 + 6 new: Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi, + 5 new C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)"
     );
 
     for m in &manifests {

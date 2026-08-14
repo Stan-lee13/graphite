@@ -315,6 +315,11 @@ pub fn load_seed_manifests() -> ManifestRegistry {
         "../protocols/jupiter-limit.json",
         "../protocols/solend.json",
         "../protocols/marginfi-v2.json",
+        "../protocols/raydium-clmm.json",
+        "../protocols/raydium-cpmm.json",
+        "../protocols/marinade.json",
+        "../protocols/spl-stake-pool.json",
+        "../protocols/orca-tokenswap-v2.json",
     ];
 
     for p in &seed_paths {
@@ -402,6 +407,21 @@ pub fn load_seed_manifests() -> ManifestRegistry {
                 }
                 "../protocols/marginfi-v2.json" => {
                     registry.load_from_json(include_str!("../protocols/marginfi-v2.json"))
+                }
+                "../protocols/raydium-clmm.json" => {
+                    registry.load_from_json(include_str!("../protocols/raydium-clmm.json"))
+                }
+                "../protocols/raydium-cpmm.json" => {
+                    registry.load_from_json(include_str!("../protocols/raydium-cpmm.json"))
+                }
+                "../protocols/marinade.json" => {
+                    registry.load_from_json(include_str!("../protocols/marinade.json"))
+                }
+                "../protocols/spl-stake-pool.json" => {
+                    registry.load_from_json(include_str!("../protocols/spl-stake-pool.json"))
+                }
+                "../protocols/orca-tokenswap-v2.json" => {
+                    registry.load_from_json(include_str!("../protocols/orca-tokenswap-v2.json"))
                 }
                 _ => unreachable!(),
             };
@@ -927,8 +947,8 @@ mod tests {
         let programs = verified["programs"].as_array().expect("programs array");
         assert_eq!(
             programs.len(),
-            28,
-            "verified registry must list exactly the 28 seed programs (C27 added Drift + Kamino, C46 added Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi)"
+            33,
+            "verified registry must list exactly the 33 seed programs (C27 added Drift + Kamino, C46 added Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi, C56 added Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)"
         );
 
         let mut verified_by_id: std::collections::BTreeMap<&str, &str> =

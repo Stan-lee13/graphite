@@ -1,0 +1,639 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "SPL Stake Pool",
+  "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+  "website": "https://spl.solana.com/stake-pool",
+  "github": "https://github.com/solana-program/stake-pool",
+  "category": "staking"
+ },
+ "version": {
+  "label": "1.0.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "Initialize",
+   "discriminator": "00",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "AddValidatorToPool",
+   "discriminator": "01",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "RemoveValidatorFromPool",
+   "discriminator": "02",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "DecreaseValidatorStake",
+   "discriminator": "03",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "withdraws funds and transfers them out of the pool to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "IncreaseValidatorStake",
+   "discriminator": "04",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "transfers funds between the pool and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "SetPreferredValidator",
+   "discriminator": "05",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "UpdateValidatorListBalance",
+   "discriminator": "06",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol accounting state"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": ""
+  },
+  {
+   "name": "UpdateStakePoolBalance",
+   "discriminator": "07",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol accounting state"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": ""
+  },
+  {
+   "name": "CleanupRemovedValidatorEntries",
+   "discriminator": "08",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "DepositStake",
+   "discriminator": "09",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "transfers funds between the pool and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "WithdrawStake",
+   "discriminator": "0a",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "withdraws funds and transfers them out of the pool to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "SetManager",
+   "discriminator": "0b",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "SetFee",
+   "discriminator": "0c",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "SetStaker",
+   "discriminator": "0d",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "DepositSol",
+   "discriminator": "0e",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "transfers funds between the pool and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "SetFundingAuthority",
+   "discriminator": "0f",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "WithdrawSol",
+   "discriminator": "10",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "withdraws funds and transfers them out of the pool to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "CreateTokenMetadata",
+   "discriminator": "11",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "UpdateTokenMetadata",
+   "discriminator": "12",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "IncreaseAdditionalValidatorStake",
+   "discriminator": "13",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "transfers funds between the pool and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "DecreaseAdditionalValidatorStake",
+   "discriminator": "14",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "withdraws funds and transfers them out of the pool to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "DecreaseValidatorStakeWithReserve",
+   "discriminator": "15",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "withdraws funds and transfers them out of the pool to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "Redelegate",
+   "discriminator": "16",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "transfers funds between the pool and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "DepositStakeWithSlippage",
+   "discriminator": "17",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "transfers funds between the pool and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "WithdrawStakeWithSlippage",
+   "discriminator": "18",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "withdraws funds and transfers them out of the pool to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "DepositSolWithSlippage",
+   "discriminator": "19",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "transfers funds between the pool and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "WithdrawSolWithSlippage",
+   "discriminator": "1a",
+   "accounts": [
+    {
+     "name": "stake_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: stake_pool",
+    "withdraws funds and transfers them out of the pool to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "Stake11111111111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  }
+ ],
+ "trust_tier": "OfficialManifest"
+}

@@ -35,3 +35,6 @@ graphite-data/
 
 # On-chain census progress caches (evidence is summarized in manifests/CHANGELOG)
 graphite-core/scripts/.census_*_cache.json
+
+# E2E scratch: keep IDL evidence, never the extracted npm module
+/graphite-core/e2e-scratch/idls/*.cjs

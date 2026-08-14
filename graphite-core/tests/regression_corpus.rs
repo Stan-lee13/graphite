@@ -109,7 +109,9 @@ const CREATE_PROGRAMS: &[&str] = &[
 ];
 
 /// Programs that legitimately CPI to SPL Token (trusted roots) — the
-/// risk-engine whitelist.
+/// risk-engine whitelist (mirrors risk_engine TRUSTED_CPI_ROOTS/DEX_PROGRAMS;
+/// C46 added Phoenix/OpenBook V2/Jupiter Limit, C56 added Raydium CLMM/CPMM
+/// and Orca TokenSwap V2).
 const TRUSTED_ROOTS: &[&str] = &[
     "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
@@ -118,6 +120,12 @@ const TRUSTED_ROOTS: &[&str] = &[
     "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
     "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
     "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+    "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY",
+    "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb",
+    "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu",
+    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+    "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP",
 ];
 
 /// Programs exempt from the drainer/hidden-transfer account heuristics.
