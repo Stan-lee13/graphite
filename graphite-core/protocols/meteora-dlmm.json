@@ -5,7 +5,8 @@
   "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
   "website": "https://www.meteora.ag",
   "github": "https://github.com/MeteoraAg/dlmm-sdk",
-  "category": "swap"
+  "category": "swap",
+  "note": "C59 account-list rebuild (2026-08-14): account lists rebuilt from the official DLMM IDL (tenequm/solana-idls idl/meteora-dlmm.json, codama writable/signer metadata); the prior build carried 2-account placeholders for most instructions. swap (f8c69e91e17587c8) verified position-for-position against a real mainnet transaction (2026-08-14, sig 2LvQMMWX2vQv..., 15 static accounts + variable bin-array tail): 6 writable reserves/token accounts, 2 mints, oracle, signer user, both token programs, event authority, program. swap_exact_out shares the identical layout (only the data args differ). 7 instructions absent from the current IDL surface (initialize_pool, initialize_pool_with_custom_curve, add_pool_fee, remove_pool_fee, remove_liquidity_by_strategy, claim_all_reward, add_liquidity_single_side) keep their prior lists."
  },
  "version": {
   "label": "1.0.0",
@@ -19,8 +20,8 @@
    "accounts": [
     {
      "name": "lb_pair",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -88,7 +89,7 @@
      "pda_seeds": []
     },
     {
-     "name": "user_wallet",
+     "name": "user",
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
@@ -160,8 +161,8 @@
     },
     {
      "name": "bin_array_bitmap_extension",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -389,294 +390,9 @@
    "discriminator": "fa49652126cf4bb8",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction",
-    "credits the output token account with the received amount for the swap"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": [],
-   "variable_accounts": true
-  },
-  {
-   "name": "remove_liquidity",
-   "discriminator": "5055d14818ceb16c",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": [],
-   "risk_class": "withdraw"
-  },
-  {
-   "name": "add_liquidity_by_strategy",
-   "discriminator": "0703967f94283dc8",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": []
-  },
-  {
-   "name": "add_liquidity_by_strategy_one_side",
-   "discriminator": "2905eeaf64e106cd",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": []
-  },
-  {
-   "name": "remove_liquidity_by_strategy",
-   "discriminator": "ca8ef1e897a218c5",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": []
-  },
-  {
-   "name": "remove_liquidity_by_range",
-   "discriminator": "1a526698f04a691a",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": []
-  },
-  {
-   "name": "claim_fee",
-   "discriminator": "a9204f8988e84689",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": [],
-   "risk_class": "withdraw"
-  },
-  {
-   "name": "claim_all_reward",
-   "discriminator": "d0eb91df2bb27878",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": [],
-   "risk_class": "withdraw"
-  },
-  {
-   "name": "initialize_bin_array",
-   "discriminator": "235613b94ed44bd3",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": []
-  },
-  {
-   "name": "add_liquidity_single_side",
-   "discriminator": "7878638801f2a50e",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Meteora DLMM instruction"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-   ],
-   "risk_rules": []
-  },
-  {
-   "name": "swap_2",
-   "discriminator": "df7e2d55564d1fc2",
-   "accounts": [
-    {
      "name": "lb_pair",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -744,7 +460,7 @@
      "pda_seeds": []
     },
     {
-     "name": "user_wallet",
+     "name": "user",
      "role": "signer",
      "is_writable": false,
      "is_signer": true,
@@ -759,6 +475,851 @@
     },
     {
      "name": "token_y_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "variable_accounts": true
+  },
+  {
+   "name": "remove_liquidity",
+   "discriminator": "5055d14818ceb16c",
+   "accounts": [
+    {
+     "name": "position",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "lb_pair",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_bitmap_extension",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_lower",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_upper",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "add_liquidity_by_strategy",
+   "discriminator": "0703967f94283dc8",
+   "accounts": [
+    {
+     "name": "position",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "lb_pair",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_bitmap_extension",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_lower",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_upper",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": []
+  },
+  {
+   "name": "add_liquidity_by_strategy_one_side",
+   "discriminator": "2905eeaf64e106cd",
+   "accounts": [
+    {
+     "name": "position",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "lb_pair",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_bitmap_extension",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_lower",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_upper",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": []
+  },
+  {
+   "name": "remove_liquidity_by_strategy",
+   "discriminator": "ca8ef1e897a218c5",
+   "accounts": [
+    {
+     "name": "user_authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": []
+  },
+  {
+   "name": "remove_liquidity_by_range",
+   "discriminator": "1a526698f04a691a",
+   "accounts": [
+    {
+     "name": "position",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "lb_pair",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_bitmap_extension",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_lower",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_upper",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": []
+  },
+  {
+   "name": "claim_fee",
+   "discriminator": "a9204f8988e84689",
+   "accounts": [
+    {
+     "name": "lb_pair",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "position",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_lower",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_upper",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "claim_all_reward",
+   "discriminator": "d0eb91df2bb27878",
+   "accounts": [
+    {
+     "name": "user_authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "initialize_bin_array",
+   "discriminator": "235613b94ed44bd3",
+   "accounts": [
+    {
+     "name": "lb_pair",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "funder",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": []
+  },
+  {
+   "name": "add_liquidity_single_side",
+   "discriminator": "7878638801f2a50e",
+   "accounts": [
+    {
+     "name": "user_authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Meteora DLMM instruction"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": []
+  },
+  {
+   "name": "swap_2",
+   "discriminator": "df7e2d55564d1fc2",
+   "accounts": [
+    {
+     "name": "lb_pair",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bin_array_bitmap_extension",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_x",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reserve_y",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_in",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_token_out",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "host_fee_in",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_x_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_y_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "memo_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,

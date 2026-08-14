@@ -5,7 +5,7 @@
   "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
   "website": "https://jup.ag",
   "github": "https://github.com/jup-ag/jupiter-v6",
-  "note": "C22.3 on-chain re-verification (2026-08-09, corrected methodology): all 27 discriminators were re-derived AND spot-verified against live mainnet transactions (base58-decoded instruction data from getTransaction encoding=json). Findings: (1) route=e517cb977ae3ad2a and route_v2=bb64facc31c4af14 are CONFIRMED on-chain (legacy route and the current standard route both live). (2) The 16 old-era camelCase-named entries carried sha256(\"global:\"+camelCase) hashes — the C18 camelCase bug class — and never matched the deployed program; all were corrected to sha256(\"global:\"+snake_case), with sharedAccountsRoute=c1209b3341d69c81, setTokenLedger=e455b9704e4f4d02, routeWithTokenLedger=96564774a75d0e68 verified on-chain and the rest following the program's confirmed snake_case convention. (3) e445a52e51cb9a1d is the program's INTERNAL route (1-account CPI payload with a route plan), observed under shared_accounts_route_v2 (d19853937cfed8e9, confirmed); it is not a top-level entry point and is documented here for provenance. Pinned fixture: sig 57TAjPZXt49F9rSVZNEuyTPGHDJEHEgFbDkEzTXXjVh71cxZa75FFch5XJzpW88z1ZqHko6Fn7BMj2LLzWNiHcd9 (slot 438012579, SUCCESS) carries route_v2=bb64facc31c4af14.",
+  "note": "C59 account-list rebuild (2026-08-14): every instruction's account list was rebuilt from official IDLs. route/sharedAccountsRoute/exactOutRoute/sharedAccountsExactOutRoute/routeWithTokenLedger/sharedAccountsRouteWithTokenLedger/setTokenLedger/claimToken use tenequm/solana-idls idl/jupiter.json (the deployed-program IDL family, snake_case instruction names) - its user-first layouts (writable source/destination token accounts, signer authority, mints, token programs, fee, event authority) match live mainnet getTransaction jsonParsed structures. route_v2 (bb64facc31c4af14) and shared_accounts_route_v2 (d19853937cfed8e9) are grounded directly from live mainnet transactions (2026-08-14) plus the C22.3 pinned fixture (slot 438012579): user-first, source/destination token accounts writable, both token programs, platform fee, program. The remaining V2 variants use their V1 base layouts; the 8 *Check variants share their base instruction's account layout (the deployed program's simulation-check convention). GAPS (no authoritative source): accountCompressionRoute/sharedAccountsAccountCompressionRoute/exactOutAccountCompressionRoute/sharedAccountsExactOutAccountCompressionRoute (compression-route family) and closeTokenLedger keep their prior placeholder lists and remain fail-closed for swap intent (FakeSwap) - grounding requires the current compression-route IDL or live compressed-token traffic.",
   "category": "swap"
  },
  "version": {
@@ -33,6 +33,20 @@
      "pda_seeds": []
     },
     {
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "destination_token_account",
      "role": "writable",
      "is_writable": true,
@@ -40,14 +54,28 @@
      "pda_seeds": []
     },
     {
-     "name": "program_destination_token_account",
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_authority",
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -146,7 +174,21 @@
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -176,14 +218,77 @@
    "discriminator": "d033ef977b2bed5c",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -208,14 +313,91 @@
    "discriminator": "b0d169a89a7d453e",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -368,14 +550,63 @@
    "discriminator": "6d1f67e9df5fad2a",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -399,14 +630,91 @@
    "discriminator": "3f03a1891f36162e",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -430,14 +738,77 @@
    "discriminator": "ad226402f63ee60f",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -461,14 +832,91 @@
    "discriminator": "dba89ef8801136ee",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -616,14 +1064,14 @@
    "discriminator": "e455b9704e4f4d02",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "token_ledger",
+     "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "token_account",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -646,14 +1094,63 @@
    "discriminator": "74ce1bbfa6130049",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "payer",
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "wallet",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associated_token_token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associated_token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -706,6 +1203,41 @@
    "discriminator": "bb64facc31c4af14",
    "accounts": [
     {
+     "name": "user_authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "token_program",
      "role": "readonly",
      "is_writable": false,
@@ -713,21 +1245,21 @@
      "pda_seeds": []
     },
     {
-     "name": "user_transfer_authority",
-     "role": "signer",
+     "name": "token_2022_program",
+     "role": "readonly",
      "is_writable": false,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "destination_token_account",
-     "role": "writable",
-     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_destination_token_account",
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -761,6 +1293,215 @@
   {
    "name": "shared_accounts_route_v2",
    "discriminator": "d19853937cfed8e9",
+   "accounts": [
+    {
+     "name": "program_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "swaps tokens through routed DEX venues with shared accounts",
+    "debits user source token account",
+    "credits user destination token account"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+   ],
+   "risk_rules": [
+    "user_transfer_authority must be signer",
+    "RISK: verify output amount matches expected within slippage tolerance",
+    "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
+   ],
+   "variable_accounts": true
+  },
+  {
+   "name": "exact_out_route_v2",
+   "discriminator": "9d8ab85215f4f324",
+   "accounts": [
+    {
+     "name": "token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_transfer_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "source_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "Jupiter V6 aggregator instruction",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+   ],
+   "risk_rules": [],
+   "variable_accounts": true
+  },
+  {
+   "name": "shared_accounts_exact_out_route_v2",
+   "discriminator": "3560e5cad8bbfa18",
    "accounts": [
     {
      "name": "token_program",
@@ -833,76 +1574,21 @@
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "swaps tokens through routed DEX venues with shared accounts",
-    "debits user source token account",
-    "credits user destination token account"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
-   ],
-   "risk_rules": [
-    "user_transfer_authority must be signer",
-    "RISK: verify output amount matches expected within slippage tolerance",
-    "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
-   ],
-   "variable_accounts": true
-  },
-  {
-   "name": "exact_out_route_v2",
-   "discriminator": "9d8ab85215f4f324",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "event_authority",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Jupiter V6 aggregator instruction",
-    "credits the output token account with the received amount for the swap"
-   ],
-   "allowed_cpis": [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
-    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
-   ],
-   "risk_rules": [],
-   "variable_accounts": true
-  },
-  {
-   "name": "shared_accounts_exact_out_route_v2",
-   "discriminator": "3560e5cad8bbfa18",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -941,6 +1627,20 @@
      "pda_seeds": []
     },
     {
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "destination_token_account",
      "role": "writable",
      "is_writable": true,
@@ -948,14 +1648,35 @@
      "pda_seeds": []
     },
     {
-     "name": "program_destination_token_account",
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_authority",
+     "name": "token_ledger",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1054,7 +1775,28 @@
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_ledger",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1098,6 +1840,20 @@
      "pda_seeds": []
     },
     {
+     "name": "user_source_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user_destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "destination_token_account",
      "role": "writable",
      "is_writable": true,
@@ -1105,14 +1861,35 @@
      "pda_seeds": []
     },
     {
-     "name": "program_destination_token_account",
+     "name": "destination_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "platform_fee_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_authority",
+     "name": "token_ledger",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1211,7 +1988,28 @@
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_ledger",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,

@@ -5,7 +5,7 @@
   "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
   "website": "https://www.orca.so",
   "github": "https://github.com/orca-so/whirlpools",
-  "note": "C25 full-surface rebuild (2026-08-09): the manifest previously carried 6 FABRICATED instructions (updateFeeRate, transferPositionDelegate, applyDelta, syncTickArray, closeAccount, closeConfigExtension) that were never part of the deployed program at any version — they appear in neither the 2022-era deployed IDL (v0.1.0, 25 instructions) nor the current deployed IDL (66 instructions), and the orca-so/whirlpools git history has zero occurrences. Those entries are removed. The manifest now covers the FULL deployed surface: all 66 discriminators are the explicit byte arrays from the official deployed-program IDL (npm @orca-so/whirlpools, program v0.9.0; the repo's Anchor.toml maps whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc to this source), NOT re-derived hashes. Three are additionally corroborated by live on-chain observation (base58-correct decode): swap=f8c69e91e17587c8, swap_v2=2b04ed0b1ac91e62, increase_liquidity_by_token_amounts_v2=effb097cd2c6352b. The C24 note's claim that the 6 were 'corrected to the snake_case convention' was itself based on the false premise that they existed; this note supersedes it.",
+  "note": "C59 account-role rebuild (2026-08-14): all 58 instructions covered by the official deployed-program IDL (tenequm/solana-idls idl/orca-whirlpools.json, Anchor isMut/isSigner metadata) had writable/signer roles stamped onto the existing account lists; the previous build carried all-readonly stub roles. swapV2 (2b04ed0b1ac91e62) verified position-for-position against a real mainnet transaction (2026-08-14, sig 3uJN9P3k6CSn..., 15 static accounts + variable tick-array tail): token programs, memo, token authority signer, whirlpool, mints, owner/vault accounts writable, tick arrays writable, oracle. 8 instructions absent from the IDL keep their prior lists.",
   "category": "swap"
  },
  "version": {
@@ -20,15 +20,15 @@
    "accounts": [
     {
      "name": "bundled_position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -41,15 +41,15 @@
     },
     {
      "name": "position_bundle_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "receiver",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
@@ -70,36 +70,36 @@
    "accounts": [
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "receiver",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -127,41 +127,41 @@
    "accounts": [
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "receiver",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -191,15 +191,15 @@
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -212,29 +212,29 @@
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -269,15 +269,15 @@
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -304,29 +304,29 @@
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -375,43 +375,43 @@
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "collect_protocol_fees_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_destination_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_destination_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -446,16 +446,16 @@
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "collect_protocol_fees_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -474,29 +474,29 @@
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_destination_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_destination_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -537,8 +537,8 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "writable",
-     "is_writable": true,
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -558,8 +558,8 @@
     },
     {
      "name": "position_token_account",
-     "role": "writable",
-     "is_writable": true,
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -609,15 +609,15 @@
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -630,8 +630,8 @@
     },
     {
      "name": "reward_owner_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -644,8 +644,8 @@
     },
     {
      "name": "reward_vault",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -679,8 +679,8 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -693,15 +693,15 @@
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -714,43 +714,43 @@
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_lower",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_upper",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
@@ -770,8 +770,8 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -798,15 +798,15 @@
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -833,43 +833,43 @@
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_lower",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_upper",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
@@ -889,36 +889,36 @@
    "accounts": [
     {
      "name": "position_bundle",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_mint",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_owner",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "receiver",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -959,9 +959,9 @@
     },
     {
      "name": "token_badge_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -973,15 +973,15 @@
     },
     {
      "name": "token_badge",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "receiver",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
@@ -1054,8 +1054,8 @@
     },
     {
      "name": "position_token_account",
-     "role": "writable",
-     "is_writable": true,
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -1241,8 +1241,8 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -1269,15 +1269,15 @@
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -1304,43 +1304,43 @@
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_lower",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "tick_array_upper",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
@@ -1367,23 +1367,23 @@
     },
     {
      "name": "adaptive_fee_tier",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1406,16 +1406,16 @@
    "accounts": [
     {
      "name": "config",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1445,23 +1445,23 @@
     },
     {
      "name": "config_extension",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1533,23 +1533,23 @@
     },
     {
      "name": "fee_tier",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1593,30 +1593,30 @@
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1699,30 +1699,30 @@
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1811,44 +1811,44 @@
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "initialize_pool_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "oracle",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1902,22 +1902,22 @@
    "accounts": [
     {
      "name": "position_bundle",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_mint",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -1930,9 +1930,9 @@
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -1979,29 +1979,29 @@
    "accounts": [
     {
      "name": "position_bundle",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_mint",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_metadata",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2014,9 +2014,9 @@
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2077,22 +2077,22 @@
    "accounts": [
     {
      "name": "reward_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2105,9 +2105,9 @@
     },
     {
      "name": "reward_vault",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2147,22 +2147,22 @@
    "accounts": [
     {
      "name": "reward_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2182,9 +2182,9 @@
     },
     {
      "name": "reward_vault",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2231,15 +2231,15 @@
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "tick_array",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2280,9 +2280,9 @@
     },
     {
      "name": "token_badge_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2294,16 +2294,16 @@
     },
     {
      "name": "token_badge",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2343,15 +2343,15 @@
     },
     {
      "name": "position",
-     "role": "writable",
-     "is_writable": true,
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "writable",
-     "is_writable": true,
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2371,13 +2371,13 @@
     },
     {
      "name": "whirlpool",
-     "role": "writable",
-     "is_writable": true,
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -2425,15 +2425,15 @@
    "accounts": [
     {
      "name": "bundled_position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_bundle",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2446,9 +2446,9 @@
     },
     {
      "name": "position_bundle_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2460,9 +2460,9 @@
     },
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2495,9 +2495,9 @@
    "accounts": [
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2509,22 +2509,22 @@
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2579,9 +2579,9 @@
    "accounts": [
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2593,29 +2593,29 @@
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position_metadata_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2684,9 +2684,9 @@
    "accounts": [
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2698,22 +2698,22 @@
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position_mint",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position_token_account",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -2725,7 +2725,7 @@
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -2915,16 +2915,16 @@
    "accounts": [
     {
      "name": "funder",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "position_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -2936,8 +2936,8 @@
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3010,16 +3010,16 @@
    "accounts": [
     {
      "name": "whirlpools_config",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "collect_protocol_fees_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3049,16 +3049,16 @@
     },
     {
      "name": "whirlpools_config_extension",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "config_extension_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3113,16 +3113,16 @@
     },
     {
      "name": "adaptive_fee_tier",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -3145,16 +3145,16 @@
     },
     {
      "name": "fee_tier",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -3170,16 +3170,16 @@
    "accounts": [
     {
      "name": "whirlpools_config",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -3202,16 +3202,16 @@
     },
     {
      "name": "adaptive_fee_tier",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3234,16 +3234,16 @@
    "accounts": [
     {
      "name": "whirlpools_config",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3273,16 +3273,16 @@
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -3298,8 +3298,8 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3312,9 +3312,9 @@
     },
     {
      "name": "delegated_fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -3337,16 +3337,16 @@
     },
     {
      "name": "adaptive_fee_tier",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3376,16 +3376,16 @@
     },
     {
      "name": "adaptive_fee_tier",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -3408,16 +3408,16 @@
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "fee_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -3433,16 +3433,16 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "reward_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3472,16 +3472,16 @@
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "reward_emissions_super_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3504,16 +3504,16 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "reward_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3539,16 +3539,16 @@
    "accounts": [
     {
      "name": "whirlpools_config",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "reward_emissions_super_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3571,16 +3571,16 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "reward_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3662,16 +3662,16 @@
     },
     {
      "name": "whirlpools_config_extension",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "config_extension_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -3718,8 +3718,8 @@
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3732,8 +3732,8 @@
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3745,21 +3745,21 @@
      "pda_seeds": []
     },
     {
-     "name": "tick_array_0",
+     "name": "tick_array0",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_1",
+     "name": "tick_array1",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_2",
+     "name": "tick_array2",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -3817,15 +3817,15 @@
     },
     {
      "name": "token_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     },
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3845,57 +3845,57 @@
     },
     {
      "name": "token_owner_account_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_0",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array0",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_1",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array1",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_2",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array2",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "oracle",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
@@ -3924,22 +3924,22 @@
     },
     {
      "name": "receiver",
-     "role": "signer",
-     "is_writable": false,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "position",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
+     "name": "position",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "position_mint",
-     "role": "writable",
-     "is_writable": true,
+     "role": "readonly",
+     "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -3965,7 +3965,7 @@
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
+     "name": "token2022_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -4015,8 +4015,8 @@
     },
     {
      "name": "token_owner_account_one_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4029,8 +4029,8 @@
     },
     {
      "name": "token_owner_account_one_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4043,8 +4043,8 @@
     },
     {
      "name": "token_owner_account_two_a",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4057,8 +4057,8 @@
     },
     {
      "name": "token_owner_account_two_b",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4070,42 +4070,42 @@
      "pda_seeds": []
     },
     {
-     "name": "tick_array_one_0",
+     "name": "tick_array_one0",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_one_1",
+     "name": "tick_array_one1",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_one_2",
+     "name": "tick_array_one2",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_two_0",
+     "name": "tick_array_two0",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_two_1",
+     "name": "tick_array_two1",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_two_2",
+     "name": "tick_array_two2",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -4143,15 +4143,15 @@
    "accounts": [
     {
      "name": "whirlpool_one",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "whirlpool_two",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4199,106 +4199,106 @@
     },
     {
      "name": "token_owner_account_input",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_one_input",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_one_intermediate",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_two_intermediate",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_vault_two_output",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_owner_account_output",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "token_authority",
-     "role": "readonly",
+     "role": "signer",
      "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "tick_array_one0",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_one_0",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array_one1",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_one_1",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array_one2",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_one_2",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array_two0",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_two_0",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array_two1",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "tick_array_two_1",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "tick_array_two_2",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "tick_array_two2",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "oracle_one",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "oracle_two",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -4326,15 +4326,15 @@
    "accounts": [
     {
      "name": "whirlpool",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "position",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
