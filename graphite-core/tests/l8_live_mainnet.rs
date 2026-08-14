@@ -43,6 +43,10 @@ fn env_endpoint() -> Option<String> {
 
 /// A signature that has been confirmed successfully on mainnet (fetched live
 /// via getSignaturesForAddress for the System Program, err=null entries).
+/// Retry budget: public RPC endpoints (api.mainnet-beta.solana.com) throttle
+/// bursts with HTTP 429 / empty responses; one transient reject must not
+/// skip the whole L8 validation. Tries 3 times with 2s spacing, then gives
+/// up gracefully (the test SKIPs on None).
 async fn fetch_a_confirmed_success_signature() -> Option<String> {
     let body = serde_json::json!({
         "jsonrpc": "2.0", "id": 1, "method": "getSignaturesForAddress",
@@ -50,13 +54,20 @@ async fn fetch_a_confirmed_success_signature() -> Option<String> {
     });
     let url = std::env::var("GRAPHITE_RPC_URL")
         .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string());
-    let resp = post_json(&url, &body).await?;
-    let arr = resp.get("result")?.as_array()?;
-    for item in arr {
-        let sig = item.get("signature")?.as_str()?;
-        match item.get("err") {
-            None | Some(serde_json::Value::Null) => return Some(sig.to_string()),
-            _ => {}
+    for attempt in 0..3 {
+        if let Some(resp) = post_json(&url, &body).await {
+            if let Some(arr) = resp.get("result").and_then(|r| r.as_array()) {
+                for item in arr {
+                    let sig = item.get("signature")?.as_str()?;
+                    match item.get("err") {
+                        None | Some(serde_json::Value::Null) => return Some(sig.to_string()),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if attempt < 2 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
     }
     None
