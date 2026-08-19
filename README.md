@@ -9,10 +9,10 @@
 Graphite sits between an AI agent's intent and the wallet's execution. It verifies that a constructed transaction actually does what was declared — with a falsifiable confidence score, not a binary safe/unsafe.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1007_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1004_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-33-blue?style=flat-square)](graphite-core/protocols/)
-[![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-11-red?style=flat-square)](graphite-core/src/risk_engine.rs)
+[![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-11_red?style=flat-square)](graphite-core/src/risk_engine.rs)
 [![Version](https://img.shields.io/badge/Version-v0.2.0--beta-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
 
 </div>
@@ -63,13 +63,13 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,007 tests — zero setup (1,016 total; 9 network-dependent tests ignored
+# Run 1,004 tests — zero setup (1,014 total; 10 network-dependent tests ignored
 # unless run explicitly with a live RPC)
 cargo test --release
 
 # Output:
-# running 1016 tests
-# test result: ok. 1007 passed; 0 failed; 9 ignored
+# running 1014 tests
+# test result: ok. 1004 passed; 0 failed; 10 ignored
 
 # Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
@@ -96,7 +96,7 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 
 ---
 
-## Risk Engine — 11 Attack Patterns (14 Risk Checks)
+## Risk Engine — 11 Attack Patterns (13 Risk Checks)
 
 | Pattern | What It Catches |
 |--------|----------------|
@@ -187,7 +187,7 @@ graphite/
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
 │   ├── protocols/                 ← 33 JSON protocol manifests (803 instructions)
-│   └── tests/                     ← 1,007 tests (unit + adversarial + exploit + live RPC)
+│   └── tests/                     ← 1,014 tests (unit + adversarial + exploit + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -331,8 +331,8 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 1,007 Rust tests passing (1,016 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
-- 14 risk checks (11 risk patterns) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
+- 1,004 Rust tests passing (1,014 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
+- 13 risk checks (11 risk patterns) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
 - 33 protocol manifests / 803 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42 + Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi C46 + Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2 C56).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).

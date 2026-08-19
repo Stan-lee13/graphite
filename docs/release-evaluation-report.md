@@ -5,7 +5,7 @@
 **Repository:** github.com/Stan-lee13/graphite  
 **Constitution Principle:** P16 — No public performance claim without a linked, reproducible benchmark run backing the exact number.
 
-> **Update (2026-08-10, C28–C33):** the benchmark composition table below is superseded — the 5 SYNTHETIC drainer cases are now 3 REAL mainnet exploits (STMT 64tsGGe, AAT 524t8LW, Wormhole 5fKWY7X) + 2 SYNTHETIC (C30); avg latency ~2.1ms with real-data cases; 987 tests / 0 failures; 28 manifests / 695 instructions; 14 risk checks; MAD baseline (C28), multi-instruction + CPI trace (C29), discriminator-width fix (C33).
+> **Update (2026-08-19, C58):** the numbers below are superseded — now 1,014 tests / 0 failures; 33 manifests / 803 instructions; 13 risk checks; 5 REAL mainnet exploit cases + 2 SYNTHETIC (C52); MAD baseline (C28), multi-instruction + CPI trace (C29), discriminator-width fix (C33), C56 protocol expansion, C58 intent classification.
 
 ---
 

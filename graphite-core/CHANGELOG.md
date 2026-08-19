@@ -3,7 +3,7 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
-## [Current State — C55: 999 tests, 28 manifests, 695 instructions, 14 risk checks, 37-entry exploit corpus, deployment verified, full-stack auth, v0.2.0-beta] — 2026-08-12
+## [Current State — C58: 1,014 tests, 33 manifests, 803 instructions, 13 risk checks, 37-entry exploit corpus, deployment verified, full-stack auth, v0.2.0-beta] — 2026-08-19
 
 ### Summary of all changes C28–C55
 
@@ -50,9 +50,9 @@ Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as 
 - **C45**: Solana Foundation grant proposal ($120k, 3 milestones over 9 months).
 
 ### Current numbers (C54)
-- **999 Rust tests passing** (1008 running; 9 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
-- **28 protocol manifests**, 695 instructions, all program IDs verified executable on mainnet
-- **11 risk patterns / 14 risk checks** (was 9/9)
+- **1,014 Rust tests passing** (1004 passed; 10 network-dependent ignored), 0 failures, 0 clippy warnings, fmt clean
+- **33 protocol manifests**, 803 instructions, all program IDs verified executable on mainnet
+- **11 risk patterns / 13 risk checks** (was 9/9)
 - **2,747-fixture corpus**: 0 false negatives on 40-fixture holdout (38 real-exploit + real txs)
 - **37-entry exploit corpus** (35 SolPhishHunter + 2 live-fetched from mainnet RPC)
 - **5 REAL mainnet exploits** scored in benchmark (Wormhole $320M, CLINKSINK STMT, SlowMist AAT, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87); 18 scored cases, 100% precision/recall

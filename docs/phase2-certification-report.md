@@ -4,8 +4,8 @@
 **Date:** August 12, 2026 (deployment verification pass C54; prior revalidation C39–C53)
 **Auditor:** Codebuff (independent revalidation passes C39–C42, C50–C53; deployment verification C54)
 **Base:** 948 tests / 0 failures / 0 clippy / 0 warnings (claimed at C38)
-**Final:** 999 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
-**Manifests:** 28 / 695 instructions
+**Final:** 1,014 tests / 0 failures / 0 clippy (all-targets) / 0 compiler warnings / fmt clean
+**Manifests:** 33 / 803 instructions
 **Commits audited and extended:** C39 (fresh adversarial pass), C40 (L3/L8 live RPC validation),
 C41 (2,181-fixture regression corpus + 4 root fixes it surfaced), C42 (Kamino V2 real layouts,
 registry determinism fix, universal-CPI audit test), C52 (Jupiter DCA + Squads V4 PDA grounding
@@ -25,7 +25,7 @@ security verification)
   shapes the original suite did not use. One real residual was found and fixed: a
   whitespace-padded discriminator (`"03 "`) passed the risk engine's hex handling — the
   manifest gate now fails it closed end-to-end.
-- **28 manifests / 695 instructions** — confirmed; every program ID base58-decodes to 32
+- **33 manifests / 803 instructions** — confirmed; every program ID base58-decodes to 32
   bytes (this revalidation's structural audit).
 - **Benchmark 100% precision/recall on 18 scored cases** — confirmed; 20 cases total
   (5 REAL mainnet exploits + 2 SYNTHETIC honestly labeled + 13 constructed).
@@ -56,7 +56,7 @@ security verification)
 
 | Split | Count | Content | Provenance |
 |---|---|---|---|
-| dev | 2,112 | Manifest-driven canonical + structural variants (width, near-prefix, no-intent, intent-mismatch, account-overflow, unknown-instruction) for every instruction of all 28 manifests | synthetic-manifest |
+| dev | 2,112 | Manifest-driven canonical + structural variants (width, near-prefix, no-intent, intent-mismatch, account-overflow, unknown-instruction) for every instruction of all 33 manifests | synthetic-manifest |
 | regression | 31 | Re-pinned attack classes: P0-1..P0-4, Phase 2 multi-instruction + CPI-trace, risk-class gates, ordering | synthetic-attack / synthetic-benign |
 | holdout | 40 | 37 real mainnet exploit signatures (35 SolPhishHunter arXiv:2505.04094 + 2 live-fetched from api.mainnet-beta.solana.com: Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87) + 3 real mainnet successful transactions (Jupiter swap, pump.fun, System) | real-mainnet |
 
@@ -222,7 +222,7 @@ warranted by measurement.**
   reverse-prefix discriminator ambiguity (accepted design tradeoff for SPL Token 1-byte
   selectors); intent parser is a pattern matcher, not an LLM — intent signals are advisory
   inputs, never unconditional authorization (Check 10 still gates high-risk classes).
-- **Remaining assumptions:** manifest correctness = on-chain truth (28 manifests audited;
+- **Remaining assumptions:** manifest correctness = on-chain truth (33 manifests audited;
   registry growth requires the G5 signed-submission gate); L3/L8 correctness depends on RPC
   honesty — anti-poisoning and no-fabrication properties are enforced and live-verified.
 - **Universal-CPI audit (mandate 13):** the infrastructure exclusion (Token/Token-2022/
@@ -236,9 +236,9 @@ warranted by measurement.**
 
 | Requirement | Implementation | Runtime evidence | Test evidence | Status |
 |---|---|---|---|---|
-| Phase 1 — 8-layer verification engine | verification.rs L1–L8 | benchmark 16/16 correct | 999 tests | Complete |
+| Phase 1 — 8-layer verification engine | verification.rs L1–L8 | benchmark 16/16 correct | 1,014 tests | Complete |
 | Phase 1 — risk engine (8+ patterns) | risk_engine.rs (checks 1–10 + Phase 2 gates) | 100% precision/recall | p0/cert suites, corpus | Complete |
-| Phase 1 — 28 manifests / 695 instructions | manifest.rs registry + JSON | IDs verified executable on mainnet (getAccountInfo) | structural audit, prefix tests | Strong |
+| Phase 1 — 33 manifests / 803 instructions | manifest.rs registry + JSON | IDs verified executable on mainnet (getAccountInfo) | structural audit, prefix tests | Strong |
 | Phase 1.5 — server hardening (auth/rate-limit/CORS/audit log) | server.rs env-config | /health + concurrent storm | hardening tests | Complete |
 | Phase 1.5 — SAK integration | integrations/solana-agent-kit | 5 finalized devnet txs | integration tests | Complete |
 | Phase 1.5 — content_hash determinism (P2) | verification.rs + regression_engine.rs | same input → same hash | P2 tests | Complete |
@@ -251,7 +251,7 @@ warranted by measurement.**
 | Phase 2 — L8 live mainnet validation | tests/l8_live_mainnet.rs | Confirmed/Unknown/Unavailable | live test | Complete (validation); production activation pending |
 | Phase 2 — manifest revalidation | C41/C42 audit | Kamino/Orca/role fixes | structural audit | Strong |
 | Phase 2 — public deployment | Dockerfile + hardened server | C54: image builds + runs; auth/rate-limit/CORS/hostile-input/healthcheck verified live against the container | Docker build + live security tests | Complete (local runtime; public endpoint is platform plumbing) |
-| Phase 2 — certification + v0.2.0-beta | this report | C54 runtime evidence + C53 remediation | 999-test suite | GO (v0.2.0-beta tagged) |
+| Phase 2 — certification + v0.2.0-beta | this report | C54 runtime evidence + C53 remediation | 1,014-test suite | GO (v0.2.0-beta tagged) |
 
 ## 11. Release Recommendation
 

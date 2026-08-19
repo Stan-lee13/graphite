@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-08 (third audit cycle)
 
-> **Update (2026-08-10, C28–C33):** the "synced" numbers in §Docs-vs-reality are superseded — now 987 tests / 28 manifests / 695 instructions / 14 risk checks; the benchmark is no longer all-synthetic (3 REAL mainnet exploit cases, C30) and the composition test pins 3 REAL + 2 SYNTHETIC; MAD baseline (C28) and multi-instruction + CPI trace analysis (C29) shipped; the risk-engine exact-equality discriminator bypass (C33) is fixed and regression-pinned.
+> **Update (2026-08-19, C58):** the numbers below are superseded — now 1,014 tests / 33 manifests / 803 instructions / 13 risk checks; the benchmark includes 5 REAL mainnet exploit cases + 2 SYNTHETIC (C52); MAD baseline (C28), multi-instruction + CPI trace analysis (C29), discriminator-width fix (C33), C56 protocol expansion, and C58 intent classification shipped.
 **Method:** clean-slate repo inspection (no prior reports trusted), live Solana RPC probing, web research on the 2022–2026 exploit/ecosystem record, benchmark deconstruction, and first-principles architecture comparison.
 **Branch:** `phase2-development` → merged to `main` as `03b15b6` (prior cycle) + this cycle's commit.
 

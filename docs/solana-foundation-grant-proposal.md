@@ -141,7 +141,7 @@ Key properties:
 | Real data | 3 real mainnet exploits blocked in benchmark (Wormhole $320M, CLINKSINK, SlowMist AAT); 35 real exploit signatures in holdout, 0 false negatives |
 | Live validation | L3 on real devnet RPC; L8 on real mainnet RPC; SAK integration = 5 finalized devnet transactions |
 | Corpus | 2,181 deterministic fixtures (dev / regression / holdout), byte-identical across runs |
-| Manifests | 28 protocols, 695 instructions, program IDs verified executable on mainnet |
+| Manifests | 33 protocols, 803 instructions, program IDs verified executable on mainnet |
 | Security | Two independent adversarial audits; 4 P0 + 1 P1 classes root-fixed and re-attacked with fresh variants |
 | Performance | ~1.8ms p50 / ~2.8ms p95 / ~3.0ms p99 verification — 0.5% of Solana's 400ms block budget |
 | Integrations | TypeScript SDK, Go SDK, Python advisory layer, React dashboard, HTTP server, Dockerfile, SolanaAgentKit integration |

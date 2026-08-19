@@ -5,7 +5,7 @@
 - [x] Core verification engine (Rust)
 - [x] 8-layer pipeline (L1-L7 active, L3/L8 live-validated in Phase 2)
 - [x] 33 protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Drift, Kamino, Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi + C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)
-- [x] Risk engine: 11 attack pattern detectors (14 risk checks)
+- [x] Risk engine: 11 attack pattern detectors (13 risk checks)
 - [x] Confidence engine with 0.55 cap on unknown protocols (P6/P12)
 - [x] Policy engine: 4 wallet profiles (Treasury, TradingBot, Gaming, Enterprise)
 - [x] Policy engine real integrations: evidence signals read the Semantic Graph accumulator (G4), all 4 presets satisfiable/differentiable, CLI `--profile` + `profiles`, 14 profile-matrix tests
@@ -69,7 +69,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 1,007 tests passing, 0 clippy warnings, fmt clean (2026-08-12)
+- [x] 1,014 tests passing, 0 clippy warnings, fmt clean
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 

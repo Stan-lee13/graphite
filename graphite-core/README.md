@@ -9,7 +9,7 @@ The Rust verification engine — the heart of Graphite.
 | `account_resolution` | PDA derivation (Solana hash-chain algorithm), account role validation | L1 |
 | `verification` | 8-layer pipeline orchestrator (L1–L8) — implements L2 Instruction Verification and L4 State Verification inline | L2/L4 |
 | `transaction_builder` | Canonical serialization, compute budget estimate | — |
-| `risk_engine` | 11 attack pattern detectors (14 risk checks, hard gate) | L7 |
+| `risk_engine` | 11 attack pattern detectors (13 risk checks, hard gate) | L7 |
 | `confidence_engine` | Weighted signal scoring + trust tier ceilings | L6 |
 | `policy_engine` | Per-wallet profile thresholds (Treasury, TradingBot, Gaming, Enterprise) | L6 |
 | `simulation_integrity` | 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm + MAD baseline | L3 |
@@ -32,7 +32,7 @@ The Rust verification engine — the heart of Graphite.
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 999 tests (0 failures, 9 network-dependent ignored)
+cargo test --release     # 1,014 tests (0 failures, 10 network-dependent ignored)
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 
@@ -51,7 +51,7 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-28 JSON manifests in `protocols/` (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Tier-1: Drift, Kamino + Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi — all confirmed executable on mainnet). Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets. 695 instructions total.
+33 JSON manifests in `protocols/` covering all major Solana programs. Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets. 803 instructions total.
 
 All program IDs verified against official on-chain sources (pinned by `test_all_seed_manifest_program_ids_are_canonical`). See `CONTRIBUTING.md` for how to add a new manifest.
 
