@@ -6,7 +6,7 @@
 
 **Applicant / Organization:** Victor Stanley
 
-**Primary Contact:** Victor Stanley — victorstanley13@gmail.com
+**Primary Contact:** Victor Stanley — Stanleyvic13@gmail.com
 
 **Total Amount Requested (USD):** $120,000
 
