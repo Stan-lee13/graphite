@@ -1045,9 +1045,21 @@ fn test_manifest_injection_extra_instruction_not_loaded() {
     // The malicious manifest only has 1 instruction, overwriting the 7-instruction SPL Token
     assert_eq!(manifest.protocol.name, "Evil");
     assert_eq!(manifest.instructions.len(), 1);
-    // This is a known Phase 1 limitation — manifest injection is possible
-    // because load_from_json uses insert() which overwrites.
-    // Phase 2 will add manifest signing (P7: trust computed, never asserted).
+    // Scope note (updated 2026-09-05): this registry is built with
+    // `ManifestRegistry::new()` — an EMPTY registry with no seed set — so
+    // replacement is expected and correct here: a caller managing its own
+    // registry owns its own entries.
+    //
+    // What used to be a real Phase-1 vulnerability is now closed for the
+    // registry that actually matters. A registry built by
+    // `load_seed_manifests()` marks the 33 shipped manifests as the audited
+    // trust anchor and REFUSES to replace them
+    // (`ManifestError::SeedManifestImmutable`) — previously this same
+    // `insert()` silently overwrote the real SPL Token definition, letting an
+    // attacker redefine its instruction surface and have every later
+    // verification judged against the forgery. See
+    // `tests/manifest_trust_anchor.rs`, which pins the refusal for every seed
+    // program, and `tests/hell_mode_tests.rs::h6_*` for the end-to-end case.
 }
 
 #[test]

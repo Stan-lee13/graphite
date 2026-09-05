@@ -61,12 +61,78 @@ pub struct AuditHealth {
     pub active_bytes: u64,
 }
 
+/// Which point in a transaction's lifecycle an audit record describes
+/// (Constitution P9).
+///
+/// P9 requires construction, simulation, verification, signing, submission,
+/// confirmation and finalization to each emit an audit event. Before this,
+/// the trail carried exactly one kind of record — a verification outcome —
+/// with no `event_type` at all, so six of the seven mandated events were
+/// simply absent and nothing in the format could express them.
+///
+/// HONESTY CONSTRAINT — read before adding an emitter: Graphite is a
+/// PRE-SIGNATURE verification service. It genuinely observes `Construction`,
+/// `Simulation` and `Verification`, and it emits those itself. It does NOT
+/// sign, submit, or watch the chain — only the caller (wallet, agent, bridge)
+/// knows when those happened. Graphite therefore does not, and must not,
+/// synthesize `Signing`/`Submission`/`Confirmation`/`Finalization` events on
+/// its own: an audit trail that fabricates events it never witnessed is worse
+/// than one that admits the gap. Those four are recorded through
+/// `GraphiteCore::record_lifecycle_event` / the server's audit-event endpoint,
+/// by the component that actually performed them, keyed to the same
+/// `content_hash` so the whole lifecycle reconciles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecycleEvent {
+    /// A verified transaction plan was built from resolved accounts.
+    Construction,
+    /// Simulation ran (live RPC `simulateTransaction`, or the integrity check).
+    Simulation,
+    /// The 8-layer pipeline produced a verdict.
+    Verification,
+    /// The caller signed the transaction. Caller-reported.
+    Signing,
+    /// The caller submitted it to the network. Caller-reported.
+    Submission,
+    /// The network confirmed it. Caller-reported.
+    Confirmation,
+    /// The transaction reached finalized commitment. Caller-reported.
+    Finalization,
+}
+
+impl LifecycleEvent {
+    /// True for the events Graphite itself witnesses and emits.
+    ///
+    /// The complement is caller-reported: Graphite has no way to observe it
+    /// and must not invent it.
+    pub fn is_self_observed(&self) -> bool {
+        matches!(
+            self,
+            LifecycleEvent::Construction
+                | LifecycleEvent::Simulation
+                | LifecycleEvent::Verification
+        )
+    }
+}
+
+/// Default for records written before `event_type` existed: every one of them
+/// was a verification outcome, so deserializing an old log yields the correct
+/// classification rather than failing or guessing.
+fn default_event_type() -> LifecycleEvent {
+    LifecycleEvent::Verification
+}
+
 /// A minimal, self-contained record of a verification outcome. Deliberately
 /// excludes the raw account list / instruction payload — the deterministic
 /// `content_hash` and `audit_trail_id` are the linkage keys for any deeper
 /// forensic lookup (Constitution P4/P5: enough to reproduce, not to leak).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AuditRecord {
+    /// Which lifecycle stage this record describes (P9). `#[serde(default)]`
+    /// keeps existing append-only logs readable: records written before this
+    /// field existed were all verifications.
+    #[serde(default = "default_event_type")]
+    pub event_type: LifecycleEvent,
     pub timestamp: String,
     pub audit_trail_id: String,
     pub content_hash: String,
@@ -84,6 +150,42 @@ pub struct AuditRecord {
     /// L8 execution-verification state (always "inconclusive" until Phase 2
     /// wires post-submission verification) — GAP-2026-08-06-3.
     pub l8_status: String,
+}
+
+/// A lifecycle event for a stage Graphite does not itself perform.
+///
+/// Deliberately separate from `AuditRecord`: that type carries a verification
+/// VERDICT (confidence, risk status, layer states), and none of those fields
+/// are meaningful for "the caller signed this" — filling them with defaults
+/// would put fabricated verdict data in the audit trail. This record carries
+/// only what is actually known at that stage.
+///
+/// `content_hash` is the join key back to the verification that approved this
+/// exact transaction, so a reviewer can reconstruct the full lifecycle. It is
+/// caller-supplied and therefore caller-attested, not proof: the record states
+/// what the caller reported, and `reported_by` names who reported it. Graphite
+/// does not and cannot independently confirm a signing or submission it did
+/// not perform — recording it as attestation is honest, recording it as fact
+/// would not be.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LifecycleEventRecord {
+    pub event_type: LifecycleEvent,
+    pub timestamp: String,
+    /// Links this event to the verification that approved the transaction.
+    pub content_hash: String,
+    /// The verification's audit trail id, when the caller has it.
+    #[serde(default)]
+    pub audit_trail_id: Option<String>,
+    /// On-chain signature, once one exists (submission onward).
+    #[serde(default)]
+    pub transaction_signature: Option<String>,
+    /// Who reported the event — an operator-meaningful identifier for the
+    /// wallet/agent/bridge, never a credential.
+    #[serde(default)]
+    pub reported_by: Option<String>,
+    /// Free-form detail (e.g. a confirmation slot, or a failure reason).
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 /// An audit record for a verification that FAILED before producing a result
@@ -328,6 +430,13 @@ impl AuditLog {
         self.append_line(record);
     }
 
+    /// Append a lifecycle event (P9). Same durability contract as `append`:
+    /// flushed before the caller is answered, non-fatal on failure but
+    /// counted, and subject to the same rotation.
+    pub fn append_lifecycle(&self, record: &LifecycleEventRecord) {
+        self.append_line(record);
+    }
+
     fn append_line<T: serde::Serialize>(&self, record: &T) {
         let line = match serde_json::to_string(record) {
             Ok(l) => l,
@@ -398,6 +507,7 @@ mod tests {
 
     fn rec(id: &str) -> AuditRecord {
         AuditRecord {
+            event_type: LifecycleEvent::Verification,
             timestamp: "2026-09-05T00:00:00.000Z".to_string(),
             audit_trail_id: id.to_string(),
             content_hash: "hash".to_string(),
@@ -548,6 +658,7 @@ mod tests {
     #[test]
     fn audit_record_serializes_l3_and_l8_status() {
         let record = AuditRecord {
+            event_type: LifecycleEvent::Verification,
             timestamp: "2026-08-06T00:00:00.000Z".to_string(),
             audit_trail_id: "gr-test".to_string(),
             content_hash: "abc".to_string(),
@@ -594,6 +705,7 @@ mod tests {
             let log = AuditLog::open(&path).unwrap();
             for i in 0..10 {
                 log.append(&AuditRecord {
+                    event_type: LifecycleEvent::Verification,
                     timestamp: format!("t{i}"),
                     audit_trail_id: format!("id{i}"),
                     content_hash: "h".into(),

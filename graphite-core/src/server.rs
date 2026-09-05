@@ -17,7 +17,9 @@
 //! - Graceful shutdown on SIGTERM/SIGINT (container-friendly)
 
 use crate::account_resolution::AccountResolutionError;
-use crate::durable::{audit_path, AuditErrorRecord, AuditLog, AuditRecord};
+use crate::durable::{
+    audit_path, AuditErrorRecord, AuditLog, AuditRecord, LifecycleEvent, LifecycleEventRecord,
+};
 use crate::verification::{GraphiteCore, VerificationError, VerificationInput, VerificationResult};
 use axum::extract::{ConnectInfo, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
@@ -81,6 +83,7 @@ struct Metrics {
     verify_errors: Arc<std::sync::atomic::AtomicU64>,
     auth_failures: Arc<std::sync::atomic::AtomicU64>,
     rate_limited: Arc<std::sync::atomic::AtomicU64>,
+    lifecycle_events: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Metrics {
@@ -600,6 +603,10 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
         .route("/manifests", get(manifests_handler))
+        // P9 lifecycle events Graphite cannot observe itself (signing,
+        // submission, confirmation, finalization) — recorded by the caller
+        // that actually performed them. See `lifecycle_event_handler`.
+        .route("/audit/event", post(lifecycle_event_handler))
         // Dashboard read-only API (Constitution P4 — no mutation).
         .route("/api/graph", get(graph_handler))
         .route("/api/confidence-history", get(confidence_history_handler))
@@ -1032,6 +1039,15 @@ async fn verify_handler(
                         .unwrap_or_else(|| "unknown".to_string())
                 };
                 log.append(&AuditRecord {
+                    // The synchronous construction -> simulation ->
+                    // verification operation Graphite actually performs. Its
+                    // construction and simulation evidence rides on this same
+                    // row (`transaction`, `l3_status`) rather than as separate
+                    // rows: they are inseparable from this one call, and
+                    // splitting them would triple audit volume without adding
+                    // a fact. The stages Graphite does NOT perform arrive via
+                    // POST /audit/event.
+                    event_type: LifecycleEvent::Verification,
                     timestamp: crate::durable::now_utc_rfc3339(),
                     audit_trail_id: result.audit_trail_id.clone(),
                     content_hash: result.content_hash.clone(),
@@ -1198,6 +1214,13 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         m.rate_limited.load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
+        "graphite_lifecycle_events_total",
+        "Caller-reported lifecycle events recorded (signing/submission/confirmation/finalization).",
+        "counter",
+        m.lifecycle_events
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
         "graphite_audit_writes_ok_total",
         "Audit records successfully appended.",
         "counter",
@@ -1222,6 +1245,103 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         u64::from(audit.is_some()),
     );
     ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], out)
+}
+
+/// Body for `POST /audit/event`.
+#[derive(serde::Deserialize)]
+struct LifecycleEventBody {
+    event_type: LifecycleEvent,
+    /// Join key back to the verification that approved this transaction.
+    content_hash: String,
+    #[serde(default)]
+    audit_trail_id: Option<String>,
+    #[serde(default)]
+    transaction_signature: Option<String>,
+    #[serde(default)]
+    reported_by: Option<String>,
+    #[serde(default)]
+    detail: Option<String>,
+}
+
+/// Record a lifecycle event for a stage Graphite does not itself perform
+/// (Constitution P9).
+///
+/// P9 requires the full transaction lifecycle to be auditable. Graphite
+/// genuinely observes construction, simulation and verification, and records
+/// those on the verification row. It does NOT sign, submit, or watch the
+/// chain — only the caller knows when those happened, so this endpoint is how
+/// they enter the same append-only trail, keyed by `content_hash` so the whole
+/// lifecycle reconciles to one transaction.
+///
+/// The record is explicitly an ATTESTATION, not a proof: Graphite cannot
+/// confirm a signing it did not perform. `reported_by` names the reporter and
+/// the record says what was reported. Synthesizing these events server-side
+/// instead would put fabricated history in an audit trail, which is worse than
+/// the gap it would paper over.
+///
+/// Self-observed event types are REJECTED here — a caller must not be able to
+/// inject a "verification" row that no verification produced, which would let
+/// them forge an approval into the audit trail.
+async fn lifecycle_event_handler(
+    State(state): State<AppState>,
+    payload: Result<Json<LifecycleEventBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let Json(body) = payload.map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": e.body_text(),
+                "error_type": "JsonRejection",
+            })),
+        )
+    })?;
+
+    if body.event_type.is_self_observed() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "this event type is emitted by Graphite itself and cannot be reported by a caller",
+                "hint": "only signing, submission, confirmation and finalization are caller-reported",
+            })),
+        ));
+    }
+    if body.content_hash.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "content_hash is required — it links this event to the verification that approved the transaction",
+            })),
+        ));
+    }
+
+    let Some(log) = &state.audit else {
+        // Durability is a P9 guarantee; accepting an event we cannot persist
+        // would silently lose it.
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "audit log unavailable — the event was NOT recorded",
+            })),
+        ));
+    };
+
+    let record = LifecycleEventRecord {
+        event_type: body.event_type,
+        timestamp: crate::durable::now_utc_rfc3339(),
+        content_hash: body.content_hash,
+        audit_trail_id: body.audit_trail_id,
+        transaction_signature: body.transaction_signature,
+        reported_by: body.reported_by,
+        detail: body.detail,
+    };
+    log.append_lifecycle(&record);
+    Metrics::inc(&state.metrics.lifecycle_events);
+
+    Ok(Json(serde_json::json!({
+        "recorded": true,
+        "event_type": record.event_type,
+        "content_hash": record.content_hash,
+    })))
 }
 
 async fn manifests_handler(
@@ -1711,6 +1831,7 @@ mod tests {
         let log = state.audit.as_ref().unwrap();
         let ts = crate::durable::now_utc_rfc3339();
         log.append(&AuditRecord {
+            event_type: LifecycleEvent::Verification,
             timestamp: ts.clone(),
             audit_trail_id: "gr-a".to_string(),
             content_hash: "h1".to_string(),
@@ -1726,6 +1847,7 @@ mod tests {
             l8_status: "inconclusive".to_string(),
         });
         log.append(&AuditRecord {
+            event_type: LifecycleEvent::Verification,
             timestamp: ts,
             audit_trail_id: "gr-b".to_string(),
             content_hash: "h2".to_string(),
@@ -1754,6 +1876,7 @@ mod tests {
         let (state, dir) = test_state();
         let log = state.audit.as_ref().unwrap();
         log.append(&AuditRecord {
+            event_type: LifecycleEvent::Verification,
             timestamp: crate::durable::now_utc_rfc3339(),
             audit_trail_id: "gr-blocked".to_string(),
             content_hash: "h3".to_string(),
@@ -1803,6 +1926,7 @@ mod tests {
         // 3 verifications of the System program.
         for i in 0..3 {
             log.append(&AuditRecord {
+                event_type: LifecycleEvent::Verification,
                 timestamp: crate::durable::now_utc_rfc3339(),
                 audit_trail_id: format!("gr-top-{i}"),
                 content_hash: format!("h{i}"),
@@ -2074,6 +2198,124 @@ mod tests {
                 "{bad:?} must be rejected rather than silently ignored"
             );
         }
+    }
+
+    // ── P9 lifecycle audit trail ────────────────────────────────────────────
+
+    fn lifecycle_request(body: serde_json::Value) -> axum::http::Request<axum::body::Body> {
+        let mut req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/audit/event")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        req
+    }
+
+    /// The four stages Graphite cannot observe are recorded by the caller that
+    /// performed them, and land in the same append-only trail.
+    #[tokio::test]
+    async fn caller_reported_lifecycle_events_are_recorded() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        use tower::ServiceExt;
+
+        for ev in ["signing", "submission", "confirmation", "finalization"] {
+            let resp = app
+                .clone()
+                .oneshot(lifecycle_request(serde_json::json!({
+                    "event_type": ev,
+                    "content_hash": "afb61d8865b4cb68",
+                    "transaction_signature": "5xSig",
+                    "reported_by": "wallet-bridge",
+                })))
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                axum::http::StatusCode::OK,
+                "{ev} must be recordable"
+            );
+        }
+
+        // The events must actually be on disk, not merely accepted.
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        for ev in ["signing", "submission", "confirmation", "finalization"] {
+            assert!(
+                contents.contains(&format!("\"event_type\":\"{ev}\"")),
+                "{ev} missing from the audit trail"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A caller must NOT be able to inject a self-observed event. Accepting a
+    /// caller-supplied "verification" row would let anyone forge an approval
+    /// into the audit trail — the exact record a dispute would be settled on.
+    #[tokio::test]
+    async fn a_caller_cannot_forge_a_self_observed_event() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        use tower::ServiceExt;
+
+        for ev in ["verification", "construction", "simulation"] {
+            let resp = app
+                .clone()
+                .oneshot(lifecycle_request(serde_json::json!({
+                    "event_type": ev,
+                    "content_hash": "afb61d8865b4cb68",
+                })))
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                axum::http::StatusCode::BAD_REQUEST,
+                "a caller must not be able to write a {ev} record"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The join key is mandatory — an event that cannot be tied back to a
+    /// verification is unreconcilable and therefore worthless as audit.
+    #[tokio::test]
+    async fn a_lifecycle_event_without_a_content_hash_is_rejected() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        use tower::ServiceExt;
+        let resp = app
+            .oneshot(lifecycle_request(serde_json::json!({
+                "event_type": "signing",
+                "content_hash": "   ",
+            })))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The endpoint is authenticated like every other non-health route —
+    /// anyone able to write to the audit trail could otherwise pollute it.
+    #[tokio::test]
+    async fn the_lifecycle_endpoint_requires_auth() {
+        let (state, dir) = test_state();
+        let state = AppState {
+            api_key: Some(std::sync::Arc::new("sekret".to_string())),
+            ..state
+        };
+        let app = build_app(state, vec![]);
+        use tower::ServiceExt;
+        let resp = app
+            .oneshot(lifecycle_request(serde_json::json!({
+                "event_type": "signing",
+                "content_hash": "afb61d8865b4cb68",
+            })))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// `/metrics` exposes operational counters — but it also reveals traffic

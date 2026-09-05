@@ -394,9 +394,18 @@ fn h5_empty_string_account_address() {
 // This version uses a SCHEMA-VALID malicious manifest (the exact shape an
 // attacker's manifest must have to actually load and overwrite the bundled
 // Tokenkeg entry) declaring the REAL SetAuthority discriminator 06 as a
-// benign "SafeTransfer" at self-asserted OfficialManifest tier. The defense
-// under test is the risk engine's P0 Check 2 (RISKY_PATTERNS): a known risky
-// discriminator is blocked regardless of what a spoofed manifest declares.
+// benign "SafeTransfer" at self-asserted OfficialManifest tier.
+//
+// UPDATED 2026-09-05: there are now TWO layers here, and the test asserts
+// both. The outer one is new — a shipped seed manifest is immutable at
+// runtime, so the injection is REFUSED at load and never reaches the registry
+// at all (previously it succeeded and silently replaced the audited SPL Token
+// definition; that overwrite was pinned as expected Phase-1 behaviour by a
+// test in adversarial_tests.rs). The inner one is the original defence and
+// still matters: even against the genuine manifest, the risk engine's P0
+// Check 2 (RISKY_PATTERNS) blocks a known-risky discriminator regardless of
+// what any manifest claims. Asserting both keeps the inner defence honest
+// rather than letting the new outer one hide a regression in it.
 
 #[test]
 fn h6_manifest_injection_declaring_setauthority_as_safe() {
@@ -430,9 +439,23 @@ fn h6_manifest_injection_declaring_setauthority_as_safe() {
             }
         ]
     }"#;
-    // The spoof must actually LOAD — a schema-rejected manifest tests nothing.
-    core.load_manifest(malicious_manifest)
-        .expect("schema-valid malicious manifest must load (that is the attack)");
+    // OUTER LAYER: the injection must be refused outright. SPL Token ships as
+    // an audited seed manifest and is immutable at runtime, so a
+    // schema-perfect forgery never reaches the registry.
+    let injection = core.load_manifest(malicious_manifest);
+    assert!(
+        injection.is_err(),
+        "replacing the shipped SPL Token manifest must be refused — this is the trust anchor"
+    );
+    assert!(
+        format!("{injection:?}").contains("seed manifest"),
+        "the refusal must name the reason, got: {injection:?}"
+    );
+
+    // INNER LAYER: and the original defence must still hold on its own. What
+    // follows is verified against the GENUINE bundled manifest — a known-risky
+    // discriminator is blocked by the risk engine no matter what any manifest
+    // declares.
 
     let input = make_input(
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",

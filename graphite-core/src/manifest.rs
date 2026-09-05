@@ -19,6 +19,25 @@ pub enum ManifestError {
     Invalid(String),
     #[error("manifest JSON error: {0}")]
     Json(#[from] serde_json::Error),
+    /// A shipped seed manifest may never be replaced at runtime.
+    ///
+    /// The seed set is the compile-time-baked, audited trust anchor. Before
+    /// this, `load_from_json` used a plain map insert, so loading a manifest
+    /// for an existing program SILENTLY REPLACED it — an attacker with any
+    /// path to this API could redefine SPL Token's instruction surface
+    /// (dropping its `risk_rules`, widening its `allowed_cpis`) and every
+    /// later verification would be judged against the forgery. That directly
+    /// contradicts P11 (trust is scoped to the exact program ID, never
+    /// inferred) and P7 (tier is computed from evidence, never asserted by
+    /// whoever supplies a document).
+    ///
+    /// It was previously accepted as a Phase-1 limitation with a test pinning
+    /// the overwrite as expected behavior. Phase 2 closes it: community
+    /// manifests still reach the registry, but only through
+    /// `merge_community`, which is seed-wins by construction and runs the
+    /// signature/reputation/regression gates in `manifest_registry.rs`.
+    #[error("refusing to replace shipped seed manifest for program {0}: seed manifests are the audited trust anchor and are immutable at runtime (community manifests must go through the registry's review gate)")]
+    SeedManifestImmutable(String),
 }
 
 /// A single instruction definition in a protocol manifest.
@@ -130,6 +149,13 @@ pub struct ManifestRegistry {
     // (P2/P4 determinism). A HashMap's per-process random iteration order
     // made the corpus non-reproducible across runs.
     manifests: BTreeMap<String, ProtocolManifest>,
+    /// Program IDs whose manifest came from the compile-time-baked seed set.
+    ///
+    /// Provenance has to be tracked explicitly: without it the registry cannot
+    /// tell an audited seed manifest from one handed to it at runtime, and so
+    /// cannot refuse to replace the former. See
+    /// `ManifestError::SeedManifestImmutable`.
+    seed_program_ids: std::collections::BTreeSet<String>,
 }
 
 impl ManifestRegistry {
@@ -142,6 +168,13 @@ impl ManifestRegistry {
         let manifest: ProtocolManifest = serde_json::from_str(json)?;
         self.validate(&manifest)?;
         let key = manifest.protocol.program_id.clone();
+        // Seed manifests are the audited trust anchor and are immutable at
+        // runtime — see `ManifestError::SeedManifestImmutable`. This mirrors
+        // the seed-wins rule `merge_community` already enforced; the gap was
+        // that this entry point did not.
+        if self.seed_program_ids.contains(&key) {
+            return Err(ManifestError::SeedManifestImmutable(key));
+        }
         self.manifests.insert(key.clone(), manifest);
         // Safe: attempt to retrieve the manifest we just inserted; return a
         // meaningful error if retrieval fails instead of panicking.
@@ -241,7 +274,50 @@ impl ManifestRegistry {
                 }
             }
         }
+
+        // Discriminator ambiguity (2026-09-05 red-team): `discriminator_matches`
+        // is a PREFIX match and `find_instruction` returns the FIRST hit in
+        // declaration order. If one instruction's discriminator is a prefix of
+        // another's, a real instruction can silently resolve to the wrong
+        // manifest entry — and therefore be judged against the wrong account
+        // roles, `allowed_cpis` and `risk_rules`. A manifest declaring both
+        // "09" (CloseAccount) and "0900…" would resolve a 0900… instruction to
+        // whichever appears first in the JSON array.
+        //
+        // `manifest_registry.rs::validate_manifest` already enforced this for
+        // community submissions, but THIS validator — the one every seed
+        // manifest and every `load_from_json` caller goes through — did not.
+        // Two validators with different strictness meant the weaker one was
+        // the one on the hot path. Both now enforce it.
+        for (i, a) in manifest.instructions.iter().enumerate() {
+            if a.discriminator.is_empty() {
+                continue;
+            }
+            for b in manifest.instructions.iter().skip(i + 1) {
+                if b.discriminator.is_empty() {
+                    continue;
+                }
+                let (x, y) = (
+                    a.discriminator.to_lowercase(),
+                    b.discriminator.to_lowercase(),
+                );
+                if x == y || x.starts_with(&y) || y.starts_with(&x) {
+                    return Err(ManifestError::Invalid(format!(
+                        "ambiguous discriminators: instruction '{}' ({}) and '{}' ({}) — one is a \
+                         prefix of the other, so a real instruction could resolve to the wrong \
+                         entry and be checked against the wrong account roles and risk rules",
+                        a.name, a.discriminator, b.name, b.discriminator
+                    )));
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// Mark every currently-loaded manifest as a shipped seed, making them
+    /// immutable to `load_from_json`. Called once by `load_seed_manifests`.
+    fn freeze_as_seed_set(&mut self) {
+        self.seed_program_ids = self.manifests.keys().cloned().collect();
     }
 }
 
@@ -452,6 +528,11 @@ pub fn load_seed_manifests() -> ManifestRegistry {
         }
     }
 
+    // Everything loaded above is the audited trust anchor. Freezing it here is
+    // what makes `load_from_json` refuse to replace a seed manifest at runtime
+    // (see `ManifestError::SeedManifestImmutable`). Done AFTER the loop so the
+    // seed loads themselves are not blocked by their own rule.
+    registry.freeze_as_seed_set();
     registry
 }
 
