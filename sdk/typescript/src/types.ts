@@ -74,6 +74,17 @@ export interface VerificationInput {
   transaction_instructions?: TransactionInstruction[];
   /** Phase 2: the hierarchical CPI trace tree of the primary instruction. */
   cpi_trace?: CpiTraceNode;
+  /** P1 (2026-09-05): declare that the underlying transaction is a
+   *  versioned (v0) message resolving one or more accounts through Address
+   *  Lookup Tables. Graphite cannot detect this itself (it only ever sees
+   *  the flat account_addresses list) — when true, this surfaces a
+   *  non-blocking warning that ALT-resolved accounts were not
+   *  independently verified. Never reduces confidence or blocks (ALT usage
+   *  is normal for legitimate complex swaps/routes). */
+  uses_versioned_transaction?: boolean;
+  /** Number of distinct Address Lookup Tables referenced, if known. Purely
+   *  informational; included in the warning text when non-zero. */
+  lookup_table_count?: number;
   /** Phase 1.5 simulation baselines are TRUSTED SERVER STATE (earned via
    *  RPC-verified usage or seeded by the operator) — never sent from the
    *  client. See GRAPHITE_RPC_URL and GraphiteCore::seed_simulation_baseline. */

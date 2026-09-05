@@ -34,6 +34,8 @@ fn verify_manifest_trust_tier_used() {
         signed_transaction: None,
         transaction_instructions: vec![],
         cpi_trace: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     };
 
     let result = core.verify(&input).unwrap();
@@ -90,6 +92,8 @@ fn verify_unknown_protocol_still_capped() {
         signed_transaction: None,
         transaction_instructions: vec![],
         cpi_trace: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     };
 
     let result = core.verify(&input).unwrap();

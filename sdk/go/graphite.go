@@ -151,6 +151,15 @@ type VerificationInput struct {
 	// CpiTrace is the Phase 2 hierarchical CPI trace tree of the primary
 	// instruction (depth 0 = root).
 	CpiTrace *CpiTraceNode `json:"cpi_trace,omitempty"`
+	// UsesVersionedTransaction declares (P1, 2026-09-05) that the underlying
+	// transaction is a versioned (v0) message resolving one or more accounts
+	// through Address Lookup Tables. Graphite cannot detect this itself —
+	// when true, surfaces a non-blocking warning that ALT-resolved accounts
+	// were not independently verified. Never reduces confidence or blocks.
+	UsesVersionedTransaction bool `json:"uses_versioned_transaction,omitempty"`
+	// LookupTableCount is the number of distinct Address Lookup Tables
+	// referenced, if known. Purely informational.
+	LookupTableCount uint32 `json:"lookup_table_count,omitempty"`
 	// Simulation baselines are TRUSTED SERVER STATE (earned via RPC-verified
 	// usage or seeded by the operator) — never sent from the client.
 }

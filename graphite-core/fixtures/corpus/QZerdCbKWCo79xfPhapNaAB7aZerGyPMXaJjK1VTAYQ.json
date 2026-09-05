@@ -2,7 +2,7 @@
   {
     "program_id": "QZerdCbKWCo79xfPhapNaAB7aZerGyPMXaJjK1VTAYQ",
     "version": "1.0.0",
-    "content_hash": "b52136c7eda16ad909278f9f94758cb1761dbbe2752ffee96bcee42a86064b94",
+    "content_hash": "6b4dcbef06993a4b9bdce8233ed5fe1db2871c9c42b00020f1fa549f65737ba7",
     "expected_approved": false,
     "source": "real-mainnet-tx",
     "deprecated": false,
@@ -57,7 +57,9 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   }
 ]

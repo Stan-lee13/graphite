@@ -151,6 +151,8 @@ fn valid_input_strategy() -> impl Strategy<Value = VerificationInput> {
                 signed_transaction: None,
                 transaction_instructions: vec![],
                 cpi_trace: None,
+                uses_versioned_transaction: false,
+                lookup_table_count: 0,
             },
         )
 }

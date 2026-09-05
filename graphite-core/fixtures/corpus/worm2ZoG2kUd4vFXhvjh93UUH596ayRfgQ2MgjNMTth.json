@@ -2,7 +2,7 @@
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "c5b5586b9a3e2cab39ce36700b384dc54f845706ca639512423aa8babb72e0af",
+    "content_hash": "d1f5077d442470ae0573c0d6e747e22bc96f993e6fb3992ddadafbe014be4fb2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -58,13 +58,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "4b0cbe1163975e033ba717ebe1232247cfe1039c146232f0ff293fcbc2ccbac3",
+    "content_hash": "0078a47fe74cdb445c51d399dc01169de8b7ca1f12260b0a10c4d95949f40983",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -120,13 +122,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "27e313068e4a15036584bf729ada5c57b64795ed1d9788dea549bca55583d27e",
+    "content_hash": "6faafa9c9a4157c7e7639ef53384b916fe21e3cb952cd5e0ee33e9ec923548cf",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -182,13 +186,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "00b132dee9ce775a9dcdb7c3b35e6f1d5f102042bdf5642d2cecc4ede6310dae",
+    "content_hash": "8985a47a253b8666844d9bb4df277e581fc29c5a35a165ab829c040055e37201",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -252,13 +258,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "b90c8bdcf3e065ac977122b7cfee83e0e7f4eebacc367a5fdf6936b0f0daf622",
+    "content_hash": "672e75e6a8cdfe604c7abd484c4beb0bd835ad5901ac1d22ddc07d447eac0e51",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -314,13 +322,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "e3daf391c8f7f3402151d1a15349ed18e43f7b96dde0b7a845582cd03ddbb446",
+    "content_hash": "3080deeac59ef93ed6aed4c522c5bd40057e92e961e2172e6fbaa530164bfc63",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -376,13 +386,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "642cb08b72625f2208340e6a0340d3f0b0b2dbe3ec66d14476dd609c5c458e72",
+    "content_hash": "5eaafbd681d774afa081f5d3e17fbeb22b12aaff3c8f7dcb27917e5e76204ce7",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -419,13 +431,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "f475000c8b09790b105cd15f8ad8694232c5f0d06acad6f1f6770fcccdcbfb01",
+    "content_hash": "d50c71701afd6b18b5d97afcb220591e8d0e4e070f8c5f0b48f55aaa79bd1958",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -481,13 +495,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "2f1decaf823d256e7c7b0ac8d0d8cdac8e424707d3ec02061886dbd1bfdabd98",
+    "content_hash": "b06b774f318b79d72db740bc2eda0310050fcda69d957aee7a546a8cfaa495fb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -543,13 +559,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "2abd73f7cd4d897dc7c860668649a9d6201de34188fd84dcdd59568a2c67fe6d",
+    "content_hash": "2885e4c44765a1ea702f271ac2b675d835af3dec716ff122459d4568ccf374b3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -605,13 +623,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "40aa6a31f0ddbefe9e8bdf1d88f22db89b09e856a43b9c26adbd8beb2c8db917",
+    "content_hash": "ca921d2bb0dc399cbfa4b9d01575f95ee16a9052d89f0f4e79e81cf901bf555a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -675,13 +695,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "b6a4303122473a5f932320a9041f2708e104350481faaa7029709ef3991867c4",
+    "content_hash": "7a1ac0f0c2ceeb1b1debe02e6323695ab324a0672bce0000027cdcd7f8284383",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -737,13 +759,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "28ab3c7070f561d7877bd4905c652128ce30c6bd9791079812bbb1fe8fa4dc7b",
+    "content_hash": "9450397f71390ed1cf59cb1d1c6bfd75c321742d440e1335c0649e5fbcd94bfe",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -799,13 +823,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "097ff6c1db77d02bed63fdd8070c5daf83d74a420d455e98f9573e09fd3c6174",
+    "content_hash": "3f8ca9e8f882d5882d08f9ed851dcaf2819c4fd651db4bab653abf2dd10bd30b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -862,13 +888,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "9f2109bb32f73f39b45d67769c7f43705ef92a9f160bb6a99a1e1832bbc01cff",
+    "content_hash": "1e98a43012d4feb3fa42a454730e2536a23bfc1aefc53cba2c244c7091cdda26",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -925,13 +953,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "cf999c69fb605ae418dcff1319bcbd00e41c6bf98cc75b089cdad5b6dea1b3dc",
+    "content_hash": "953a2609c653353e8ff0fdf0fcefcfe2ded1802779ca376c094f91fa0dacbab4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -988,13 +1018,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "5a4fe8f225dd935fd3a059b7eae9a8d6c80655ac2fe86b63dcfba5d79491fbfc",
+    "content_hash": "53cfae9581d8324ecbaa468977c6ca543a623e79df321d154bdd2f43a22dd7a8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1059,13 +1091,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "6a262e02df709df4013db0032609eb7ec4f42640c7203cb5606691a42e0c4618",
+    "content_hash": "332e810d7c53c6645535123d785576d23fba0dbd4d45623fe61f530a99b01299",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1122,13 +1156,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "23994374fea805e2c4b4b0d7a11777e2cb2218adefe522b2d91234a8b37d667a",
+    "content_hash": "f761e329483055b693ccabcfb8b5df8b1b0b2116c08e72624b33edce9070ba5c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1185,13 +1221,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "e6a489291507d15dde64de2480eab933defcc9410feff0393b2a2e0fcc37cd8e",
+    "content_hash": "b3868cd11b876cedef7c65f3c9b2c776ad41e0c751baf1947011f4f96d72572d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1245,13 +1283,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "53679e6de25419f80bbd31e15362c4b2c98258e8f5d668889ba48eee00abe74c",
+    "content_hash": "ba934eab4bd4662b4855652c4521830bc37f96e07796ad309dd9e8a3a17ae447",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1305,13 +1345,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "54a5eefc145c663bb1f0b7dd440d1d19b62749b69021f81fc893c45b42857bc8",
+    "content_hash": "b1e7a4fe25919807eec7d4df113a8e7b9480742f25d61ed203869e07cf5c2a94",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1365,13 +1407,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "1e1f90fb43264dc1e1e3eec6f71c51cccdaa793d0c64068b86e3abb18c943cfe",
+    "content_hash": "424fbb775ff81307ca934734bae217abb72f749bc0274793e69c5e429407d2f7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1433,13 +1477,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "800c7352df16e546262acb9ce76cd4cbd9c7a4a40c9fca2c06074422f3f63ae7",
+    "content_hash": "b039739ebf82c71d190e609044d1ce337b94a8a3efdd27497a86bd64127e9df9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1493,13 +1539,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "d626bf1d2125637d580986513ed8ef7d08306fc2ba5d442dbfe7017efb6dff4e",
+    "content_hash": "ec191a88e956ff15b1258b082354d3becdc1a1c1c8af5a67b028261e660130d2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1553,13 +1601,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "2ebb3d9575e762f9b269e9a10e6a34bf0c0ad87e2efd01fa6967a53d2d5a12d4",
+    "content_hash": "4760448febefbb305f5f8fc030eac0f55048c1b718f2884d4e1000cc9538dbe3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1615,13 +1665,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "162f70e95c2d2bc6aa37849dcc5f970d700796117cd527c4dff4a78bf83c73f2",
+    "content_hash": "33ea5d96484239881e73ae8388dc32d48f4830fbf7ba65da6b8c9916f749f2a1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1677,13 +1729,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "c7b5edc949f1ce622f9aa0d96ac9b32fe310f7d3d59bf5ada1d58e19ab8a4102",
+    "content_hash": "31c46918506c2152fb32e8988ecb1e0f5700a75d37bb1b97ef4e11fcbb227981",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1739,13 +1793,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "51df1d003f307c165e313ef14b952c9b992a284ba679f02ca14cb340fbd9afa8",
+    "content_hash": "058c5bb5c13e32092cb82ca3d08f1f6a5daccd65241ab15fa4ffe2fe481059c2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1809,13 +1865,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "f5543dd8407492e71d590f8f02b269fcdd8491dfa6d848585275fe57d717c014",
+    "content_hash": "234c04b4d317d8b608333a8553c27f8268a8fae58e2e08dcf95e9160d69a1fbc",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1871,13 +1929,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
     "version": "1.0.0",
-    "content_hash": "3165193a57dd7c40e6331b968b00cad4c4b1c1ccdd8beeef55e43d1237226645",
+    "content_hash": "74e05aaf3ee00da08d57b727c92d6006c45b71288ebb30d49a719dc02d1dc856",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1933,7 +1993,9 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   }
 ]

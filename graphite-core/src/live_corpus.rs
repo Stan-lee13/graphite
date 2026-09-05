@@ -331,6 +331,8 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
         account_writes: 0,
         cpi_hops: 0,
         signed_transaction: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     })
 }
 

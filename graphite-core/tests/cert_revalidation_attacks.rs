@@ -148,6 +148,8 @@ fn cert_p0_1_whitespace_padded_discriminator_fails_safely() {
         signed_transaction: None,
         transaction_instructions: vec![],
         cpi_trace: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     };
     // Fail-closed: the malformed discriminator must be rejected — either a
     // hard error (invalid hex) or a non-approval. Approval is the only

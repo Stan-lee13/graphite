@@ -2,7 +2,7 @@
   {
     "program_id": "3W2y8TuU2rKf4qvrKZAbu8Tu9najg9Bvcwfsf28aW3rs",
     "version": "1.0.0",
-    "content_hash": "0a5be5e267146880e1af4db2ef1f9c2249d1e0dfaece432acbd438920837e251",
+    "content_hash": "74db043f63251684af606fee84ebd02ad631e0fb6c8a418d55f0cb24a0928a07",
     "expected_approved": false,
     "source": "real-mainnet-exploit:3PbK87xn2yGs1m4nUgaGjrLwmTChPFgGg3aLwpi8NY7nWF78cY5ZQwvM1kLSGFd5hVdnmJ9BP19vkbpsji2DiK3A",
     "deprecated": false,
@@ -43,7 +43,9 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   }
 ]

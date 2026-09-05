@@ -86,6 +86,30 @@ pub struct VerificationInput {
     /// programs, repeated revisits, excessive depth, and impersonation.
     #[serde(default)]
     pub cpi_trace: Option<crate::tx_pattern_analysis::CpiTraceNode>,
+    /// P1 fix (2026-09-05 audit, "no real ALT/v0 transaction awareness"):
+    /// the caller declares whether the underlying transaction is a
+    /// versioned (v0) message that resolves one or more accounts through
+    /// Address Lookup Tables. Graphite has NO independent way to detect
+    /// this itself — it only ever sees the flat `account_addresses` the
+    /// caller supplies, never the raw transaction bytes' message-version
+    /// byte or ALT references (full bincode `VersionedTransaction` parsing
+    /// and RPC-based ALT resolution is tracked as a larger follow-up, not
+    /// attempted here — a rushed, hand-rolled wire-format parser without
+    /// the `solana-sdk` crate carries real correctness risk, and getting it
+    /// wrong is worse than the current honest disclosure). When true, this
+    /// is surfaced as a non-blocking warning (P12: ALT usage is extremely
+    /// common in legitimate, complex swaps and must never itself reduce
+    /// confidence or block) so a consumer of the result can see that
+    /// ALT-resolved accounts were not independently verified by this
+    /// pipeline, rather than the blind spot being silent.
+    #[serde(default)]
+    pub uses_versioned_transaction: bool,
+    /// Number of distinct Address Lookup Tables the caller's transaction
+    /// references, if known (0 if `uses_versioned_transaction` is false or
+    /// the caller doesn't track this). Purely informational — included in
+    /// the warning text when non-zero.
+    #[serde(default)]
+    pub lookup_table_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1615,6 +1639,23 @@ impl GraphiteCore {
             ));
         }
 
+        // P1 fix (2026-09-05 audit, "no real ALT/v0 transaction awareness"):
+        // disclose, never penalize. ALT usage is normal for legitimate
+        // complex swaps/routes — this must never reduce confidence or block
+        // (P12) — but the caller-declared flag makes the pipeline's honest
+        // blind spot (it cannot independently verify ALT-resolved accounts)
+        // visible instead of silent.
+        if input.uses_versioned_transaction {
+            risk_warnings.push(if input.lookup_table_count > 0 {
+                format!(
+                    "versioned (v0) transaction using {} address lookup table(s) — accounts resolved via ALT are not independently verified by this pipeline",
+                    input.lookup_table_count
+                )
+            } else {
+                "versioned (v0) transaction using address lookup table(s) — accounts resolved via ALT are not independently verified by this pipeline".to_string()
+            });
+        }
+
         // Phase 2 (best-effort): if an RPC client is attached, fetch the first
         // account to provide additional context for L3 (simulation) layer.
         // This is intentionally best-effort and will not hard-fail verification
@@ -2922,6 +2963,8 @@ mod tests {
             signed_transaction: None,
             transaction_instructions: vec![],
             cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
         }
     }
 
@@ -3015,6 +3058,8 @@ mod tests {
             signed_transaction: None,
             transaction_instructions: vec![],
             cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
         };
         let result = core
             .verify(&input)
@@ -3090,6 +3135,8 @@ mod tests {
             signed_transaction: None,
             transaction_instructions: vec![],
             cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
         };
         let result = core.verify(&input).unwrap();
         // Should be blocked due to unverified CPI or authority-related patterns
@@ -3215,6 +3262,8 @@ mod tests {
             signed_transaction: None,
             transaction_instructions: vec![],
             cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
         };
 
         let result = core.verify(&input).unwrap();
@@ -3277,6 +3326,8 @@ mod tests {
             signed_transaction: None,
             transaction_instructions: vec![],
             cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
         };
 
         let result = core.verify(&input).unwrap();
@@ -3371,6 +3422,8 @@ mod tests {
             signed_transaction: None,
             transaction_instructions: vec![],
             cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
         };
 
         let result = core.verify(&input).unwrap();
@@ -3513,6 +3566,8 @@ mod tests {
             signed_transaction: None,
             transaction_instructions: vec![],
             cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
         };
 
         let result = core.verify(&input).unwrap();

@@ -59,6 +59,8 @@ fn system_transfer(profile: WalletProfile) -> VerificationInput {
         signed_transaction: None,
         transaction_instructions: vec![],
         cpi_trace: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     }
 }
 

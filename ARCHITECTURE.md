@@ -51,6 +51,12 @@ Most account roles in an instruction are genuinely **externally-determined** —
 
 `ResolvedAccount.identity` (`Pda` / `Constant` / `Unverified`) makes the **remaining, unavoidable trust boundary** visible rather than silently assumed safe: an externally-determined account (the large majority of roles) reports `Unverified` honestly — this is not a finding or a penalty, just disclosure (P12: absence of verification is not itself evidence of harm). Closing that remaining boundary for fund-critical externally-determined accounts (e.g. confirming a token account's on-chain owner matches the transaction signer) requires live account data and is tracked as a follow-up, not claimed here.
 
+### Address Lookup Table / Versioned Transaction Awareness (P1 fix, 2026-09-05)
+
+Graphite has no independent way to detect that a transaction is a versioned (v0) message or that it resolves accounts through Address Lookup Tables — it only ever sees the flat `account_addresses` list a caller supplies, never raw transaction bytes' message-version byte or ALT references. Full bincode `VersionedTransaction` parsing and RPC-based ALT resolution would close this properly, but this crate deliberately has no `solana-sdk` dependency (see `solana_types.rs`), so a correct wire-format parser is a substantial, hand-rolled undertaking — attempting a rushed one risks parsing bugs that are worse than the current honest gap, so it is tracked as a follow-up rather than attempted here.
+
+`VerificationInput.uses_versioned_transaction` / `.lookup_table_count` let a caller who DOES know this (the SDK/bridge constructing the input from a real transaction object) disclose it. When set, a non-blocking warning is surfaced ("versioned (v0) transaction using N address lookup table(s) — accounts resolved via ALT are not independently verified by this pipeline") — this is pure disclosure, never a confidence penalty or a block: ALT usage is normal and common in legitimate complex swaps/routes (P12). The pre-existing `account_count_shortfall` finding (C57) already covers one symptom — a real transaction supplying fewer accounts than the manifest declares because ALT-resolved positions were skipped by a pure reader — this fix adds an explicit, caller-declared signal for the general case.
+
 ## Security Boundaries (Constitution)
 
 - **P1:** AI assists, never decides — separate process, no override capability

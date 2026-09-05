@@ -383,6 +383,8 @@ fn exploit_l19_unknown_protocol_permissive_bypass() {
         signed_transaction: None,
         transaction_instructions: vec![],
         cpi_trace: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     };
     let result = core.verify(&input).unwrap();
     // Unknown tier capped at 0.55. Gaming threshold is 0.50.
@@ -455,6 +457,8 @@ fn exploit_l22_low_sample_count_skips_simulation_check() {
         signed_transaction: None,
         transaction_instructions: vec![],
         cpi_trace: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     };
     // SECURITY (baseline trust model): baselines are trusted state seeded via
     // the operator API — an attacker can no longer supply a low-sample-count

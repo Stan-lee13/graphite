@@ -2,7 +2,7 @@
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1dcff0a9283e07ee554f70d2b71a5655b2b3a8ac4ac34ea4119c5b994eaaf61b",
+    "content_hash": "5f87b2ea4aed4d07fc1b0d1216a490148b4a825bff128aa5ec28ea710163daf7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -53,13 +53,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8f7bed6e2e70c13d414bccfca2e4b95cceff30ca196e9711b4e6325087033981",
+    "content_hash": "d2a19957d0d0d7b1ef9bcabf343f423774bf94ddf0ab64cd20378ac6163493d6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -110,13 +112,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b88f928999ea9cb3e8fcb47816b715fe9a6bd7a4a85984ed95c86248b7915bb7",
+    "content_hash": "608f3484c5a5cb538e128c3c68f2b2e7476a81b60751d4481c9d2fddce8d8210",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -167,13 +171,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "a2bd6364a0fb3997394f410c36ed881d3ec0a650ce701449382b7859d1d93c30",
+    "content_hash": "b193c8ee4aff435631dea34e3012a624157f2baeb9588d4864a30dc4178207ef",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -233,13 +239,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "218473be93882be4ac9709271dadaa2f284f744eb8ef0770d6184f2adac8c2f6",
+    "content_hash": "bd50dde30e7c93a02f81c8d6222f72a5b1f7d1aef1f21503e9c31f4ac997ae2b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -290,13 +298,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "89fd022b7da5de00645a2f5cadce1cf4180711ded94f2b458d7623ec71a7a796",
+    "content_hash": "46731ec1750dca55bff1bafa7fb1c108c856a0f6c2307847f87c7144f3e9fd7d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -347,13 +357,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4778fa0f8f1413f6c1e4e50e0451dc99572c5cb36f6ae658376ede412234a079",
+    "content_hash": "6b443efce703f0d2591379b868b136b8ae035ad7fa414cf4cec485d8ef2e80e6",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -390,13 +402,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "76f19f4b12aef9682469406378d1061c8b6b860d86db69f91e2b134bc30ef703",
+    "content_hash": "447f1be71b6a7367de7b4a71c793babc9857d52e0c3287ffcfc4b25a254c3e7e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -447,13 +461,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ab55329a3aeddfc7fee267559ecca3f9b1f630050807c58e847c46f8b6e27c29",
+    "content_hash": "e2ba68a24b9a97491eb8192c251b27ad9aa02ad1adf4c84e44c81d277202302d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -504,13 +520,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "a728f4beefad78c2b8b2b0a7cfcf4f2d4455ae9a9acb31cf33b149b59e83371a",
+    "content_hash": "03197d1708d251ddb3962875b0f16afb58e4d952bd1454e88be4f009316bbb63",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -561,13 +579,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e0bc222c5759dc07171f6c0a5755f9ede84336b0a11ca6a68b1da3834987ea13",
+    "content_hash": "8cc95077d33ec754d0e61b879f67137715d966f095e149fe70965ce0ba2ac824",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -627,13 +647,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "a2c9e0e1f6b64755003de4da574282a851737b4c4c8f818d5d1e05fc347d81ef",
+    "content_hash": "8793324d719def19341f1a1146350acb2c073cf36ced7f4edb26b613aa60085b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -684,13 +706,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "de9f3ce7bd8921c7af414f7f9caee6a491290b7faa5c6324924c0bfe5d29936c",
+    "content_hash": "5a05f251cea0b07a12fbc5c78e164ea20f510f33e381741d4bdb3dc77adc2a72",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -741,13 +765,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "199a962e6d803bf25467e36d66e248c3ac48c6d4a1a6d63948168281d5aa31d0",
+    "content_hash": "82f373d78fa78a5ff1f13ea89013860f05673fc181b36f353ce877427f88191a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -798,13 +824,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "0aad2a6d5fb48584fabdcedd465e22801edf56e8321fcf9ffbd6870faf1b6966",
+    "content_hash": "ae920824e83a4bf4f9683392d0a03bb986e2646701ded25158e380d5512be741",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -855,13 +883,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "22087db8fc1fa6c1fbc4e2717f026e621b9d6fad01081951984846db0804aeeb",
+    "content_hash": "6c4d545101927865e5724c0f6acc63d8972ea7d3f8fe1a31f97445a4585913bf",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -912,13 +942,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ba20addf7a9c2ed02d96ec8e491439bb893bcadd826e48d6e694cb8867d56880",
+    "content_hash": "6efa59181822c029329e447102d019ffe000b655020a947b071200aa4376e5d1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -978,13 +1010,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "08cbae68e8ad46ef36f7efd7ed0de30f08ffa4786cb1ec11b62063531e854839",
+    "content_hash": "adadf245e83d7349fbae56444b2819fa8e69fcce26669d785f9cc74d1455a3ac",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1035,13 +1069,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "d93b3fa26683f8b1b05337f6d9ae65186e8110b99782814dd7d8b47fa31039c0",
+    "content_hash": "54c7853df38abcebcd8ec6cdd6e422f417a8c8d8bf489addea8ec8c79f0c332f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1092,13 +1128,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e44918580e9a2569007e919eef4958cf0dc522221c8f44be5624feac23ec6287",
+    "content_hash": "6b05aeefa8dd160da29ac0cf9e8d68c0dfde97fc8720506998ae822d129681ad",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1149,13 +1187,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8ceab3e348231f25a727a9ea7877e5515cb5dc4aac9440f0e5e1d37bc6cb4f7a",
+    "content_hash": "baad85b09bbf425dc5754938b9cdfd0c71753f9a73208f03f0c0321a3828fd20",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1206,13 +1246,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "23ab948da3eed4d6b9b9737057d915929222c44a73de1a38ead4cd7bb218f8c5",
+    "content_hash": "836633f70fa401ed8ad22acb93bb02153269d7bb4ce2dd4a5d173e3557eac653",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1263,13 +1305,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "bc8aeb9fa805d129bc076d5446c9a2a72707f51fc9f56939240ac761930144f3",
+    "content_hash": "32d6000215d81d2812d4cb181488af65f26f826d9bb970b6c9900575530a8236",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1329,13 +1373,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6dcdccb98d04ce02e8e937d520579e7ed52f81dea44c430edd8058878fa0f9ce",
+    "content_hash": "3b8f10a5f96f4c94dad3600fe3e51428d8da852a297543f84f411fcbdf456f9b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1386,13 +1432,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "5f58c3b69981aa61b6745f9aef26b4bfccdb0ee5a5526d57a12d7bdbbdb8c10e",
+    "content_hash": "342652d9132f0758765709f3b20611effddc6b7bcace77c92ddbc7d92412e542",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1443,7 +1491,9 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   }
 ]

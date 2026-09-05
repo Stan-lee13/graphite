@@ -216,6 +216,8 @@ fn full_pipeline_blocks_on_substituted_token_program() {
         signed_transaction: None,
         transaction_instructions: vec![],
         cpi_trace: None,
+        uses_versioned_transaction: false,
+        lookup_table_count: 0,
     };
 
     let result = core.verify(&input).unwrap();

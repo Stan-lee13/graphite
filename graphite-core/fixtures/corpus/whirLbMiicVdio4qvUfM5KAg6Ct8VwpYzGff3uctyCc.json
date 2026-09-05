@@ -2,7 +2,7 @@
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "61ec1e26027347039905ec9a465eeef1dc473aa690a651dcdf55a6551cbf7238",
+    "content_hash": "97f63c4f580691fcba5be1f2c702fe90a8cc6b817ab78a661ac41d395f889a5f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -62,13 +62,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "30c57428e471ad8ae66d4df08762a70bd741f42abc4c8d944316af978abc15e0",
+    "content_hash": "ad903ba2948eb826ee91720ad86bd1174faeeefae1e47b837a3a856049168fe8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -128,13 +130,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "0721ae00a7bd4262ccebb8296ff5b47b72830c6acea514e710eefed5a1e7173c",
+    "content_hash": "ba960fbd69e04d1f90eeacc15490ce5c04986861c25ba95b69ea69ef910ee4a5",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -171,13 +175,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "e498e781faa78cdcea570a1ebebc11d70ec2ed372d40facf0bb0dce340b6ea2a",
+    "content_hash": "d37085a1d3f0fe679b588866b9a46d3e85dec8ab7c49f7ad0c3d67940b92d32c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -238,13 +244,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "e0a918bb1685acf9702445d76671a1757735e0bdeb35f1b3ed4dd0bbb98fe45d",
+    "content_hash": "41e73dda2c430621a41ffe002800feaca3650f61e67fc0b93f5801bbe7a048c2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -305,13 +313,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "bd539a01c501c03afb9e5cd7d0c5c83fd8ef014d53bd3e85b28468d11f83ae5d",
+    "content_hash": "e81763ceda3e54c78b3e9e0800329a607ed61ede05912e9a67ad857f01641546",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -372,13 +382,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "60c59e35d03ee2910d347c2c290a7fd9302c486a9610a527a3fa51d226b4dc94",
+    "content_hash": "ac4b6eaa6ccfc45defcfa0b632b64bf5bb536145a314df2728e03ea4b2d6c35b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -439,13 +451,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "f827bbc98f89d1e58425fad6a7f2a5eccd6115520c9618dd1c4506dc0d0d0649",
+    "content_hash": "1d313d0e01b27feafde1dbe939fa9437b7971c3afd89f7f411824a202f99ad92",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -509,13 +523,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "986b37ad15f230429ab720fe8953df2d2b0596f58c6cc757c0f90bfbed265c50",
+    "content_hash": "d79a7afd3bab2232f25660c4a059417fcd4e48406469e613744b0930cf696911",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -579,13 +595,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "f76bf8f4aa14b6320fa5a27288c2fd753e502fb4e301f096a911d14f5a97fe8d",
+    "content_hash": "bcf39f8bf2c466e17186dbf73c9b2e03ae948904db33a43e5477d491d2c685bb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -653,13 +671,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "631d725e82dd0793394de5391f594256fe19a365908605eac2147b45afcdb7aa",
+    "content_hash": "55906f89c0f6c0cec1df34b21f6ba609ff7831a0d56cb66b04c93d2263177e90",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -727,13 +747,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "7229ad6e6fdadeeae579be82af1d47d4c0359a8d13bf3520d86bec550d8035a5",
+    "content_hash": "3c386e875ab6a197d6234cb870f7bab08b6ae2941f51637664ace537f22b8ee9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -796,13 +818,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "c43b6ae879c1ecba1d38dc3cf39c2d88bb51176ad2b1c5ec8bec470a5b7fdfc8",
+    "content_hash": "c4812a6cc9c21911936d9a716e0e312348f708ac78c8643777d09be648e17a40",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -865,13 +889,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "356b55198665718e145d04fb5f8f39a7562dceb25c1c9703201aec87a3b0ad7a",
+    "content_hash": "da7afa94f1b44b7d7cf0304e0c363a44b1d5ae0f993ef3814217dad58107d582",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -938,13 +964,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "ccb2a76961a5a3006ff7f26d12381b4ce9016a372125869fa1f57df59cf37d20",
+    "content_hash": "c291a5daa6ae22298a770206e2cc2e32fd7c3e25b258c7ae704826485b2a65ff",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1011,13 +1039,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "ef5c22635fae4499b9f285a547bc334d2352d0ba39c5fd2eefaed91773889240",
+    "content_hash": "3b72f69eb8fe10d5aee03899dd0ffacdabce8588aea5cfcc04a878f42a027a37",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1079,13 +1109,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "05c187f1882a3180b245610cd4eb6e95a8387ffee103bd6a4ce7ef3317eace7f",
+    "content_hash": "2c544f592e1ab159d4d6ba6bd5ae70b53bf3c7d5c30ea2a5233b1acb82cf6651",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1147,13 +1179,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "89af081494eaf9baa983ef38283df0d8682078e1206a84b443f904bdd1ba1583",
+    "content_hash": "999aa6b3c8ba4e8b1d254dd8536f9616932464276de1ba4c165707f7f3b491ce",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1217,13 +1251,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "139e8624497228b254710c6adf3be852c9d99f7af7660a6b3ba2bcefb1024683",
+    "content_hash": "244ad4b14c00402b1e4354b6b42d36083930b7752bd546f9901cc01ac8b2403b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1287,13 +1323,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "756b8682b9d19d95a66bdbc4230c5f8bc51d7549b78e77968ece084cf608c5d0",
+    "content_hash": "78eeee6b4c85b03eaeb86d9b0d6d2cc4e484b9d4a1db37af3a00616448333eb6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1359,13 +1397,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "d2f018fc61d5fa90283d1da77afcb92096f866d627a51f39d7adde40b9625279",
+    "content_hash": "92161e283ba11a038ff7aa0f51a9d3648cd701a12b082bd9b40667d5fee6822e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1431,13 +1471,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "069ed44a9dbf05d46fa41f89319bf884720b7a8aa4ca6ec0f73e2802c6264e08",
+    "content_hash": "a3c685c28debd5ce659f234a8cacf65a764af3926493e20d01a93ba2c44a3a71",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1507,13 +1549,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "41f9f6b0568a72fca85b8a9e0c69a1380a476e79776b4b8ce6a661039f9f9dd6",
+    "content_hash": "ca3ee16698dd95c7dfb8a2b75439d1586f1830a40d4ca21e0a502fd6adc34f69",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1583,13 +1627,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "dba8a95f51f6f34ccc652e21524711965f15f1e9c6f9b7229ee5e5195afd48aa",
+    "content_hash": "698a2739b1b9f2f01edf9fce97beea3fe31a92d067b6f5af328eebd76fb828a6",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1650,13 +1696,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a3700bb33f2285068b6419135e62fe28db28e59fda8b73006a46f508d6e3bf55",
+    "content_hash": "aa09ba22811dbfe6b377216a5ac120d24fa85067ead35bd9782677c96eb451a5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1717,13 +1765,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "57d09d930ec67217d40dc490fc85904299c1c554ff2e31e9d2e0f00b58e6333f",
+    "content_hash": "f619d7a967d36bcb1f024a80fe929da34ab7e1791b171a5b0860efd0d9d0c981",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1784,13 +1834,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "d99ec780f7b509a69e5cfd0b97344ae196f47175261845f2d41bd22310b2ce04",
+    "content_hash": "cddae590ff1e05e302ed6c8c3d521c331a4c58630fc30c70372c73cb581d7801",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1851,13 +1903,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "2a9da9bb1866c639f42f47385087daec5572a2847cad23153026df72eda4d043",
+    "content_hash": "93f18bd113f20ae7c40e2b166f3deac69c21aa16f0f4ab38e4817b31f12c6f49",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1911,13 +1965,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "acab8c57560e58ace321e62d40f4ade45bca9c62ef65f32487318e8fc207f384",
+    "content_hash": "ad417844a1667ce7f2b12dbef13e141f179c95c7fc680ec8e924ea8176eaf488",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1971,13 +2027,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "3fb239d9697e4b462ca073a1aac88c6e2fcda28b897660ec354fd88be3d597cc",
+    "content_hash": "b81707c7ba4ffe5db3d0079a96235590eed65995702249eaab25755b8121943a",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2042,13 +2100,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "3ab860f8aa46cc41c7decf85021218cfdde482fec9934dc1b43ad75bb9599d28",
+    "content_hash": "835fabdd08673aea23cb1a6e1fe2f7c43f5a74fa45103ef1fc4ea909be65cb93",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2113,13 +2173,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "314e6108a76906799a15d317fa1881d932a55926053bcd3e4168deb652f55dc7",
+    "content_hash": "8b8302e60c6610b34cdbc40c9e1c40191b53a77ecc0723242149b898bdfaa589",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2189,13 +2251,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a315b428d993b96144ca24621e51f327672c933d0cf3f6e4a4b0ac127e1618a5",
+    "content_hash": "771c71245a240728fe52c91d017384be872857021f8ee5eb6d1e26d47986e80a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2265,13 +2329,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "39f2b3c8196eae2614b427b16bff5ddef9619f9eb8b59c8d87eb067e413faad0",
+    "content_hash": "60b8810c02cdf136532eb3653107ffeec991f491db402065bda66babc52ac983",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2341,13 +2407,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a8e47c554a542e0fae84395e92e734b65c4a0f15e48578d8acf2018b683f6f4e",
+    "content_hash": "61bdccc0d6ba9b18101b4a4ac38ab2d7ed9faaed75d26d56796011a9aa09846a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2417,13 +2485,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "5662d2ab90e8fe85b24e5c4eeff987af65ad5bb71cd975e3ad63317c15479cc9",
+    "content_hash": "9b86eb5a44d853b9da50c7a9340f5ecee72947a6e76b515cf0ee8482817243d8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2480,13 +2550,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "09383ec8245f78ad1ef31d1e32e9acc0e5129aa745920afd3bbc9bdee40760b5",
+    "content_hash": "f1a51e4f007c04ba8174e8b7d1615c4d247d6eb72b1f3c248b14c969ae97cdbf",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2543,13 +2615,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "62e8bf3a452604e49e0892b28cf4bc74c15d4a3a0891fc545719f30e4c143eda",
+    "content_hash": "cf78ae11f464a82b77434a686c02eb953170e985f9037a718db78d451d08045c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2604,13 +2678,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "218ed10764d4008c9f68b68e1d2e1c67500bd28a5a17142c4efc623665563dc8",
+    "content_hash": "0fe4f1d6ee0e1ff8b604d0de090b997249357135862becf0652666858e6d56ca",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2665,13 +2741,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "82d37e1c414917ae0c5036aced091760e24c491c7c57f92234a0f6fd789c7306",
+    "content_hash": "3b25b9fce4d81bbecdba1f94d0624bb909c15bce04f3a0cde9250e69823c5683",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2731,13 +2809,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "ee6a4d59841db47c4155b2ff16ce30762ea9a6c952dc180fd7511e869559acb7",
+    "content_hash": "db1f23f9e001162a03c1cdcc649fbd11f022b273618079cd040ed4e9aa8e902f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2797,13 +2877,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a2c7cb3dafcf7390cbdcb0cb7ef8453ac3e73bcdaee8d42c7939924e0ec1b033",
+    "content_hash": "66dea1fe6ce51f6e7b38fe976ed62b8df4c2d9a3216b9dccd3d1636c717c6134",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2859,13 +2941,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "d66d912088ec731abf83f53aa54b334b79541315ee04865594024d9b3db8cc0d",
+    "content_hash": "7a52721a5aea7ae09f4339aa24c5cd0812a93787abd57cb17589ef64e8ad54f6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2921,13 +3005,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "b55d91f02285c968b00a0cb2647d94f729ced8c486c51421ecec1a082c968bb9",
+    "content_hash": "52ad7c82be70ba49796051ff8dd569fcfe96ebe55383eee521f96b20ae779744",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2984,13 +3070,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "41f62b98b72e0cbe79ad6f97f47adc6a69a5d155150afa226be620b3007f52d3",
+    "content_hash": "d21c7b939d37db685332f4770a913b18a3225f4e8c138f45d1aff4de980afe7f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3047,13 +3135,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "60af819b67acf45a731a083da4ab4bf50f9f9cc75d8b41d0efa597da563bc2ea",
+    "content_hash": "5a47533f436abd888096647e834706826ee571a23abe3d5a633fd9649c63bdd4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3119,13 +3209,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "efdc23ce359d85546914dd37b4bc1b006cfda8e4ffee4640f9b6653dd70bd52d",
+    "content_hash": "36e69366348a789d572e57ae6a285e5b71867449ae995b181ccfe0d1253ae7e6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3191,13 +3283,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "c98b5c200aac2c3e7b6922539295ec720d150213b7b61126281091d27fcea529",
+    "content_hash": "176bfe5c8d1ef2a7652f3da97e714d6e8ae8b91bb2111031e19a9d58440e2a03",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3266,13 +3360,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "426a8cd2fd8c9ceddcc6d999dd97c2fb372da2a6e684f1afadff4221eecd8d83",
+    "content_hash": "9e441fa9893d20cb36f5c2003162aaa33ce4076fce93c6a9218024df7828aae1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3341,13 +3437,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "7aab88fa81407204518b7fe3926ff548976cf124e4008f97e2a0ba807fbb4522",
+    "content_hash": "54d4e96a0995f8e3a060d20ed10b932a0513bd15e2eaf293c9be43f369fef888",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3418,13 +3516,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "5ae527d919c5a964240f35ba3c6593fb5815490836c73f40009a1df3ec8d08e4",
+    "content_hash": "44c71c160d3da0208fe705fdb70f0d4386720f78bbc45848b17d9d244ea6fcdb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3495,13 +3595,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "e677691cdc252a8fed2888e856d37ee002c521e652e4507682dca13ad0241c17",
+    "content_hash": "eb5521ab4b080237c6e6c6589dc285fd65d331da8006a86c120057d6808424f6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3565,13 +3667,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "ecfbf38e0d8a45de56b319eff7b42fef1e5a8508fb01371367626dc7b51f9dc6",
+    "content_hash": "266caf75e215daf1f488d1a3984571d42319e2de2dcc366f628f4eb782f41db4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3635,13 +3739,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "273635b93bc65a3f44d6660bf292d7c2c14ebd92d78b82d3a1bc4108f5b2fd23",
+    "content_hash": "d5bf67b81bea9f876eddd0c9ff18166fab3f104b71671db0a2bbd72ad6e7bd96",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3708,13 +3814,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "9c6de983acd3f7df7b15f9c5aad7bc7ab1bad910b18a295d87274ce43293c584",
+    "content_hash": "620243e67d3aed70063869544b5515019fdd097007d37afaf702e19309e7cb39",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3781,13 +3889,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "3ad129f607cdc5030111c5a35be052ce37454ca2d949f4dab967826f82ceeec1",
+    "content_hash": "4ef7a86a550f80799ffa86c57a9b4acdeb7aa448f674234ad661b65acf6a4a45",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3850,13 +3960,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "5e285fafe2323428200fdd164bcc50a9964e43ca4b4e33a1142d9e0c8c74c26c",
+    "content_hash": "f4d76132f9a291925c2720924999066ce8fe6fa69bc7628c53bd1696396af335",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3919,13 +4031,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "02dee877c46598c022b7e505ae31bbdae3486282a17fb53a41564c433f981cc1",
+    "content_hash": "958740189a3fabb881204a3a988d54fc45915461ca27e64c575a4258b46f34ad",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3989,13 +4103,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "5aa779ded820577cd1dc0890028c104bc83936f6f174275577904cfbb1cd2f59",
+    "content_hash": "40fed0a20cc92188f59d5b18474e3ac108e3d01d7a37467733f625bc056cb162",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4059,13 +4175,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "71531708f95077d56f34dbc091fc2591936afa74ba5e1606d5c2c765b8ca90b0",
+    "content_hash": "8c7e3d021ff60248e03152c1537cff6067aa28e66b1d95a20c49885cdc9e4366",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4124,13 +4242,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a72e314bf92bd82f69742f0df303a910d959245949c7f01794b7c7bafd464e8e",
+    "content_hash": "5e6544b9e90fa64d9f8fe791ec6036ec1c4aadbfdbc34e208098427f501ba98f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4189,13 +4309,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "7185d0ad91825ca0eb81323b16ead704dedddc1cd75b7cc7c92e6285f0a81160",
+    "content_hash": "93b56a0f1b6564d4d3bf075a54067530a82601148d2b1bad87836f8d9ae98773",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4257,13 +4379,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "2077cdd9a26fdd4dca413964e468b20da1fffa1e6bd40f8b79c51226a6b92aa7",
+    "content_hash": "8d2253e9702719bfb41ddba25b869393d73b3179a501099eabe947378bd36c31",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4325,13 +4449,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "8f046a5921315d3c90a43a6b3b02c32d904f6b06991e7cc7bcf283f8e1cac95a",
+    "content_hash": "b8af7b330a6c258b27d6d0e7c68ddb188c5116c21d1d124bf29e5a053dea985f",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4395,13 +4521,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "8d0a45d1ec1bf1b9ef306d9e68d772663af043ffa92cb140b90bb36e0cb9e699",
+    "content_hash": "ae124df97fd5989c5e786fc45d8cf678d6d958dd8479cad0592a278da89bd95e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4465,13 +4593,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "06b1de725fcc0eb050f936a7acd358eb2feac3cac04cf5e0c443d158b0b15455",
+    "content_hash": "ae472a9031f7f782e14d2013548720014a6dc0fcc0cfdf322a78ba47d91d069c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4524,13 +4654,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "f22699c1fe41beef23be8d774b4143d64c460d77d16bda5989ae7a2ff7c02846",
+    "content_hash": "82e1dede4ac9c92806115d1adfc90308587617d81638a0238811e22fc4edf5eb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4583,13 +4715,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "5f2f823108a002b8ebe7dc63016ab0e1e27a1fb27234d1ff821644cb1e63e1c3",
+    "content_hash": "bcd797311d986ccf59182884fe987d6cbd2d386c5f842dc6623948aa7a2ec974",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4652,13 +4786,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "5302e61a1648946c15d8b504383e769109e3c7257f75c07c3647e4b2df680cf4",
+    "content_hash": "9eb13a503999db4228f22e53ecf83f896d00b4c469b0ffa80bfa3222a56cddb7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4721,13 +4857,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "9ffa5ee3be34a8ca4652c9f37c3305e891ed68f00f6330a39ca75d4b319d90f5",
+    "content_hash": "221e1f23a40a53f1004a9e8563d89907b5f9167bbfa15bbeeab34b9c7e7a1258",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4792,13 +4930,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "213e6f5dd2c9662615e28ffb47633be715817649bd96ce62036bffeb7c18131c",
+    "content_hash": "802d5046df7ae9e8797fecab32a96fc44f0ea6146ca278a2c82d260b3f8e4370",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4863,13 +5003,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "0715f3ad267a6e7f2450f93ee571b80cd0241c5772a4eb83ba8a10ad4ea48408",
+    "content_hash": "0a6b998671e50b89f32b9f27887aadf427099d7f1119afb798f9a748b8afa7a7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4937,13 +5079,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "09440366e2dc58c2ebfbfea8c7a31dc3e92c5db75abcdf384f0673e69eb01cbe",
+    "content_hash": "b03201a55e280e28751fce517561ee4cab95b22c0003f0cb795a67f8707cc36e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5011,13 +5155,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "32a92e2da5be5f1c739188f40465ada02d170e0eb16d2ced91336a138b86a5c7",
+    "content_hash": "2b189d8c802c4e98deb11ec75b1d4647d5de4fcb6fee1a4a8e3d5656f716ef43",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5082,13 +5228,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "e01a01a9a0cc5d56bf54e56e9552e71a34388318e8ffb62b7f930a1a0bd3721b",
+    "content_hash": "97bcaf05010b618416fa4c24a7d362fe110a780d3d958f50a670642ff2feb67f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5153,13 +5301,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "06df32c67fcc234d9694d73d42fa18c277a490ed27a5043ed13688d36762adec",
+    "content_hash": "d8ba91a4f4c8ca58d398628ceb19878d3266dd2bb0d851feaa959f40943b9413",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5233,13 +5383,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "b0b78055f3475864f58c8ebe0d945221e08ef2711453501bff0f55fe74972ea6",
+    "content_hash": "0ddd1e309793686afe8077dedeb2fa375de826816b5cf7caf39a3e84615421de",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5313,13 +5465,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "b6096cd3a510b6c3a1ad7886d809a5112ed1cfe4b8e00f4582a8e0dd26f5e787",
+    "content_hash": "966c8bac12d4c78598e7fcf9f2537725fe239f04c21121e36f035d0717fb06f3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5380,13 +5534,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "d7b930e8858e4e27a9efe745ec3ab8fd52d8f193956eb78248af084bd3eff599",
+    "content_hash": "66cf234dc6bf997c1348838d105822b32c1305e91eeb5093e855715a9bfb2078",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5447,13 +5603,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "435c5283e3dd331a2662fb5d0118546ce987d193184e3c9d39c64c3828bde675",
+    "content_hash": "a67fe3ab441d46f9663575dfab2a7d096a2022e2a43c7b442541bc97e8fddb55",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5509,13 +5667,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "809bfaa6e808e2bb7a157e776bdc6e6a3c73190945d9623cdc6754e8ca8b29b2",
+    "content_hash": "ea00e057bc480e2d4bc47c8ad014b164eb3adebe2a71cc35a91eb9221a8965af",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5571,13 +5731,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "bbb8d06f060646dcd01feffaa070aa9cf6cf86b85838cefa9bc102730dbeadcd",
+    "content_hash": "bf71e6fa46cc3ecd4c5e189912bce6a12183f188c7f2b1c57c29b6f97bc66cf8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5632,13 +5794,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "8bb59decc310ebfc6d9678c7c908f22ce7d1873449f997e3a16f294266b3a25e",
+    "content_hash": "97e63bb31432c3aece8f6c95774d6af492dba0b082262f52089f01f3eb3d0c1a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5693,13 +5857,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "1d5945401360da1db994eff5bdbdb907e04f5e4973445c3aea16c00433032a0f",
+    "content_hash": "487a3d3c6a60412857850b3ea5c145e63d2475df53d977971ece412c59ab8f34",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5755,13 +5921,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "d86a6a76994310b11d888cfb466f782659aee49d8588971f807c92cfcef9919b",
+    "content_hash": "ffc102c3182fcca3c1cd3821cc0fbb412a5505fa401bb1cd5b4d4fcb3bd5c5ec",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5817,13 +5985,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "07c45be226abeee4e7c76dd119ee46b14422d4008dd9befed472d7fa94087350",
+    "content_hash": "2588cc8ce6ea8408ec30f7a4d6e8663b99982e32a752c9f23509edb194d3d00f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5877,13 +6047,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "4f381ac3f62927b7a4ea66efe9395fdff13ae2ec5a6568fea3d6cd88f23fdac2",
+    "content_hash": "7f073a9287f712ec6c98fe81074a83859749df91fc0259e6eb0f2b6b56ea83e9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5937,13 +6109,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a65eb35893a7c026beae8bd96fdfc219651be21c8b50e59ac09fd625cd99d78c",
+    "content_hash": "c2306dbfc6b397ee5eb05f1b899f82d67621c0583c420ad1289375459aefb34a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5998,13 +6172,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "2875767c6c5b1f26599bd6c9def188fcab71010514fc59276a388ba256f5b63d",
+    "content_hash": "e8fcb70d1c720990aca25c34440af65617b671aa26d8095bb342cb5fa241dea5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6059,13 +6235,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "37093874cfec525ac218664dc689c04aeca985e017a77bad0851dfa9fa6b0f7a",
+    "content_hash": "c59b46f6d6ff0009582b0353ec43663f5be0c0adf70d8b6dad866c9f5827f72a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6120,13 +6298,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "11e56ff5bc53ba1e14115ab28f889396c7054d7cc782c6389eb8afcf070fe2a1",
+    "content_hash": "5e1a41c2e186e641328fe3aca8113b7887433e72ace03b826c3e1b9054c25403",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6181,13 +6361,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "2ea908367d4573e43fa3acfcabfa07fe5ec7dfa722e514b0ede5863c88b78c9a",
+    "content_hash": "a09eb7357be8bf95e94683532e53cb53b60e23763d49e2321a62cc9451dd9363",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6241,13 +6423,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a102ad19991ae5435ee66eddfd77058e7a2e72effea042c0d824fddf3608fdf4",
+    "content_hash": "8cea672ef9cf0fec9a88aa8b8f3642b9df266c8085937c873aadba91f5c7aac4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6301,13 +6485,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "ba87ac9da449262841eca15e3a5555812e333508b36a1277cd992f3b9f513b98",
+    "content_hash": "2bb1c40612de1f6a65eddf83d517aac90c401b5825f5edafb13b050b3feab68a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6363,13 +6549,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "7bb4ab1cf1110992b16b508f54437f4c98d8311171a24ef2a790c8c40edd3b0e",
+    "content_hash": "cef36420b4a1be7e6d50b6e3899d9a0621fd5a384023a70989b5af7991096f85",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6425,13 +6613,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a3a62f1bb68e0380e33cf5d71445654fabf5be735d5fbc7eb2a73a32e882161e",
+    "content_hash": "58db949a27787abcbc7e720a063f113b0fbc26db332fc9e067aba0d99cad7535",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6486,13 +6676,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "8e73c113a09eb2055e725e26d1d9890690c7216f467e45bc4b348143f361b5b2",
+    "content_hash": "372d38063e1d6425afd84974b61b7b5e602f98e49bb6c3a42058de04d8b49ed3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6547,13 +6739,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "feafe94fc2ecee2c25d665fda44ff86d2829bc2165777193ea3b311290c1618b",
+    "content_hash": "6286bdae3d04065e5e5dd3ed2377aac208235341b609c065af69a61502b4f2d6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6608,13 +6802,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "ed0f0a0856b6ba5f3c9109efec6f6c96f6de12e258601fd7ff1d9d3aa99ce879",
+    "content_hash": "70d2a20772b9517647bfaec1a0b10378546aed1718322bfb72172eb37f12f0f7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6669,13 +6865,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "14a704c774cdc7922ae5e96e4f678e22115d7ca25a5546e8cee5e987c6af6f62",
+    "content_hash": "729d537030fd96afae439c3416e9bae6ffdbdd958d510d9c473f88ed1391c303",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6730,13 +6928,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "9d9c122fa25d2b36d2097231b0d38a5e699b0826be2ce68a114aff3b78a9f9fa",
+    "content_hash": "8de6641d9b8924ab8217a5ef3c107d46f68e2201a210ec68a1bac0e3fd82813e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6791,13 +6991,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "aa5adb04f6e35df21a3842fb2a00de390d7213e256c43e264b9d0d90675f6435",
+    "content_hash": "2b524f0159f30fa6bf9eade49220e071da10e63555fb2225563f78cc63c1f725",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6853,13 +7055,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "2e1f656d7f59cd4df8ebc34e9a0e1e2c976a0b4036c0741c866e82cac21a05b2",
+    "content_hash": "a8a100f6285eebb10c2560b29af8dc0cd109a4816a0d3cc7ccd2143a30f4e7b0",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6915,13 +7119,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "9761810a1989f5953c6ac80c62b5fa74ee5cbc661fe17a63dac24dc94c5e4a79",
+    "content_hash": "70b9c2cc27e54e29ab3a71082a66330e38d1797d76f17ca5c614dac620d8dadc",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6976,13 +7182,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "6efa59c7f5978bd465bd63a1bc8ebf6a0e6985d130b19230ae4577228b63d311",
+    "content_hash": "b3e24c2152692d3151e0969ee64a84ac9b0c560905a9b90f40506a992fb85c76",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7037,13 +7245,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "7125a8a469e68ea7c6837ac9e9682ab63e8cc673119c016c300a23d56fdcaf0c",
+    "content_hash": "a737903806d950982838b66583a964f119e18562a8013f371ad1e4479e2ebe82",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7098,13 +7308,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "49fb6d985fe70b0d7d56dbd9004163873e76f259615339feacef864716de56ab",
+    "content_hash": "9e6ed6101466e0f56a196b89695bb96be4c33d9143a0dc3e973e2afd1543c9ae",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7159,13 +7371,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "e4cbe9eae384c39030c474a6ff8fba0cbc3cfd2b22cf3bc54b0afaa9ff947f2b",
+    "content_hash": "34f5f4a6be8a4f8609f4917ca65716a96558cf622da0b6666722366cd71141e3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7220,13 +7434,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a6a74698e158d266396c6e2f0c5e09c05599f0d29e68d96fe0fd82dcb4ff4163",
+    "content_hash": "76da8bbd13a9a19fe739b41ce8e79e1444e21b17b20b29e44b20042f852f43f1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7281,13 +7497,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "c7f0a7092318b41191b83660afd0e1c81553a1ca47e88b99cce4aca2348bf3a9",
+    "content_hash": "ef40923fe809f37b2b387c123e418c435d199c885aed281bc28720b795227210",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7343,13 +7561,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "928c982ff4b77a0aacca18e0e5a7b3923b619da6b612781ddbfb93496bcd771a",
+    "content_hash": "cab3ee903d25de71db221003b2b8c4415b31cfd82baba0bc08a6ca487eac9722",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7405,13 +7625,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "9886ddca6c77c547811c10743db10d4a1b92a19b726884693f48fca0dde710ec",
+    "content_hash": "2e2b82ebd52f85e1dadcb2947efa77ebb21476bd9b2242d4e5ee7fbbd390dc06",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7469,13 +7691,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "4dd92491e8de4b10288922538070be424e1aa8db9ef10538ba290f4c9eadfee3",
+    "content_hash": "d43e42b308f169b95ca6b8a7a72b78345b66fcaf9972347523b91e975a81ff35",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7533,13 +7757,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "97acc2afad2abdb877b3c7bf6ce78023d47697ebfc72ac24d867679ab0da78e2",
+    "content_hash": "deedf4c48e37bea80e44239e75a54d34582cbdc110a4b3fabe8b7f604f0ca7b8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7594,13 +7820,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "edcbfc3b33a1703c58fe63ec8d861a4c26a3b624e3a39299597b6bea76e8ec3b",
+    "content_hash": "1f255e7d5e06b82f610eeef6b764970f5ef2dec554e412ae6ac0ea28ce4109f6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7655,13 +7883,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "c6d93b4f13db1562f0637e3b206128bfc27349a348572e9a5a37d618d40f3609",
+    "content_hash": "afcfd05716a3e59004c66a5c53972171d55662d3939e5a836abe2dd4687da021",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7719,13 +7949,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "410cf6752c61a43966f84f01aadde8c20829b9f70e5b24fd92c67537c6c6f8a1",
+    "content_hash": "bc05eebba09eb08a4a5453769c389b6aa060a807741d8ea19df7a9b403ad601d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7783,13 +8015,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "55f7c742c6f4c882d9e2c97e61f98e59cf1e91e792c86ffaf019f2081d2d0f55",
+    "content_hash": "c926949b6a2e31987abf53d87691cdfde138400ef499fbd70214228ffdddd262",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7849,13 +8083,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "0a77ca72df6ea5aa1f34343e418dc3c5949fd3363db9438d70f3be91e3a5097c",
+    "content_hash": "7f97252b914a22b903674c5f36d5b5ea7b5548aa7ee9bf4b6d0ea85cd3f54233",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7915,13 +8151,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "a79fac2c1e4359ad53355e00f35f78c5f95836524c0aa47f2000903d71936658",
+    "content_hash": "c78b07beebf36acfa7fd98169f5335037fe8bff979f30020fe7a1258ce3c8ed3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -7980,13 +8218,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "9cbdd4d022b18116c09c0e7f3a6803e33ba1bad0e02e4ef39bc6b8dc556472ec",
+    "content_hash": "5820b3afe520f4f64e140b237301d0340cc29da2f204beb97fcc93df0fb9d2fa",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8045,13 +8285,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "15dd2b4e8c5a9ebecfe4ec7ef2a240950dcaa386a9e13d0269ef8bd26f74bf44",
+    "content_hash": "8caad98134f6eb0b5be03fc1871ede6f2aa3ebb07208afbd5e2601fddd3df2eb",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8116,13 +8358,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "1e9911d2de25bf90e80f75e0ca8e083b4417f9b38446048d83264797b1c2a1aa",
+    "content_hash": "56f41cf8bcd979aa13933bec6d282a64aa58fb6c0220fffc0816802ee4a05253",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8187,13 +8431,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "15424227f4fe24641f9b53eaf0f621a99de0ee0875877bb70bc68eae684eaa94",
+    "content_hash": "9da178d530c5c5d65e73eb6e793b57203e865916906e8a9ba23e85585eeaa8e1",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8263,13 +8509,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "4a48bd48a1353c6e3a6df7e6298ef9193752fc96e836c00fc3946fea4fc42f18",
+    "content_hash": "15b688d0d1057fdcf547b7ecd42e7734f809c068d543e828213d13a3bff3e619",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8339,13 +8587,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "8cd0556ba0148e390b9fdc86f4952ca6ede2ba49f43064eb4c9903c6eae38e13",
+    "content_hash": "cd982f1671170853864cccd32f36cd741217a91984d757d2543e519494435166",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8408,13 +8658,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "849b599d4d194860d25436f595b3b01e91c525ef0443c247dc37c14fb2590186",
+    "content_hash": "3a7083e1d06236c20b4623dc4ac6bb9e8bba7fc6c7f2e2029067f64df674545b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8477,13 +8729,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "9fc0ca53bf6ba44c039ac70ceca44b9654ca42a089b32c19653e0b46d021b205",
+    "content_hash": "8edf88de9c88afaefc0388edb829e00f1616de2138c0f5d5a398517f613f9e71",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8558,13 +8812,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "32594aa57664c82e4ff08b68b8e582bef19bb38c938b530f61d5365e040a7099",
+    "content_hash": "1e3419ee1ebc187d745f104ec243b1c326c4438277186f10f596061422947969",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8639,13 +8895,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "22f8694593825f936a954059ed0432325cc1e2b205d5b32413eaea6b54b38f52",
+    "content_hash": "f662b4667f55724a6b162de15c63e65cd3aa75252e6c1c228680a31c03dd84cc",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8724,13 +8982,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "45576854efd56b4de5d262beadfbe773f377f6373bfbf798667b79b11f3dfc58",
+    "content_hash": "e936f451da99f29c3b279b63e420fc3bd588e1322cfe28e3511b5d837c640051",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8809,13 +9069,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "825d7d5ec9436f6b204803e09e9ddcf3cb8ec81445b9cec04dd710cf1650084c",
+    "content_hash": "5e56f77ef9c06a06e0cd9ee14be16fcc5af8e6eecbc647c081386b59a69ba550",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8874,13 +9136,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
     "version": "1.0.0",
-    "content_hash": "bfcdff19a39f2ecd569896fe2e344a46b41fe220eba844707450c4ef0159175e",
+    "content_hash": "4df0c36a3ec858c3502788debd65bd69a2652706deec0c2fa70cc137d5498995",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -8939,7 +9203,9 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   }
 ]

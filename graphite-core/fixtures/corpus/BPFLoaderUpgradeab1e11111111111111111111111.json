@@ -2,7 +2,7 @@
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "893c4e20c291056ac33d6425b2b9a02a199d7f682142dbb9e0932afd3f29e906",
+    "content_hash": "8dd4e8a9ae52e22794e9e1626a9079308e3aa7f23e6c738f41ed16da4ad84dba",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -55,13 +55,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "a69d698d2c5266cfbc55fbaf0e9f3c1a255fde12e5ae4dce4c27089a01c32922",
+    "content_hash": "dd93e3df62a2ec0d2e791476a03c2f79b77f08c06d4aee9f7289372dc034dbdd",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -114,13 +116,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "22d4b85d4fbd376c231c4bd547ef9846911e3da7922403a976c5e13370df75a4",
+    "content_hash": "7d0256cd7cd8b0433760d955e6867d0f6bc812d7c9c9d6d73dc732f5d7912784",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -173,13 +177,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "24cb9bc186c85640535662f9d4eb4cb2e6336cdf4e153bef476dfb0d1a14f58d",
+    "content_hash": "ec94d9664486727cfaa1541994bcd326fa311937fb1556f94ea0eb7072e01351",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -240,13 +246,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8f22d118b9173580fd4af2b09d0422c55d0cc87d3e7fcea74c41f44f26e39c16",
+    "content_hash": "e1c4ff493d660dd7f557099ffc6764cca0c38172094acd3d7314e625b0b8443c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -299,13 +307,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "bf69904a672eda34baf7ba56e9dbb89dc7c1049232f34a97dc9dbc2ee9f76d75",
+    "content_hash": "002f8e55047d64906c239f35cb56d6a8771c19ea7129aa33715e0284b8000c52",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -358,13 +368,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1bd1ebc1cfedf96e59e630c187a35187c5e905da15bb6658ca1aaea58e5ad6e3",
+    "content_hash": "c764e8f5b4543d8e00ad6bcc81c11b742d1e38142f99e3987ed977691bcb7795",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -401,13 +413,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "7b8fe97fd8b37240f262781b7040d3af1ac655c2d432e8543cca79fdb7949d5b",
+    "content_hash": "5f5ed914ddad506f9606769758c2d95fd9a57637c8ba39f19410267505d63e37",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -460,13 +474,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "452112c67d3c35af58df90b333fac4236e58e9f2bc25990c849ed701280f65d7",
+    "content_hash": "fb61714ca9b5a7cfaee5c58efde588fde811d114fdd6e3efbfd0f78f44247fb8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -519,13 +535,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "830181769948dc4726cc236860786d2f5b6ed39641bb9a311d90ac6d287d7ba5",
+    "content_hash": "be3df3326a6a2f4767854e4c2e1990e83e205944fd9f0c9e696e21c35f1fa1b5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -578,13 +596,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e0989b7fdc020f3c17335d92fd3fc90146439839a8c502369f1b7288cc30d4d7",
+    "content_hash": "5698f1b606f6514006d0ce07caf274a0093a84ef401a77e8dc02ce8fc0ed2dfa",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -645,13 +665,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3e44f01b90a80ff8a29385ea3ee1f445db083641277cd73b834ad4e8a9313492",
+    "content_hash": "ee391d2fde397c58d8f942958ec6fbd98cac428caf54a505976dc42c05242ab8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -704,13 +726,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f1a299e16c9e1482c057c10edc8bbaa15a66f4f134facadb039a87e20aaa7a29",
+    "content_hash": "118ffd6f3f28eeb1bacf3d3028e0554f9eeff90f76b9104ac4e00fa6b2c3bc97",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -763,13 +787,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "c47dc76220ee0d3cd97f2cf5461c9d386882f7034f95fdc78875dcf5a29a2df9",
+    "content_hash": "828fda6609ac249cb7e8f18c0bfc59382a00406b206309845d8380966d7476ce",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -829,13 +855,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "c92a2f0a98997a54f6f799ec1d8d8e9ac8ac3c1ab450826b5ce0a4c265882b07",
+    "content_hash": "b516dd859c2a67ce22ad8f0275133f962cb60f3bf587a88d299d2cc3ff848d27",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -895,13 +923,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "caf4375695c08141a6ee9c22e78ecc4a170175b4f5d237ff820ea122d996a639",
+    "content_hash": "7a3033226b6ce0d14c0fbb2b4feb2b2a6edae223bdb59354c110b6f92af6d293",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -961,13 +991,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4bb23ead21e01ff36ba5e3844308ab2a48ff7aa5b5b4346b2ad7e17eef30f98f",
+    "content_hash": "14da735ca5237ae70c275b5a798cb70cbed216ba37de9cf4a0ceefc0a935e019",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1035,13 +1067,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "449b294baa21b8b89d74cd7c2c3144916f426d9cef5f276f8dcd728af7ab3a2e",
+    "content_hash": "de178817f277eddf4266dd1299dd87a27682d5ffa263834a489583023a9b8c23",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1101,13 +1135,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "793693adfeae81f79907bc8edf4884b71a2265a71c21f533f19d99d2a5bcf445",
+    "content_hash": "bc43f05c978f60bbaf023bc18f28954736a3dea43c9847e6c6b25ff584f74673",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1167,13 +1203,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3564fba2927380b298b50dea35cdcc254306b7f3f5d339df1af35022eaddf889",
+    "content_hash": "9f57e374c66eeeade7235abbb87060ce2051e742e4485fcab285cce47ead5afd",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1230,13 +1268,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "55aa8414081f90fe02b496d5bc04c9a792ae72748e92b0afd587fe41b766cbb7",
+    "content_hash": "f5e877006d1886fc3895584e3f1638eb0da065e5c8493a3b76c843259d216df4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1293,13 +1333,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e80d7e38e76af532b1f6368bc8a7c60809a8e127158c762a5a949280e160fc8a",
+    "content_hash": "5f457a272c4e614e292d2d4c5538319779164fc046109e284fc9fc851807e5d2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1356,13 +1398,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4583c57fd787669aab645b05e301f239730165b1ce8eb4283cb3ea712d00794c",
+    "content_hash": "dc7dce2f2048d03e2c1976099a3d55ec86a744de806adde224ed3fae0576d0e6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1427,13 +1471,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f14c760eb1d2652ce6f8ae8795f61cc2a9e2bfbb7dd72879fc5b10dd18b25e8d",
+    "content_hash": "eac6ab7ed31c3bf9c4312966de73e8a8f4e7dd48fb7dc5e804cb33a409978320",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1490,13 +1536,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8f1b4779d68a86b5acdf6560fc3d0a32a773405b55d0cf521d55f7cad57bfd71",
+    "content_hash": "231f64b6dad4ae3c950c37fe05ec25941398b916ce32ecacd979853c34e0d8d0",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1553,13 +1601,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "fe9cdee5a2fde9469b31a60e793a3a43d588b08f2cbe1ed44d229af4f238636c",
+    "content_hash": "c3a31ffa4c3d8d012b50555fa33a0091d6d34be9758b13c31f2bd5193b861047",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1614,13 +1664,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3cca6ee5df7d31f5365846c3cfc272a49e0ae333abb1c5a1979e551205a6ea1e",
+    "content_hash": "be56d56d5d36a36ec170c5f46714c537d6c4959ddaf0477029d71b0418021389",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1675,13 +1727,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9c34a80110f2de7a1b8a532ef3b9357b75c696db5c9db27465eed0e348ac301d",
+    "content_hash": "61e8ae47c93c2bd3541f50d41aebfc6ae0bcbb41770233781109f86cf0bf9ae7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1736,13 +1790,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f98ff7ad7126fdf5af0e59a17e8a5f8f2080e00d01a91b49c67b9e850b13ab97",
+    "content_hash": "2c4f0f30f407d9e9e476c03930cdb558addf090ec9ea590659731d0eef373e07",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1805,13 +1861,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1bc9943af0fe274f14a589e6fa6b830b6a611c707454fa63f66f280c41e0de16",
+    "content_hash": "409e0aa1c27eb1f3e5530296b4eaba0cd1c4bf570187edc45920b793ece444cb",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1866,13 +1924,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "27a233e2d53b6c3f7d55affdf758e34a0dadc03ad3f432f33489eff301f06026",
+    "content_hash": "381829e67032027ec2386f7f65f5f6d6dad5948892416ef45033289dfd18df1d",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1927,13 +1987,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f6ec33ec8d084a428ce076e978800600fdbe379d0f43fcf1da4c9c8b11eedc4e",
+    "content_hash": "bb1ace67153cbbc4e48f7f0fadeae50d07324e0cb754d0f4269f10374a2a9afb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1988,13 +2050,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "40b1c3be87c8acc5c78c38371e693eb596f1e428b7c5dd9021b17ff5c50ea983",
+    "content_hash": "a2f4ea0dbc75bff5b948e431b9e1cb156bc8b804f0fba706fd27473501112f39",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2049,13 +2113,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ca2551060cc9ddbd62889f26217b4dd884a1aa41701b053341fc9062ee383ba7",
+    "content_hash": "1b5fee95799f3f904ebde127f12713b08e341fe56eb67f674f76ce846431fcac",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2110,13 +2176,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f6ec9d732c2d4fea2d259434b7c367b41a4788cdbe5efa1058e4c5085e77eada",
+    "content_hash": "84542c4cd737a7753b1711fff389a46db6b3f12eeb608379e4193c758e653325",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2179,13 +2247,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "c67a708baba6bc1721ce096c979b17a8203086676b14ab5196ca693c88644537",
+    "content_hash": "2da13703d0659a979e867555482deb78a807d7a538b1764b48fda16122fe1494",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2240,13 +2310,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b780f5d800a0e90ae7d89f5a6420c961be0b7292c009698873b794d864d88ed9",
+    "content_hash": "11240ec4b8c8ce5546eb6e07e97810677a4994636d846fc9bbdfcb9c049243fc",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2301,7 +2373,9 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   }
 ]

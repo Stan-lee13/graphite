@@ -2,7 +2,7 @@
   {
     "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
     "version": "1.0.0",
-    "content_hash": "b99b3a45fe83f8d0e01ba231e0e970ecb0f42cfdea8f8174f3efe4018090cc27",
+    "content_hash": "1d4eef4efbbe75152c8e5276effc01981dd9a8f7555b88e2f796e7244ea51acf",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -55,13 +55,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
     "version": "1.0.0",
-    "content_hash": "b527f71860ebbe7f546c470524d9d2685c6eea98ee675338bed4a20f8430435c",
+    "content_hash": "9d8a892b4355a3ea46c053d2e8da9b3ac662519310d859a9416e64c12d516520",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -114,13 +116,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
     "version": "1.0.0",
-    "content_hash": "3e2cc8868930cbd5671f6f5858f2f1d7e891fdc296796725a90c4b70083f5110",
+    "content_hash": "1b699b5dc266c12411f11d29e8087c8b74750320fa04f2843ed1b34274a83300",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -173,13 +177,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
     "version": "1.0.0",
-    "content_hash": "ca4c40e8615ea5fb4b6075c6cd8c369b23f799cea7bc399c4ab479ea2a9152dc",
+    "content_hash": "97440733eb9dfcae3b97d050d6389f9f05c9ad7335232c0b926965d4a1782fe2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -240,13 +246,15 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   },
   {
     "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
     "version": "1.0.0",
-    "content_hash": "778009ec3deb542b47932b70c0cd76f46e8d9555a2258308cbefcb114f718256",
+    "content_hash": "5218326cc9b5348a5f287025a2d06af72f2806795f69eaabc0f8bb18de035fb9",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -283,7 +291,9 @@
       "cpi_hops": 0,
       "signed_transaction": null,
       "transaction_instructions": [],
-      "cpi_trace": null
+      "cpi_trace": null,
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0
     }
   }
 ]
