@@ -1182,7 +1182,21 @@ impl GraphiteCore {
                             .instructions
                             .iter()
                             .flat_map(|i| i.allowed_cpis.iter().cloned())
-                            .collect::<std::collections::HashSet<_>>()
+                            // BTreeSet, not HashSet: `HashSet`'s iteration
+                            // order comes from a per-PROCESS random hasher
+                            // seed, so collecting it into a Vec produced an
+                            // order that differed across machines and across
+                            // restarts. Today every consumer is a membership
+                            // test, so nothing observable broke — but the
+                            // moment any consumer renders this list into a
+                            // finding or summary string (a pattern used
+                            // elsewhere in this file), P2 determinism would
+                            // break silently and invisibly to CI, because a
+                            // single test process has one fixed seed for its
+                            // whole run. Ordered by construction removes the
+                            // landmine rather than relying on that staying
+                            // true. (2026-09-05 red-team.)
+                            .collect::<std::collections::BTreeSet<_>>()
                             .into_iter()
                             .collect();
                         InstructionRiskContext {
@@ -1269,6 +1283,7 @@ impl GraphiteCore {
     fn assess_secondary_instructions(
         &self,
         effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
+        trace_origin_range: &std::ops::Range<usize>,
     ) -> Result<(RiskVerdict, Vec<String>), VerificationError> {
         let mut verdict = RiskVerdict::Passed;
         let mut warnings: Vec<String> = Vec::new();
@@ -1314,10 +1329,48 @@ impl GraphiteCore {
             // skip; it is still caught by Check 2's first (non-empty,
             // matched) arm below.
             if ix.instruction_discriminator.is_empty() {
-                warnings.push(format!(
-                    "secondary instruction #{idx} (program {}) has no discriminator available \u{2014} cannot run instruction-level risk checks (CPI-trace introspection limit, not evidence of harm)",
+                // CRITICAL (2026-09-05 red-team): this carve-out must apply
+                // ONLY to CPI-trace-origin nodes. It exists because trace
+                // introspection frequently cannot recover a callee's
+                // instruction data, so blocking on a missing discriminator
+                // there would false-positive on nearly every real DEX route.
+                //
+                // A caller-DECLARED entry in `transaction_instructions` has no
+                // such excuse: the caller is telling us what the transaction
+                // contains, and omitting the one field every structural check
+                // keys on is not an observability limit, it is a refusal to
+                // declare. Applying the skip to those let an attacker hide a
+                // real CloseAccount/SetAuthority/Approve behind an empty
+                // discriminator and sail past EVERY risk check with a Clear
+                // verdict — verified end-to-end against a live server before
+                // this fix. Treat it exactly like the primary instruction's
+                // own empty-discriminator case: fail closed (P12).
+                if trace_origin_range.contains(&idx) {
+                    warnings.push(format!(
+                        "secondary instruction #{idx} (program {}) has no discriminator available \u{2014} cannot run instruction-level risk checks (CPI-trace introspection limit, not evidence of harm)",
+                        ix.program_id
+                    ));
+                    continue;
+                }
+                let reason = format!(
+                    "secondary instruction #{idx} (program {}) was DECLARED by the caller with an \
+                     empty discriminator \u{2014} the instruction cannot be verified and a declared \
+                     instruction has no reason to omit it (P12 fail-closed)",
                     ix.program_id
-                ));
+                );
+                verdict = match verdict {
+                    RiskVerdict::Passed => RiskVerdict::Blocked {
+                        pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
+                        reason,
+                    },
+                    RiskVerdict::Blocked {
+                        pattern: existing,
+                        reason: prior,
+                    } => RiskVerdict::Blocked {
+                        pattern: existing,
+                        reason: format!("{prior} | {reason}"),
+                    },
+                };
                 continue;
             }
             let risk_ctx =
@@ -1563,7 +1616,21 @@ impl GraphiteCore {
                             .instructions
                             .iter()
                             .flat_map(|i| i.allowed_cpis.iter().cloned())
-                            .collect::<std::collections::HashSet<_>>()
+                            // BTreeSet, not HashSet: `HashSet`'s iteration
+                            // order comes from a per-PROCESS random hasher
+                            // seed, so collecting it into a Vec produced an
+                            // order that differed across machines and across
+                            // restarts. Today every consumer is a membership
+                            // test, so nothing observable broke — but the
+                            // moment any consumer renders this list into a
+                            // finding or summary string (a pattern used
+                            // elsewhere in this file), P2 determinism would
+                            // break silently and invisibly to CI, because a
+                            // single test process has one fixed seed for its
+                            // whole run. Ordered by construction removes the
+                            // landmine rather than relying on that staying
+                            // true. (2026-09-05 red-team.)
+                            .collect::<std::collections::BTreeSet<_>>()
                             .into_iter()
                             .collect();
                         (vec!["Protocol-level state changes".to_string()], union_cpis)
@@ -1836,7 +1903,15 @@ impl GraphiteCore {
         // Pre-order flatten preserves execution ordering; the primary
         // instruction's callees execute during it, so they are appended in
         // call order after the top-level list.
-        let effective_instructions: Vec<crate::tx_pattern_analysis::TransactionInstruction> = {
+        // `trace_origin_range` is the index span of instructions that came from
+        // the CPI TRACE. It is load-bearing for security, not bookkeeping: a
+        // trace node legitimately may not know its own discriminator (trace
+        // introspection often cannot recover callee instruction data), whereas
+        // a caller-DECLARED entry in `transaction_instructions` has no such
+        // excuse. Conflating the two let an attacker declare a dangerous
+        // instruction with an empty discriminator and skip every structural
+        // risk check — see `assess_secondary_instructions`.
+        let (effective_instructions, trace_origin_range) = {
             // Execution order: the primary instruction runs first, its CPI
             // callees execute during it (pre-order flatten), then the
             // remaining top-level instructions. Ordering matters to the AAT
@@ -1849,11 +1924,13 @@ impl GraphiteCore {
                 account_addresses: input.account_addresses.clone(),
                 cpi_targets: input.cpi_targets.clone(),
             });
+            let trace_start = v.len();
             if let Some(trace) = &input.cpi_trace {
                 v.extend(crate::tx_pattern_analysis::flatten_cpi_trace(trace));
             }
+            let trace_end = v.len();
             v.extend(input.transaction_instructions.clone());
-            v
+            (v, trace_start..trace_end)
         };
 
         // P0-3 fix (2026-09-05 audit): risk-assess every SECONDARY
@@ -1865,7 +1942,7 @@ impl GraphiteCore {
         // why secondary instructions are assessed with an empty declared
         // intent rather than the primary's.
         let (secondary_risk_verdict, secondary_risk_warnings) =
-            self.assess_secondary_instructions(&effective_instructions)?;
+            self.assess_secondary_instructions(&effective_instructions, &trace_origin_range)?;
         risk_warnings.extend(secondary_risk_warnings);
         let risk_verdict = if let RiskVerdict::Blocked {
             pattern: secondary_pattern,
@@ -2020,101 +2097,104 @@ impl GraphiteCore {
             .graph()
             .get_simulation_baseline(&input.program_id)
             .cloned();
-        let (sim_flagged, sim_divergence) = if let Some(baseline) = trusted_baseline {
-            // A baseline with fewer than MIN_SAMPLES samples is statistically
-            // meaningless — the check is skipped (None = no verdict), per P12
-            // fail-open-with-explanation. Zero-variance baselines (std == 0)
-            // are handled INSIDE check_simulation_integrity (any deviation
-            // from an identical-history mean is a max-signal divergence) — the
-            // old `std > 0.0` gate here silently skipped those programs
-            // forever (a permanent spoofing bypass for uniform programs).
-            if baseline.sample_count >= crate::simulation_integrity::MIN_SAMPLES {
-                // Build a simulation usage object, preferring live RPC
-                // simulation when an RPC client is attached; fall back to
-                // caller-provided values if unavailable.
-                #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
-                let mut usage = crate::simulation_integrity::ComputeUsage {
-                    compute_units: input.compute_units,
-                    account_writes: input.account_writes,
-                    cpi_hops: input.cpi_hops,
-                };
+        // Build the simulation usage, preferring live RPC simulation. This
+        // runs REGARDLESS of whether a mature baseline exists, for two
+        // reasons — and the second one is a bug fix.
+        //
+        // HIGH (2026-09-05 red-team): the RPC simulate AND the accumulator
+        // write both used to live INSIDE the `sample_count >= MIN_SAMPLES`
+        // branch. `record_simulation` is the only trusted way a baseline
+        // grows, so a program with no baseline (or fewer than MIN_SAMPLES)
+        // could never accumulate one from live traffic — the counter could
+        // not get from 0 to 10 by any path except an operator manually
+        // seeding it. The entire Simulation Integrity Layer, including the
+        // C28 robust median/MAD anti-poisoning work, was therefore inert for
+        // every program an operator had not hand-seeded, while reporting the
+        // honest-sounding "no baseline or insufficient samples" — a message
+        // that read as transient but was in fact permanent. L3 was also
+        // silently skipped for those programs even with an RPC client
+        // attached, contradicting the documented "L3 is active when
+        // GRAPHITE_RPC_URL is set".
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut usage = crate::simulation_integrity::ComputeUsage {
+            compute_units: input.compute_units,
+            account_writes: input.account_writes,
+            cpi_hops: input.cpi_hops,
+        };
 
-                // Usage is recorded into the trusted accumulator ONLY when it
-                // came ENTIRELY from a real simulateTransaction. Raw
-                // request-body values must never feed the baseline (poisoning
-                // vector): if the RPC result is partial — units_consumed == 0
-                // (failed/budget-rejected simulation) or a missing optional
-                // field — the merged object would still carry caller-controlled
-                // numbers, so we record NOTHING. A partial RPC result is a
-                // non-event for the accumulator.
-                #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
-                let mut rpc_sim_ok = false;
-                #[cfg(feature = "rpc")]
-                {
-                    if let Some(client) = &self.rpc_client {
-                        // Prefer a fully-signed transaction blob when provided;
-                        // otherwise fall back to instruction_data as a minimal
-                        // payload.
-                        let tx_bytes = input
-                            .signed_transaction
-                            .as_ref()
-                            .cloned()
-                            .unwrap_or_else(|| input.instruction_data.clone().unwrap_or_default());
-                        match client.simulate_transaction(&tx_bytes).await {
-                            Ok(sim_res) => {
-                                // Only a COMPLETE RPC result may enter the
-                                // accumulator: nonzero units AND both optional
-                                // fields present. Anything less leaves the
-                                // caller's numbers in `usage`, so it must not
-                                // be recorded (anti-poisoning).
-                                if sim_res.units_consumed > 0
-                                    && sim_res.account_writes.is_some()
-                                    && sim_res.cpi_hops.is_some()
-                                {
-                                    usage.compute_units = sim_res.units_consumed;
-                                    usage.account_writes = sim_res.account_writes.unwrap_or(0);
-                                    usage.cpi_hops = sim_res.cpi_hops.unwrap_or(0);
-                                    rpc_sim_ok = true;
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!("simulateTransaction failed: {}", e);
-                                // keep usage as-is (caller-provided)
-                            }
+        // Usage may enter the trusted accumulator ONLY when it came ENTIRELY
+        // from a real simulateTransaction. Raw request-body values must never
+        // feed the baseline (poisoning vector): if the RPC result is partial —
+        // units_consumed == 0 (failed/budget-rejected simulation) or a missing
+        // optional field — the merged object would still carry
+        // caller-controlled numbers, so we record NOTHING.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut rpc_sim_ok = false;
+        #[cfg(feature = "rpc")]
+        {
+            if let Some(client) = &self.rpc_client {
+                // Prefer a fully-signed transaction blob when provided;
+                // otherwise fall back to instruction_data as a minimal payload.
+                let tx_bytes = input
+                    .signed_transaction
+                    .as_ref()
+                    .cloned()
+                    .unwrap_or_else(|| input.instruction_data.clone().unwrap_or_default());
+                match client.simulate_transaction(&tx_bytes).await {
+                    Ok(sim_res) => {
+                        // Only a COMPLETE RPC result may enter the accumulator:
+                        // nonzero units AND both optional fields present.
+                        if sim_res.units_consumed > 0
+                            && sim_res.account_writes.is_some()
+                            && sim_res.cpi_hops.is_some()
+                        {
+                            usage.compute_units = sim_res.units_consumed;
+                            usage.account_writes = sim_res.account_writes.unwrap_or(0);
+                            usage.cpi_hops = sim_res.cpi_hops.unwrap_or(0);
+                            rpc_sim_ok = true;
                         }
                     }
+                    Err(e) => {
+                        tracing::warn!("simulateTransaction failed: {}", e);
+                        // keep usage as-is (caller-provided)
+                    }
                 }
+            }
+        }
 
-                // SECURITY (record-after-check): the integrity check MUST run
-                // against the CURRENT trusted baseline BEFORE any new
-                // observation is folded into it. Recording first would let a
-                // compute spike normalize the baseline before the integrity
-                // layer could flag it (baseline poisoning through the earn
-                // path). Additionally, a FLAGGED observation must never enter
-                // the accumulator.
-                //
-                // Recorded tradeoff (Constitution P14): because flagged
-                // observations are never recorded, a program whose usage
-                // LEGITIMATELY drifts (feature deploys, parameter changes)
-                // stays flagged — its baseline freezes and an operator must
-                // reseed it. This is the security-correct choice (an
-                // attacker-driven spike must never move the baseline) at the
-                // cost of operator intervention for genuinely evolving
-                // programs.
+        // SECURITY (record-after-check): the integrity check MUST run against
+        // the CURRENT trusted baseline BEFORE any new observation is folded
+        // into it. Recording first would let a compute spike normalize the
+        // baseline before the integrity layer could flag it (baseline
+        // poisoning through the earn path). A FLAGGED observation must never
+        // enter the accumulator.
+        //
+        // Recorded tradeoff (Constitution P14): because flagged observations
+        // are never recorded, a program whose usage LEGITIMATELY drifts
+        // (feature deploys, parameter changes) stays flagged — its baseline
+        // freezes and an operator must reseed it. This is the security-correct
+        // choice (an attacker-driven spike must never move the baseline) at
+        // the cost of operator intervention for genuinely evolving programs.
+        let (sim_flagged, sim_divergence) = match &trusted_baseline {
+            Some(baseline) if baseline.sample_count >= crate::simulation_integrity::MIN_SAMPLES => {
+                // A baseline with fewer than MIN_SAMPLES samples is
+                // statistically meaningless — the check is skipped (None = no
+                // verdict), per P12 fail-open-with-explanation. Zero-variance
+                // baselines (std == 0) are handled INSIDE
+                // check_simulation_integrity (any deviation from an
+                // identical-history mean is a max-signal divergence).
                 let check_result = match crate::simulation_integrity::check_simulation_integrity(
                     &crate::simulation_integrity::SimulationIntegrityInput {
                         program_id: input.program_id.clone(),
-                        // clone: `usage` is still needed below for the
-                        // record-after-check accumulator update.
                         simulation_usage: usage.clone(),
-                        baseline,
+                        baseline: baseline.clone(),
                         divergence_threshold: 2.0,
                     },
                 ) {
                     Ok(result) => result,
-                    // Fail-closed (Constitution P12): on integrity check
-                    // error (e.g. a corrupted seeded baseline), flag the
-                    // simulation rather than silently passing it.
+                    // Fail-closed (Constitution P12): on integrity check error
+                    // (e.g. a corrupted seeded baseline), flag the simulation
+                    // rather than silently passing it.
                     Err(e) => {
                         tracing::error!("simulation integrity check error: {}", e);
                         crate::simulation_integrity::SimulationIntegrityResult {
@@ -2141,24 +2221,35 @@ impl GraphiteCore {
                 } else {
                     None
                 };
-
-                // Record AFTER the check, and ONLY RPC-verified, un-flagged
-                // observations enter the trusted accumulator. (rpc-only: the
-                // accumulator cannot be written without a live RPC client,
-                // and `persist_state_async` is rpc-gated.)
-                #[cfg(feature = "rpc")]
-                if rpc_sim_ok && !check_result.flagged {
-                    self.graph().record_simulation(&input.program_id, &usage);
-                    self.persist_state_async().await;
-                }
-
                 (sim_flagged, Some(check_result.divergence_score))
-            } else {
-                (None, None)
             }
-        } else {
-            (None, None)
+            // No baseline yet, or too few samples to judge: no verdict. The
+            // observation below still bootstraps the accumulator so this state
+            // is genuinely transient rather than permanent.
+            _ => (None, None),
         };
+
+        // Record AFTER the check, and ONLY RPC-verified, un-flagged
+        // observations enter the trusted accumulator. This now also runs
+        // during bootstrap (no baseline / below MIN_SAMPLES), which is what
+        // lets a baseline accumulate at all — `sim_flagged != Some(true)`
+        // preserves the "never record a flagged observation" rule in every
+        // case, and `rpc_sim_ok` still keeps caller-supplied numbers out.
+        //
+        // Bootstrap tradeoff (P14): the first MIN_SAMPLES RPC-verified
+        // observations establish the baseline, so an attacker able to drive
+        // real simulated traffic for a brand-new program can influence its
+        // initial shape. That is inherent to any earned baseline, is bounded
+        // by requiring genuine RPC-verified simulation, and is strictly better
+        // than the previous behavior where the layer never activated at all.
+        // Until MIN_SAMPLES is reached the layer grants NO clean verdict
+        // (sim_flagged stays None), so a poisoned bootstrap cannot certify
+        // anything — it can only fail to flag, which is the pre-fix status quo.
+        #[cfg(feature = "rpc")]
+        if rpc_sim_ok && sim_flagged != Some(true) {
+            self.graph().record_simulation(&input.program_id, &usage);
+            self.persist_state_async().await;
+        }
 
         // If simulation is flagged, add it as a risk finding
         let risk_summary = if sim_flagged == Some(true) {

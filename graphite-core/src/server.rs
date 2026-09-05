@@ -62,6 +62,10 @@ struct AppState {
     trust_proxy_hops: u8,
     /// Operational counters exported at `/metrics`.
     metrics: Metrics,
+    /// Operator-pinned wallet profile; when set it overrides the request body.
+    pinned_profile: Option<crate::policy_engine::WalletProfile>,
+    /// Opt-out allowing a caller-supplied profile weaker than any built-in.
+    allow_permissive_profiles: bool,
 }
 
 /// Process-lifetime counters for `/metrics`.
@@ -425,6 +429,32 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             }
         };
 
+    // Wallet policy profile enforcement at the network trust boundary — see
+    // `enforce_wallet_profile`. A misconfigured pin is a hard startup error:
+    // an operator who meant to pin a policy must not silently get the
+    // caller-controlled behavior instead.
+    let pinned_profile = match std::env::var("GRAPHITE_WALLET_PROFILE") {
+        Ok(v) if !v.trim().is_empty() => {
+            match parse_pinned_profile(&v) {
+                Ok(p) => {
+                    tracing_log(&format!("wallet profile PINNED server-side: {p:?} (request-body profiles are ignored)"));
+                    Some(p)
+                }
+                Err(e) => return Err(format!("invalid GRAPHITE_WALLET_PROFILE: {e}").into()),
+            }
+        }
+        _ => None,
+    };
+    let allow_permissive_profiles = std::env::var("GRAPHITE_ALLOW_PERMISSIVE_PROFILES")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if allow_permissive_profiles && pinned_profile.is_none() {
+        tracing_log(
+            "WARNING: GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 — a caller may supply a wallet \
+             profile that disables the confidence/trust-tier gate entirely",
+        );
+    }
+
     // X-Forwarded-For is only honored behind an explicitly-trusted proxy.
     // The value is the NUMBER OF TRUSTED PROXY HOPS in front of this server
     // (`1` = the common single reverse-proxy/LB setup). `true` is accepted as
@@ -489,6 +519,8 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         rate: RateLimiter::new(rate_per_sec),
         trust_proxy_hops,
         metrics: Metrics::default(),
+        pinned_profile,
+        allow_permissive_profiles,
     };
 
     tracing_log(&format!(
@@ -798,6 +830,126 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
     }
 }
 
+/// The weakest posture any built-in profile accepts (Gaming). A
+/// caller-supplied `Custom` profile weaker than this is not a policy — it is
+/// the gate switched off.
+const WEAKEST_BUILTIN_MIN_CONFIDENCE: f64 = 0.55;
+
+/// Enforce the wallet policy profile at the network trust boundary.
+///
+/// CRITICAL (2026-09-05 red-team, verified end-to-end against a live server):
+/// `wallet_profile` arrives in the SAME request body, over the SAME connection,
+/// as `proposed_intent`, `program_id` and every other field the (possibly
+/// prompt-injected) agent supplies. Graphite has no way to tell an operator's
+/// deliberate policy from an attacker's chosen one. Sending
+/// `{"Custom":{"min_confidence":0.0,"min_trust_tier":"Unknown"}}` therefore
+/// approved a transaction to a completely unmanifested program at confidence
+/// 0.0 — P6's ceiling still computed correctly, it just no longer gated
+/// anything, because the threshold it was compared against was attacker-chosen.
+///
+/// Two layers, both applied here at the boundary rather than in the core (a
+/// library embedder IS its own operator and may legitimately choose any
+/// profile; an HTTP caller is not):
+///
+/// 1. `GRAPHITE_WALLET_PROFILE` pins the profile server-side. When set, the
+///    request body's profile is ignored entirely — the operator's policy is
+///    configuration, not something the caller can negotiate.
+/// 2. Otherwise a caller-supplied `Custom` profile is CLAMPED so it can never
+///    be weaker than the weakest built-in profile. Named profiles pass through
+///    untouched (all four are sane postures). `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1`
+///    opts out for the genuinely trusted single-tenant case.
+///
+/// Returns the effective profile and, when it differs from what was asked for,
+/// a disclosure string so the override is visible in the response and audit
+/// trail rather than silently applied (P3).
+fn enforce_wallet_profile(
+    requested: crate::policy_engine::WalletProfile,
+    pinned: Option<crate::policy_engine::WalletProfile>,
+    allow_permissive: bool,
+) -> (crate::policy_engine::WalletProfile, Option<String>) {
+    use crate::policy_engine::WalletProfile;
+
+    if let Some(p) = pinned {
+        if p != requested {
+            return (
+                p,
+                Some(
+                    "wallet profile is pinned server-side (GRAPHITE_WALLET_PROFILE); the \
+                     profile supplied in the request was ignored"
+                        .to_string(),
+                ),
+            );
+        }
+        return (p, None);
+    }
+    if allow_permissive {
+        return (requested, None);
+    }
+    match requested {
+        WalletProfile::Custom {
+            min_confidence,
+            min_trust_tier,
+        } if !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE => (
+            WalletProfile::Custom {
+                min_confidence: WEAKEST_BUILTIN_MIN_CONFIDENCE,
+                min_trust_tier,
+            },
+            Some(format!(
+                "requested custom profile min_confidence ({min_confidence}) is weaker than any \
+                 built-in profile and was raised to {WEAKEST_BUILTIN_MIN_CONFIDENCE} — a \
+                 caller-supplied threshold cannot disable the confidence gate (set \
+                 GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 to allow, or pin the profile with \
+                 GRAPHITE_WALLET_PROFILE)"
+            )),
+        ),
+        other => (other, None),
+    }
+}
+
+/// Parse `GRAPHITE_WALLET_PROFILE`. Accepts the four built-in names, or
+/// `custom:<min_confidence>:<TrustTier>`. An unparseable value is a
+/// configuration error the operator must see, so it is reported rather than
+/// silently ignored.
+fn parse_pinned_profile(raw: &str) -> Result<crate::policy_engine::WalletProfile, String> {
+    use crate::confidence_engine::TrustTier;
+    use crate::policy_engine::WalletProfile;
+    let v = raw.trim();
+    match v.to_ascii_lowercase().as_str() {
+        "treasury" => return Ok(WalletProfile::Treasury),
+        "trading" | "tradingbot" => return Ok(WalletProfile::TradingBot),
+        "gaming" => return Ok(WalletProfile::Gaming),
+        "enterprise" => return Ok(WalletProfile::Enterprise),
+        _ => {}
+    }
+    let parts: Vec<&str> = v.split(':').collect();
+    if parts.len() == 3 && parts[0].eq_ignore_ascii_case("custom") {
+        let min_confidence: f64 = parts[1]
+            .parse()
+            .map_err(|_| format!("invalid min_confidence {:?}", parts[1]))?;
+        if !min_confidence.is_finite() || !(0.0..=1.0).contains(&min_confidence) {
+            return Err(format!(
+                "min_confidence {min_confidence} must be within [0.0, 1.0]"
+            ));
+        }
+        let min_trust_tier = match parts[2] {
+            "Unknown" => TrustTier::Unknown,
+            "HeuristicInferred" => TrustTier::HeuristicInferred,
+            "OfficialManifest" => TrustTier::OfficialManifest,
+            "SimulationValidated" => TrustTier::SimulationValidated,
+            "CommunityVerified" => TrustTier::CommunityVerified,
+            "BattleTested" => TrustTier::BattleTested,
+            other => return Err(format!("unknown trust tier {other:?}")),
+        };
+        return Ok(WalletProfile::Custom {
+            min_confidence,
+            min_trust_tier,
+        });
+    }
+    Err(format!(
+        "unrecognized profile {v:?} (expected treasury|trading|gaming|enterprise|custom:<min_confidence>:<TrustTier>)"
+    ))
+}
+
 async fn verify_handler(
     State(state): State<AppState>,
     payload: Result<Json<VerificationInput>, axum::extract::rejection::JsonRejection>,
@@ -833,6 +985,19 @@ async fn verify_handler(
     };
 
     Metrics::inc(&state.metrics.verify_requests);
+
+    // Enforce the wallet policy profile at the trust boundary BEFORE
+    // verification: the profile arrives in the same attacker-influenced body
+    // as everything else. See `enforce_wallet_profile`.
+    let (effective_profile, profile_note) = enforce_wallet_profile(
+        input.wallet_profile,
+        state.pinned_profile,
+        state.allow_permissive_profiles,
+    );
+    let mut input = input;
+    input.wallet_profile = effective_profile;
+    let input = input;
+
     match state.core.verify_async(&input).await {
         Ok(result) => {
             Metrics::inc(if result.approved {
@@ -883,6 +1048,12 @@ async fn verify_handler(
                 });
             }
 
+            let mut result = result;
+            if let Some(note) = profile_note {
+                // Visible in the response and, via the summary, in the audit
+                // trail — an overridden policy must never be applied silently.
+                result.summary = format!("{} | policy: {}", result.summary, note);
+            }
             Ok(Json(result))
         }
         Err(e) => {
@@ -1479,6 +1650,8 @@ mod tests {
             rate: RateLimiter::new(1000.0),
             trust_proxy_hops: 0,
             metrics: Metrics::default(),
+            pinned_profile: None,
+            allow_permissive_profiles: false,
         };
         (state, dir)
     }
@@ -1749,6 +1922,158 @@ mod tests {
             "Debug is the detailed form — if this ever stops being true, the \
              log/audit path lost detail"
         );
+    }
+
+    // ── Wallet-profile enforcement at the trust boundary ────────────────────
+    //
+    // CRITICAL (2026-09-05 red-team, verified live before the fix): sending
+    // {"Custom":{"min_confidence":0.0,"min_trust_tier":"Unknown"}} approved a
+    // transaction to a completely unmanifested program at confidence 0.0. The
+    // P6 ceiling still computed correctly — it just stopped gating anything,
+    // because the threshold it was compared against was attacker-chosen.
+
+    use crate::confidence_engine::TrustTier;
+    use crate::policy_engine::WalletProfile;
+
+    /// The degenerate profile: the exact bypass, which must not survive.
+    #[test]
+    fn caller_supplied_profile_cannot_disable_the_confidence_gate() {
+        let attack = WalletProfile::Custom {
+            min_confidence: 0.0,
+            min_trust_tier: TrustTier::Unknown,
+        };
+        let (effective, note) = enforce_wallet_profile(attack, None, false);
+        match effective {
+            WalletProfile::Custom { min_confidence, .. } => assert!(
+                min_confidence >= WEAKEST_BUILTIN_MIN_CONFIDENCE,
+                "a caller-chosen threshold below every built-in profile must be raised, got {min_confidence}"
+            ),
+            other => panic!("expected a clamped Custom profile, got {other:?}"),
+        }
+        assert!(
+            note.is_some(),
+            "the override must be disclosed, never applied silently (P3)"
+        );
+    }
+
+    /// NaN/infinite thresholds must not slip through the numeric comparison.
+    #[test]
+    fn non_finite_custom_thresholds_are_clamped() {
+        for bad in [f64::NAN, f64::NEG_INFINITY, -1.0] {
+            let (effective, note) = enforce_wallet_profile(
+                WalletProfile::Custom {
+                    min_confidence: bad,
+                    min_trust_tier: TrustTier::Unknown,
+                },
+                None,
+                false,
+            );
+            match effective {
+                WalletProfile::Custom { min_confidence, .. } => assert!(
+                    min_confidence >= WEAKEST_BUILTIN_MIN_CONFIDENCE,
+                    "non-finite/negative threshold {bad} must be clamped"
+                ),
+                other => panic!("expected Custom, got {other:?}"),
+            }
+            assert!(note.is_some());
+        }
+    }
+
+    /// A legitimately strict Custom profile must pass through untouched — the
+    /// clamp raises a floor, it must never lower a ceiling.
+    #[test]
+    fn strict_custom_profiles_pass_through_unchanged() {
+        let strict = WalletProfile::Custom {
+            min_confidence: 0.97,
+            min_trust_tier: TrustTier::BattleTested,
+        };
+        let (effective, note) = enforce_wallet_profile(strict, None, false);
+        assert_eq!(effective, strict);
+        assert!(
+            note.is_none(),
+            "an already-safe profile needs no disclosure"
+        );
+    }
+
+    /// All four built-in profiles are sane postures and must be accepted as-is.
+    #[test]
+    fn builtin_profiles_pass_through_unchanged() {
+        for p in [
+            WalletProfile::Treasury,
+            WalletProfile::TradingBot,
+            WalletProfile::Gaming,
+            WalletProfile::Enterprise,
+        ] {
+            let (effective, note) = enforce_wallet_profile(p, None, false);
+            assert_eq!(effective, p);
+            assert!(note.is_none());
+        }
+    }
+
+    /// Pinning wins outright: the operator's configured policy replaces
+    /// whatever the caller asked for, including a stricter request (the point
+    /// is that the caller does not get to negotiate policy at all).
+    #[test]
+    fn pinned_profile_overrides_the_request_body() {
+        let (effective, note) = enforce_wallet_profile(
+            WalletProfile::Custom {
+                min_confidence: 0.0,
+                min_trust_tier: TrustTier::Unknown,
+            },
+            Some(WalletProfile::Treasury),
+            // Even with the permissive opt-out, a pin still wins.
+            true,
+        );
+        assert_eq!(effective, WalletProfile::Treasury);
+        assert!(
+            note.is_some(),
+            "an ignored request profile must be disclosed"
+        );
+    }
+
+    /// The explicit opt-out exists for genuinely trusted single-tenant use.
+    #[test]
+    fn permissive_opt_out_allows_a_weak_profile() {
+        let weak = WalletProfile::Custom {
+            min_confidence: 0.0,
+            min_trust_tier: TrustTier::Unknown,
+        };
+        let (effective, _) = enforce_wallet_profile(weak, None, true);
+        assert_eq!(effective, weak);
+    }
+
+    /// A misconfigured pin must be a startup error, not a silent fallback to
+    /// caller-controlled behavior.
+    #[test]
+    fn pinned_profile_parsing_accepts_valid_and_rejects_invalid() {
+        assert_eq!(
+            parse_pinned_profile("treasury").unwrap(),
+            WalletProfile::Treasury
+        );
+        assert_eq!(
+            parse_pinned_profile("  Gaming ").unwrap(),
+            WalletProfile::Gaming
+        );
+        assert_eq!(
+            parse_pinned_profile("custom:0.8:OfficialManifest").unwrap(),
+            WalletProfile::Custom {
+                min_confidence: 0.8,
+                min_trust_tier: TrustTier::OfficialManifest
+            }
+        );
+        for bad in [
+            "",
+            "nonsense",
+            "custom:notanumber:Unknown",
+            "custom:0.8:NoSuchTier",
+            "custom:1.5:Unknown",
+            "custom:0.8",
+        ] {
+            assert!(
+                parse_pinned_profile(bad).is_err(),
+                "{bad:?} must be rejected rather than silently ignored"
+            );
+        }
     }
 
     /// `/metrics` exposes operational counters — but it also reveals traffic
