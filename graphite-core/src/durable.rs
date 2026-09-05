@@ -50,6 +50,18 @@ pub struct AuditLog {
     /// exported via /health and /metrics so an operator can alert on them.
     writes_ok: Arc<AtomicU64>,
     writes_failed: Arc<AtomicU64>,
+    /// Monotonic rotation counter, appended to the archive name.
+    ///
+    /// The archive name was `audit.jsonl.<unix-millis>` alone. Rotations that
+    /// landed in the SAME millisecond produced the SAME name, and
+    /// `fs::rename` replaces an existing destination on every platform — so
+    /// the previous archive was silently destroyed and its records with it.
+    /// Whether that happens is pure timing: on a slow filesystem each
+    /// rotation takes milliseconds and names never collide, while on a fast
+    /// one dozens land in a single millisecond. That is exactly why it passed
+    /// on a Windows dev machine (~4ms per rotation, measured) and failed in
+    /// Linux CI.
+    rotation_seq: Arc<AtomicU64>,
 }
 
 /// A point-in-time view of audit-log health, surfaced by /health and /metrics.
@@ -225,6 +237,7 @@ impl AuditLog {
             max_archives,
             writes_ok: Arc::new(AtomicU64::new(0)),
             writes_failed: Arc::new(AtomicU64::new(0)),
+            rotation_seq: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -245,6 +258,46 @@ impl AuditLog {
     /// between the size check and the rename. The rename preserves every
     /// record (P9 — rotation is not deletion); only explicit `max_archives`
     /// pruning removes anything, and that is opt-in.
+    /// Build a UNIQUE archive path for a rotation occurring at `stamp`.
+    ///
+    /// Split out from `rotate_if_needed` specifically so it can be tested with
+    /// a FIXED stamp. The bug this guards against — two rotations in the same
+    /// millisecond producing the same filename, with `fs::rename` then
+    /// silently destroying the first archive — only reproduces when rotations
+    /// are fast enough to share a millisecond. That makes any test driving it
+    /// through real writes dependent on filesystem speed: the original test
+    /// passed on a Windows dev machine (~4ms per rotation, measured) while
+    /// Linux CI lost 126 of 150 records. A test calling this directly with the
+    /// same stamp twice reproduces the collision deterministically on every
+    /// platform.
+    ///
+    /// The monotonic sequence guarantees uniqueness within the process. It is
+    /// zero-padded because `prune_archives` decides what is "oldest" by
+    /// lexical order, and an unpadded counter would sort `-10` before `-2` and
+    /// prune newer history while keeping older.
+    fn next_archive_path(&self, stamp: u128) -> PathBuf {
+        let seq = self.rotation_seq.fetch_add(1, Ordering::Relaxed);
+        let mut archive = self
+            .path
+            .with_extension(format!("jsonl.{stamp}-{seq:06}"))
+            .to_path_buf();
+
+        // Cross-restart safety: the sequence restarts at 0 with the process,
+        // so a previous run could in principle have written this exact name in
+        // this exact millisecond. Probing is safe here (callers hold the append
+        // handle lock, so nothing in this process can race us) and costs one
+        // stat on a path taken once per rotation.
+        let mut extra = 0u32;
+        while archive.exists() && extra < 10_000 {
+            extra += 1;
+            archive = self
+                .path
+                .with_extension(format!("jsonl.{stamp}-{seq:06}-{extra:04}"))
+                .to_path_buf();
+        }
+        archive
+    }
+
     fn rotate_if_needed(&self, file: &mut File) {
         if self.rotate_bytes == 0 {
             return;
@@ -260,10 +313,8 @@ impl AuditLog {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
-        let archive = self
-            .path
-            .with_extension(format!("jsonl.{stamp}"))
-            .to_path_buf();
+        let archive = self.next_archive_path(stamp);
+
         // If the rename fails (permissions, cross-device), keep appending to
         // the current file rather than losing the record — an oversized log
         // is strictly better than a dropped audit trail.
@@ -596,6 +647,124 @@ mod tests {
         assert_eq!(
             seen, total,
             "default retention must preserve every audit record (P9)"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Rotation must produce a UNIQUE archive name every time, independently
+    /// of how fast rotations happen.
+    ///
+    /// This is the regression test for a real CI failure. The archive name was
+    /// `audit.jsonl.<unix-millis>` alone, so rotations sharing a millisecond
+    /// produced the same name and `fs::rename` silently replaced the earlier
+    /// archive — destroying its records. `rotation_preserves_every_record_by_default`
+    /// below should have caught it, but whether it does depends entirely on
+    /// filesystem speed: on a Windows dev machine each rotation took ~4ms
+    /// (measured), so names never collided and the test passed, while Linux CI
+    /// completed the same loop fast enough to collide and lost 126 of 150
+    /// records.
+    ///
+    /// So this test drives the name generator DIRECTLY with a fixed stamp,
+    /// removing the wall clock from the test entirely. Two rotations "in the
+    /// same millisecond" is now a deterministic input rather than something we
+    /// hope the scheduler produces.
+    ///
+    /// Verified to genuinely catch the bug: reverting to the millisecond-only
+    /// name makes this fail on any platform. (An earlier version of this test
+    /// drove real writes instead and passed even with the bug reverted, on
+    /// Windows — false confidence, which is worse than no test.)
+    #[test]
+    fn archive_names_are_unique_within_a_single_millisecond() {
+        let dir = temp_dir("same-ms");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 1, 0).unwrap();
+
+        // The exact collision condition: one frozen timestamp, many rotations.
+        const FROZEN_STAMP: u128 = 1_757_000_000_000;
+        let names: Vec<PathBuf> = (0..500)
+            .map(|_| log.next_archive_path(FROZEN_STAMP))
+            .collect();
+
+        let unique: std::collections::BTreeSet<&PathBuf> = names.iter().collect();
+        assert_eq!(
+            unique.len(),
+            names.len(),
+            "{} of {} archive names collided within one millisecond — fs::rename replaces an \
+             existing destination, so each collision silently destroys an archive and every \
+             record in it",
+            names.len() - unique.len(),
+            names.len()
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Names generated within one millisecond must ALSO sort chronologically,
+    /// since `prune_archives` picks the oldest lexically. Zero-padding is what
+    /// makes that true; without it `-10` sorts before `-2`.
+    #[test]
+    fn archive_names_within_a_millisecond_sort_in_creation_order() {
+        let dir = temp_dir("same-ms-order");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 1, 0).unwrap();
+        const FROZEN_STAMP: u128 = 1_757_000_000_000;
+
+        let created: Vec<PathBuf> = (0..25)
+            .map(|_| log.next_archive_path(FROZEN_STAMP))
+            .collect();
+        let mut sorted = created.clone();
+        sorted.sort();
+
+        assert_eq!(
+            created, sorted,
+            "lexical order must match creation order, or pruning deletes newer audit history \
+             while keeping older"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// End-to-end: records must survive rapid back-to-back rotation. This one
+    /// IS timing-dependent (it only collides on a fast filesystem), which is
+    /// exactly why the two deterministic tests above exist — but it is kept
+    /// because it exercises the real write path rather than the name generator
+    /// in isolation.
+    #[test]
+    fn every_record_survives_rapid_back_to_back_rotation() {
+        let dir = temp_dir("rapid");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 1, 0).unwrap();
+        let writes = 60;
+        for i in 0..writes {
+            log.append(&rec(&format!("id-{i}")));
+        }
+
+        let mut files = archives_in(&dir);
+        files.push(audit_path(&dir));
+        let mut seen = 0usize;
+        for f in files {
+            let content = std::fs::read_to_string(&f).unwrap_or_default();
+            seen += content.lines().filter(|l| !l.trim().is_empty()).count();
+        }
+        assert_eq!(
+            seen, writes,
+            "every record must survive rapid rotation (P9 — rotation is not deletion)"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Archive names must sort chronologically, because `prune_archives`
+    /// decides what is "oldest" by lexical order. An unpadded counter would
+    /// order `-10` before `-2` and prune the wrong file — deleting newer audit
+    /// history while keeping older.
+    #[test]
+    fn archive_names_sort_chronologically() {
+        let dir = temp_dir("sort-order");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 1, 0).unwrap();
+        for i in 0..15 {
+            log.append(&rec(&format!("id-{i}")));
+        }
+        let archives = archives_in(&dir); // archives_in() sorts lexically
+        let mut by_mtime = archives.clone();
+        by_mtime.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+        assert_eq!(
+            archives, by_mtime,
+            "lexical archive order must match creation order, or pruning removes the wrong files"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
