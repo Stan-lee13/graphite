@@ -1272,6 +1272,24 @@ impl GraphiteCore {
     ) -> Result<(RiskVerdict, Vec<String>), VerificationError> {
         let mut verdict = RiskVerdict::Passed;
         let mut warnings: Vec<String> = Vec::new();
+        // P1 fix (2026-09-05 audit, "duplicate-instruction abuse"): an
+        // unmanifested secondary instruction only ever produces a per-
+        // occurrence WARNING below (Check 2's unconditional table and Check
+        // 10a's impersonation check are the only things that can BLOCK it —
+        // deliberately, since manifest evidence is unavailable and Graphite
+        // has no transaction amount/value data to reason about cumulative
+        // damage; a hard cap on repetition count would be trivially evaded
+        // by staying one under the threshold and would false-positive on
+        // legitimate batches to a not-yet-onboarded protocol, P12). Counting
+        // occurrences per unmanifested program and surfacing an explicit
+        // repetition warning is pure disclosure — never a confidence penalty
+        // or a block — so a human/downstream auditor sees the aggregate
+        // pattern that per-instruction warnings alone don't make visible.
+        // BTreeMap (not HashMap): iteration order feeds directly into the
+        // warning text below, and warning order must be deterministic (P2)
+        // regardless of hash-map internals.
+        let mut unmanifested_repeats: std::collections::BTreeMap<&str, u32> =
+            std::collections::BTreeMap::new();
         for (idx, ix) in effective_instructions.iter().enumerate().skip(1) {
             // A secondary instruction with NO discriminator (common for
             // CPI-trace-flattened nodes: trace introspection frequently
@@ -1316,6 +1334,9 @@ impl GraphiteCore {
                     "secondary instruction #{idx} calls unmanifested program {} \u{2014} no manifest evidence available, structural risk checks only",
                     ix.program_id
                 ));
+                *unmanifested_repeats
+                    .entry(ix.program_id.as_str())
+                    .or_insert(0) += 1;
             }
             let ix_input = RiskAssessmentInput {
                 program_id: ix.program_id.clone(),
@@ -1356,6 +1377,17 @@ impl GraphiteCore {
                         reason: format!("{prior} | {tagged_reason}"),
                     },
                 };
+            }
+        }
+        // Threshold mirrors tx_pattern_analysis's mass-sweep floor (>= 3):
+        // one or two secondary calls to the same not-yet-onboarded protocol
+        // is unremarkable multi-step composability; three or more sharing no
+        // manifest evidence is the shape worth an explicit disclosure.
+        for (program_id, count) in &unmanifested_repeats {
+            if *count >= 3 {
+                warnings.push(format!(
+                    "unmanifested program {program_id} was invoked {count} times as a secondary instruction \u{2014} repeated calls with no manifest evidence available for any of them (disclosure only, not a block: P12)"
+                ));
             }
         }
         Ok((verdict, warnings))

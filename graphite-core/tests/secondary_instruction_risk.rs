@@ -34,6 +34,12 @@ const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 // convention.
 const UNKNOWN_PROGRAM: &str = "GdP9U5aYx7f2kQzVwNmT8jRcL4hB6eX3sDnWqA1uMoH";
 
+// A second unmanifested program ID, distinct from UNKNOWN_PROGRAM, for the
+// repeated-unmanifested-program disclosure tests below (not registered as a
+// program in any seed manifest — it is the mSOL mint address, used here only
+// as an arbitrary valid, unmanifested pubkey).
+const UNKNOWN_PROGRAM_2: &str = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytf3jPxZ7P";
+
 const A: &str = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
 const B: &str = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 const C: &str = "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU";
@@ -360,7 +366,99 @@ fn cpi_trace_child_with_no_discriminator_is_not_falsely_blocked() {
     );
 }
 
-// ── 7. Determinism ───────────────────────────────────────────────────────────
+// ── 7. Repeated unmanifested secondary program → disclosed, never blocked ──
+//
+// P1 fix (2026-09-05 audit, "duplicate-instruction abuse"): an unmanifested
+// secondary instruction only ever produces a per-occurrence warning — Check
+// 2's unconditional table and Check 10a's impersonation check are the only
+// things that can BLOCK it, deliberately, since Graphite has no manifest
+// evidence and no transaction amount/value data to bound cumulative damage.
+// A hard cap on repetition count would be trivially evaded (stay one under
+// the threshold) and would false-positive on a legitimate multi-call batch
+// to a not-yet-onboarded protocol (P12). What IS added: an aggregate
+// disclosure warning once the SAME unmanifested program is invoked 3+ times,
+// so the pattern is visible to a human/downstream auditor even though it
+// never blocks or reduces confidence.
+
+#[test]
+fn repeated_unmanifested_secondary_program_is_disclosed_not_blocked() {
+    let core = GraphiteCore::new();
+    let mut input = benign_primary();
+    input.transaction_instructions = vec![
+        ix(UNKNOWN_PROGRAM, "ff", &[A, B]),
+        ix(UNKNOWN_PROGRAM, "ff", &[A, C]),
+        ix(UNKNOWN_PROGRAM, "ff", &[A, D]),
+    ];
+
+    let result = core.verify(&input).unwrap();
+
+    assert!(
+        result.approved,
+        "repeated unmanifested secondaries with no structural risk signal must not be falsely blocked: {}",
+        result.summary
+    );
+    assert_eq!(result.risk_verdict.status, "Clear");
+    assert!(
+        result
+            .summary
+            .contains(&format!("{UNKNOWN_PROGRAM} was invoked 3 times")),
+        "the repetition must be surfaced as an explicit disclosure: {}",
+        result.summary
+    );
+}
+
+#[test]
+fn two_unmanifested_secondary_calls_stay_below_the_repetition_disclosure_threshold() {
+    let core = GraphiteCore::new();
+    let mut input = benign_primary();
+    input.transaction_instructions = vec![
+        ix(UNKNOWN_PROGRAM, "ff", &[A, B]),
+        ix(UNKNOWN_PROGRAM, "ff", &[A, C]),
+    ];
+
+    let result = core.verify(&input).unwrap();
+
+    assert!(result.approved);
+    assert!(
+        !result.summary.contains("was invoked"),
+        "2 occurrences must stay below the disclosure threshold (mirrors the mass-sweep >= 3 floor): {}",
+        result.summary
+    );
+}
+
+#[test]
+fn different_unmanifested_secondary_programs_are_counted_separately() {
+    let core = GraphiteCore::new();
+    let mut input = benign_primary();
+    // UNKNOWN_PROGRAM hits the 3x threshold; UNKNOWN_PROGRAM_2 appears only
+    // once — repetition must be attributed per-program, not pooled together.
+    input.transaction_instructions = vec![
+        ix(UNKNOWN_PROGRAM, "ff", &[A, B]),
+        ix(UNKNOWN_PROGRAM_2, "ff", &[A, B]),
+        ix(UNKNOWN_PROGRAM, "ff", &[A, C]),
+        ix(UNKNOWN_PROGRAM, "ff", &[A, D]),
+    ];
+
+    let result = core.verify(&input).unwrap();
+
+    assert!(result.approved);
+    assert!(
+        result
+            .summary
+            .contains(&format!("{UNKNOWN_PROGRAM} was invoked 3 times")),
+        "the 3x-repeated program must be disclosed: {}",
+        result.summary
+    );
+    assert!(
+        !result
+            .summary
+            .contains(&format!("{UNKNOWN_PROGRAM_2} was invoked")),
+        "a program appearing only once must not trigger the repetition disclosure: {}",
+        result.summary
+    );
+}
+
+// ── 8. Determinism ───────────────────────────────────────────────────────────
 
 #[test]
 fn secondary_instruction_risk_assessment_is_deterministic() {
