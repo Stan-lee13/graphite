@@ -192,8 +192,8 @@ graphite/
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
 ├── sdk/
-│   ├── typescript/                ← TS SDK (GraphiteClient + AuditBind middleware)
-│   └── go/                        ← Go SDK (19-field VerificationResult parity)
+│   ├── typescript/                ← TS SDK (GraphiteClient + AuditBind TOCTOU binding)
+│   └── go/                        ← Go SDK (same client + AuditBind, 19-field parity)
 │
 ├── integrations/
 │   └── solana-agent-kit/          ← SAK v2 integration (verified execution gate)
@@ -267,6 +267,56 @@ GRAPHITE_API_KEY=$(openssl rand -hex 32) GRAPHITE_RATE_LIMIT=100 \
 > reachable network. Pass `--host 0.0.0.0` to expose it deliberately — the
 > server **refuses** to bind a non-loopback address when `GRAPHITE_API_KEY` is
 > unset, rather than serving an unauthenticated verification API and dashboard.
+
+### Integrating safely (read this before writing the integration)
+
+Graphite verifies **before** the transaction is signed. Two rules make that
+protection real; skipping either one produces an integration that looks correct
+and protects nothing.
+
+**1. `approved` is the only field you may gate on.** Everything else —
+`confidence`, `policy_verdict`, `risk_verdict`, `trust_tier` — is evidence for
+audit and explanation, not a decision. And a transport error, timeout, or
+non-200 means *verification did not happen*: that is a hard stop, never an
+implicit pass.
+
+**2. Bind what was verified to what you submit.** Between approval and the
+chain, the instruction can still be mutated — a compromised RPC proxy, a
+malicious wallet adapter, a race in your own pipeline. `content_hash` closes
+that window; recompute it from the instruction you are about to send.
+
+```ts
+import { GraphiteClient, verifyInstruction } from "@graphite/sdk";
+
+const graphite = new GraphiteClient({ baseUrl, apiKey }); // 30s timeout by default
+
+let result;
+try {
+  result = await graphite.verify(input);
+} catch (e) {
+  throw new Error(`verification did not happen: ${e}`); // never proceed
+}
+
+if (!result.approved) throw new Error(`blocked: ${result.summary}`);
+
+// Throws if the instruction changed since it was verified.
+verifyInstruction(
+  {
+    programId: ix.programId.toBase58(),
+    data: ix.data,
+    accounts: ix.keys.map((k) => k.pubkey.toBase58()),
+  },
+  result.content_hash,
+);
+
+// ...only now sign and submit.
+```
+
+The Go SDK exposes the same primitives (`VerifyInstruction`,
+`VerifyContentHash`, `ComputeContentHash`), returning errors that wrap
+`graphite.ErrAuditBind`. All three implementations — Rust core, TypeScript, Go
+— are pinned to the same cross-language hash vectors, so a drift in any one of
+them fails a test rather than silently disabling the check.
 
 ### Deployment, TLS, and scaling
 

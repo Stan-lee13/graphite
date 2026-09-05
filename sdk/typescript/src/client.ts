@@ -9,6 +9,20 @@ export interface GraphiteClientOptions {
    * works without it.
    */
   apiKey?: string;
+  /**
+   * Request timeout in milliseconds (default 30000).
+   *
+   * A hung Core — a stalled TLS proxy, a slow disk on the audit-write path,
+   * an overloaded RPC provider on the L3 path — would otherwise leave
+   * `verify()` pending forever. That is not itself fail-open, but it pushes
+   * callers into hand-rolling `Promise.race([verify(), timeout()])`, and the
+   * timeout branch of such a race is very easy to resolve as "proceed"
+   * instead of "abort".
+   *
+   * A timeout means VERIFICATION DID NOT HAPPEN. Treat it as a hard stop —
+   * never as an implicit pass. Set to 0 to disable (not recommended).
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -61,10 +75,17 @@ export function validateVerificationResult(value: unknown): string | null {
 export class GraphiteClient {
   private baseUrl: string;
   private apiKey?: string;
+  private timeoutMs: number;
 
   constructor(options: GraphiteClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.apiKey = options.apiKey?.trim() || undefined;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
+  }
+
+  /** AbortSignal enforcing the configured timeout (undefined when disabled). */
+  private signal(): AbortSignal | undefined {
+    return this.timeoutMs > 0 ? AbortSignal.timeout(this.timeoutMs) : undefined;
   }
 
   private headers(extra?: Record<string, string>): Record<string, string> {
@@ -80,6 +101,7 @@ export class GraphiteClient {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify(input),
+      signal: this.signal(),
     });
 
     if (!response.ok) {
@@ -100,7 +122,7 @@ export class GraphiteClient {
   }
 
   async health(): Promise<{ status: string; service: string; version: string }> {
-    const response = await fetch(`${this.baseUrl}/health`);
+    const response = await fetch(`${this.baseUrl}/health`, { signal: this.signal() });
     if (!response.ok) throw new Error(`Health check failed: ${response.status}`);
     return (await response.json()) as { status: string; service: string; version: string };
   }
@@ -108,6 +130,7 @@ export class GraphiteClient {
   async listManifests(): Promise<ProtocolManifest[]> {
     const response = await fetch(`${this.baseUrl}/manifests`, {
       headers: this.headers(),
+      signal: this.signal(),
     });
     if (!response.ok) throw new Error(`Failed to list manifests: ${response.status}`);
     return (await response.json()) as ProtocolManifest[];

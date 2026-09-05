@@ -103,7 +103,20 @@
           "is_signer": { "type": "boolean" },
           "is_writable": { "type": "boolean" },
           "pda_seeds": { "type": "array", "items": { "type": "string" } },
-          "pda_mismatch": { "type": "boolean" }
+          "identity": {
+            "type": "string",
+            "enum": ["Pda", "Constant", "Unverified"],
+            "description": "How this account's identity was verified. Unverified means genuinely externally-determined (no PDA formula, no fixed constant) — disclosed honestly rather than assumed safe."
+          },
+          "pda_mismatch": { "type": "boolean" },
+          "expected_address_mismatch": {
+            "type": "boolean",
+            "description": "A manifest-declared fixed-constant slot (e.g. the SPL Token program) did not match the supplied address — a substitution attempt. Hard-blocks approval."
+          },
+          "privilege_mismatch": {
+            "type": "boolean",
+            "description": "A caller-supplied real AccountMeta disagreed with the manifest in a security-relevant direction: a required signer that is not actually signed, or a manifest-readonly slot marked writable. Hard-blocks approval."
+          }
         }
       }
     },

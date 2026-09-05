@@ -119,11 +119,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: SDK typecheck
+      - name: SDK typecheck + AuditBind cross-language parity
         working-directory: sdk/typescript
         run: |
           npm install
           npm run check
+          # Pins the TS content_hash to the SAME vectors the Rust core and the
+          # Go SDK assert. If any of the three implementations drifts, the
+          # TOCTOU check silently stops matching — so this must gate.
+          npx tsx --test src/auditbind.test.ts
       - name: SAK integration typecheck + AuditBind cross-language tests
         working-directory: integrations/solana-agent-kit
         run: |

@@ -1,13 +1,159 @@
 {
-  "confidence": 0.83,
+  "approved": false,
+  "confidence": 0.43999999999999995,
   "breakdown": [
-    { "kind": "ManifestMatch", "raw_value": 1.0, "weight": 0.3, "contribution": 0.3 },
-    { "kind": "SimulationMatch", "raw_value": 0.67, "weight": 0.3, "contribution": 0.2 },
-    { "kind": "HistoricalVolume", "raw_value": 0.4, "weight": 0.25, "contribution": 0.1 },
-    { "kind": "CommunityVerification", "raw_value": 0.5, "weight": 0.15, "contribution": 0.075 }
+    {
+      "kind": "ManifestMatch",
+      "raw_value": 1.0,
+      "weight": 0.2,
+      "contribution": 0.2
+    },
+    {
+      "kind": "TrustTierLevel",
+      "raw_value": 0.7,
+      "weight": 0.2,
+      "contribution": 0.13999999999999999
+    },
+    {
+      "kind": "SimulationMatch",
+      "raw_value": 0.0,
+      "weight": 0.2,
+      "contribution": 0.0
+    },
+    {
+      "kind": "HistoricalVolume",
+      "raw_value": 0.0,
+      "weight": 0.15,
+      "contribution": 0.0
+    },
+    {
+      "kind": "CommunityVerification",
+      "raw_value": 0.0,
+      "weight": 0.15,
+      "contribution": 0.0
+    },
+    {
+      "kind": "IntentAlignment",
+      "raw_value": 1.0,
+      "weight": 0.1,
+      "contribution": 0.1
+    }
   ],
   "trust_tier": "OfficialManifest",
-  "risk_verdict": { "status": "Clear", "findings": [] },
-  "policy_verdict": "Approved",
-  "audit_trail_id": "gr-0123456789abcdef"
+  "risk_verdict": {
+    "status": "Clear",
+    "findings": []
+  },
+  "policy_verdict": "Rejected",
+  "audit_trail_id": "gr-622ce548dab9f32d-00000002",
+  "content_hash": "afb61d8865b4cb68",
+  "transaction": {
+    "program_id": "11111111111111111111111111111111",
+    "protocol_version": "",
+    "instruction_name": "Transfer",
+    "instruction_discriminator": "02000000",
+    "instruction_count": 1,
+    "account_count": 2,
+    "signer_count": 1,
+    "writable_count": 2,
+    "compute_budget_units": 220000,
+    "accounts": [
+      {
+        "address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+        "is_signer": true,
+        "is_writable": true
+      },
+      {
+        "address": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        "is_signer": false,
+        "is_writable": true
+      }
+    ],
+    "data_hex": "",
+    "data_len": 0
+  },
+  "resolved_accounts": [
+    {
+      "address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "role": "signer",
+      "is_pda": false,
+      "is_signer": true,
+      "is_writable": true,
+      "pda_seeds": [],
+      "identity": "unverified",
+      "expected_address_mismatch": false,
+      "pda_mismatch": false,
+      "privilege_mismatch": false
+    },
+    {
+      "address": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+      "role": "writable",
+      "is_pda": false,
+      "is_signer": false,
+      "is_writable": true,
+      "pda_seeds": [],
+      "identity": "unverified",
+      "expected_address_mismatch": false,
+      "pda_mismatch": false,
+      "privilege_mismatch": false
+    }
+  ],
+  "protocol_name": "System Program",
+  "instruction_name": "Transfer",
+  "manifest_found": true,
+  "unknown_protocol": false,
+  "manifest_version": "1.0.0",
+  "summary": "BLOCKED | confidence=0.44 | risk=Clear | policy=Rejected | protocol=System Program | instruction=Transfer | unknown_protocol=false",
+  "simulation_flagged": null,
+  "simulation_divergence": null,
+  "layers": [
+    {
+      "layer": "L1_AccountResolution",
+      "passed": true,
+      "status": "passed",
+      "reason": "Resolved 2 account(s), manifest found"
+    },
+    {
+      "layer": "L2_InstructionVerification",
+      "passed": true,
+      "status": "passed",
+      "reason": "Instruction Transfer verified against manifest"
+    },
+    {
+      "layer": "L3_SimulationVerification",
+      "passed": false,
+      "status": "inconclusive",
+      "reason": "Phase 1: simulation not checked (no baseline or insufficient samples) \u00e2\u20ac\u201d active when a trusted baseline exists"
+    },
+    {
+      "layer": "L4_StateVerification",
+      "passed": true,
+      "status": "passed",
+      "reason": "State verification passed: 2 state change(s) consistent with 2 account(s)"
+    },
+    {
+      "layer": "L5_SemanticVerification",
+      "passed": true,
+      "status": "passed",
+      "reason": "Semantic verification passed: intent transfer consistent with instruction Transfer"
+    },
+    {
+      "layer": "L6_PolicyVerification",
+      "passed": false,
+      "status": "failed",
+      "reason": "Confidence: 0.4400 (tier: OfficialManifest, ceiling: 0.75) \u00e2\u2020\u2019 Policy: Rejected (min_conf: 0.60, min_tier: HeuristicInferred)"
+    },
+    {
+      "layer": "L7_RiskVerification",
+      "passed": true,
+      "status": "passed",
+      "reason": "No risk patterns detected (13 patterns checked)"
+    },
+    {
+      "layer": "L8_ExecutionVerification",
+      "passed": false,
+      "status": "inconclusive",
+      "reason": "Phase 1: execution verification not yet verified (post-submission feature) \u00e2\u20ac\u201d audit_trail_id bound to transaction for future L8 replay"
+    }
+  ]
 }

@@ -3,9 +3,35 @@
 // Graphite verifies that Solana transactions constructed by AI agents actually
 // do what was declared, with a falsifiable confidence score.
 //
-// Usage:
-//   client := graphite.NewClient("http://localhost:8080")
-//   result, err := client.Verify(input)
+// Gating a transaction safely — the complete pattern. Every step matters; the
+// short version that omits them is how integrations end up insecure.
+//
+//	client := graphite.NewClientWithAPIKey("https://graphite.internal", apiKey)
+//
+//	result, err := client.Verify(input)
+//	if err != nil {
+//	    // A transport error, timeout, or non-200 means VERIFICATION DID NOT
+//	    // HAPPEN. It is never an implicit pass — abort.
+//	    return fmt.Errorf("graphite verification unavailable: %w", err)
+//	}
+//
+//	// Approved is the ONLY field to gate execution on. Everything else —
+//	// Confidence, PolicyVerdict, RiskVerdict — is evidence for audit and
+//	// explanation, not a decision.
+//	if !result.Approved {
+//	    return fmt.Errorf("blocked by Graphite: %s", result.Summary)
+//	}
+//
+//	// Bind what was verified to what you are about to submit. Graphite
+//	// verifies BEFORE signing, so without this the instruction can still be
+//	// mutated in between (compromised RPC proxy, malicious wallet adapter, a
+//	// race in your own pipeline) and the verification would not have covered
+//	// the bytes that actually execute.
+//	if err := graphite.VerifyInstruction(programID, data, accounts, result.ContentHash); err != nil {
+//	    return err // mutated between verification and submission — do not sign
+//	}
+//
+//	// ...only now sign and submit.
 //
 // This SDK communicates with the Graphite Core HTTP server (Rust/axum).
 // It does NOT make any security decisions — all verification happens in Core.
