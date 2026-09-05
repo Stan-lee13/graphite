@@ -1,84 +1,152 @@
 import { usePolling } from "../usePolling";
 import { api } from "../api";
-import { ErrorState, Loading, shortId } from "../ui";
+import {
+  CopyId,
+  Empty,
+  ErrorState,
+  Metric,
+  Panel,
+  State,
+  TableSkeleton,
+  ViewHead,
+  relTime,
+  shortTime,
+} from "../ui";
 
 export function ViolationsView() {
-  const { data, error, loading } = usePolling(() => api.policyViolations(), 5000);
+  const { data, error } = usePolling(() => api.policyViolations(), 5000);
 
   if (error) return <ErrorState message={error} />;
-  if (loading || !data) return <Loading what="policy violations" />;
+  const loading = !data;
+
+  const blocked = data?.violations ?? [];
+  const rejected = data?.error_violations ?? [];
+  const latest = blocked[0]?.timestamp ?? rejected[0]?.timestamp;
 
   return (
-    <section>
-      <div className="view-head">
-        <h2>Policy Violations</h2>
-        <span className="muted">
-          {data.count} total · {data.violations.length} blocked verifications ·{" "}
-          {data.error_violations.length} rejected requests
-        </span>
-      </div>
+    <>
+      <ViewHead
+        title="Blocked"
+        note="transactions the gate refused, and requests it could not parse"
+      >
+        <Metric
+          label="Blocked"
+          value={loading ? "—" : blocked.length}
+          tone={blocked.length > 0 ? "block" : "idle"}
+          sub="failed verification"
+        />
+        <Metric
+          label="Rejected"
+          value={loading ? "—" : rejected.length}
+          tone={rejected.length > 0 ? "warn" : "idle"}
+          sub="malformed or oversized"
+        />
+        <Metric
+          label="Most recent"
+          value={loading ? "—" : latest ? relTime(latest) : "none"}
+          tone={latest ? undefined : "idle"}
+        />
+      </ViewHead>
 
-      <div className="card">
-        <h3>Blocked transactions</h3>
-        {data.violations.length === 0 ? (
-          <p className="muted">No blocked transactions recorded.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Protocol</th>
-                <th>Program</th>
-                <th>Confidence</th>
-                <th>Policy verdict</th>
-                <th>Risk status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.violations.slice(0, 100).map((v) => (
-                <tr key={v.audit_trail_id}>
-                  <td>{new Date(v.timestamp).toLocaleString()}</td>
-                  <td>{v.protocol_name}</td>
-                  <td className="mono" title={v.program_id}>{shortId(v.program_id, 8, 5)}</td>
-                  <td>{v.confidence.toFixed(3)}</td>
-                  <td><span className="pill block">{v.policy_verdict}</span></td>
-                  <td>{v.risk_status}</td>
+      <div className="body">
+        <Panel title="Blocked transactions" meta={loading ? "" : `${blocked.length}`} flush>
+          {loading ? (
+            <TableSkeleton rows={5} cols={6} />
+          ) : blocked.length === 0 ? (
+            <Empty
+              title="Nothing blocked"
+              hint="Every verification so far met its policy threshold and raised no risk finding."
+            />
+          ) : (
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Protocol</th>
+                  <th>Instruction</th>
+                  <th>Program</th>
+                  <th className="n">Confidence</th>
+                  <th>Policy</th>
+                  <th>Risk</th>
+                  <th>Audit ID</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {blocked.slice(0, 100).map((v) => (
+                  <tr key={v.audit_trail_id}>
+                    <td className="t" title={v.timestamp}>
+                      {shortTime(v.timestamp)}
+                    </td>
+                    <td className="primary">{v.protocol_name}</td>
+                    <td>{v.instruction_name}</td>
+                    <td className="id">
+                      <CopyId value={v.program_id} />
+                    </td>
+                    <td className="n">{v.confidence.toFixed(2)}</td>
+                    <td>
+                      <State kind={v.policy_verdict === "Approved" ? "pass" : "block"}>
+                        {v.policy_verdict}
+                      </State>
+                    </td>
+                    <td>
+                      <State kind={v.risk_status === "Clear" ? "pass" : "block"}>
+                        {v.risk_status}
+                      </State>
+                    </td>
+                    <td className="id">
+                      <CopyId value={v.audit_trail_id} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
 
-      <div className="card">
-        <h3>Rejected requests (error path)</h3>
-        {data.error_violations.length === 0 ? (
-          <p className="muted">No rejected requests recorded.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Program</th>
-                <th>Error type</th>
-                <th>Status</th>
-                <th>Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.error_violations.slice(0, 100).map((v, i) => (
-                <tr key={i}>
-                  <td>{new Date(v.timestamp).toLocaleString()}</td>
-                  <td className="mono">{shortId(v.program_id, 8, 5)}</td>
-                  <td className="mono">{v.error_type}</td>
-                  <td>{v.status}</td>
-                  <td className="small">{v.error}</td>
+        <Panel
+          title="Rejected requests"
+          meta={loading ? "" : `${rejected.length}`}
+          flush
+        >
+          {loading ? (
+            <TableSkeleton rows={3} cols={4} />
+          ) : rejected.length === 0 ? (
+            <Empty
+              title="No rejected requests"
+              hint="Malformed payloads, oversized bodies and probing attempts would appear here — they are audited rather than silently dropped."
+            />
+          ) : (
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Program</th>
+                  <th>Instruction</th>
+                  <th className="n">Status</th>
+                  <th>Type</th>
+                  <th>Error</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {rejected.slice(0, 100).map((e, i) => (
+                  <tr key={`${e.timestamp}-${i}`}>
+                    <td className="t" title={e.timestamp}>
+                      {shortTime(e.timestamp)}
+                    </td>
+                    <td className="id">
+                      <CopyId value={e.program_id} />
+                    </td>
+                    <td className="id">{e.instruction_name}</td>
+                    <td className="n">{e.status}</td>
+                    <td>{e.error_type}</td>
+                    <td style={{ color: "var(--ink-2)" }}>{e.error}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
       </div>
-    </section>
+    </>
   );
 }

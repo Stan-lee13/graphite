@@ -4,37 +4,50 @@ import { ProtocolsView } from "./views/ProtocolsView";
 import { ConfidenceView } from "./views/ConfidenceView";
 import { ViolationsView } from "./views/ViolationsView";
 import { RegistryView } from "./views/RegistryView";
-import { setApiKey } from "./api";
+import { api, setApiKey } from "./api";
+import { usePolling } from "./usePolling";
 
 const KEY_STORAGE = "graphite_api_key";
 
 type Tab = "protocols" | "graph" | "confidence" | "violations" | "registry";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "protocols", label: "Protocol Overview" },
-  { id: "graph", label: "Semantic Graph" },
-  { id: "confidence", label: "Confidence History" },
-  { id: "violations", label: "Policy Violations" },
-  { id: "registry", label: "Manifest Registry" },
+const NAV: { id: Tab; label: string }[] = [
+  { id: "protocols", label: "Protocols" },
+  { id: "graph", label: "Semantic graph" },
+  { id: "confidence", label: "Confidence" },
+  { id: "violations", label: "Blocked" },
+  { id: "registry", label: "Registry" },
 ];
 
 interface Health {
   status: string;
   service: string;
   version: string;
+  degraded?: boolean;
+  audit?: { enabled: boolean; writes_failed?: number };
 }
 
 export function App() {
   const [tab, setTab] = useState<Tab>("protocols");
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState<string>(() => localStorage.getItem(KEY_STORAGE) ?? "");
+  const [apiKeyInput, setApiKeyInput] = useState<string>(
+    () => localStorage.getItem(KEY_STORAGE) ?? "",
+  );
+
+  // Surfaced in the rail so a blocked-transaction count is visible from every
+  // view — an operator should not have to navigate to discover something was
+  // rejected.
+  const violations = usePolling(() => api.policyViolations(), 5000);
+  const blockedCount = violations.data?.violations.length ?? 0;
 
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
       try {
-        const resp = await fetch("/health", { headers: { Accept: "application/json" } });
+        const resp = await fetch("/health", {
+          headers: { Accept: "application/json" },
+        });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const body = (await resp.json()) as Health;
         if (!cancelled) {
@@ -42,7 +55,10 @@ export function App() {
           setHealthError(null);
         }
       } catch (e) {
-        if (!cancelled) setHealthError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) {
+          setHealthError(e instanceof Error ? e.message : String(e));
+          setHealth(null);
+        }
       }
     };
     void check();
@@ -53,67 +69,90 @@ export function App() {
     };
   }, []);
 
+  // Three distinct states, not two: reachable-and-healthy, reachable-but-
+  // degraded (the audit trail has failed writes — verification still works but
+  // durability does not), and unreachable.
+  const degraded = health?.degraded === true;
+  const dotClass = healthError ? "bad" : health ? (degraded ? "bad" : "ok") : "idle";
+
   return (
     <div className="app">
-      <header className="topbar">
+      <aside className="rail">
         <div className="brand">
-          <span className="logo">◈</span>
-          <h1>Graphite</h1>
-          <span className="tagline">Solana transaction verification · dashboard</span>
+          <div className="brand-mark" aria-hidden="true" />
+          <div>
+            <h1 className="brand-name">Graphite</h1>
+            <span className="brand-sub">Verification gate</span>
+          </div>
         </div>
-        <div className="health">
-          <label className="api-key">
-            <span className="muted">API key</span>
+
+        <nav className="nav" aria-label="Views">
+          {NAV.map((n) => (
+            <button
+              key={n.id}
+              className="nav-item"
+              aria-current={tab === n.id}
+              onClick={() => setTab(n.id)}
+            >
+              <span>{n.label}</span>
+              {n.id === "violations" && blockedCount > 0 && (
+                <span className="nav-count alert">{blockedCount}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+
+        <div className="rail-foot">
+          <div>
+            <div className="status">
+              <span className={`dot ${dotClass}`} aria-hidden="true" />
+              <span>
+                {healthError
+                  ? "Core unreachable"
+                  : health
+                    ? degraded
+                      ? "Degraded"
+                      : "Operational"
+                    : "Connecting"}
+              </span>
+            </div>
+            <div className="status-meta">
+              {health
+                ? `v${health.version}${
+                    health.audit?.enabled === false ? " · no audit log" : ""
+                  }`
+                : healthError
+                  ? "expected :7331"
+                  : "…"}
+            </div>
+          </div>
+
+          <div className="key-field">
+            <label htmlFor="apikey">API key</label>
             <input
+              id="apikey"
               type="password"
               value={apiKeyInput}
-              placeholder="optional — secured Core only"
+              placeholder="none (dev core)"
               spellCheck={false}
               autoComplete="off"
               onChange={(e) => {
                 setApiKeyInput(e.target.value);
                 setApiKey(e.target.value);
               }}
-              title="Core Bearer API key (GRAPHITE_API_KEY). Sent as Authorization: Bearer on /api/* requests. Stored locally in your browser."
+              title="Bearer key for a secured Core (GRAPHITE_API_KEY). Stored in this browser only."
             />
-          </label>
-          {health ? (
-            <span className="health-ok">● {health.service} v{health.version} — {health.status}</span>
-          ) : healthError ? (
-            <span className="health-bad" title={healthError}>● Core unreachable — is the server running on :7331?</span>
-          ) : (
-            <span className="health-unknown">● checking…</span>
-          )}
+          </div>
         </div>
-      </header>
+      </aside>
 
-      <nav className="tabs" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            className={tab === t.id ? "tab active" : "tab"}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
-      <main className="content">
+      <main className="main">
         {tab === "protocols" && <ProtocolsView />}
         {tab === "graph" && <GraphView />}
         {tab === "confidence" && <ConfidenceView />}
         {tab === "violations" && <ViolationsView />}
         {tab === "registry" && <RegistryView />}
       </main>
-
-      <footer className="footer">
-        Read-only dashboard (Constitution P4) — polls the Core /api endpoints.
-        Confidence is earned, never asserted (G4): evidence signals read the
-        Semantic Graph's internal accumulator.
-      </footer>
     </div>
   );
 }

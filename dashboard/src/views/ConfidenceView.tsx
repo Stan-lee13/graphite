@@ -1,99 +1,204 @@
 import { usePolling } from "../usePolling";
 import { api } from "../api";
-import { ErrorState, Loading, shortId } from "../ui";
+import {
+  CopyId,
+  Empty,
+  ErrorState,
+  Metric,
+  Panel,
+  State,
+  TableSkeleton,
+  ViewHead,
+  shortTime,
+} from "../ui";
 
-const W = 960;
-const H = 300;
-const PAD = 40;
+const W = 1040;
+const H = 260;
+const PAD_L = 34;
+const PAD_R = 12;
+const PAD_T = 14;
+const PAD_B = 26;
 
 export function ConfidenceView() {
-  const { data, error, loading } = usePolling(() => api.confidenceHistory(), 5000);
+  const { data, error } = usePolling(() => api.confidenceHistory(), 5000);
 
   if (error) return <ErrorState message={error} />;
-  if (loading || !data) return <Loading what="confidence history" />;
+  const loading = !data;
+  const pts = data?.series ?? [];
 
-  const pts = data.series;
-  if (pts.length === 0) {
-    return (
-      <section>
-        <div className="view-head">
-          <h2>Confidence History</h2>
-        </div>
-        <div className="card">
-          <p className="muted">
-            No verifications yet. Submit a transaction to /verify and the audit
-            trail will feed this series.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  const minT = Math.min(...pts.map((p) => new Date(p.timestamp).getTime()));
-  const maxT = Math.max(...pts.map((p) => new Date(p.timestamp).getTime()));
-  const tSpan = Math.max(maxT - minT, 1);
-  const x = (t: number) => PAD + ((t - minT) / tSpan) * (W - 2 * PAD);
-  const y = (c: number) => H - PAD - Math.min(Math.max(c, 0), 1) * (H - 2 * PAD);
-
-  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(new Date(p.timestamp).getTime()).toFixed(1)},${y(p.confidence).toFixed(1)}`).join(" ");
-  const maxConf = Math.max(...pts.map((p) => p.confidence));
+  const approved = pts.filter((p) => p.approved).length;
+  const mean = pts.length
+    ? pts.reduce((s, p) => s + p.confidence, 0) / pts.length
+    : 0;
 
   return (
-    <section>
-      <div className="view-head">
-        <h2>Confidence History</h2>
-        <span className="muted">
-          {pts.length} verifications · peak {maxConf.toFixed(3)} · green = approved, red = blocked
-        </span>
+    <>
+      <ViewHead
+        title="Confidence"
+        note="every verification, in the order the audit trail recorded it"
+      >
+        <Metric label="Verifications" value={loading ? "—" : data.count} />
+        <Metric
+          label="Approved"
+          value={loading ? "—" : approved}
+          tone={pts.length && approved === 0 ? "idle" : "pass"}
+          sub={pts.length ? `${Math.round((approved / pts.length) * 100)}%` : undefined}
+        />
+        <Metric
+          label="Blocked"
+          value={loading ? "—" : pts.length - approved}
+          tone={pts.length - approved > 0 ? "block" : "idle"}
+        />
+        <Metric
+          label="Mean confidence"
+          value={loading ? "—" : mean.toFixed(2)}
+          sub="across the window"
+        />
+      </ViewHead>
+
+      <div className="body">
+        <Panel
+          title="Confidence over time"
+          meta={pts.length ? `${pts.length} points` : ""}
+        >
+          {loading ? (
+            <div style={{ height: H }}>
+              <TableSkeleton rows={1} cols={1} />
+            </div>
+          ) : pts.length === 0 ? (
+            <Empty
+              title="No verifications recorded yet"
+              hint="Post a transaction to /verify and each result lands here as it is written to the audit trail."
+            />
+          ) : (
+            <Chart pts={pts} />
+          )}
+        </Panel>
+
+        {!loading && pts.length > 0 && (
+          <Panel title="Recent verifications" meta={`latest ${Math.min(pts.length, 50)}`} flush>
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Program</th>
+                  <th className="n">Confidence</th>
+                  <th>Outcome</th>
+                  <th>Audit ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...pts]
+                  .reverse()
+                  .slice(0, 50)
+                  .map((p) => (
+                    <tr key={p.audit_trail_id}>
+                      <td className="t" title={p.timestamp}>
+                        {shortTime(p.timestamp)}
+                      </td>
+                      <td className="id">
+                        <CopyId value={p.program_id} />
+                      </td>
+                      <td className="n">{p.confidence.toFixed(2)}</td>
+                      <td>
+                        <State kind={p.approved ? "pass" : "block"}>
+                          {p.approved ? "approved" : "blocked"}
+                        </State>
+                      </td>
+                      <td className="id">
+                        <CopyId value={p.audit_trail_id} />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </Panel>
+        )}
       </div>
-      <div className="card">
-        <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" role="img" aria-label="Confidence over time">
-          <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} className="axis" />
-          <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} className="axis" />
-          {[0, 0.25, 0.5, 0.75, 1.0].map((g) => (
-            <g key={g}>
-              <line x1={PAD} y1={y(g)} x2={W - PAD} y2={y(g)} className="gridline" />
-              <text x={PAD - 8} y={y(g) + 4} textAnchor="end" className="axis-label">
-                {g.toFixed(2)}
-              </text>
-            </g>
-          ))}
-          <polyline points={line} fill="none" className="line-smooth" />
-          {pts.map((p, i) => (
-            <circle
-              key={i}
-              cx={x(new Date(p.timestamp).getTime())}
-              cy={y(p.confidence)}
-              r={3.5}
-              className={p.approved ? "dot ok" : "dot block"}
-            >
-              <title>{`${p.program_id} ${shortId(p.program_id, 6, 4)} conf=${p.confidence.toFixed(3)} ${p.approved ? "approved" : "blocked"}`}</title>
-            </circle>
-          ))}
-        </svg>
-        <table className="table compact">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Program</th>
-              <th>Confidence</th>
-              <th>Outcome</th>
-              <th>Audit trail</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pts.slice(-12).reverse().map((p) => (
-              <tr key={p.audit_trail_id}>
-                <td>{new Date(p.timestamp).toLocaleString()}</td>
-                <td className="mono">{shortId(p.program_id, 8, 5)}</td>
-                <td>{p.confidence.toFixed(3)}</td>
-                <td>{p.approved ? <span className="pill ok">approved</span> : <span className="pill block">blocked</span>}</td>
-                <td className="mono small">{shortId(p.audit_trail_id, 10, 6)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    </>
+  );
+}
+
+function Chart({
+  pts,
+}: {
+  pts: { timestamp: string; confidence: number; approved: boolean }[];
+}) {
+  const times = pts.map((p) => new Date(p.timestamp).getTime());
+  const minT = Math.min(...times);
+  const maxT = Math.max(...times);
+  const span = Math.max(maxT - minT, 1);
+
+  const x = (t: number) => PAD_L + ((t - minT) / span) * (W - PAD_L - PAD_R);
+  const y = (c: number) =>
+    H - PAD_B - Math.min(Math.max(c, 0), 1) * (H - PAD_T - PAD_B);
+
+  const line = pts
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x(times[i]).toFixed(1)},${y(p.confidence).toFixed(1)}`)
+    .join(" ");
+
+  // Fill under the line, closed along the baseline.
+  const area =
+    `${line} L${x(times[times.length - 1]).toFixed(1)},${(H - PAD_B).toFixed(1)}` +
+    ` L${x(times[0]).toFixed(1)},${(H - PAD_B).toFixed(1)} Z`;
+
+  // The wallet-profile thresholds a reader is implicitly comparing against.
+  // Drawing them turns "0.44" from a bare number into "below the Gaming bar".
+  const thresholds = [
+    { at: 0.55, label: "gaming" },
+    { at: 0.8, label: "trading" },
+    { at: 0.95, label: "treasury" },
+  ];
+
+  return (
+    <svg
+      className="chart"
+      viewBox={`0 0 ${W} ${H}`}
+      role="img"
+      aria-label="Confidence score over time"
+    >
+      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+        <g key={v}>
+          <line className="grid" x1={PAD_L} x2={W - PAD_R} y1={y(v)} y2={y(v)} />
+          <text className="axis-label" x={4} y={y(v) + 3.5}>
+            {v.toFixed(2)}
+          </text>
+        </g>
+      ))}
+
+      {thresholds.map((t) => (
+        <g key={t.label}>
+          <line className="threshold" x1={PAD_L} x2={W - PAD_R} y1={y(t.at)} y2={y(t.at)} />
+          <text className="axis-label" x={W - PAD_R} y={y(t.at) - 4} textAnchor="end">
+            {t.label} {t.at}
+          </text>
+        </g>
+      ))}
+
+      <path className="series-area" d={area} />
+      <path className="series" d={line} />
+
+      {pts.map((p, i) => (
+        <circle
+          key={i}
+          className={p.approved ? "pt pass" : "pt block"}
+          cx={x(times[i])}
+          cy={y(p.confidence)}
+          r={2.5}
+        >
+          <title>
+            {`${p.confidence.toFixed(3)} — ${p.approved ? "approved" : "blocked"}\n${p.timestamp}`}
+          </title>
+        </circle>
+      ))}
+
+      <line className="axis" x1={PAD_L} x2={W - PAD_R} y1={H - PAD_B} y2={H - PAD_B} />
+      <text className="axis-label" x={PAD_L} y={H - 8}>
+        {shortTime(pts[0].timestamp)}
+      </text>
+      <text className="axis-label" x={W - PAD_R} y={H - 8} textAnchor="end">
+        {shortTime(pts[pts.length - 1].timestamp)}
+      </text>
+    </svg>
   );
 }
