@@ -43,6 +43,7 @@ fn make_input(
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     }
 }
 
@@ -418,6 +419,7 @@ fn test_fix5_fake_swap_wired_into_pipeline() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input).unwrap();
     // Jupiter V6 manifest has expected_state_changes that mention "output" or "credits"
@@ -494,6 +496,7 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     // Baselines are trusted state, seeded via the operator API (never from the
     // request body). With mean=150/std=10 and compute_units=150 the check runs
@@ -668,6 +671,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
 
     let verdict = core.verify(&full_input).unwrap();
@@ -805,6 +809,7 @@ fn test_pda_mismatch_correct_pda_passes() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
 
     let verdict = core.verify(&full_input).unwrap();

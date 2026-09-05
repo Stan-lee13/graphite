@@ -37,6 +37,7 @@ fn verify_manifest_trust_tier_used() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();
@@ -96,6 +97,7 @@ fn verify_unknown_protocol_still_capped() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();

@@ -18,6 +18,7 @@ use crate::risk_engine::{assess_with_warnings, RiskAssessmentInput, RiskPattern,
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
+use crate::state_diff::{AccountDelta, AccountSnapshot, DiffProvenance, StateDiff};
 use crate::transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
 use crate::unknown_protocol_mode::apply_unknown_protocol_ceiling;
 use std::path::PathBuf;
@@ -120,6 +121,59 @@ pub struct VerificationInput {
     /// the warning text when non-zero.
     #[serde(default)]
     pub lookup_table_count: u32,
+    /// Observed pre/post account state for L4 diffing.
+    ///
+    /// When Graphite has an RPC client attached it builds this itself, and
+    /// whatever it builds REPLACES anything supplied here — a caller cannot
+    /// substitute its own diff for the one Graphite observed. A diff supplied
+    /// without RPC available is honoured but marked `CallerSupplied`, and
+    /// under that provenance it can only fail L4, never pass it (P5).
+    #[serde(default)]
+    pub state_diff: Option<crate::state_diff::StateDiff>,
+}
+
+/// Assemble Graphite's own state diff from RPC pre-state and simulated
+/// post-state.
+///
+/// Both slices are indexed in the same order as `addresses` — that alignment
+/// is the RPC contract `get_multiple_accounts` and
+/// `simulate_transaction_with_accounts` both enforce before returning, so a
+/// mismatch here cannot silently pair one account's "before" with another's
+/// "after".
+///
+/// Marked `covers_all_writable` because the address list is exactly the
+/// instruction's writable accounts, which is every account the transaction can
+/// change. That is what makes the lamport-conservation check meaningful.
+#[cfg(feature = "rpc")]
+fn build_rpc_state_diff(
+    addresses: &[String],
+    pre: &[Option<crate::rpc_client::AccountState>],
+    post: &[Option<crate::rpc_client::AccountState>],
+) -> StateDiff {
+    let snap =
+        |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
+            a.as_ref()
+                .map(|s| AccountSnapshot::from_raw(key, s.lamports, &s.owner, &s.data))
+        };
+    let deltas = addresses
+        .iter()
+        .enumerate()
+        .map(|(i, key)| AccountDelta {
+            pubkey: key.clone(),
+            before: pre.get(i).and_then(|a| snap(a, key)),
+            after: post.get(i).and_then(|a| snap(a, key)),
+        })
+        .collect();
+    StateDiff {
+        deltas,
+        provenance: DiffProvenance::RpcSimulated,
+        // `simulateTransaction` reports no fee — it does not charge one, and
+        // the simulated post-state therefore does not deduct it. Leaving this
+        // at zero is the honest value for a simulated diff, and it makes the
+        // conservation identity exact rather than off by an invented fee.
+        fee_lamports: 0,
+        covers_all_writable: true,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -919,6 +973,95 @@ impl GraphiteCore {
             LayerStatus::Passed,
             format!("Instruction {} verified against manifest", ix.name),
         )
+    }
+
+    /// L4 — the real diff path.
+    ///
+    /// When an observed pre/post state diff is available, the layer stops
+    /// reasoning about the *shape* of the request and checks what the
+    /// transaction actually does. The account-shape heuristic below is the
+    /// fallback for when no diff exists, not the primary check.
+    ///
+    /// Provenance asymmetry (P5), matching the simulation-integrity layer: a
+    /// caller-supplied diff may fail this layer but may never pass it. An
+    /// attacker who controls the numbers must not be able to manufacture a
+    /// clean verdict; nobody manufactures a self-incriminating one.
+    fn verify_state_from_diff(
+        diff: &crate::state_diff::StateDiff,
+        expected_state_changes: &[String],
+        resolved_accounts: &[ResolvedAccount],
+        privileges_grounded: bool,
+        fee_payer: Option<&str>,
+    ) -> PipelineLayerResult {
+        use crate::state_diff::{check_state_diff, DiffProvenance, StateDiffCheck};
+
+        let layer_name = "L4_StateVerification";
+        let report = check_state_diff(&StateDiffCheck {
+            diff,
+            resolved_accounts,
+            privileges_grounded,
+            expected_state_changes,
+            fee_payer,
+        });
+
+        let render = |findings: &mut dyn Iterator<Item = &crate::state_diff::StateDiffFinding>| {
+            findings
+                .map(|f| match &f.account {
+                    Some(a) => format!("{} [{}]: {}", f.code, a, f.detail),
+                    None => format!("{}: {}", f.code, f.detail),
+                })
+                .collect::<Vec<_>>()
+                .join("; ")
+        };
+
+        if report.blocked {
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Failed,
+                format!(
+                    "State diff contradicts the manifest across {} account(s): {}",
+                    report.changed_accounts,
+                    render(&mut report.criticals())
+                ),
+            );
+        }
+
+        let warnings = render(&mut report.warnings());
+        let suffix = if warnings.is_empty() {
+            String::new()
+        } else {
+            format!(" — {warnings}")
+        };
+
+        // A diff with nothing in it certifies nothing: the transaction may be
+        // a genuine no-op, or the diff may simply not reflect it. Either way
+        // there is no evidence to pass on.
+        if report.empty {
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Inconclusive,
+                format!("State diff shows no observable change{suffix}"),
+            );
+        }
+
+        match diff.provenance {
+            DiffProvenance::RpcSimulated => PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Passed,
+                format!(
+                    "State diff verified against the manifest: {} account(s) changed, no undeclared effects{suffix}",
+                    report.changed_accounts
+                ),
+            ),
+            DiffProvenance::CallerSupplied => PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Inconclusive,
+                format!(
+                    "State diff raised no finding across {} changed account(s), but it was supplied by the caller — an unverified diff cannot certify a clean state (P5){suffix}",
+                    report.changed_accounts
+                ),
+            ),
+        }
     }
 
     // L4: State Verification
@@ -2130,6 +2273,11 @@ impl GraphiteCore {
         // caller-controlled numbers, so we record NOTHING.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut rpc_sim_ok = false;
+        // Graphite's OWN state diff, built from RPC. When this is Some it takes
+        // precedence over anything the caller supplied — measured evidence
+        // outranks a claim about evidence (P5).
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut observed_diff: Option<crate::state_diff::StateDiff> = None;
         #[cfg(feature = "rpc")]
         {
             if let Some(client) = &self.rpc_client {
@@ -2140,8 +2288,50 @@ impl GraphiteCore {
                     .as_ref()
                     .cloned()
                     .unwrap_or_else(|| input.instruction_data.clone().unwrap_or_default());
-                match client.simulate_transaction(&tx_bytes).await {
-                    Ok(sim_res) => {
+
+                // Only a fully-signed transaction can be simulated for its
+                // effect on account state. A bare instruction_data payload is
+                // enough to get compute numbers back but not to trust the
+                // post-state it would imply, so the diff is only attempted on
+                // the real blob.
+                let diff_addresses: Vec<String> = if input.signed_transaction.is_some() {
+                    resolution
+                        .resolved_accounts
+                        .iter()
+                        .filter(|a| a.is_writable)
+                        .map(|a| a.address.clone())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
+                let sim_outcome = if diff_addresses.is_empty() {
+                    client
+                        .simulate_transaction(&tx_bytes)
+                        .await
+                        .map(|s| (s, Vec::new()))
+                } else {
+                    match client
+                        .simulate_transaction_with_accounts(&tx_bytes, &diff_addresses)
+                        .await
+                    {
+                        Ok(pair) => Ok(pair),
+                        // An RPC that will not return post-state (too many
+                        // addresses, an older node) must not cost us the
+                        // compute numbers as well — fall back to the plain
+                        // simulate and leave the diff absent.
+                        Err(e) => {
+                            tracing::warn!("state-diff simulation unavailable: {}", e);
+                            client
+                                .simulate_transaction(&tx_bytes)
+                                .await
+                                .map(|s| (s, Vec::new()))
+                        }
+                    }
+                };
+
+                match sim_outcome {
+                    Ok((sim_res, post)) => {
                         // Only a COMPLETE RPC result may enter the accumulator:
                         // nonzero units AND both optional fields present.
                         if sim_res.units_consumed > 0
@@ -2152,6 +2342,23 @@ impl GraphiteCore {
                             usage.account_writes = sim_res.account_writes.unwrap_or(0);
                             usage.cpi_hops = sim_res.cpi_hops.unwrap_or(0);
                             rpc_sim_ok = true;
+                        }
+                        // A simulation that errored describes a transaction
+                        // that would not land; its post-state is not evidence
+                        // about anything and must not be diffed.
+                        if !post.is_empty() && sim_res.err.is_none() {
+                            match client.get_multiple_accounts(&diff_addresses).await {
+                                Ok(pre) => {
+                                    observed_diff =
+                                        Some(build_rpc_state_diff(&diff_addresses, &pre, &post));
+                                }
+                                Err(e) => {
+                                    // Without pre-state there is no diff. Half
+                                    // a diff would read every account as newly
+                                    // created.
+                                    tracing::warn!("state-diff pre-state fetch failed: {}", e);
+                                }
+                            }
                         }
                     }
                     Err(e) => {
@@ -2292,12 +2499,38 @@ impl GraphiteCore {
         // cross the layer boundary P8 forbids).
         let l3_plugin_runs = self.plugins.simulation_verdicts(&ctx);
 
-        // L4: State Verification
-        let l4_result = self.verify_state(
-            &expected_state_changes,
-            &resolution.resolved_accounts,
-            manifest_found,
-        );
+        // Whether `is_writable` on each resolved account came from the real
+        // transaction's AccountMeta data or only from the manifest's
+        // expectation. Same condition `account_resolution` uses to decide
+        // whether the real metas are usable at all — only grounded privileges
+        // can support a block (P12).
+        let privileges_grounded = input.real_account_metas.len() == input.account_addresses.len()
+            && !input.account_addresses.is_empty();
+
+        // L4: State Verification.
+        //
+        // The observed diff is the real check; the account-shape heuristic is
+        // the fallback for when there is no diff to look at. `observed_diff`
+        // is Graphite's own RPC-built diff when one exists, and only otherwise
+        // the caller's — so a caller cannot displace what Graphite measured.
+        let l4_result = match observed_diff.as_ref().or(input.state_diff.as_ref()) {
+            Some(diff) => Self::verify_state_from_diff(
+                diff,
+                &expected_state_changes,
+                &resolution.resolved_accounts,
+                privileges_grounded,
+                resolution
+                    .resolved_accounts
+                    .iter()
+                    .find(|a| a.is_signer)
+                    .map(|a| a.address.as_str()),
+            ),
+            None => self.verify_state(
+                &expected_state_changes,
+                &resolution.resolved_accounts,
+                manifest_found,
+            ),
+        };
         // L4: plugin folds (Block → layer Failed; Note → report annotation).
         let l4_result = self
             .plugins
@@ -2802,9 +3035,16 @@ impl GraphiteCore {
                 ),
                 // L4: State Verification — diff pre/post account state against declared intent
                 // ARCHITECTURE.md 3.12: "Diff pre/post account state against declared intent"
-                // Phase 1: heuristic check — verifies writable/signer account counts
-                // are consistent with declared state changes. Full pre/post state diff
-                // requires RPC access (Phase 2).
+                //
+                // With an RPC client attached and a signed transaction to
+                // simulate, this is a real diff: pre-state from
+                // getMultipleAccounts, post-state from simulateTransaction's
+                // `accounts` request, checked against the manifest's declared
+                // effects by `state_diff::check_state_diff`. A caller may also
+                // supply a diff, which can fail the layer but never certify it
+                // (P5). Without either, the layer falls back to the
+                // account-shape heuristic: writable/signer counts consistent
+                // with the declared state changes.
                 PipelineLayerResult::new(
                     "L4_StateVerification",
                     l4_result.status,
@@ -3131,6 +3371,7 @@ mod tests {
             uses_versioned_transaction: false,
             lookup_table_count: 0,
             real_account_metas: vec![],
+            state_diff: None,
         }
     }
 
@@ -3227,6 +3468,7 @@ mod tests {
             uses_versioned_transaction: false,
             lookup_table_count: 0,
             real_account_metas: vec![],
+            state_diff: None,
         };
         let result = core
             .verify(&input)
@@ -3305,6 +3547,7 @@ mod tests {
             uses_versioned_transaction: false,
             lookup_table_count: 0,
             real_account_metas: vec![],
+            state_diff: None,
         };
         let result = core.verify(&input).unwrap();
         // Should be blocked due to unverified CPI or authority-related patterns
@@ -3433,6 +3676,7 @@ mod tests {
             uses_versioned_transaction: false,
             lookup_table_count: 0,
             real_account_metas: vec![],
+            state_diff: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -3498,6 +3742,7 @@ mod tests {
             uses_versioned_transaction: false,
             lookup_table_count: 0,
             real_account_metas: vec![],
+            state_diff: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -3595,6 +3840,7 @@ mod tests {
             uses_versioned_transaction: false,
             lookup_table_count: 0,
             real_account_metas: vec![],
+            state_diff: None,
         };
 
         let result = core.verify(&input).unwrap();
@@ -3740,6 +3986,7 @@ mod tests {
             uses_versioned_transaction: false,
             lookup_table_count: 0,
             real_account_metas: vec![],
+            state_diff: None,
         };
 
         let result = core.verify(&input).unwrap();

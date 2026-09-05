@@ -155,6 +155,7 @@ fn attack_p0_1_unknown_selector_full_pipeline_not_approved() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input).unwrap();
     assert!(
@@ -440,6 +441,7 @@ fn attack_check10_stake_withdraw_no_intent_is_blocked() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input).unwrap();
     assert!(
@@ -486,6 +488,7 @@ fn attack_check10_stake_withdraw_with_declared_intent_not_check10_blocked() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input).unwrap();
     assert!(

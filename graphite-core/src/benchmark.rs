@@ -414,6 +414,8 @@ fn make_input_with_intent(
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        // Benchmark inputs carry no observed state diff.
+        state_diff: None,
     }
 }
 

@@ -89,6 +89,7 @@ fn make_input(
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     }
 }
 
@@ -272,6 +273,7 @@ fn h4_transfer_intent_with_closeaccount_disc() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input);
     match result {
@@ -313,6 +315,7 @@ fn h4_swap_intent_with_setauthority_disc() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input).unwrap();
     assert!(
@@ -1056,6 +1059,7 @@ fn h19_large_instruction_data_does_not_crash() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input);
     match result {
@@ -1147,6 +1151,7 @@ fn h21_custom_profile_zero_threshold_still_checks_risk() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input).unwrap();
     assert!(
@@ -1253,6 +1258,7 @@ fn h23_unknown_program_cpi_many_accounts_safe_intent_permissive() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input).unwrap();
     assert!(
@@ -1300,6 +1306,7 @@ fn h23_known_program_wrong_disc_cpi_many_accounts() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
     let result = core.verify(&input);
     match result {

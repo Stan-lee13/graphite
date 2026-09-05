@@ -89,6 +89,7 @@ fn base_input(program_id: &str, discriminator: &str, intent: &str) -> Verificati
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,
+        state_diff: None,
     }
 }
 

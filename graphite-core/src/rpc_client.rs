@@ -34,6 +34,11 @@ pub enum RpcError {
     RateLimited,
     #[error("Invalid pubkey: {0}")]
     InvalidPubkey(String),
+    /// The request is well-formed but exceeds what the JSON-RPC method
+    /// accepts, so it was never sent. Distinct from `RequestFailed`, which
+    /// means the network was tried.
+    #[error("Unsupported request: {0}")]
+    UnsupportedRequest(String),
 }
 
 /// Describe a `reqwest` transport/decode failure WITHOUT ever including the
@@ -76,6 +81,133 @@ pub(crate) fn redact_transport_error(e: &reqwest::Error) -> String {
         Some(status) => format!("{kind} (HTTP {})", status.as_u16()),
         None => kind.to_string(),
     }
+}
+
+/// Decode one account object from an RPC response.
+///
+/// `null` means the account does not exist and yields `Ok(None)` — never a
+/// zeroed `AccountState`, which would be fabricated data and would make a
+/// missing account indistinguishable from an empty one.
+fn parse_account_value(
+    pubkey: &str,
+    value: &serde_json::Value,
+) -> Result<Option<AccountState>, RpcError> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let lamports = value.get("lamports").and_then(|v| v.as_u64()).unwrap_or(0);
+    let owner = value
+        .get("owner")
+        .and_then(|v| v.as_str())
+        .unwrap_or("11111111111111111111111111111111")
+        .to_string();
+    let executable = value
+        .get("executable")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let rent_epoch = value.get("rentEpoch").and_then(|v| v.as_u64()).unwrap_or(0);
+    let data_base64 = value
+        .get("data")
+        .and_then(|d| {
+            if let Some(arr) = d.as_array() {
+                arr.first().and_then(|s| s.as_str())
+            } else {
+                d.as_str()
+            }
+        })
+        .unwrap_or("");
+    let data = if data_base64.is_empty() {
+        Vec::new()
+    } else {
+        base64::engine::general_purpose::STANDARD
+            .decode(data_base64)
+            .map_err(|e| RpcError::InvalidResponse(format!("invalid base64 account data: {}", e)))?
+    };
+    Ok(Some(AccountState {
+        pubkey: pubkey.to_string(),
+        lamports,
+        owner,
+        executable,
+        rent_epoch,
+        data,
+    }))
+}
+
+/// Decode a `simulateTransaction` `result.value` object.
+///
+/// Shared by the plain simulate call and the state-diff one so the two can
+/// never drift — a difference in how `unitsConsumed` is read between them
+/// would mean the simulation-integrity baseline and the state diff disagreed
+/// about the same execution.
+fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult, RpcError> {
+    let logs: Vec<String> = value
+        .get("logs")
+        .and_then(|l| l.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Some RPCs report unitsConsumed at the top level of `value`, others
+    // under `meta`.
+    let nested = |key: &str| -> Option<u64> {
+        value.get(key).and_then(|v| v.as_u64()).or_else(|| {
+            value
+                .get("meta")
+                .and_then(|m| m.get(key))
+                .and_then(|v| v.as_u64())
+        })
+    };
+    let units_consumed = nested("unitsConsumed").unwrap_or(0);
+
+    let as_u32 = |v: Option<u64>| v.filter(|n| *n <= u64::from(u32::MAX)).map(|n| n as u32);
+    let account_writes = as_u32(nested("accountWrites").or_else(|| {
+        value
+            .get("meta")
+            .and_then(|m| m.get("numAccountWrites"))
+            .and_then(|v| v.as_u64())
+    }));
+    let cpi_hops = as_u32(nested("cpiHops").or_else(|| {
+        value
+            .get("meta")
+            .and_then(|m| m.get("cpi_hops"))
+            .and_then(|v| v.as_u64())
+    }));
+
+    let return_data = value
+        .get("returnData")
+        .and_then(|rd| rd.get("data"))
+        .and_then(|d| {
+            if let Some(s) = d.as_str() {
+                base64::engine::general_purpose::STANDARD.decode(s).ok()
+            } else if let Some(arr) = d.as_array() {
+                arr.first()
+                    .and_then(|inner| inner.as_str())
+                    .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
+            } else {
+                None
+            }
+        });
+
+    // A JSON `null` here means "no error", not "an error named null".
+    let err = value.get("err").filter(|e| !e.is_null()).map(|e| {
+        if let Some(s) = e.as_str() {
+            s.to_string()
+        } else {
+            e.to_string()
+        }
+    });
+
+    Ok(SimulationResult {
+        logs,
+        units_consumed,
+        return_data,
+        err,
+        account_writes,
+        cpi_hops,
+    })
 }
 
 /// Account state from RPC
@@ -262,48 +394,11 @@ impl SolanaRpcClient {
         let result = self.post_rpc(body).await?;
         // A missing account returns `value: null` — that is AccountNotFound,
         // NOT a zeroed account (which would be fabricated data).
-        let value = match result.get("value") {
-            Some(v) if !v.is_null() => v,
-            _ => return Err(RpcError::AccountNotFound(pubkey.to_base58())),
-        };
-        let lamports = value.get("lamports").and_then(|v| v.as_u64()).unwrap_or(0);
-        let owner = value
-            .get("owner")
-            .and_then(|v| v.as_str())
-            .unwrap_or("11111111111111111111111111111111")
-            .to_string();
-        let executable = value
-            .get("executable")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let rent_epoch = value.get("rentEpoch").and_then(|v| v.as_u64()).unwrap_or(0);
-        let data_base64 = value
-            .get("data")
-            .and_then(|d| {
-                if let Some(arr) = d.as_array() {
-                    arr.first().and_then(|s| s.as_str())
-                } else {
-                    d.as_str()
-                }
-            })
-            .unwrap_or("");
-        let data = if data_base64.is_empty() {
-            Vec::new()
-        } else {
-            base64::engine::general_purpose::STANDARD
-                .decode(data_base64)
-                .map_err(|e| {
-                    RpcError::InvalidResponse(format!("invalid base64 account data: {}", e))
-                })?
-        };
-        Ok(AccountState {
-            pubkey: pubkey.to_base58(),
-            lamports,
-            owner,
-            executable,
-            rent_epoch,
-            data,
-        })
+        let value = result
+            .get("value")
+            .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
+        parse_account_value(&pubkey.to_base58(), value)?
+            .ok_or_else(|| RpcError::AccountNotFound(pubkey.to_base58()))
     }
 
     /// Verify PDA derivation matches on-chain state
@@ -359,118 +454,127 @@ impl SolanaRpcClient {
             transaction_data.len()
         );
 
-        {
-            let tx_b64 = base64::engine::general_purpose::STANDARD.encode(transaction_data);
-            let params = serde_json::json!([tx_b64, {"encoding":"base64"}]);
-            let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":params});
-            let result = self.post_rpc(body).await?;
-            let value = result
-                .get("value")
-                .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
+        let tx_b64 = base64::engine::general_purpose::STANDARD.encode(transaction_data);
+        let params = serde_json::json!([tx_b64, {"encoding":"base64"}]);
+        let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":params});
+        let result = self.post_rpc(body).await?;
+        let value = result
+            .get("value")
+            .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
+        parse_simulation_value(value)
+    }
 
-            // logs
-            let logs: Vec<String> = value
-                .get("logs")
-                .and_then(|l| l.as_array().cloned())
-                .map(|arr| {
-                    arr.into_iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            // units consumed (some RPCs return unitsConsumed at top-level of value)
-            let units_consumed = value
-                .get("unitsConsumed")
-                .and_then(|u| u.as_u64())
-                .or_else(|| {
-                    value
-                        .get("meta")
-                        .and_then(|m| m.get("unitsConsumed"))
-                        .and_then(|u| u.as_u64())
-                })
-                .unwrap_or(0);
-
-            // Attempt to extract account_writes and cpi_hops from common keys
-            let account_writes = value
-                .get("accountWrites")
-                .and_then(|v| v.as_u64())
-                .or_else(|| {
-                    value
-                        .get("meta")
-                        .and_then(|m| m.get("accountWrites"))
-                        .and_then(|v| v.as_u64())
-                })
-                .or_else(|| {
-                    value
-                        .get("meta")
-                        .and_then(|m| m.get("numAccountWrites"))
-                        .and_then(|v| v.as_u64())
-                })
-                .and_then(|v| {
-                    if v <= u64::from(u32::MAX) {
-                        Some(v as u32)
-                    } else {
-                        None
-                    }
-                });
-
-            let cpi_hops = value
-                .get("cpiHops")
-                .and_then(|v| v.as_u64())
-                .or_else(|| {
-                    value
-                        .get("meta")
-                        .and_then(|m| m.get("cpiHops"))
-                        .and_then(|v| v.as_u64())
-                })
-                .or_else(|| {
-                    value
-                        .get("meta")
-                        .and_then(|m| m.get("cpi_hops"))
-                        .and_then(|v| v.as_u64())
-                })
-                .and_then(|v| {
-                    if v <= u64::from(u32::MAX) {
-                        Some(v as u32)
-                    } else {
-                        None
-                    }
-                });
-
-            // return data: optional field
-            let return_data = value
-                .get("returnData")
-                .and_then(|rd| rd.get("data"))
-                .and_then(|d| {
-                    if let Some(s) = d.as_str() {
-                        base64::engine::general_purpose::STANDARD.decode(s).ok()
-                    } else if let Some(arr) = d.as_array() {
-                        arr.first()
-                            .and_then(|inner| inner.as_str())
-                            .and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok())
-                    } else {
-                        None
-                    }
-                });
-
-            let err = value.get("err").map(|e| {
-                if let Some(s) = e.as_str() {
-                    s.to_string()
-                } else {
-                    e.to_string()
-                }
+    /// Fetch several accounts in one round trip.
+    ///
+    /// Returns one entry per requested address, in request order. `None` means
+    /// the account does not exist — deliberately distinct from a zeroed
+    /// account, because a diff that reads "created" and one that reads
+    /// "unchanged and empty" mean opposite things.
+    ///
+    /// The RPC caps a single `getMultipleAccounts` at 100 addresses, so longer
+    /// lists are chunked. Any chunk that fails fails the whole call: a
+    /// partially-populated pre-state would silently turn untouched accounts
+    /// into phantom creations.
+    pub async fn get_multiple_accounts(
+        &self,
+        pubkeys: &[String],
+    ) -> Result<Vec<Option<AccountState>>, RpcError> {
+        const CHUNK: usize = 100;
+        let mut out: Vec<Option<AccountState>> = Vec::with_capacity(pubkeys.len());
+        for chunk in pubkeys.chunks(CHUNK) {
+            let params = serde_json::json!([
+                chunk,
+                {"encoding":"base64","commitment":self.config.commitment}
+            ]);
+            let body = serde_json::json!({
+                "jsonrpc":"2.0","id":1,"method":"getMultipleAccounts","params":params
             });
-
-            Ok(SimulationResult {
-                logs,
-                units_consumed,
-                return_data,
-                err,
-                account_writes,
-                cpi_hops,
-            })
+            let result = self.post_rpc(body).await?;
+            let values = result
+                .get("value")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
+            if values.len() != chunk.len() {
+                return Err(RpcError::InvalidResponse(format!(
+                    "getMultipleAccounts returned {} entries for {} addresses",
+                    values.len(),
+                    chunk.len()
+                )));
+            }
+            for (addr, value) in chunk.iter().zip(values) {
+                out.push(parse_account_value(addr, value)?);
+            }
         }
+        Ok(out)
+    }
+
+    /// Simulate a transaction and ask the RPC for the post-execution state of
+    /// specific accounts.
+    ///
+    /// This is the other half of a real state diff: `getMultipleAccounts` gives
+    /// the state before, and `simulateTransaction`'s `accounts` request gives
+    /// the state the transaction would leave behind. Returns the simulation
+    /// result alongside one post-state entry per requested address, in request
+    /// order.
+    ///
+    /// The RPC caps the `accounts.addresses` list at 100. A longer list cannot
+    /// be chunked the way a read can — every chunk would be a separate
+    /// simulation — so this returns `UnsupportedRequest` rather than
+    /// simulating repeatedly and stitching together results that may not
+    /// correspond to the same execution.
+    pub async fn simulate_transaction_with_accounts(
+        &self,
+        transaction_data: &[u8],
+        addresses: &[String],
+    ) -> Result<(SimulationResult, Vec<Option<AccountState>>), RpcError> {
+        const MAX_SIM_ACCOUNTS: usize = 100;
+        if addresses.len() > MAX_SIM_ACCOUNTS {
+            return Err(RpcError::UnsupportedRequest(format!(
+                "simulateTransaction accepts at most {MAX_SIM_ACCOUNTS} account addresses (got {})",
+                addresses.len()
+            )));
+        }
+
+        let tx_b64 = base64::engine::general_purpose::STANDARD.encode(transaction_data);
+        let params = serde_json::json!([
+            tx_b64,
+            {
+                "encoding": "base64",
+                "commitment": self.config.commitment,
+                "accounts": { "encoding": "base64", "addresses": addresses }
+            }
+        ]);
+        let body = serde_json::json!({
+            "jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":params
+        });
+        let result = self.post_rpc(body).await?;
+        let value = result
+            .get("value")
+            .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
+
+        let sim = parse_simulation_value(value)?;
+
+        // `accounts` is null when the simulation failed outright, and an
+        // element is null when that account does not exist after execution.
+        let post = match value.get("accounts").and_then(|a| a.as_array()) {
+            Some(arr) => {
+                if arr.len() != addresses.len() {
+                    return Err(RpcError::InvalidResponse(format!(
+                        "simulateTransaction returned {} account entries for {} addresses",
+                        arr.len(),
+                        addresses.len()
+                    )));
+                }
+                addresses
+                    .iter()
+                    .zip(arr)
+                    .map(|(addr, v)| parse_account_value(addr, v))
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+            None => Vec::new(),
+        };
+
+        Ok((sim, post))
     }
 
     /// Verify account is not frozen (for token accounts)

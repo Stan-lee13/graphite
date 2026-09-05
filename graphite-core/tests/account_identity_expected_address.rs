@@ -220,6 +220,7 @@ fn full_pipeline_blocks_on_substituted_token_program() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();

@@ -2,7 +2,7 @@
   {
     "program_id": "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD",
     "version": "1.0.0",
-    "content_hash": "9a8e0f794ba9d76e8484f0d83b5a9f91b562cd0f24ebb1c05e659920d651fb8a",
+    "content_hash": "03e116c2092e75976f83e5e38765c34a3b6c3686a8af93510ec5c6684a7a0279",
     "expected_approved": false,
     "source": "real-mainnet-exploit:51Ew8L1xkWrp1AjA38PhyVXeXALXfHaJsDnvoWs3fXqnUjJNYapau5i6TYPAxYMKpsvdCtaGpG5KWnDyyudyWpJA",
     "deprecated": false,
@@ -53,13 +53,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "9fhQBbumKEFuXtMBDw8AaQyAjCorLGJQiS3skWZdQyQD",
     "version": "1.0.0",
-    "content_hash": "c940f77167eb6bc17718f364eaddf3e87774c0b99cff6df4f860bc63dc4461fe",
+    "content_hash": "e7e0902313217badaa18766e8a032aa983f5f316922255fe82e0cb890c9174c3",
     "expected_approved": false,
     "source": "real-mainnet-exploit:UCQpixCrp3LkffGXaiRmNYrMVPWRZ7F8owmYc64xSPhvtwheK9H6JZZ3H2xZ5WXx4V8eEK2DRVs3j3wKL8qJU2v",
     "deprecated": false,
@@ -110,7 +111,8 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   }
 ]

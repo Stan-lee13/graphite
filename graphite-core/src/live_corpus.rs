@@ -334,6 +334,9 @@ pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<V
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        // Corpus fixtures carry no observed state diff — L4 falls back to the
+        // account-shape heuristic, which is what the recorded fixture captured.
+        state_diff: None,
     })
 }
 

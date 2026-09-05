@@ -48,6 +48,7 @@ fn system_transfer(profile: WalletProfile) -> VerificationInput {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: vec![],
+        state_diff: None,
     }
 }
 

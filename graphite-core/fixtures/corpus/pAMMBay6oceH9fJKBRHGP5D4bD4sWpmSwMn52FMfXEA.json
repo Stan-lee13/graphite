@@ -2,7 +2,7 @@
   {
     "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
     "version": "1.0.0",
-    "content_hash": "d3eef8b5b6f8d5b084ec8ea01939fd244973234834ad49181dafea287d9cf488",
+    "content_hash": "9a731d401e96b22fe7eab34185e4cb51fbdcd1ee2ec3e851651de96612d1e229",
     "expected_approved": false,
     "source": "real-mainnet-tx",
     "deprecated": false,
@@ -56,7 +56,8 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   }
 ]

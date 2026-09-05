@@ -35,6 +35,7 @@ fn verify_8_layers_tracked() {
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();
@@ -123,6 +124,7 @@ fn l3_reflects_flagged_simulation_as_failed() {
         compute_units: 999999, // 100kσ from baseline — must flag
         account_writes: 2,
         cpi_hops: 0,
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();
@@ -190,6 +192,7 @@ fn l3_is_inconclusive_without_trusted_verdict() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();
@@ -251,6 +254,7 @@ fn l7_surfaces_novel_instruction_warning_on_known_protocol() {
         compute_units: 150,
         account_writes: 2,
         cpi_hops: 0,
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();
@@ -308,6 +312,7 @@ fn l8_reports_not_yet_verified() {
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();

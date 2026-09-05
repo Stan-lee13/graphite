@@ -2,7 +2,7 @@
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8671359b2bc0c6473d1d0c77cedccebae3cc3a48a46c0d2cce8739a95d7afd3f",
+    "content_hash": "c52866867819103afdc7fb068267b73f773d163a6a70bd20abd818e62a8b01c5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -56,13 +56,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b75eb8749538eff752a76cbc5c9d818c27a263510bedb7102904b3f0f2421fe4",
+    "content_hash": "cef8ae2ce168f11062aae6fbe43b5a65521ea206f07e85123a10d39cb08ce015",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -116,13 +117,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ac0f0db1c4fc6b5cd78e52f5751a864bda09854be6e9ae9deb528d2a86cfe9d2",
+    "content_hash": "d0e9a03ac25b2130566dbad3159873cdf1a035a3bfaac9f19fb9bd012eb5039b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -176,13 +178,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "33fa4149b42062e21580f6541a991ec7b0b1f3081054822ac02285f387f8cb51",
+    "content_hash": "3abff7945605d86590267d94057bd0846f61f0a45b1696670e33fa9d9ee3c0b1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -245,13 +248,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6cb7b734d1ee11d587011ccbad56982fa0dc6c1d72ff9a7c37e1a55f36ddaa46",
+    "content_hash": "f400a659cf18fe0682e9c11a154d2531fe61b1f268f0c4daf9865175336b6806",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -305,13 +309,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "7a3fbe2ee2574a6f35b305f1c25eaaaa0b514e2264864e6762f4b5bb10403e19",
+    "content_hash": "3ce6df9c34631ddab22dead101dc5df1c6fc4c0be9c5313fe495835963f34880",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -365,13 +370,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4f75e9bf056e4e785f7ea6206223b0e46528cb444c9490087258bfd5d685e28f",
+    "content_hash": "a4c54a92c29db7cc2186ca0f8d8cfc51a0fa0de6d96e7683ef07cfe88d52f26c",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -411,13 +417,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "37200cb7dd5ee0633b39a1b6ca929ede403dd2f1bc33f485000a04fa2ae39792",
+    "content_hash": "3401f94581c748fe5a0bcc08b112286ec08c32a096c327ce74e76362b1269217",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -471,13 +478,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "dc7774636f24925ff1afab2ed404166224eb83bbf186f17885c42d7c0bed2a34",
+    "content_hash": "e14490db6ad316f11202d865e49076b9bcbbdfe0777937aa7960525bfa51b70b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -531,13 +539,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "120f847adb076a8bc3cd6a700bba34c8e05562420392dc85feb603c86ef975b0",
+    "content_hash": "aa5b2b6236e55c10c8b2e3481918f6688b3b34c75e7b1e426bc3e47befe827c9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -591,13 +600,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9d7449234a29d580a7eb03bea6db6d134ddcfac58129919725ec331924985816",
+    "content_hash": "083da5e8426a82b4e9a9158c34bec5a7048546c0f8e083247d64feb773e9d3ad",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -660,13 +670,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ae491a96a3e17a06cddac2bd581324c1e80c2c262066637839bcefb7b67c8d80",
+    "content_hash": "eb9e3daefb93b58386a36f9c31c14c04db5a2d5287a3161fd6f1668ed498530d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -720,13 +731,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e6f2573d4119bf64b0c54f7044bba8fc30935d15d9af969a094f313a337ca1b8",
+    "content_hash": "ed6998b8ed04ffc060d952d225e69ae9f8e032bd1be0617c3b0b36bb545f2007",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -780,13 +792,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6c955bf842806358193b1ba8c5c4d7d8a980182ea7baa3b9748dedc95ea6c1a3",
+    "content_hash": "988eef060f4df7326988cd23a0e5121bf36b896843132e5fab0ea057da775920",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -840,13 +853,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "193053960c4e5d884b38ef6441dbd4cfc8813b67f7b3e081f8d19230f49eaa9f",
+    "content_hash": "2a57b395cbfe836a023b14c6cbf2756645636aa033b949c24ce9f1b83e67f7bd",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -900,13 +914,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "12e169d07a231c44307c299c4faae132d4c4666d409d9574fe08921869b96f6a",
+    "content_hash": "ecb0bb6aea5c08695250b70691d1ab4c3d1b5be7411e4ff76cc33d635a54a3d0",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -960,13 +975,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "891eac2c6b9db6fe75f1336b8a9dc994ded8e8b8703cfd1746d5bf825cac8e51",
+    "content_hash": "cddc0bf4997b53beda00992a88efafc4a70ff758be62627ea25a6675da546004",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1029,13 +1045,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8746f13cd62f172ed116ff238e951f3c4d96595fa30a99f960492f6a4597fb06",
+    "content_hash": "81aa3ed0dd8023e76d36551297de19085bf389608d2300059b2ac1acf42c63e1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1089,13 +1106,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "258c7edf85f293c4b97b4ba1f52e1624118b27f2e1a315aa140a991a9317fb6b",
+    "content_hash": "48ea4b120277285cf5f134bdbc096bdc380d48b3e11a7bd4a8af3aa26606c277",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1149,13 +1167,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b3a00b52db4ee66a7e7413bda5147355749558318a617ff2d64e3ef86cdd5feb",
+    "content_hash": "3542734755453b1a7fd95d41e587c47be2bfc491245ebfd16f91f79353515953",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1209,13 +1228,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8c06fb9d333cb4f083d08ea736bd5127c97fcb24a8374458c750b9ea09b66843",
+    "content_hash": "7c1707d2f9bebb95bb9d3a42c1be0ecf823c27cb69fe25b5191777025180918d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1269,13 +1289,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b25cad42c2b287bb31ea98ed71f64e85f9b9850b21110e8546a60fd3a529fc2a",
+    "content_hash": "36f48c6349bcd6ea3654441413ed6479ebf3bfd680a68f01d9b595865bcf745c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1329,13 +1350,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8caba0682975cdbf3876e8d3af415e84014cc78830cbf7d68469557c0beaea9a",
+    "content_hash": "15cf207493b719204671c66a422cf056175b3a4fe1138376f3f9a33050755e11",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1398,13 +1420,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "38e1e2e2b070ef78dac56221daa78dd80b9bd3c3b586b89efbcb3e0e22bbf6f5",
+    "content_hash": "21571a6f8245a55dee55746c95815c66eec38c62b3374288454f5af9a425f4b6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1458,13 +1481,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6f042f7547effc2619716296af3ed7888628cf8220ccaeca8b18866f9e8278b6",
+    "content_hash": "431642abbb3a13b9410663f526ca238e9c44d62c8512bb4c6704b201e2239e3f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1518,7 +1542,8 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   }
 ]

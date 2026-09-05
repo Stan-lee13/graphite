@@ -2,7 +2,7 @@
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8c5a9bdf212608e01f219a99f3a9db852fbfec8a901906f02e37d72fe66d843a",
+    "content_hash": "e30bd94b56102d6a363b93d5e843654964da10c68e5fc1bd40d6f58755a3dd45",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -60,13 +60,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "cb7dd45a0cb67887e8555c190986ce4ec958e357cbb855301d87d27aabc71d80",
+    "content_hash": "2db1c90788d344ba48018779c165636d2c423e13cdd1aa0c5ad5c4751079e6b8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -124,13 +125,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "b7207cd51b52aa77242bb63ca112f4f2a6f9e348deb1a6ee6b9e78d0d401be1e",
+    "content_hash": "01723fd10b26e92f9c8836da31072806cdc0488ed1810ead1615e1eba8ad84a5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -188,13 +190,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "b10ad399e9142d1554f599f1f767f397d55b7cae40db2cf31f13c3e0bd8e315b",
+    "content_hash": "b1d99e813365779b0dc0bd81928db9a2783d18295396d5e427df87214bb79a39",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -260,13 +263,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "803827a9486a6919f727a274fa4f931f77c259492258828779cd1527814dafd7",
+    "content_hash": "e0c58a5f2e861a04252c38f8e678c0fe8770f8e307b63217da89b3db19b3a038",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -324,13 +328,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "0a8e4b3ed60af75eea698d9d376d5ab707d23056de5b36ce83fcbf05f4b0fd1c",
+    "content_hash": "57483ced06fe5293464d974acfad08db11b2875c176060fd57036af0b2a985f0",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -388,13 +393,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "19e270cd345cd4b3a5eac5e9c6eb48600b6503d4a7cdfa9b92b0e78f7c7daa09",
+    "content_hash": "659ef109e9ae621f47c4de272600172c2918fd3cfbb6799f441d8cbe259cdc70",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -434,13 +440,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "0659e43de7d6c839c153a3841d92a5340e3ac27060b340ac361861da6a0c861b",
+    "content_hash": "fc8381a9a8b90d1fe26164f06cadf4b4c4d81cbe51de4cad7246720d71e1811e",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -497,13 +504,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "2992343ec2e6897b3fd8e9fc4ef8e542eaebc0f8130e6fb3daf2871863510d79",
+    "content_hash": "89cbaae483309c378093bd01046cd5cdcc0acb9af22332f2acadca1f35e82abc",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -560,13 +568,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "157cb794348f854bbef87497aa3fbb66edb269902925f7eaa2dc0bd38ebf7b07",
+    "content_hash": "7190d2a51edd760133a5c12b135d5fdcff64e7b254972f962d5c2ccf1f721341",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -623,13 +632,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "50a723d8e593a610a695304be6c1bc8021185e81d45f691163b75fd2cd2ed7a2",
+    "content_hash": "6d6eff13e1087db7978e435988b90e3829c38ad66d883430c139734ba0159987",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -694,13 +704,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "145a8cdd86ee95b8270b55fc48351d9c2b33e5c1f7265ad3f8299bcc6a9cfa50",
+    "content_hash": "59d14abd5761cc172f9efb6a6a7df05c33f785a21736e365da1089cd74c5146b",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -757,13 +768,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "424450dd4a37e7d55e3b2d31f2de55db712bd95132882ae3207f5988a8d65e8d",
+    "content_hash": "312ffb542a72c9224cb5e81d3180c2cef86910dfb6c5ff6d827bdc1f6901eb99",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -820,13 +832,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "121abe64ea30a9411c4a800b6e60063b16a6bb909f807615bfcf672ee218759b",
+    "content_hash": "7c2090ef8101779d355b52a3f0ce25596cfb3fc800c25c6d7c0a5bf687cb1ccc",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -884,13 +897,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "3d393dc215ffbcd7aa6ba7eec7b3f6645e19d71fb3ce858fefe9eaae5d57ba29",
+    "content_hash": "6357e9b09acf92def6858f9adb5cd91f3dbf7b79b9d92b590861e391aefac50a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -948,13 +962,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "30e58cc3637518adfe340b30431bca072f09f4207747bc9177d46808d4a0cbd1",
+    "content_hash": "2f41dc8754aa280559460bcca022b82f9de620f11978b07e027f203a58d3a14b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1012,13 +1027,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ec3b1d9843124595f48bf7bdc4fba172c665781219793937d95096f5a77e55be",
+    "content_hash": "e9120995ffd403bd9776edacad1d81b34b3fcc4b5a1d221dace48494adc1ca0d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1084,13 +1100,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "674d61b2fb7e672b2a5fd3edd25f4da24c72406886ebb14e94232ccd148fbff2",
+    "content_hash": "d51cbb328eef57dae6fa5149df444526869074d603510590dfd66ae38ed29fa5",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1148,13 +1165,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "0683324b27eb9ebcc997902a3a29a870cf5792bd11124b7759694fa8f09c7763",
+    "content_hash": "2c9234615a60ecb56c49b7669076d7b6ce0580ad52d32e01f66b8792cf1c067e",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1212,13 +1230,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ed9101a88ce4c47c65e1e2f3af5bfd2085cb23e1c290a7515269dfe22776823e",
+    "content_hash": "d5f32fa15f25e1af7f6310e526d8f54fcc3047f5468a61081c48b874c7ba1c7e",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1276,13 +1295,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "20c08b5ace903a150fb793d4237625e93303982136f87859103137043a867d89",
+    "content_hash": "140917bcb52aa4f00df2bb9cd95b9042debe8374964f2f44ef19b60447ad4052",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1340,13 +1360,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "a1d1fe6293d0359cdf49355770538d9e1502d8f942d960af8dbe640d5f1588ec",
+    "content_hash": "1941bbf88baaf5c8c81464098a7f709f955671f235234caf8fdaa5cd94964d12",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1404,13 +1425,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "247aa4a8700ddbd8c262d999cba45242e2ec594f656067de3bdd0818e66d93a1",
+    "content_hash": "eaab9660d79c5d9f3952235870045cca52772410dd2b97f1502c00c4aaa60fba",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1476,13 +1498,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ec7bcc72882c2bb9d47c7e50c04ded7dae2b0d4fa443cd910963da3194bc8499",
+    "content_hash": "c162cd0f90f92bf81b58b2b7ecdb8a0f46512e9709811e4fe5d29ee5aafc036b",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1540,13 +1563,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "e1012d25b6b51ab8a5a2df2e0cd57568194f50844f7f7e352ec8ca1b44beeeda",
+    "content_hash": "871f32736cbd7b48d4868bbcd8443bbdc1112b60e51fca6178cc90b337965db7",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1604,13 +1628,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "a13e556211d374cc2e3ee986399f24f62ebd5ae6fa38444b5f917826389e9c07",
+    "content_hash": "7419370bb4fde9cb1ceb0e82f8d1a9b975667b34e40d7930cd127c10e20e3c3c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1668,13 +1693,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "d306b755446f5f8b80084489986d058bf632a4fc370149736aa2d2728d5656fb",
+    "content_hash": "4d60ef45de867035c0358477b4bb9341cf48775d3b5c6e31b7253454ddf6f2e5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1732,13 +1758,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "642e18f1f7a34df4d3728173c815f5fe450c2ca4a6dca14f2dbbbbbf454057a9",
+    "content_hash": "0a2bda289048b7a56026d6c1a34cb1a5f4bd8af1264c1289ebc124f9fb4425b8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1796,13 +1823,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "d35ee3a4a9c6c80951bd4a2033a730398b524ca2cb85a5124617666a1cefd02a",
+    "content_hash": "d2b41465edf1e915723aa9402583b946789ea98a16b9766ecc5d81d6bfe27268",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1868,13 +1896,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "03d6462b4a8129d6f94806ab1427b62c57c1d65cfada5396c0b6fc7da853523e",
+    "content_hash": "851451a5e1f07fc44aa8b918c25dad19f32678136d7fc14bd66db75d2877b527",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1932,13 +1961,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "c404a787cdc16111082c60bfbef940dc78636f5d5b46899153cfe5f4410fde1d",
+    "content_hash": "d59789b1d45f22ad7b10191218ad31b1ed55ce86f89ee87bc876338977692105",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1996,13 +2026,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "757b958fcba059a81f6eb486dcb42a437a73e48534e3ff241d807e00cf4d0311",
+    "content_hash": "324ec66b563102b8c3ca3cbaae90caf6fb56411bbc4ca9b26dadcca47a5ad8fb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2059,13 +2090,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "bd5974a875cf648608382b8c2c7b38722a1bc0b68454c33011274563b5070b21",
+    "content_hash": "9f2702430b63ae61cf128242466141b679ade756204cd1f0a4e5c9615ad9e58a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2122,13 +2154,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "eff47369c2a0b2015137e11a34e4e8d02ba494a8718700dff8e502226cead59d",
+    "content_hash": "be587c8beea8a375a829f76623a10dc08675b4a5fcbaddbe446a2282ef3872fd",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2185,13 +2218,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "2b5fe7e914f9a9c0b7a06f7da51ef423306dd69a0c01733dbb42001d83a5a081",
+    "content_hash": "de84a6bef8755317b7e52caf582020a30d9aae57a0066d21c484dca98f2987d7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2256,13 +2290,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "28f524f3a5f50856f4713f8b4ed3b4bc82c0ff3a2e1f434de75e7017975a6efe",
+    "content_hash": "b8639be572d1f9546e0d77f4f1b2a870e7a15a4827e940ccee497764b93feb6a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2319,13 +2354,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "f664a94659f56eb9bb5dff0f070c6ca6925e2b0fdfefb5dd450008bb127e23ce",
+    "content_hash": "a8ae4a2b8741197e87bcedc93eead76e2cdb5c11fd69af625ce8cd0a913aaf12",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2382,13 +2418,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "98f588f60cbd0f8339219e64531d3385b9201369b27a45511d283f6116c40292",
+    "content_hash": "a55f0508c6fe2f90e2b93371d788ffcf7dcf831f86bf16a8bc037e78da37c0f1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2446,13 +2483,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "424b782eaa876e0589d1f08147ce37801adf32da495a82e6792fc2433bdd2058",
+    "content_hash": "c26396d49599b1a612c941773e59c7b1586671e93cc5d75a95ced5c3b26ce498",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2510,13 +2548,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "379da4aa2777819c3ee6532ebb190c97f775f26490bd9220f54dd8b2109b660e",
+    "content_hash": "de6afc90b3c00b922b05ebd2ce280265853141ec4d12f36cc443b273626a1c02",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2574,13 +2613,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ea74a5443d1083fe5a20c6ef9ca3db3b71a1b3320adff5fe5e25de5f0b0b6a06",
+    "content_hash": "f5709f88958b7bbfd1ff1d31b12863b8665cc94ab1dc0783cc81334d560640f4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2646,13 +2686,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "fc22dcee22fb2e7826a5f865a76b258beb0200f8f3f48504908885c8b75011fb",
+    "content_hash": "12cfc6b7de3acdb71c18c170e4312ff792b8ebde9e89d5899b4fd34a19ceef90",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2710,13 +2751,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "cb18844cac9beb75dc98cf499544a85b5b494ab519477291c9f023f552add82a",
+    "content_hash": "006cf29a62d5d74fe9a5656d9bdb055bf3e6b46d18be69c784cba6d94dd7fcd7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2774,13 +2816,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ccf3710585a08f0cef2f0f2da304c8f54bd89b751c60a66235634403217b1022",
+    "content_hash": "62c68536d6dbed7ba5ff9fd8bbebac6323238c7dcc35e27572bebab010d36904",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2839,13 +2882,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8a58025b18af314db9c252c8081a1f44a9fd83a4654c331d4a93c7e184e81dc3",
+    "content_hash": "aa76c44377c7d8a1b8db04bb726992cfb3f2ea0a4b21897f36aefe97f80fff06",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2904,13 +2948,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ece0c459ffceb8d020569cf4353071bf56d85aa5b70938dc455682e09d1d2f48",
+    "content_hash": "3ea7e60a82c486d2005cfda51e3cd3388b291f85c49fbf273fea822a4674a6d8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2969,13 +3014,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "faa5b7fd794e1d4733a5117c55e27ee439aaebf25f5e10aac13eb54ed71c78ff",
+    "content_hash": "175965c91d2d41f0b7f5c5487d52904f18cb220be2e031f8bd6a1bc205f7c7fc",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3042,13 +3088,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "2aec20016dfcb494f6d7371ae48c5eb993f92f1004330de16249a0bab3de3b3b",
+    "content_hash": "8db311d4fa0f8e56c35b3f09bb9d124e21d14c021e4fb428a7b388cc76db5ec8",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3107,13 +3154,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "3b6f81e06edff4f66c7175c61c2af68e0f9bd140331f5a26aabd0ad681f9141f",
+    "content_hash": "69335a054fdcea4967bb8fba86444b7a3ba2af42302151c30e0b3564d6384700",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3172,13 +3220,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "9b0073536f45148ee5c0a9e1c1e872735d5adc1f824a4b98412c16f377d044e4",
+    "content_hash": "2ddf92668394c3d5a08e9f95f1be4cc62fc9264033f60f72587395dd1962fc01",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3235,13 +3284,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "131e6570bcc9c14c26ae30f153ac18f62656e0bfb79154cba92c3fa386083a20",
+    "content_hash": "a213a0652d7733ace1cd3d768b05a86cae633ffc388db5c009eb33294f1a4755",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3298,13 +3348,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "314cb2223f38b4ec2419097785083e4ae6f959d7914fd8e6333c1375fb3a907a",
+    "content_hash": "a46d5c3a0649a6e80f00b7479a6f200518686df363d5255d9b664bebcb1486e1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3361,13 +3412,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "e63a12e2cd85520a31ce2b6a9191a36f9541760837043a46af102bd84ea7c61c",
+    "content_hash": "8ee13d872b6143aad0b37902f2c62accf05abcd8199e44d0a8f95da246fa7ad5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3432,13 +3484,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "d8d237a4d092c8fdd2548da6b5b82bc6ceec40c53483a7fa2f2fa1f6b120293a",
+    "content_hash": "bbb71b58e2a558bfb5c76116e2111aa55423148e7eff2a4b36160b69dc053671",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3495,13 +3548,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "5b101ee5922d97327b5c21f9c16194336d1614c262884ffa1e4d60c2d77c8768",
+    "content_hash": "cdb329ad54538e46de1ca4a2e54e449f7a1df4199dc01f9baff0dbf30704ca60",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3558,13 +3612,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "983b1c11ceb95db5da9e5915068f8d3734d2ceb8b3183588ce8c374659bf550d",
+    "content_hash": "65a0758760861e988b7c5cc324e33719db42b40ad4896779bcfb27b284275504",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3621,13 +3676,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "fccbeb9c1f3f5a033a2af54a9f1c4f98783d0b9c486d45bed1c865286066dacc",
+    "content_hash": "0010df4e88e141e23d7187cab7bdd884d85224ded3e11f576aa731c0bd7f35a8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3684,13 +3740,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "81180a693ac98111e5f3f1be7cda1b14d595af38ac98182d05b9fbfeedfed0a5",
+    "content_hash": "5252708c19588270065b4c8e6def27f7a9b0d09816e22ce0c295607cf719286b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3747,13 +3804,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "016658d355220de184ebcc7d29c7dc2cb52bdfb672367da1f992388383eff105",
+    "content_hash": "00e1f342228f962955d972592951c1e96bc7e1b90de7e14d8660ffc0f4db0d64",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3818,13 +3876,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8d78ea91d0671567e765d9d219bf1e686ae3b6a764986805794235c5c220179d",
+    "content_hash": "c76486605e4f59649e55dcbc663dab8c14be42d0f48c8eafc360cb45abe46e95",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3881,13 +3940,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "c0117c66a61fd72aa09909c831b88ad6f2e192ab0273f81d456adb873fc46b01",
+    "content_hash": "f1f550e6bbebb705d3e716d433f07803c1381b0340a552ef475d3c329ec39960",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3944,13 +4004,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ac7dd0f8c426ec7d9bff02dc452b2a13df11563e567a0a56ea3927be6e01a79c",
+    "content_hash": "063d0d4a0e208f28f8a0ffac811117de7cf497078e0010475a99c72daa1cd85e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4008,13 +4069,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "c65e763f74adec9bfb188344df27b65d68d0eb72c2936d19f10fb78efe86f22d",
+    "content_hash": "9bab6c52e7d008771a679d66b8ef2afd2e54801fcec6b342343e8df5921af25b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4072,13 +4134,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "dbe8a68f20a1ac248e2d0e8f60f3064b3fb98b78a579ddb37c5a449ede0f6860",
+    "content_hash": "5c0ae4516c3a62e3a7819c8a0ef6830667fc5238f9c1b6bf6676b195f9d62047",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4136,13 +4199,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "971f1671d860c532c0a6fefeb893b5c6b5cb7e7c4ca1d52e25f645aeec28727b",
+    "content_hash": "b9062ac9db270b93d4dc1a4a3acb976792f9915a8cbea831143ded7fc3adc8ed",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4208,13 +4272,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "a703e2d033018faa4ec4f411f87a5cbce0c66da06e4f74de963224b0908bcf60",
+    "content_hash": "2a2f660e72b34893e96fd35eaf8a74df9d29011b3b1149b69c3e4c9b60fd2feb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4272,13 +4337,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "946efe3c494e11838f52e486e182cf681475ef493ad72e47d58e12721f6dc807",
+    "content_hash": "769c8c3de292bbd752541d3c12e7ae8541b4aa2ce59557057219a3ca67b75d78",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4336,13 +4402,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "c269b3971aababf824a89c43abced9d80c9fddd963bb94d56c4dbd8a36f9cffc",
+    "content_hash": "5be4849fa8e4128b743c925a40bd51ac15d8a26f5eee5e969bc20b3c0ad029f8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4400,13 +4467,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "41e01044b910490acb221b14ea74381d1997245b1546cefca7d9ce6f3274070b",
+    "content_hash": "b0a39456bdc59e5e638aed9a1b32ce7b09c7da6dec561a2857e038d6e0013b22",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4464,13 +4532,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "3b6ead4a13d8201c7ce58d7e622017aa04f3f2240227b59497ee11fb06ce6a5e",
+    "content_hash": "fcc917d5e14df4261296db3c078739e39338ce5d8f313eecf6a44f4d857cd229",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4528,13 +4597,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "2bd9aa050389638254edb2b7bc90bd40a1d249e799936b6b171a98d8078d252a",
+    "content_hash": "f5093c5ec225caea21b186d1fdc04495c4e0ebde2d8c9b15baab3c712fa0404d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4600,13 +4670,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "718ea23efa8bbe2c46c2c7524978eca6c31637e5f5119d7ed2634df9a44ad5e3",
+    "content_hash": "60ac26613970c5f40197863444c4757270fe20552fea5f9a4c6815d183eccfae",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4664,13 +4735,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "d029313649491e9f825bc2a3bd151f0bd259abe0e245c2c8f9666a334fc748d2",
+    "content_hash": "10f3df7980962985279680dc025a4bbfc4d49e5facfde116de631a25bd26edd4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4728,13 +4800,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "f2c73197d78bf04615945a0e8e8be6e2d1896df8242802648f746ce1a2ebef80",
+    "content_hash": "070dd86c9cfe0593bc208bbf7812a968fa4233f9849df43d52628c33aa64abaa",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4793,13 +4866,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "63b8b40676e3a40fe01cf2b8c5bd57e7c6f7594c2e0d188b20986040af195bec",
+    "content_hash": "397a2aeb796586e7e6feb057b33b3a11490c281dd260b4484d36a05703125a61",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4858,13 +4932,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "99b8d6331a952f2936d1312320fb1af847e4187b82fd93afe9643da668472017",
+    "content_hash": "efa57517f90e22319308a13c20624156373a53aefe8e21c293177b644d90819f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4923,13 +4998,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "e8be2a71ebe8535d178373b444cf30b356f34fd36faff9c063cb240fa7b37146",
+    "content_hash": "d4d4887d94d423f93992b13e1aeb1a46b65af553b2a5582458e359503e352942",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4996,13 +5072,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "74abbcda31b531fdc19db5c15ae4b5d38162c1086c996c66ffbf3d55c5c23098",
+    "content_hash": "e71e625e3269a28d5a3e1d9206721912b7a86bcf1a3ccb981fc0dfe1015bfc78",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5061,13 +5138,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "d738a443323c7add409bd05ac93895a2a3769da35a5d564b9adacd0c2e2aa71f",
+    "content_hash": "34aba9aefbfdbd2c87436483af3c562dde615e483122362832f9fed722a8b083",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5126,13 +5204,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "fa93e1fa671bc154fda39f24a75584a4a4c38707502e0eab230f4c3db39607ae",
+    "content_hash": "21d3731148a5e2366218ef79bed83e203a57167fa0bfa5eea64611a6a95b909f",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5191,13 +5270,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "dd103f844b8a7c995c4b96c5bc8984c75d4fb41a2a4ea4158588581e80eb724e",
+    "content_hash": "ac11cf3f5db897466c922f8bf249c5c8c3a884e781ae3e27a1d159a516971d15",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5256,13 +5336,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8715c31119d33824d0acbbe28c3538e9c645707787c923654b39aee8186dfc06",
+    "content_hash": "2fe4b53efc92da0853718fa69b5ac54c8aded31ed40f18214f56463f4dc597de",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5321,13 +5402,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "e24396c08557fb6a517e6ba516b6ba7ce95c0a2b66291e7a676aba3743f9e40b",
+    "content_hash": "ecc751fc0ccd78ef14b921091ff0a5bc3d3c9674b46974ea0b888e0e826e19de",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5394,13 +5476,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "04e4c53be43baf109d995e9d4fb2f06965ad63782afcabcc65fc7ba1da37a2a9",
+    "content_hash": "c0ab2bc6b94f985fc99c892657d6d96a4d4da5fbc43f1207739581970b359ce6",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5459,13 +5542,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "f3f076dbfb9f611a6bf8e0fd6a90e6e84a6a830da1e3ceac9d9e62b617c00856",
+    "content_hash": "e5b14c36fdb1da4f7482fee9b839914e12607ace53550a9aeb1362bc4448e653",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5524,13 +5608,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "1b02c93f57335abd2446566077ff01cb72314790533f1d556486b9c44f74e298",
+    "content_hash": "29a0cb1201e543557f7ceefe366de6a49627d31ca459cdb71c8ea476d1969ce2",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5588,13 +5673,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "c1e34aa79c9bd03c60c531dc394e805cf9bf876090db0b923d4685a50019c8f4",
+    "content_hash": "f85bec44e44c6db03cbf5457ac23edc9f76dbedcef4f140ea7eabb84efda57a3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5652,13 +5738,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "1136e81fdca440b8069c94e4a9e07be09b884822efb1a57ab854c1cff1fd3151",
+    "content_hash": "2846315ed462a2081ee671eb2d257b9548a1b5843e05cb4cfdabfd3a384b11c1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5716,13 +5803,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "c54090d5d23863d36137e1b719b8d81bd8162469847028308946931f3ab90636",
+    "content_hash": "d5f7d000490d5e3cf33019ee90026ff9b505077afc4e442cd39b07e483c275e1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5788,13 +5876,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "1eb35a2c0ea07f52cba32520173c934a50765b210067859b8d99be28a73194d6",
+    "content_hash": "70d91484d66b5219e1cb969a76fd2e78b2fe11214bf917618f904135dd4c72fb",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5852,13 +5941,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "2b48fbb3f2e7a1b8a4250494f212b41b5a57ef0672a1220544b5967ea8666193",
+    "content_hash": "7128189cf01fac090047003e5da0c1470f325f6ca838182ee30ca2073cbd55aa",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5916,13 +6006,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "16ab3268a18283adcf39d5e53a529a7c01c09721572fb09b695f74ec5faeeaf9",
+    "content_hash": "26fe9a42042cb12841b7a0ade05834621e8ee19f6b329a01555298428c9c771b",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -5980,13 +6071,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "1dc532d1dff552598ec1df1afcc39cd1562c8aa5d4d14f2d059b651fbc39450a",
+    "content_hash": "78c26801adf96c81a087473d2e65d8f703fc8036c74104d9281d333005aa3812",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6044,13 +6136,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "f0292c0c2bbfff0fe767895085154e5ac0ed73b3feb95d8a6579fd3dd6477abe",
+    "content_hash": "5411fe1a46bc8e58020231bc37fd3118fe77eb1bdd069f8e6b5c73d5cca76317",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6108,13 +6201,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "71de0d0e59b134c8f7effe779d1416603cbc209c7e45e5432bb089b92bf96608",
+    "content_hash": "9ac715a46297ac8c852c358c81641980b379f22be171a5d51dfdcfabe55cd8ee",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6180,13 +6274,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "21d71a30b168593a6e30c47ea81d4fbc5f19b89458fed79df97cbce28c31157f",
+    "content_hash": "d8cdde5f1d765f8e03bcf3896b5bb483a812439d70c62b134527b0e9ec869dfe",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6244,13 +6339,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8d29a97198377390bdaedebedacc22d5317c016785ece9c158529364a0de633a",
+    "content_hash": "c1ea05383c5ab853329ad8df1d3b4a5b9867dc6a7ac8e70155bb2e47f6b2aa7c",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -6308,13 +6404,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "5705b635cd6a8dcc71707d40e1077ed2303d8351474bdfb5b736bb28290c7fa0",
+    "content_hash": "1a81a4bb52416b2ac395571b2986e598180e7a06d7edadb3a1e8fb108982cdcc",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6354,13 +6451,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "b2f650b7b70be053f24544ea5f92c6eba27bc08b04849b66035aae9a719c7cca",
+    "content_hash": "188a5c99d5bf5772877520084df7d082ccc974bff914d55e65d60cd0f7bb3f32",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6400,13 +6498,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "4001b6ccb3212f42e969f63f2c226f97133180a6018413ead489b7b7890c1734",
+    "content_hash": "3cd2cc79c9facb3c0b34ca670d4d141ad9c3f64da1a117906fbbf44a2801186d",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6446,13 +6545,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "6f6f0f3de0474cd5062df7da8791947f910a8cf5aa1cda70cbddf3a0e1d0fc0b",
+    "content_hash": "5e85f6ad049b40a5484506380fa7d6194f68d4eb4f1e41965e6b51928891312e",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6492,13 +6592,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "e3a8547ae51d479b19a36936a8f0d7f08d9757ccb44b4a3a7bb198e8ca1a20d3",
+    "content_hash": "31d319308b041212dd5fb60e2fb6c0c7d23085c94673282f9b48cf6fbfdba92f",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6538,13 +6639,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "5df0365aa521f6a79230cee495deab5de86bd4bf38b4356b1ec86ce61be95897",
+    "content_hash": "7ca91fd91018df8406051aef14b34f915538f46e1636827c067655fb3388e85e",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6584,13 +6686,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "0d8937f2613a34780b412f58cf49d305e105620e81851554cc0c39f0eee496f6",
+    "content_hash": "5346bf6aa11e2f89d1ad4eb3746c31ab7ac284871e1f2f1a0604082f8f162ca7",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6630,13 +6733,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "0119c24c10670fa4350cbf659ec20ef827c0bf75a8842815e243dd89942d974b",
+    "content_hash": "bc1730bb060ff35c629341cd6fb0329ab6643ba65a7fffcfdd4889a947c5f867",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6676,13 +6780,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "bf04379568fe505ec384a7a8527c0a5589c500398248b7216d68fd9d067cbddd",
+    "content_hash": "2b5d68b44ef989b6aa4188ada1a3e86e2a65223f4b1785212955139b7e30e8ae",
     "expected_approved": true,
     "source": "synthetic-benign",
     "deprecated": false,
@@ -6723,13 +6828,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "dc80872d3a76d40f0aee41e1ba234dc9ecff2c86416e2f4370a4ebe0370cf50b",
+    "content_hash": "c106c88aa8ffed64779de19aea871de79a6359c4a5622fd1be56f81c502fa256",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6764,13 +6870,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "a19eede1f8279a55ae0f22bd997bfc4d9117321877a1369c8b4c12d23ca07372",
+    "content_hash": "b8edf2b8362fee03a9d03fe3cfd5e6fd55836587be15144c5f3489b7d6343cb2",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6846,13 +6953,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "fe23d77aac03efc9906a2ddcecb3c04e6e01b4071207c3b9e40f7cdac97c2c46",
+    "content_hash": "37b25d7b60ea735e612a569e097a489b6b9d4bcef66b5937eb2103cab9a5550a",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -6939,13 +7047,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "680c6a6d298303104e5f24b5375af9f72fc831b0c7b097fcf2615f2d54e2b4fb",
+    "content_hash": "861a0ebc0348a9c4d59dca81fc9d22293fac380f0a1d34c8153d1ae25de08146",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7043,13 +7152,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "b26736a035c645fc1ff06aa3f735a21802422ed4334b4a877d7c8d2b31950006",
+    "content_hash": "3d5164a880cb111def1b47873b06453dded85986a7fb363cab215f030565d8c8",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7158,13 +7268,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "a20d19e97c5a2be358b0bb3b0b7c4cf5577b8c633b0315d21b5f5970935acc91",
+    "content_hash": "4eecf7b8b5791684f9754da7fc39927dba2b8e90b2df0809abd842a9974d441c",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7240,13 +7351,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "e3fc18f70e1e6583ad5c491a93120d772326a531eefb7f898c1fa41c48cec33c",
+    "content_hash": "71a88c4ebd0d5819d34baf736882a2085be660a19adc5a6604350039ddb46977",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7298,13 +7410,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8044ace74c5d9e5100887b245be1050cad6e694076cb40f03d7f1f7581d51156",
+    "content_hash": "42358ac5803e0eb10b64c33bb7fb6579ecbd939594b1f0657e2162b24aeb018f",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7356,13 +7469,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "dd72b7a305de5710c014bfaff993d003513afc01d850d4fd441a649e0d771d70",
+    "content_hash": "72928a8ae1dfc24ea7b306ddc8250eaa9e011c226adf79f831cb949dfd34b484",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7413,13 +7527,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "176f5aea2ed78d0eb5ec05238a13ed740df29a8ce3a8801a0435486724457195",
+    "content_hash": "b3471d56da4e0d3978ca9d8d2610acdc43f68f6a7c6024411e68c3a431943466",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7469,13 +7584,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "d9377bc8af9c0a066cb344536f7f459f94ffc05cf350484f9a3fb1c59636ce66",
+    "content_hash": "322f6c8ddaa84a5179498f62b4f2f53f5a6c030eb0082e830752de13e9c38ec0",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -7516,13 +7632,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "405cd1a3ad7780c43b971c46ce6b71ca73109d11e9a3ef0ce02f99d466c66ad0",
+    "content_hash": "ae3e7964488fb121ee2ae030c04839d76f1c47e39a132a12b9faa177de0d3e97",
     "expected_approved": true,
     "source": "synthetic-benign",
     "deprecated": false,
@@ -7563,13 +7680,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "b0d701e5533a401f2e311c179773119ae7064905ad7299941dbca9d9032efb51",
+    "content_hash": "fccbaabcc76a7ada2d6d7f8275d70373b54d46b4cf5d64f81eeec615fe132f2a",
     "expected_approved": false,
     "source": "real-mainnet-exploit:HFfpZjD5MXoertznX5qEZiywSf7deVoGtkdHRBweVVG1sAaStsBTqdPxbDqARkjVmChqQcsUyJmukspXM1Upira",
     "deprecated": false,
@@ -7610,13 +7728,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "100af5de98a09423f3019e5863210a2bcf18c48cc3daace865de2861611fb0cb",
+    "content_hash": "cddbc5d4f09666c18a516f4df068c5b77258c4b11c66110cade51c8f137e80f2",
     "expected_approved": false,
     "source": "real-mainnet-exploit:5m33JXxLHiEfDn9fSN3M3VA4fuvPLxSDQEfobt8bqQbQWG37biYVhiyMnY3bko7f356pSfe5JY73gLoFmYabfiuJ",
     "deprecated": false,
@@ -7657,13 +7776,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "61cbe9f1da9cb9e1cf72fe84699850bb2b2ebfb004124f4dc69f2dbbe7dfabfc",
+    "content_hash": "a6b4e2caac5ba33512afeb9186496cfb3fdbb551ffa67e0e1fe11c3f8044e0f6",
     "expected_approved": false,
     "source": "real-mainnet-exploit:3phQw9zVMaC1CvBE6gC1dwvAN8ykrBJwJiyFDHStTXUMfpgHLtjZ1P9iFsaRS44CXjtZNppW7xFAsFGpXRCwE23f",
     "deprecated": false,
@@ -7704,13 +7824,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "81c47df1153a0a0a5d2532c9a07c99ed70e78198dc3e2d03b8d846bc4f7ab8a2",
+    "content_hash": "17bab3ed873af36b43e4f40adb3676a72457223bd8d499a92faa6d1b5c6fbfca",
     "expected_approved": false,
     "source": "real-mainnet-exploit:AGkRbrvvFvBQ2AM3UPaKDXBawh6rFAR91asgiVZbDrMPKbZRWNBxZjp9gs57rPXySqb5gEmSPvTSemEeUyxQ7JE",
     "deprecated": false,
@@ -7751,13 +7872,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "b3a4689949b564828111fc6d7a8375d5252a4d8db0641342ce5d3dd0e7f6960e",
+    "content_hash": "a67673197e95f92b876566c3409ba69dae5778233cd8e5e0001bd50be63fc67b",
     "expected_approved": false,
     "source": "real-mainnet-exploit:5snHwbaFKzzTj6Dmv9aJvKNArjZnbU5kQRcV2BWmgmqYddbCNX56nfcxHUUvfRLdCRes73eCEPGoBjbtMc1WJuec",
     "deprecated": false,
@@ -7798,13 +7920,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8e6872ad35d3b895e41c292333bdcc73f01fcb879ddb6f15d00ad958f4162141",
+    "content_hash": "0b28947f8754f5da9052ca0adc7582ad312faeedc98b20ef48e604e7e9079a76",
     "expected_approved": false,
     "source": "real-mainnet-exploit:3fb6AxcSUwGqu7WscE7Ljuua5j1spTSjizHuFxp887yeUHy3KxXBmJkoCYwnpqaaNXGg3quQc3HMkReHyAck2Hft",
     "deprecated": false,
@@ -7845,13 +7968,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "d9525919666cb3f346dcf58e1bed94dd13154ff05f25c0f12c7027deba0410dc",
+    "content_hash": "92d7550957a78a6a2d02347f191d92b145e4adaee92aff89d319acf0baf85a8b",
     "expected_approved": false,
     "source": "real-mainnet-exploit:4HusmDkGqcRit8Zo5MNZxhEGgi2RTg8gFU9f7LhjjGFrVZqvzS1jg9DxJVWwEtZsyPRdQ8dFK6Y5xFeLrY8HhHXU",
     "deprecated": false,
@@ -7892,13 +8016,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "6448b1bdea423dfa41b1890211a89571eaf59e897052ad3d67bf15e58d0e6025",
+    "content_hash": "e311a28a7fd5458c5ca84af4ed9b757c198d5b89ef91f6dbec061b84b6064a32",
     "expected_approved": false,
     "source": "real-mainnet-exploit:4AdHvWNiCW3BBtthchYptMFnYtXbQkxorPPTC5rCuYiXBHZReBztGdwCXJaauP3cyR8gMVTCr1vuLDoPcnto57qj",
     "deprecated": false,
@@ -7939,13 +8064,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "82a3b25f80621e82467d0b7a29e6dcfd9f952e6f8dddc0f3beb919921889da46",
+    "content_hash": "ec83e528aa954f8341e16bf4bf5624624a2403483a8b68bb17c9f2c9fefde27f",
     "expected_approved": false,
     "source": "real-mainnet-exploit:5AJvuqSXuV4ELPgEtibvuJEMnNeEUU7619YGWqrJuQ5zZkcnkHKXq4gBxV9B3yMMkGWUo4bYx2JzrkQ6px4pJknP",
     "deprecated": false,
@@ -7986,13 +8112,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "ed80d26c56ff680f1a4ae7281546e6cf8400f0a47e8db5c035fa64a42d7a8ef6",
+    "content_hash": "e7456a6a19db6b24061492b5996e4e0f7114e40cb0eda6cf8121688cefad2b2f",
     "expected_approved": false,
     "source": "real-mainnet-exploit:3vByz9yFAmsvYobSCzK4sieLk1RSdm6WeJfCCwZoexgmWrjL5eJogzRW1pDhTyLkSnRDJt996gLFxyDE9TbwZXMj",
     "deprecated": false,
@@ -8033,13 +8160,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "446f22d44403f13bfff1ab4bc35fb68cb38ed3510c6c7551e4be456bfe6b629e",
+    "content_hash": "0b8f18fc332c19776ea41c91cd05bb7cb5dd3663b8dba5d16aab6520d942d31d",
     "expected_approved": false,
     "source": "real-mainnet-exploit:2gPnRM8EMZqNWo5ejJFtfMY7QGQmQ5J1QT7YJyi1GMp1od81TmeHZrkmRMnkGLBMhzPviwokd42kjLCs4YiAJiYZ",
     "deprecated": false,
@@ -8080,13 +8208,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "cc6c781f30911b2265a4919e0f12e5fc21dc3b9cbf392b7a35b4d5ae72e22431",
+    "content_hash": "fe4ef6fb8dd12bc52e20b143290503ca6684439be5aca689b5f417a66a2ac7ed",
     "expected_approved": false,
     "source": "real-mainnet-exploit:65f7wrnj8mQttLXMwzavQHb434kwL2kJLBLbr5JtExDCUKd3mzBEGFq93ALMHbfU1mkTNgrbL5f9pC6zZw4jNc4i",
     "deprecated": false,
@@ -8132,13 +8261,14 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   },
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "cdcf0f30c1f63292aa913a32d61e793d22d89f06c77d78d558aaffcdc1c9bfcf",
+    "content_hash": "6263270528e49bdefd1ead56b435b142976fdad58f7a88ebdaced4a40dd96b7a",
     "expected_approved": false,
     "source": "real-mainnet-exploit:3XpaoziFiDimGrU5XmHoMi3QyFdqGR7r3nV28RAFX5BGQwSXeXQsmz1LtMi7jr8vs9Q7EPGoc7U9dD6GTP5X18AW",
     "deprecated": false,
@@ -8187,7 +8317,8 @@
       "cpi_trace": null,
       "real_account_metas": [],
       "uses_versioned_transaction": false,
-      "lookup_table_count": 0
+      "lookup_table_count": 0,
+      "state_diff": null
     }
   }
 ]

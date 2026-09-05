@@ -243,6 +243,7 @@ fn full_pipeline_blocks_on_unsigned_required_signer() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: metas,
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();
@@ -297,6 +298,7 @@ fn full_pipeline_approves_when_real_metas_match() {
         uses_versioned_transaction: false,
         lookup_table_count: 0,
         real_account_metas: matching_metas(),
+        state_diff: None,
     };
 
     let result = core.verify(&input).unwrap();

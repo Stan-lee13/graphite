@@ -23,6 +23,7 @@ pub mod rpc_client;
 pub mod semantic_graph_store;
 pub mod simulation_integrity;
 pub mod solana_types;
+pub mod state_diff;
 pub mod transaction_builder;
 pub mod tx_pattern_analysis;
 pub mod unknown_protocol_mode;
@@ -62,6 +63,10 @@ pub use risk_engine::{
 };
 pub use semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
 pub use solana_types::{find_program_address, is_on_curve, AccountMeta, Instruction, Pubkey};
+pub use state_diff::{
+    check_state_diff, AccountDelta, AccountSnapshot, DeclaredEffects, DiffProvenance, DiffSeverity,
+    StateDiff, StateDiffCheck, StateDiffFinding, StateDiffReport,
+};
 pub use transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
 pub use tx_pattern_analysis::{
     analyze_cpi_trace, analyze_multi_instruction, CpiTraceNode, PatternFinding, PatternSeverity,
