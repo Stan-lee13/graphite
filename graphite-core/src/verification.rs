@@ -331,6 +331,17 @@ pub struct GraphSignalEvidence {
     pub community_verified: u32,
 }
 
+/// Manifest-derived risk-assessment context for a single instruction. See
+/// `GraphiteCore::instruction_risk_context` (P0-3 fix, 2026-09-05 audit).
+struct InstructionRiskContext {
+    expected_state_changes: Vec<String>,
+    allowed_cpis: Vec<String>,
+    expected_account_count: Option<usize>,
+    variable_accounts: bool,
+    manifest_risk_class: String,
+    manifest_found: bool,
+}
+
 /// The main Graphite verification engine.
 ///
 /// `semantic_graph` is `Arc<Mutex<..>>` so that cloned core instances (axum
@@ -1095,6 +1106,227 @@ impl GraphiteCore {
         )
     }
 
+    /// Manifest-derived risk-assessment context for ONE instruction, keyed by
+    /// (program_id, discriminator). Mirrors the manifest lookup the primary
+    /// instruction already performs (see `expected_state_changes`/
+    /// `allowed_cpis`/`expected_account_count`/`variable_accounts`/
+    /// `manifest_risk_class` in `verify_async` below) so that a SECONDARY
+    /// instruction — one that is not the primary instruction being verified,
+    /// but still part of the same transaction (a flattened CPI callee or a
+    /// top-level sibling instruction) — gets the SAME manifest-grounded
+    /// evidence the primary instruction gets, instead of being invisible to
+    /// the Risk Engine (P0-3 in the 2026-09-05 audit: secondary instructions
+    /// were never individually risk-assessed at all).
+    ///
+    /// Deliberately does NOT replicate the primary path's ProtocolPlugin
+    /// state-change extension (`verify_async`'s `!manifest_found` branch) —
+    /// that extension is scoped to the primary instruction's own L4/plugin
+    /// context and out of scope for this per-secondary-instruction risk pass.
+    fn instruction_risk_context(
+        &self,
+        program_id: &str,
+        discriminator: &str,
+    ) -> InstructionRiskContext {
+        match self.registry.get(program_id) {
+            Some(m) => {
+                let ix = m.instructions.iter().find(|i| {
+                    crate::manifest::discriminator_matches(&i.discriminator, discriminator)
+                });
+                match ix {
+                    Some(ix) => InstructionRiskContext {
+                        expected_state_changes: ix.expected_state_changes.clone(),
+                        allowed_cpis: ix.allowed_cpis.clone(),
+                        expected_account_count: Some(ix.accounts.len()),
+                        variable_accounts: ix.variable_accounts,
+                        manifest_risk_class: ix.risk_class.clone(),
+                        manifest_found: true,
+                    },
+                    None => {
+                        // Unknown instruction on a known protocol: same P12
+                        // union-of-allowed-CPIs convention as the primary path.
+                        let union_cpis: Vec<String> = m
+                            .instructions
+                            .iter()
+                            .flat_map(|i| i.allowed_cpis.iter().cloned())
+                            .collect::<std::collections::HashSet<_>>()
+                            .into_iter()
+                            .collect();
+                        InstructionRiskContext {
+                            expected_state_changes: vec!["Protocol-level state changes".to_string()],
+                            allowed_cpis: union_cpis,
+                            expected_account_count: None,
+                            variable_accounts: false,
+                            manifest_risk_class: String::new(),
+                            manifest_found: true,
+                        }
+                    }
+                }
+            }
+            None => InstructionRiskContext {
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                expected_account_count: None,
+                variable_accounts: false,
+                manifest_risk_class: String::new(),
+                manifest_found: false,
+            },
+        }
+    }
+
+    /// Risk-assess every SECONDARY instruction (index >= 1) in
+    /// `effective_instructions` — the primary instruction (index 0) is
+    /// assessed separately by the existing single-instruction path above and
+    /// is skipped here to avoid duplicate work / divergent behavior.
+    ///
+    /// P0-3 fix (2026-09-05 audit): `risk_engine::assess` used to be called
+    /// exactly once, for the primary instruction only. Everything else in the
+    /// transaction — CPI-flattened callees and top-level sibling instructions
+    /// — was invisible to the 23 structural risk checks, and only reachable
+    /// via `tx_pattern_analysis`'s narrow, correlation-based rules (which
+    /// require a specific paired instruction, e.g. Approve immediately
+    /// followed by a Transfer on the same account). A STANDALONE secondary
+    /// instruction with no such pairing — a bare SetAuthority, a manifest-
+    /// tagged high-risk withdraw/mint/authority/close call, a CPI-level
+    /// authority hijack — passed through completely unscrutinized.
+    ///
+    /// Design (deliberately NOT "call risk_engine in a loop and assume it's
+    /// fixed"): every secondary instruction is assessed with an EMPTY
+    /// declared intent (`proposed_intent_type: String::new()`), never the
+    /// primary's declared intent. This is load-bearing, not an oversight:
+    ///   - The caller's natural-language declaration describes the PRIMARY
+    ///     action only. Reusing it against a secondary instruction is a
+    ///     category error that would false-positive on extremely common,
+    ///     legitimate multi-instruction patterns — e.g. a "swap" transaction
+    ///     whose secondary instruction creates the destination ATA (Check 6b
+    ///     would otherwise fire: "account creation but declared intent is
+    ///     swap").
+    ///   - An empty intent naturally no-ops every intent-DEPENDENT check
+    ///     (6a/6b/7/8/9 in risk_engine.rs — each requires a non-empty,
+    ///     MISMATCHED intent to fire), so secondary instructions never trip
+    ///     those false-positive-prone gates.
+    ///   - Every intent-INDEPENDENT structural check stays fully active: the
+    ///     unconditional known-risky-discriminator table (Check 2 — this is
+    ///     what catches a standalone SetAuthority/Approve/System-Assign/
+    ///     CloseAccount), the CPI checks (1/1b/4), the drainer/hidden-
+    ///     transfer heuristics (3/3b/5), and system-account impersonation
+    ///     (Check 10a).
+    ///   - Check 10b ("manifest declares this instruction's class as
+    ///     drain/authority/withdraw/mint/close and NO intent was declared —
+    ///     fail closed") is DELIBERATELY activated by the empty intent for
+    ///     every secondary instruction: the agent's declaration never
+    ///     mentioned it, so P12 fail-closed applies exactly as the check was
+    ///     designed for the single-instruction case — it now also covers the
+    ///     secondary case for free, for every onboarded protocol, without new
+    ///     per-protocol detection logic.
+    ///
+    /// Aggregation is deterministic: `effective_instructions` is a plain,
+    /// insertion-ordered `Vec` (primary, then CPI-trace pre-order flatten,
+    /// then top-level secondaries in caller-supplied order — see its
+    /// construction below); this loop walks it in that same fixed order, so
+    /// which instruction's reason text becomes the PRIMARY blocked reason
+    /// (vs. a corroborating `|`-joined suffix) never depends on hash-map
+    /// iteration or any other non-deterministic source. A blocked secondary
+    /// instruction is a HARD GATE — it overrides an otherwise-Passed verdict
+    /// exactly like a plugin block or a pattern-analysis finding (SECURITY.md);
+    /// it can never be "outvoted" by other, benign instructions in the same
+    /// transaction, and N duplicate copies of the same risky secondary
+    /// instruction each independently re-confirm the same block rather than
+    /// diluting it.
+    fn assess_secondary_instructions(
+        &self,
+        effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
+    ) -> Result<(RiskVerdict, Vec<String>), VerificationError> {
+        let mut verdict = RiskVerdict::Passed;
+        let mut warnings: Vec<String> = Vec::new();
+        for (idx, ix) in effective_instructions.iter().enumerate().skip(1) {
+            // A secondary instruction with NO discriminator (common for
+            // CPI-trace-flattened nodes: trace introspection frequently
+            // cannot recover a callee's full instruction data, only its
+            // program ID and accounts) must NOT be routed into
+            // `risk_engine::assess`'s empty-discriminator fail-closed branch
+            // (Check 2's second arm) — that branch exists to catch a PRIMARY
+            // instruction that omits its discriminator despite the caller
+            // being asked to fully specify what to verify, which is a
+            // meaningfully different situation from a CPI callee whose data
+            // was simply never captured by the trace. Applying it here would
+            // hard-block the extremely common case of an ordinary CPI child
+            // call to SPL Token/Token-2022 (present in nearly every DEX
+            // route) purely because its discriminator wasn't observed —
+            // false-positiving on benign transactions, which the P0-3 fix is
+            // explicitly required not to do. Surfaced as a visible,
+            // non-blocking warning instead (P3 explainability; P12 —
+            // insufficient evidence is not proof of harm, but it is also
+            // never silently dropped). A REAL secondary SetAuthority/
+            // CloseAccount/Approve/Assign — the actual P0-3 attack scenario —
+            // always carries a real discriminator and is unaffected by this
+            // skip; it is still caught by Check 2's first (non-empty,
+            // matched) arm below.
+            if ix.instruction_discriminator.is_empty() {
+                warnings.push(format!(
+                    "secondary instruction #{idx} (program {}) has no discriminator available \u{2014} cannot run instruction-level risk checks (CPI-trace introspection limit, not evidence of harm)",
+                    ix.program_id
+                ));
+                continue;
+            }
+            let risk_ctx =
+                self.instruction_risk_context(&ix.program_id, &ix.instruction_discriminator);
+            if !risk_ctx.manifest_found {
+                // Visible, non-blocking signal (P3): an unmanifested program
+                // in a secondary position has no manifest-grounded evidence
+                // for the structural heuristics below to reason about, but is
+                // NOT itself proof of harm (P12 — unknown != active harm).
+                // Still fully covered by Check 2's unconditional table and
+                // Check 10a's impersonation check, neither of which need a
+                // manifest.
+                warnings.push(format!(
+                    "secondary instruction #{idx} calls unmanifested program {} \u{2014} no manifest evidence available, structural risk checks only",
+                    ix.program_id
+                ));
+            }
+            let ix_input = RiskAssessmentInput {
+                program_id: ix.program_id.clone(),
+                accounts: ix.account_addresses.clone(),
+                cpi_targets: ix.cpi_targets.clone(),
+                expected_state_changes: risk_ctx.expected_state_changes,
+                allowed_cpis: risk_ctx.allowed_cpis,
+                instruction_discriminator: ix.instruction_discriminator.clone(),
+                expected_account_count: risk_ctx.expected_account_count,
+                variable_accounts: risk_ctx.variable_accounts,
+                // Deliberately empty — see the method doc comment above.
+                proposed_intent_type: String::new(),
+                extracted_output_token: None,
+                manifest_risk_class: risk_ctx.manifest_risk_class,
+            };
+            let detail = assess_with_warnings(&ix_input)?;
+            warnings.extend(
+                detail
+                    .warnings
+                    .into_iter()
+                    .map(|w| format!("[secondary instruction #{idx}] {w}")),
+            );
+            if let RiskVerdict::Blocked { pattern, reason } = detail.verdict {
+                let tagged_reason = format!(
+                    "secondary instruction #{idx} (program {}): {reason}",
+                    ix.program_id
+                );
+                verdict = match verdict {
+                    RiskVerdict::Passed => RiskVerdict::Blocked {
+                        pattern,
+                        reason: tagged_reason,
+                    },
+                    RiskVerdict::Blocked {
+                        pattern: existing,
+                        reason: prior,
+                    } => RiskVerdict::Blocked {
+                        pattern: existing,
+                        reason: format!("{prior} | {tagged_reason}"),
+                    },
+                };
+            }
+        }
+        Ok((verdict, warnings))
+    }
+
     /// Run the full verification pipeline on a transaction.
     pub async fn verify_async(
         &self,
@@ -1524,6 +1756,40 @@ impl GraphiteCore {
             v.extend(input.transaction_instructions.clone());
             v
         };
+
+        // P0-3 fix (2026-09-05 audit): risk-assess every SECONDARY
+        // instruction (CPI-flattened callees + top-level siblings), not just
+        // the primary. A blocked secondary instruction is a hard gate,
+        // exactly like a plugin block or a pattern-analysis finding — it can
+        // never be hidden by another, benign instruction in the same
+        // transaction. See `assess_secondary_instructions`'s doc comment for
+        // why secondary instructions are assessed with an empty declared
+        // intent rather than the primary's.
+        let (secondary_risk_verdict, secondary_risk_warnings) =
+            self.assess_secondary_instructions(&effective_instructions)?;
+        risk_warnings.extend(secondary_risk_warnings);
+        let risk_verdict = if let RiskVerdict::Blocked {
+            pattern: secondary_pattern,
+            reason: secondary_reason,
+        } = secondary_risk_verdict
+        {
+            match risk_verdict {
+                RiskVerdict::Passed => RiskVerdict::Blocked {
+                    pattern: secondary_pattern,
+                    reason: secondary_reason,
+                },
+                RiskVerdict::Blocked {
+                    pattern: existing,
+                    reason: prior,
+                } => RiskVerdict::Blocked {
+                    pattern: existing,
+                    reason: format!("{prior} | {secondary_reason}"),
+                },
+            }
+        } else {
+            risk_verdict
+        };
+
         if effective_instructions.len() >= 2 {
             pattern_findings.extend(crate::tx_pattern_analysis::analyze_multi_instruction(
                 &effective_instructions,

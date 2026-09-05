@@ -1120,7 +1120,19 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         "synthetic-attack",
         "AAT approve-then-transfer on same account",
     );
-    // ordering control: Transfer then Approve → NOT an AAT → approve
+    // Ordering control: Transfer then Approve → the AAT pattern rule is
+    // correctly ordering-sensitive and must NOT fire here (AAT requires
+    // Approve BEFORE Transfer on the same account; this is the reverse
+    // order). That property is still verified below. BUT the bare secondary
+    // Approve instruction is a delegate-authority grant the caller never
+    // declared — P0-3 fix (2026-09-05 audit): every secondary instruction is
+    // now individually risk-assessed, and risk_engine's Check 2 blocks any
+    // Approve unconditionally (the same unconditional rule that already
+    // applied when Approve was the PRIMARY instruction — see the
+    // AAT-approve-then-transfer fixture above). Before the P0-3 fix this
+    // transaction was (incorrectly) approved because the secondary Approve
+    // was invisible to the Risk Engine entirely; it must now be blocked, via
+    // Check 2, not the (correctly silent) AAT rule.
     let mut v = input(
         TOKEN,
         "03",
@@ -1134,11 +1146,11 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         &mut corpus,
         &mut notes,
         v,
-        true,
+        false,
         "regression",
-        "multi-instruction-control",
-        "synthetic-benign",
-        "transfer-then-approve ordering — must NOT be AAT",
+        "multi-instruction",
+        "synthetic-attack",
+        "transfer-then-approve ordering: AAT rule correctly silent, but the secondary Approve is still blocked by Check 2 (P0-3 fix)",
     );
     // close-and-sweep: CloseAccount + Transfer
     let mut v = input(

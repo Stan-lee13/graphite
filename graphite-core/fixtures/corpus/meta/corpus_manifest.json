@@ -21189,11 +21189,11 @@
     "note": "AAT approve-then-transfer on same account"
   },
   {
-    "hash": "8c49558fb51ec11c195803d965dfce595da6d9bfcd6739fe97b7d33d14b715f7",
+    "hash": "b5603c3cd38ee3024f563424bb1047f2161beb34eb97623cb32199103fe8aee9",
     "split": "regression",
-    "class": "multi-instruction-control",
-    "provenance": "synthetic-benign",
-    "note": "transfer-then-approve ordering — must NOT be AAT"
+    "class": "multi-instruction",
+    "provenance": "synthetic-attack",
+    "note": "transfer-then-approve ordering: AAT rule correctly silent, but the secondary Approve is still blocked by Check 2 (P0-3 fix)"
   },
   {
     "hash": "5be4a08dd5904032e5a733f5c21edae01fc087c65ca7f2bcefe62c5bc5031ad4",

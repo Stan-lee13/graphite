@@ -6965,9 +6965,9 @@
   {
     "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "version": "1.0.0",
-    "content_hash": "8c49558fb51ec11c195803d965dfce595da6d9bfcd6739fe97b7d33d14b715f7",
-    "expected_approved": true,
-    "source": "synthetic-benign",
+    "content_hash": "b5603c3cd38ee3024f563424bb1047f2161beb34eb97623cb32199103fe8aee9",
+    "expected_approved": false,
+    "source": "synthetic-attack",
     "deprecated": false,
     "input": {
       "proposed_intent": {
