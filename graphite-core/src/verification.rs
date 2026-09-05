@@ -2424,11 +2424,34 @@ impl GraphiteCore {
         let l6_passed = matches!(policy_verdict, PolicyVerdict::Approved)
             && l6_block.is_none()
             && !structural_layer_failed;
-        let policy_str = if l6_block.is_some() || structural_layer_failed {
-            "Rejected"
-        } else {
-            policy_str
-        };
+        // CRITICAL (2026-09-05 SDK integration audit): `policy_str` must also
+        // reflect the FINAL risk summary, not just the policy engine's view.
+        //
+        // `policy_verdict` above was computed from the risk verdict as it
+        // stood BEFORE the L3 simulation-integrity check. When simulation
+        // flags compute divergence — the SimulationSpoofing case that layer
+        // exists to catch — the code mutates `risk_summary` to "Blocked",
+        // which correctly forces `approved = false` further down, but left
+        // `policy_verdict` reading "Approved". The result payload therefore
+        // contradicted itself: `approved: false` next to
+        // `policy_verdict: "Approved"`.
+        //
+        // That is not merely cosmetic. `policy_verdict` is a human-readable
+        // field of exactly the name a developer reaches for, and gating on it
+        // would have signed a transaction Graphite had flagged as spoofed.
+        // Folding the final risk status in here makes the invariant
+        // structural: `policy_str == "Approved"` iff `approved == true`
+        // (see `approved` below — same three conditions), so no future
+        // late-stage risk mutation can reintroduce the divergence without
+        // also flipping this string. The specific REASON for the rejection
+        // remains fully available in `risk_verdict.findings` and the layer
+        // results, so explainability is preserved (P3).
+        let policy_str =
+            if l6_block.is_some() || structural_layer_failed || risk_summary.status != "Clear" {
+                "Rejected"
+            } else {
+                policy_str
+            };
 
         // Build audit trail ID (deterministic hash of key fields)
         let (audit_id, content_hash) = generate_audit_id(

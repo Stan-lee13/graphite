@@ -19,7 +19,7 @@ anyhow = "1"
 # pulls native-tls → openssl-sys, which fails to build on systems without
 # OpenSSL dev packages (CI containers, minimal Docker images). rustls-tls is
 # the pure-Rust TLS backend.
-reqwest = { version = "0.11", optional = true, default-features = false, features = ["json", "gzip", "brotli", "rustls-tls"] }
+reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "gzip", "brotli", "rustls-tls"] }
 base64 = "0.21"
 tracing = "0.1"
 # Without a subscriber installed, EVERY tracing::info!/warn!/error! call in
