@@ -3,9 +3,13 @@
 # Security model (fail-closed):
 #   - TLS is intentionally terminated at a reverse proxy / LB in front of this
 #     container; the container is plain HTTP on 7331 and must NOT be exposed
-#     publicly without auth.
-#   - `GRAPHITE_API_KEY` is REQUIRED (compose refuses to start without it).
+#     publicly without auth. See "Scaling & TLS" in README.md.
+#   - `GRAPHITE_API_KEY` is REQUIRED (compose refuses to start without it, and
+#     the server itself refuses to bind a non-loopback address without one).
 #   - State (audit log + semantic graph) lives on the `graphite-data` volume.
+#     The server probes that volume for writability at startup and refuses to
+#     boot if it cannot write — it will never serve traffic with no audit
+#     trail (Constitution P9).
 #
 # Run:  cp .env.example .env   # then set GRAPHITE_API_KEY (and RPC URL)
 #       docker compose up -d --build
@@ -13,19 +17,58 @@ services:
   graphite:
     build: .
     ports:
-      - "7331:7331"
+      # Bound to loopback on the HOST by default: publishing straight to
+      # 0.0.0.0 would put the API on every interface of the machine, which is
+      # only ever correct behind a reverse proxy. Change to "7331:7331" (or
+      # front it with a proxy) deliberately, not by default.
+      - "127.0.0.1:7331:7331"
     env_file: .env
     environment:
       # Fail closed: refuse to start without an API key.
       GRAPHITE_API_KEY: ${GRAPHITE_API_KEY:?set GRAPHITE_API_KEY in .env}
       GRAPHITE_DATA_DIR: /data
+      # Structured JSON logs for aggregators (Loki/ELK/Datadog). Set to
+      # anything else for human-readable output.
+      GRAPHITE_LOG_FORMAT: ${GRAPHITE_LOG_FORMAT:-json}
+      RUST_LOG: ${RUST_LOG:-info}
     volumes:
       - graphite-data:/data
     restart: unless-stopped
+
+    # ---- runtime hardening ----
+    # Matches the fixed UID/GID baked into the image so the named volume's
+    # ownership stays predictable across recreates.
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # A verification server is CPU/memory-bounded work; capping it means a
+    # pathological payload or traffic spike degrades this container instead of
+    # the whole host. `pids` lives here rather than as a top-level
+    # `pids_limit:` because Compose rejects the two being specified together.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+          pids: 256
+
+    # Unrotated container logs will fill a host disk on a long-running
+    # single-node deployment.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
     # The Dockerfile already declares a HEALTHCHECK; this mirrors it at the
     # compose level for orchestration visibility.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7331/health"]
+      test: ["CMD", "graphite", "healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3

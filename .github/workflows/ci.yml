@@ -43,6 +43,74 @@ jobs:
       - name: Tests
         run: cargo test --release
 
+  supply-chain:
+    name: Dependency CVE audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: graphite-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: graphite-core
+      # A security product shipping unscanned dependencies is not defensible.
+      # The tree includes tokio, axum, reqwest and the ed25519/curve25519
+      # crypto crates — a RUSTSEC advisory against any of them must fail the
+      # build, not ship silently.
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit dependencies for known vulnerabilities
+        run: cargo audit --deny warnings
+
+  container:
+    name: Container — build + live smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The Dockerfile/compose stack is the documented one-command deploy
+      # path, but nothing gated it before: a Dockerfile-breaking change (or a
+      # regression in the /data ownership or the bind/auth interlock) could
+      # merge with a fully green CI. This builds the actual artifact and
+      # proves it serves traffic.
+      - name: Build image
+        run: docker build -t graphite-core:ci .
+      - name: Run container
+        run: |
+          docker run -d --name graphite-ci \
+            -e GRAPHITE_API_KEY=ci-smoke-test-key \
+            -p 7331:7331 graphite-core:ci
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:7331/health >/dev/null; then
+              echo "healthy after ${i} attempts"; exit 0
+            fi
+            sleep 3
+          done
+          echo "container never became healthy"; docker logs graphite-ci; exit 1
+      - name: Durability probe — audit trail must actually be written
+        run: |
+          # Regression gate for the container /data ownership bug: a server
+          # that cannot write its audit log must not have started at all.
+          docker exec graphite-ci sh -c 'touch /data/.ci-probe && rm /data/.ci-probe' \
+            || { echo "FAIL: /data not writable by the container user"; docker logs graphite-ci; exit 1; }
+      - name: Auth must be enforced
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:7331/verify \
+            -H 'content-type: application/json' -d '{}')
+          if [ "$code" != "401" ]; then
+            echo "FAIL: unauthenticated /verify returned $code, expected 401"
+            docker logs graphite-ci; exit 1
+          fi
+      - name: Container logs
+        if: always()
+        run: docker logs graphite-ci || true
+      - name: Cleanup
+        if: always()
+        run: docker rm -f graphite-ci || true
+
   typescript:
     name: TypeScript SDK + SAK integration
     runs-on: ubuntu-latest

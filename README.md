@@ -240,15 +240,44 @@ cargo run --release --bin graphite -- server --port 7331
 | `GRAPHITE_API_KEY` | *(unset = open)* | **Set this in production.** Bearer token required on `/verify` and `/manifests` (constant-time compared). `/health` stays open for load balancers. |
 | `GRAPHITE_RATE_LIMIT` | `30` | Per-IP token bucket, requests/second. Returns `429` when exceeded. |
 | `GRAPHITE_CORS_ORIGINS` | *(denied)* | Comma-separated allowed browser origins. Default denies all cross-origin browser calls; server-to-server clients are unaffected. |
-| `GRAPHITE_DATA_DIR` | `./graphite-data` | Durability: semantic-graph snapshot (trust tiers + earned simulation baselines) and append-only `audit.jsonl` written after every verification, reloaded on restart. |
-| `GRAPHITE_RPC_URL` | *(off)* | Attaches a Solana RPC client — live L3: `simulateTransaction` runs and real compute usage feeds the trusted baseline accumulator. |
+| `GRAPHITE_DATA_DIR` | `./graphite-data` | Durability: semantic-graph snapshot (trust tiers + earned simulation baselines) and append-only `audit.jsonl` written after every verification, reloaded on restart. **The server probes this directory for writability at startup and refuses to boot if it cannot write** — it never serves traffic with no audit trail (P9). |
+| `GRAPHITE_RPC_URL` | *(off)* | Attaches a Solana RPC client — live L3: `simulateTransaction` runs and real compute usage feeds the trusted baseline accumulator. Usually embeds a provider API key; Graphite redacts endpoint URLs from every error it surfaces, but treat the value as a secret. |
+| `GRAPHITE_TRUST_PROXY` | `0` | Number of **trusted reverse-proxy hops** in front of the server, for per-IP rate limiting. `0` ignores `X-Forwarded-For` entirely (correct whenever clients can reach the server directly). Set it to the real number of proxies you control — the client IP is counted that many entries from the *right*, because proxies append the peer they observed and the left end is whatever the caller claimed. Over-counting re-opens the spoofing bypass. |
+| `GRAPHITE_LOG_FORMAT` | *(text)* | `json` emits structured logs for aggregators. Level via `RUST_LOG` (default `info`). |
 
 ```bash
 # Minimal production launch (auth + rate limit + durability)
 GRAPHITE_API_KEY=$(openssl rand -hex 32) GRAPHITE_RATE_LIMIT=100 \
   GRAPHITE_DATA_DIR=/var/lib/graphite GRAPHITE_CORS_ORIGINS= \
-  cargo run --release --bin graphite -- server --port 7331
+  cargo run --release --bin graphite -- server --port 7331 --host 0.0.0.0
 ```
+
+> **Bind address.** `--host` defaults to `127.0.0.1` so running the server on a
+> laptop, shared box, or cloud VM does not silently publish the API to every
+> reachable network. Pass `--host 0.0.0.0` to expose it deliberately — the
+> server **refuses** to bind a non-loopback address when `GRAPHITE_API_KEY` is
+> unset, rather than serving an unauthenticated verification API and dashboard.
+
+### Deployment, TLS, and scaling
+
+- **TLS is terminated upstream.** The server speaks plain HTTP by design; run it
+  behind a reverse proxy or load balancer that terminates TLS. Do not expose it
+  directly to the internet. Set `GRAPHITE_TRUST_PROXY` to the number of proxy
+  hops you control, and make sure that proxy *overwrites* rather than trusts any
+  client-supplied `X-Forwarded-For`.
+- **Single replica today.** Durable state (the append-only audit log and the
+  semantic-graph snapshot) lives on a local volume with no cross-process
+  coordination, so this stack is **not** currently safe to scale horizontally:
+  two replicas sharing a volume would race, and two replicas with separate
+  volumes would fragment the earned-trust history that the confidence model
+  depends on. Run one replica (Kubernetes: `strategy: Recreate` with a PVC)
+  until a shared-state backend lands. This is a known limitation, tracked in
+  `SECURITY.md`, not an oversight.
+- **Container hardening.** The shipped `docker-compose.yml` runs the image as a
+  fixed non-root UID with a read-only root filesystem, all capabilities dropped,
+  `no-new-privileges`, CPU/memory/PID limits, log rotation, and the host port
+  bound to loopback. Change the port binding deliberately when putting a proxy
+  in front of it.
 
 ### 2. Verify a transaction
 

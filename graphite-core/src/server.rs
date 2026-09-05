@@ -59,7 +59,7 @@ struct AppState {
     registry_engine: crate::manifest_registry::ManifestRegistryEngine,
     rate: RateLimiter,
     /// Only honor `X-Forwarded-For` when behind a trusted proxy.
-    trust_proxy: bool,
+    trust_proxy_hops: u8,
 }
 
 /// Per-IP token bucket (GCRA-style). Shared across clones via Arc.
@@ -168,36 +168,146 @@ fn ct_eq(a: &str, b: &str) -> bool {
         == 0
 }
 
-/// Best-effort client IP: honors `X-Forwarded-For` first hop ONLY when the
-/// server is explicitly behind a trusted proxy (`GRAPHITE_TRUST_PROXY=1`).
-/// Otherwise the header is ignored entirely — an attacker who can reach the
-/// server directly must NOT be able to spoof the header to rotate IPs and
-/// bypass per-IP rate limiting.
+/// Best-effort client IP for per-IP rate limiting. `X-Forwarded-For` is
+/// honored ONLY when the server is explicitly behind a trusted proxy
+/// (`GRAPHITE_TRUST_PROXY`); otherwise the header is ignored entirely, so an
+/// attacker who can reach the server directly cannot spoof it to rotate IPs
+/// and bypass the limiter.
+///
+/// SECURITY (HIGH, 2026-09-05 production audit): this used to take the
+/// LEFTMOST `X-Forwarded-For` entry, which is exactly the attacker-controlled
+/// one. Every standard reverse proxy (nginx's `proxy_add_x_forwarded_for`,
+/// Envoy, HAProxy, most CDNs) APPENDS the peer it actually observed to
+/// whatever the client already sent, producing
+/// `<client-supplied…>, <real client IP>`. Reading the left end therefore
+/// read the client's own claim: an attacker set
+/// `X-Forwarded-For: <random ip>` per request, got a fresh token bucket every
+/// time, and the per-IP limit became a no-op — while a victim could also be
+/// pinned to an attacker-chosen bucket.
+///
+/// The trustworthy entry is counted from the RIGHT: with `hops` trusted
+/// proxies in front, the last `hops` entries were appended by infrastructure
+/// under the operator's control, and the real client IP is the leftmost of
+/// THOSE. Anything further left is caller-supplied and must never be
+/// believed. If the header is missing, malformed, or has fewer entries than
+/// the configured hop count (i.e. the request did not traverse the expected
+/// proxy chain), we fall back to the direct peer address rather than trusting
+/// a partial chain — fail-safe, never fail-open (P12).
 fn client_ip(
     req: &axum::http::Request<axum::body::Body>,
     addr: SocketAddr,
-    trust_proxy: bool,
+    trust_proxy_hops: u8,
 ) -> IpAddr {
-    if trust_proxy {
-        if let Some(ip) = req
-            .headers()
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next().map(str::trim))
-            .and_then(|v| v.parse::<IpAddr>().ok())
-        {
-            return ip;
+    if trust_proxy_hops == 0 {
+        return addr.ip();
+    }
+    if let Some(header) = req
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+    {
+        let entries: Vec<&str> = header
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        // Index from the right by the number of proxies we actually trust.
+        // `entries.len() < hops` means the request did not come through the
+        // full expected chain — do not trust any of it.
+        if entries.len() >= trust_proxy_hops as usize {
+            let idx = entries.len() - trust_proxy_hops as usize;
+            if let Some(ip) = entries.get(idx).and_then(|v| v.parse::<IpAddr>().ok()) {
+                return ip;
+            }
         }
     }
     addr.ip()
 }
 
+/// Verify the data directory is actually WRITABLE, not merely present.
+///
+/// DURABILITY (CRITICAL, 2026-09-05 deployment audit): the standard container
+/// failure is a Docker named volume mounted at `/data` that the engine
+/// creates `root:root 0755` while the container process runs as an
+/// unprivileged user. `create_dir_all` then SUCCEEDS (the directory exists),
+/// the server starts, `/health` returns 200 — and every audit-log append and
+/// semantic-graph snapshot silently fails for the lifetime of the deployment.
+/// The operator sees a healthy service that is quietly not recording anything.
+///
+/// An unwritable data directory is an internal integrity failure, not
+/// protocol uncertainty: Graphite cannot satisfy P9 (immutable audit trail
+/// for every lifecycle event) or persist earned trust state. Per the
+/// Constitution's Error Response framework that is a "stop, don't serve"
+/// condition (response 5), not a degrade-and-continue one — so this returns
+/// an error and the server refuses to start, loudly, with a message naming
+/// the likely cause.
+fn probe_data_dir_writable(dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let probe = dir.join(".graphite-write-probe");
+    match std::fs::write(&probe, b"graphite") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            Ok(())
+        }
+        Err(e) => Err(format!(
+            "data directory {} is not writable: {e}. Graphite refuses to start without a \
+             durable audit trail (Constitution P9). If running in a container, ensure the \
+             volume mounted here is owned by the container's user \
+             (e.g. `mkdir -p /data && chown <uid>:<gid> /data` in the image, or \
+             `user: \"<uid>:<gid>\"` in compose).",
+            dir.display()
+        )
+        .into()),
+    }
+}
+
+/// Install the global tracing subscriber.
+///
+/// OBSERVABILITY (2026-09-05 production audit): the crate emits
+/// `tracing::info!/warn!/error!` throughout — including audit-log write
+/// failures in `durable.rs` and RPC failures in `rpc_client.rs` — but no
+/// subscriber was ever installed, so every one of those calls was a silent
+/// no-op. An operator whose disk filled up got NO signal that the append-only
+/// audit trail (P9) had stopped being written.
+///
+/// `GRAPHITE_LOG_FORMAT=json` emits structured JSON (the enterprise/log-
+/// aggregator default); anything else emits human-readable text. Level is
+/// controlled by `RUST_LOG` (default `info`). Idempotent: a second call is a
+/// no-op rather than a panic, so embedding callers and tests that install
+/// their own subscriber are unaffected.
+fn init_tracing() {
+    use tracing_subscriber::EnvFilter;
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let json = std::env::var("GRAPHITE_LOG_FORMAT")
+        .map(|v| v.eq_ignore_ascii_case("json"))
+        .unwrap_or(false);
+    // `try_init` returns Err if a subscriber is already set — that is a
+    // legitimate state (embedded use, tests), not a failure.
+    let _ = if json {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(filter)
+            .with_current_span(false)
+            .try_init()
+    } else {
+        tracing_subscriber::fmt().with_env_filter(filter).try_init()
+    };
+}
+
 pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
+    init_tracing();
+
     // ---- configuration from environment ----
     let data_dir = std::env::var("GRAPHITE_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("graphite-data"));
     std::fs::create_dir_all(&data_dir)?;
+    // Creating the directory is not the same as being able to WRITE in it:
+    // the common container failure is a volume mounted root-owned while the
+    // process runs unprivileged, where `create_dir_all` succeeds (the dir
+    // already exists) and every subsequent audit append fails. Durability of
+    // the audit trail is a P9 guarantee, not a nice-to-have, so probe it now
+    // and refuse to start rather than serve traffic with no audit trail.
+    probe_data_dir_writable(&data_dir)?;
 
     let mut core = GraphiteCore::with_data_dir(data_dir.clone());
 
@@ -271,9 +381,22 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     };
 
     // X-Forwarded-For is only honored behind an explicitly-trusted proxy.
-    let trust_proxy = std::env::var("GRAPHITE_TRUST_PROXY")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+    // The value is the NUMBER OF TRUSTED PROXY HOPS in front of this server
+    // (`1` = the common single reverse-proxy/LB setup). `true` is accepted as
+    // a compatibility alias for `1`; `0`/unset/anything else disables the
+    // header entirely. See `client_ip` for why the count matters: entries are
+    // trusted from the right, so an over-count would start believing
+    // caller-supplied values again.
+    let trust_proxy_hops: u8 = std::env::var("GRAPHITE_TRUST_PROXY")
+        .ok()
+        .map(|v| {
+            if v.eq_ignore_ascii_case("true") {
+                1
+            } else {
+                v.trim().parse::<u8>().unwrap_or(0)
+            }
+        })
+        .unwrap_or(0);
 
     // Manifest Registry state (shared contract with the CLI: default
     // `registry_state.json`, override `GRAPHITE_REGISTRY_STATE`). Community
@@ -319,7 +442,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         audit,
         registry_engine,
         rate: RateLimiter::new(rate_per_sec),
-        trust_proxy,
+        trust_proxy_hops,
     };
 
     tracing_log(&format!(
@@ -475,7 +598,7 @@ async fn rate_limit_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    let ip = client_ip(&req, addr, state.trust_proxy);
+    let ip = client_ip(&req, addr, state.trust_proxy_hops);
     if !state.rate.check(ip) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -908,6 +1031,143 @@ fn tracing_log(msg: &str) {
 mod tests {
     use super::*;
 
+    // ── X-Forwarded-For spoofing (HIGH, 2026-09-05 production audit) ────────
+    //
+    // The per-IP rate limiter is only as strong as its notion of "who is the
+    // client". Before the fix, `client_ip` read the LEFTMOST `X-Forwarded-For`
+    // entry — the one the CLIENT supplies — so an attacker rotated that header
+    // per request, got a fresh token bucket every time, and the limiter became
+    // a no-op. These tests are written from the attacker's side: each one is a
+    // concrete spoofing attempt that must NOT succeed.
+
+    fn req_with_xff(xff: Option<&str>) -> axum::http::Request<axum::body::Body> {
+        let mut b = axum::http::Request::builder().uri("/verify");
+        if let Some(v) = xff {
+            b = b.header("x-forwarded-for", v);
+        }
+        b.body(axum::body::Body::empty()).unwrap()
+    }
+
+    const PEER: SocketAddr =
+        SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 7)), 9);
+
+    /// With no trusted proxy configured, the header must be ignored entirely —
+    /// a directly-reachable server must never believe a caller-supplied IP.
+    #[test]
+    fn xff_is_ignored_when_no_proxy_is_trusted() {
+        let req = req_with_xff(Some("1.2.3.4"));
+        assert_eq!(client_ip(&req, PEER, 0), PEER.ip());
+    }
+
+    /// The canonical attack: nginx's `proxy_add_x_forwarded_for` APPENDS the
+    /// real peer to whatever the client sent, so the header becomes
+    /// `<attacker's claim>, <real client IP>`. Reading the left end returned
+    /// the attacker's claim. With one trusted hop we must read the RIGHTMOST
+    /// entry — the one our own proxy wrote.
+    #[test]
+    fn spoofed_leftmost_xff_entry_is_not_believed() {
+        let req = req_with_xff(Some("6.6.6.6, 198.51.100.42"));
+        let ip = client_ip(&req, PEER, 1);
+        assert_eq!(
+            ip,
+            "198.51.100.42".parse::<IpAddr>().unwrap(),
+            "must use the proxy-appended (rightmost) entry, not the client's claim"
+        );
+        assert_ne!(ip, "6.6.6.6".parse::<IpAddr>().unwrap());
+    }
+
+    /// Rotating the spoofed prefix must NOT produce different rate-limit
+    /// identities — this is the actual bypass, stated as a property: every
+    /// request from one real client must map to one bucket key regardless of
+    /// what the client puts in the header.
+    #[test]
+    fn rotating_spoofed_xff_prefixes_cannot_rotate_the_rate_limit_identity() {
+        let attacker_claims = [
+            "1.1.1.1",
+            "9.9.9.9",
+            "8.8.8.8, 7.7.7.7",
+            "203.0.113.99, 10.0.0.1, 172.16.0.9",
+        ];
+        let resolved: Vec<IpAddr> = attacker_claims
+            .iter()
+            .map(|claim| {
+                let header = format!("{claim}, 198.51.100.42");
+                client_ip(&req_with_xff(Some(&header)), PEER, 1)
+            })
+            .collect();
+
+        let real = "198.51.100.42".parse::<IpAddr>().unwrap();
+        assert!(
+            resolved.iter().all(|ip| *ip == real),
+            "every spoofing attempt must collapse to the same real client identity, got {resolved:?}"
+        );
+    }
+
+    /// Two trusted proxies: the real client is the entry immediately left of
+    /// the two our infrastructure appended.
+    #[test]
+    fn multiple_trusted_hops_index_from_the_right() {
+        // <spoofed>, <real client>, <proxy-1 saw>, appended by proxy-2
+        let req = req_with_xff(Some("6.6.6.6, 198.51.100.42, 10.0.0.1"));
+        assert_eq!(
+            client_ip(&req, PEER, 2),
+            "198.51.100.42".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    /// A request that did NOT traverse the expected proxy chain (fewer
+    /// entries than configured hops) must fall back to the direct peer, never
+    /// trust a partial chain. Otherwise an attacker who can reach the server
+    /// directly, bypassing the proxy, sends a single-entry header and picks
+    /// their own identity.
+    #[test]
+    fn short_xff_chain_falls_back_to_peer_instead_of_trusting_it() {
+        let req = req_with_xff(Some("6.6.6.6"));
+        assert_eq!(
+            client_ip(&req, PEER, 2),
+            PEER.ip(),
+            "a chain shorter than the trusted hop count must not be believed"
+        );
+    }
+
+    /// Malformed, empty, and garbage headers must degrade to the peer address
+    /// rather than panicking or producing a wildcard identity.
+    #[test]
+    fn malformed_xff_headers_degrade_to_the_peer_address() {
+        for header in ["", "   ", ",,,", "not-an-ip", "999.999.999.999", ", ,"] {
+            assert_eq!(
+                client_ip(&req_with_xff(Some(header)), PEER, 1),
+                PEER.ip(),
+                "malformed header {header:?} must fall back to the peer"
+            );
+        }
+        assert_eq!(client_ip(&req_with_xff(None), PEER, 1), PEER.ip());
+    }
+
+    /// IPv6 entries (and the bracketed form proxies sometimes emit) must
+    /// resolve correctly rather than silently falling back — a fallback here
+    /// would collapse all IPv6 clients behind the proxy into one bucket.
+    #[test]
+    fn ipv6_xff_entries_resolve() {
+        let req = req_with_xff(Some("6.6.6.6, 2001:db8::42"));
+        assert_eq!(
+            client_ip(&req, PEER, 1),
+            "2001:db8::42".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    /// Whitespace padding must not defeat parsing (proxies emit `a, b` with
+    /// varying spacing) — a parse failure would fall back to the shared peer
+    /// address and re-collapse every client into one bucket.
+    #[test]
+    fn whitespace_padded_entries_still_parse() {
+        let req = req_with_xff(Some("6.6.6.6 ,   198.51.100.42   "));
+        assert_eq!(
+            client_ip(&req, PEER, 1),
+            "198.51.100.42".parse::<IpAddr>().unwrap()
+        );
+    }
+
     /// FIFO eviction must keep the bucket map bounded: with a cap of 3,
     /// inserting a 4th distinct IP evicts the oldest-inserted one (O(1), no
     /// full-map sweep).
@@ -1007,7 +1267,7 @@ mod tests {
             audit: Some(audit),
             registry_engine: crate::manifest_registry::ManifestRegistryEngine::new(),
             rate: RateLimiter::new(1000.0),
-            trust_proxy: false,
+            trust_proxy_hops: 0,
         };
         (state, dir)
     }

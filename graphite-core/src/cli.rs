@@ -98,6 +98,11 @@ pub enum CliCommand {
     #[cfg(feature = "server")]
     Server {
         port: u16,
+        host: String,
+    },
+    #[cfg(feature = "server")]
+    Healthcheck {
+        port: u16,
     },
     Manifests,
     /// List wallet policy profiles and their thresholds.
@@ -318,10 +323,62 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             network,
         } => run_regression_seed_live(rpc_url, corpus_dir, count, network),
         #[cfg(feature = "server")]
-        CliCommand::Server { port } => {
+        CliCommand::Server { port, host } => {
+            // Bind address is explicit and defaults to loopback (see the
+            // `--host` doc on the CLI): binding 0.0.0.0 unconditionally meant
+            // `graphite server` on a laptop or cloud VM published an
+            // API — unauthenticated, when GRAPHITE_API_KEY is unset — to
+            // every network the host could be reached on. Publishing is now
+            // an explicit, deliberate act.
+            let ip: std::net::IpAddr = host.parse().map_err(|_| {
+                format!(
+                    "invalid --host {host:?}: expected an IP address, e.g. 127.0.0.1 or 0.0.0.0"
+                )
+            })?;
+            let addr = std::net::SocketAddr::new(ip, port);
+            // Refuse the genuinely dangerous combination outright: a
+            // non-loopback bind with no API key set is an unauthenticated,
+            // network-reachable verification API and dashboard. Fail closed
+            // with an actionable message rather than starting it.
+            let publicly_bound = !ip.is_loopback();
+            let keyless = std::env::var("GRAPHITE_API_KEY")
+                .map(|k| k.trim().is_empty())
+                .unwrap_or(true);
+            if publicly_bound && keyless {
+                return Err(format!(
+                    "refusing to bind {addr} without GRAPHITE_API_KEY: that would expose an \
+                     unauthenticated verification API and dashboard to the network. Set \
+                     GRAPHITE_API_KEY, or bind loopback with --host 127.0.0.1 for local \
+                     development."
+                )
+                .into());
+            }
             let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(crate::server::run_server(([0, 0, 0, 0], port).into()))?;
+            rt.block_on(crate::server::run_server(addr))?;
             Ok(())
+        }
+        #[cfg(feature = "server")]
+        CliCommand::Healthcheck { port } => {
+            let rt = tokio::runtime::Runtime::new()?;
+            let url = format!("http://127.0.0.1:{port}/health");
+            let ok = rt.block_on(async move {
+                match reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(4))
+                    .build()
+                {
+                    Ok(client) => match client.get(&url).send().await {
+                        Ok(res) => res.status().is_success(),
+                        Err(_) => false,
+                    },
+                    Err(_) => false,
+                }
+            });
+            if ok {
+                Ok(())
+            } else {
+                // Non-zero exit is what Docker's HEALTHCHECK reads.
+                Err("health check failed".into())
+            }
         }
     }
 }

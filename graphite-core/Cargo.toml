@@ -22,6 +22,12 @@ anyhow = "1"
 reqwest = { version = "0.11", optional = true, default-features = false, features = ["json", "gzip", "brotli", "rustls-tls"] }
 base64 = "0.21"
 tracing = "0.1"
+# Without a subscriber installed, EVERY tracing::info!/warn!/error! call in
+# this crate is a silent no-op — including audit-write failures. Found by the
+# 2026-09-05 production audit; the server installs this at startup.
+# `json` gives enterprise-friendly structured output; `env-filter` gives
+# operators RUST_LOG control.
+tracing-subscriber = { version = "0.3", optional = true, features = ["json", "env-filter"] }
 
 # Server (feature-gated)
 axum = { version = "0.8", optional = true }
@@ -35,13 +41,21 @@ ed25519-dalek = { version = "2", default-features = false, features = ["std", "f
 
 [features]
 default = ["server", "cli"]
-server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "rpc"]
+server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "dep:tracing-subscriber", "rpc"]
 # cli pulls tokio: the synchronous verify() wrapper needs an async runtime,
 # and the CLI's verify subcommand uses it. A no-feature LIBRARY build still
 # compiles (verify() degrades to a fail-closed stub) — only the library core
 # is expected to be embeddable without a runtime.
 cli = ["dep:clap", "dep:tokio"]
 rpc = ["dep:reqwest", "dep:tokio"]
+
+[profile.release]
+# Strip symbols from the shipped binary: smaller image, and less to work with
+# for anyone who gains container access. `lto`/`codegen-units` trade build
+# time for a faster, smaller verification hot path.
+strip = true
+lto = "thin"
+codegen-units = 1
 
 [dev-dependencies]
 proptest = "1.0"

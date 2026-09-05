@@ -44,6 +44,26 @@ enum Commands {
         /// Port to listen on (default: 7331)
         #[arg(short, long, default_value = "7331")]
         port: u16,
+        /// Address to bind (default: 127.0.0.1).
+        ///
+        /// Loopback by default so `graphite server` on a laptop, shared box,
+        /// or cloud VM is not silently exposed to the whole network — pass
+        /// 0.0.0.0 to publish deliberately. In a container, 0.0.0.0 is
+        /// required for the port mapping to work; the container boundary is
+        /// what limits exposure there.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
+    /// Probe a running server's /health endpoint (container HEALTHCHECK).
+    ///
+    /// Exists so the runtime image does not need `curl` installed purely to
+    /// satisfy the Docker healthcheck — one fewer binary and dependency tree
+    /// in the production image.
+    #[cfg(feature = "server")]
+    Healthcheck {
+        /// Port to probe (default: 7331)
+        #[arg(short, long, default_value = "7331")]
+        port: u16,
     },
     /// Run the benchmark suite
     Benchmark,
@@ -169,8 +189,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Manifests => graphite_core::cli::run(graphite_core::cli::CliCommand::Manifests),
         Commands::Profiles => graphite_core::cli::run(graphite_core::cli::CliCommand::Profiles),
         #[cfg(feature = "server")]
-        Commands::Server { port } => {
-            graphite_core::cli::run(graphite_core::cli::CliCommand::Server { port })
+        Commands::Server { port, host } => {
+            graphite_core::cli::run(graphite_core::cli::CliCommand::Server { port, host })
+        }
+        Commands::Healthcheck { port } => {
+            graphite_core::cli::run(graphite_core::cli::CliCommand::Healthcheck { port })
         }
         Commands::Benchmark => graphite_core::cli::run(graphite_core::cli::CliCommand::Benchmark),
         Commands::Regression { action } => match action {

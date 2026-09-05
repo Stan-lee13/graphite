@@ -36,6 +36,48 @@ pub enum RpcError {
     InvalidPubkey(String),
 }
 
+/// Describe a `reqwest` transport/decode failure WITHOUT ever including the
+/// request URL.
+///
+/// SECURITY (CRITICAL, 2026-09-05 audit): `reqwest::Error`'s `Display` impl
+/// appends `" for url (<full url>)"` to every error carrying a URL. Managed
+/// Solana RPC providers (Helius, QuickNode, Alchemy, Shyft, …) embed the
+/// operator's API key directly in that URL, as a query parameter or path
+/// segment. `RpcError` values reach `VerificationResult`'s L3 layer `reason`
+/// string, which is serialized straight into the `/verify` HTTP response
+/// body — so a single ordinary transport hiccup (timeout, DNS blip, TLS
+/// error, provider outage) would hand the operator's paid RPC credentials to
+/// whoever made the request. Any caller could trigger it on demand simply by
+/// sending traffic while the provider is flaky.
+///
+/// The fix is to never stringify the error at all: classify it from
+/// `reqwest::Error`'s predicate methods, which expose the failure CATEGORY
+/// with no URL, no header, and no body content. `status()` is safe to include
+/// (a bare HTTP status code carries no secret). Callers must use this instead
+/// of `e.to_string()` for anything derived from a `reqwest::Error` — see the
+/// regression suite in `tests/rpc_secret_redaction.rs`.
+pub(crate) fn redact_transport_error(e: &reqwest::Error) -> String {
+    let kind = if e.is_timeout() {
+        "timeout"
+    } else if e.is_connect() {
+        "connection failed"
+    } else if e.is_decode() {
+        "malformed response body"
+    } else if e.is_redirect() {
+        "too many redirects"
+    } else if e.is_body() {
+        "request body error"
+    } else if e.is_request() {
+        "request error"
+    } else {
+        "transport error"
+    };
+    match e.status() {
+        Some(status) => format!("{kind} (HTTP {})", status.as_u16()),
+        None => kind.to_string(),
+    }
+}
+
 /// Account state from RPC
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AccountState {
@@ -185,7 +227,7 @@ impl SolanaRpcClient {
                     let json: serde_json::Value = res
                         .json()
                         .await
-                        .map_err(|e| RpcError::InvalidResponse(e.to_string()))?;
+                        .map_err(|e| RpcError::InvalidResponse(redact_transport_error(&e)))?;
                     if json.get("error").is_some() {
                         return Err(RpcError::RequestFailed(json.to_string()));
                     }
@@ -195,8 +237,11 @@ impl SolanaRpcClient {
                         .ok_or_else(|| RpcError::InvalidResponse("missing result".to_string()));
                 }
                 Err(e) => {
-                    // Network/transport failure — retryable.
-                    last_err = RpcError::RequestFailed(e.to_string());
+                    // Network/transport failure — retryable. NEVER stringify
+                    // `e` directly: its Display carries the full request URL,
+                    // which embeds the operator's RPC API key (see
+                    // `redact_transport_error`).
+                    last_err = RpcError::RequestFailed(redact_transport_error(&e));
                     sleep_backoff(attempt).await;
                 }
             }
