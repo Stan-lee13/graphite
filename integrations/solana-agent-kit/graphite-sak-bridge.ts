@@ -204,6 +204,14 @@ export class VerifiedSakAgent {
     programId: string; instructionDiscriminator: string; accountAddresses: string[];
     proposedIntent: ProposedIntent; instructions?: TransactionInstruction[];
     cpiTargets?: string[]; instructionData?: number[];
+    // P1 fix (2026-09-05 audit, "signer/writable metadata is not grounded in
+    // actual transaction AccountMeta data"): the REAL per-account
+    // signer/writable bits, same order as accountAddresses, when the caller
+    // has them (executeSwap's bound payload path does). Cross-checked by the
+    // Core against the manifest's declared expectations and hard-blocked on
+    // a security-relevant mismatch. Omitted here means "not supplied" — the
+    // Core never assumes a match.
+    realAccountMetas?: { is_signer: boolean; is_writable: boolean }[];
   }): Promise<VerificationResult> {
     let computeUnits = 0, accountWrites = 0, cpiHops = 0;
     if (params.instructions && params.instructions.length > 0) {
@@ -231,7 +239,7 @@ export class VerifiedSakAgent {
       cpi_targets: params.cpiTargets ?? [], wallet_profile: this.walletProfile,
       instruction_data: params.instructionData, compute_units: computeUnits,
       account_writes: accountWrites, cpi_hops: cpiHops,
-      behavior_evidence,
+      behavior_evidence, real_account_metas: params.realAccountMetas,
     } as any;
     return this.graphite.verify(input);
   }
@@ -316,6 +324,16 @@ export class VerifiedSakAgent {
    * intentional (SAK's swap builder needs live routing data this bridge
    * does not have). Set `GRAPHITE_SWAP_STRICT=1` to FAIL CLOSED instead of
    * accepting that residual.
+   *
+   * Privilege grounding (P1 fix, 2026-09-05 audit, "signer/writable metadata
+   * is not grounded in actual transaction AccountMeta data", CLOSED for the
+   * payload-provided path): `payload.accounts` already carries the real
+   * per-account isSigner/isWritable flags used to build the instruction —
+   * they are also forwarded to Graphite as `real_account_metas` so the Core
+   * cross-checks them against the manifest's declared expectations and
+   * hard-blocks a security-relevant mismatch (a required signer that isn't
+   * actually signed, or a readonly slot marked writable) BEFORE this
+   * instruction is built or submitted. See `bound-instruction.ts`.
    */
   async executeSwap(
     naturalLanguage: string,
@@ -341,11 +359,18 @@ export class VerifiedSakAgent {
       );
     }
     const accountAddresses = payload?.accounts.map((a) => a.pubkey) ?? [this.walletPublicKey];
+    // P1 fix (2026-09-05 audit): the bound payload already carries the REAL
+    // per-account isSigner/isWritable flags (that's what buildInstructionFromPayload
+    // uses to construct the actual on-chain instruction) — forward them as
+    // real_account_metas so the Core cross-checks them against the manifest's
+    // declared expectations, not just the account addresses.
+    const realAccountMetas = payload?.accounts.map((a) => ({ is_signer: a.isSigner, is_writable: a.isWritable }));
     const verification = await this.verifyTransaction({
       programId: payload?.programId ?? JUPITER_V6_PROGRAM,
       instructionDiscriminator: payload?.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
       accountAddresses, proposedIntent,
       instructionData: payload?.instructionData,
+      realAccountMetas,
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);

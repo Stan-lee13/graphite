@@ -2,7 +2,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9be9c3b6218a1b3e8bd879da789456e87292abeb0dcc3918c6e55a0acec8f418",
+    "content_hash": "c3ab4e40ad6952a803758bcea3113dc1026c80d0fbb664c04e752d657ae3ab1f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -56,6 +56,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -63,7 +64,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "637eb2f94834f1aafc1e1344f604c5477390eb91857e9c82bacfdd300d6c46e6",
+    "content_hash": "2c4157c02fdf956520cd09ae82bbeb9048c2a3cd53267e4c19f5b5a210eda6ad",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -117,6 +118,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -124,7 +126,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "304645b51a57b3ce31fec77b8815b0f2674074aa56dd99cd77ced14dbde82b64",
+    "content_hash": "f8750e6314f8b5d123597df13cbf18f966ae81f8997c8a469a7f4687190e04b6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -178,6 +180,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -185,7 +188,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "fabb0e7151479fd5500d96774ca2e3b051de9de6c0ddf28fdc53c8b5c6ac9de7",
+    "content_hash": "598c59de6f3ebb9747fa7c1a999e9172e8865159b830b09af5c52c7dbc16f295",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -247,6 +250,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -254,7 +258,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6a958f8490d637b1b997768bd7fbedb5bd96bfcb78e80260ebfda2a2a81405bd",
+    "content_hash": "8bb7b481d2cb0a85c89b8d76137341b11eeb1d90dacb8e5390b09e852971fe70",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -308,6 +312,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -315,7 +320,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "71eaace182d29986270ae349c4a2c8df62fec27b06e26df43d312ec427794eb2",
+    "content_hash": "f217d5c6615933fdc83c95456b5658711fe2315991f7a16fd32e518d8dad8714",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -369,6 +374,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -376,7 +382,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3c73a7965d9c85cac80c9e913d9b642aab5756f581a4abc34f3d2bfea58c4265",
+    "content_hash": "e48f1abdf3beeee052c290bf8c8bf81be116242a83be6de67cd202a90041970d",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -414,6 +420,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -421,7 +428,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e32a776ef829eef67e2540c30544d73d8ab98d8520d5abfb490c9cba6a12ce48",
+    "content_hash": "d8421ee6897811e075faa4cb8c0f2e218a1d3155ffe5638665b59f04b2e43f3a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -475,6 +482,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -482,7 +490,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "a4e3e726e3a83e28dfe1ea8c80a919e0119f3dd2d1d220031169477f54187d02",
+    "content_hash": "11f31b85507f480e49a02bd8c038a6028e6925bb6760f45b4ab902920f6b45c1",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -536,6 +544,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -543,7 +552,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "718fe5275855f25af12b72d72a918641eb8296acc7a30adda72db2977e6f1723",
+    "content_hash": "1d6c6de391aa0f9e88f25d709b8d03bab7c8a76774b7561b4f2aec57973bcdfb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -597,6 +606,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -604,7 +614,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "7dabf0528dbeb54a23796f0995793ab73cd63312202f39e929956c7709bfa196",
+    "content_hash": "f37e5a310d3a417c25d36a94de9e7bf020f8bc7fc1b753f37caf3755e64b4f49",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -666,6 +676,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -673,7 +684,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "0f4e91d5b7075b63b0defe35c2f4be1c9b8e47b3c47d076e2c8b0c09100d69bc",
+    "content_hash": "82d068f77bb70a6f5a42dc47381ab02e43ba655016745a52ef4f930477bf7221",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -727,6 +738,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -734,7 +746,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f325205cfa558e91c94cb10702deac5500ac680177c9e7078a19eec14ea06c28",
+    "content_hash": "30585f9659667c541604061237ca666b24bf367b27259a3e3c1f841f8684ab24",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -788,6 +800,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }

@@ -85,9 +85,25 @@ export interface VerificationInput {
   /** Number of distinct Address Lookup Tables referenced, if known. Purely
    *  informational; included in the warning text when non-zero. */
   lookup_table_count?: number;
+  /** P1 (2026-09-05): the REAL per-account signer/writable bits from the
+   *  actual transaction, in the same order as `account_addresses`, when the
+   *  caller has them (e.g. an SDK/bridge holding a real `AccountMeta[]`
+   *  before calling Graphite). Cross-checked against the manifest's
+   *  declared expectations — see `ResolvedAccount.privilege_mismatch`.
+   *  Omitted/empty (the common case) means "not supplied": nothing is
+   *  flagged, never silently assumed to match. A length mismatch against
+   *  `account_addresses` is treated the same way (fail-safe). */
+  real_account_metas?: RealAccountMeta[];
   /** Phase 1.5 simulation baselines are TRUSTED SERVER STATE (earned via
    *  RPC-verified usage or seeded by the operator) — never sent from the
    *  client. See GRAPHITE_RPC_URL and GraphiteCore::seed_simulation_baseline. */
+}
+
+/** The real per-account signer/writable bits from an actual transaction.
+ *  Mirrors graphite-core/src/account_resolution.rs RealAccountMeta. */
+export interface RealAccountMeta {
+  is_signer: boolean;
+  is_writable: boolean;
 }
 
 /** A single compiled instruction inside a Solana transaction message
@@ -156,6 +172,14 @@ export interface BuiltTransaction {
   data_len: number;
 }
 
+/** How an account's identity is verified. `Pda` = re-derived from the
+ *  manifest's seed template; `Constant` = matched against a manifest-declared
+ *  fixed address (e.g. the SPL Token program); `Unverified` = genuinely
+ *  externally-determined (no PDA formula, no fixed constant) — honestly
+ *  disclosed rather than silently assumed safe. Mirrors
+ *  graphite-core/src/account_resolution.rs AccountIdentity. */
+export type AccountIdentity = "Pda" | "Constant" | "Unverified";
+
 export interface ResolvedAccount {
   address: string;
   role: string;
@@ -163,10 +187,23 @@ export interface ResolvedAccount {
   is_signer: boolean;
   is_writable: boolean;
   pda_seeds: string[];
+  identity: AccountIdentity;
   /** True if the derived PDA does not match the provided address.
    *  This is a security signal — a PDA mismatch means the transaction
    *  is sending accounts that don't match the protocol's expected PDA. */
   pda_mismatch?: boolean;
+  /** True if a manifest-declared `expected_address` constant (e.g. the SPL
+   *  Token program) does not match the provided address — an attacker
+   *  substituting a lookalike program for a fixed-constant slot. */
+  expected_address_mismatch?: boolean;
+  /** P1 (2026-09-05): true if a caller-supplied `real_account_metas` entry
+   *  for this position DISAGREES with the manifest's declared expectation
+   *  in a security-relevant direction — a required signer that the real
+   *  transaction did not sign, or a manifest-readonly slot the real
+   *  transaction marks writable (privilege escalation). The reverse
+   *  (more-restrictive) directions are never flagged, and absence of
+   *  `real_account_metas` leaves this honestly `false` ("not checked"). */
+  privilege_mismatch?: boolean;
 }
 
 export interface VerificationResult {

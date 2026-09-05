@@ -792,6 +792,7 @@ mod tests {
                     "11111111111111111111111111111111".to_string(),
                 ],
                 instruction_data: None,
+                real_account_metas: vec![],
             },
             &registry,
         )
@@ -832,6 +833,7 @@ mod tests {
                     "11111111111111111111111111111111".to_string(),
                 ],
                 instruction_data: None,
+                real_account_metas: vec![],
             },
             &registry,
         )
@@ -1832,6 +1834,7 @@ mod test_c27_drift_kamino {
                 instruction_data: Some(vec![
                     0xfb, 0x0a, 0xe7, 0x4c, 0x1b, 0x0b, 0x9f, 0x60, 0x00, 0x00,
                 ]),
+                real_account_metas: vec![],
             },
             &registry,
         )
@@ -1867,6 +1870,7 @@ mod test_c27_drift_kamino {
                 instruction_data: Some(vec![
                     0xfb, 0x0a, 0xe7, 0x4c, 0x1b, 0x0b, 0x9f, 0x60, 0x00, 0x00,
                 ]),
+                real_account_metas: vec![],
             },
             &registry,
         )

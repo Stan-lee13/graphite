@@ -165,6 +165,7 @@ mod tests {
             identity: AccountIdentity::Unverified,
             expected_address_mismatch: false,
             pda_mismatch: false,
+            privilege_mismatch: false,
         }
     }
 

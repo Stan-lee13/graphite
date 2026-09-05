@@ -85,6 +85,7 @@ fn base_input(program_id: &str, discriminator: &str, intent: &str) -> Verificati
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
         compute_units: 0,
         account_writes: 0,
         cpi_hops: 0,

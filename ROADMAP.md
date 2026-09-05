@@ -14,7 +14,7 @@
 - [x] Python advisory layer (separate process — P1 compliance)
 - [x] HTTP server (axum) + CLI (clap)
 - [x] Dockerfile + .dockerignore
-- [x] 987 unit/integration tests passing, 0 clippy warnings (2026-08-11)
+- [x] 987 unit/integration tests passing, 0 clippy warnings (2026-08-21)
 
 ### Phase 1 Honest Status
 

@@ -30,14 +30,17 @@ export interface BoundInstructionPayload {
  * submitted is deterministically derived from what was verified, not a
  * second, separately-maintained code path that merely happens to agree.
  *
- * isSigner/isWritable are trusted from the caller, the same trust boundary
- * `executeTransfer`'s raw `SystemProgram.transfer(...)` construction and
- * every other caller of `TransactionInstruction` already rests on — Solana's
- * own runtime is the backstop (a claimed signer with no real signature, or a
- * write to an account the program doesn't expect, fails on-chain rather
- * than silently executing with the wrong privilege). This is the existing,
- * separately-tracked P1 "signer/writable metadata is not grounded in actual
- * transaction AccountMeta data" limitation, not a new gap introduced here.
+ * isSigner/isWritable are trusted from the caller for EXECUTION — the same
+ * trust boundary `executeTransfer`'s raw `SystemProgram.transfer(...)`
+ * construction and every other caller of `TransactionInstruction` already
+ * rests on. For VERIFICATION, `executeSwap` now forwards these same
+ * per-account flags to Graphite as `VerificationInput.real_account_metas`
+ * before building this instruction, closing the P1 "signer/writable
+ * metadata is not grounded in actual transaction AccountMeta data" gap for
+ * the payload-bound path (2026-09-05): the Core cross-checks them against
+ * the manifest's declared signer/writable expectations and hard-blocks a
+ * security-relevant mismatch (a required signer not actually signed, or a
+ * readonly slot marked writable) before this function is ever called.
  */
 export function buildInstructionFromPayload(payload: BoundInstructionPayload): TransactionInstruction {
   return new TransactionInstruction({

@@ -42,6 +42,7 @@ fn make_input(
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
     }
 }
 
@@ -308,6 +309,7 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
         identity: AccountIdentity::Unverified,
         expected_address_mismatch: false,
         pda_mismatch: false,
+        privilege_mismatch: false,
     };
 
     let plan = TransactionPlan {
@@ -349,6 +351,7 @@ fn test_fix4_invalid_program_id_is_hard_error() {
         identity: AccountIdentity::Unverified,
         expected_address_mismatch: false,
         pda_mismatch: false,
+        privilege_mismatch: false,
     };
 
     let plan = TransactionPlan {
@@ -414,6 +417,7 @@ fn test_fix5_fake_swap_wired_into_pipeline() {
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
     };
     let result = core.verify(&input).unwrap();
     // Jupiter V6 manifest has expected_state_changes that mention "output" or "credits"
@@ -442,6 +446,7 @@ fn test_fix3_pda_mismatch_field_exists() {
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
         ],
         instruction_data: None,
+        real_account_metas: vec![],
     };
 
     let result = resolve_accounts(&input, &registry).unwrap();
@@ -488,6 +493,7 @@ fn test_fix1_simulation_baseline_accepted_by_pipeline() {
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
     };
     // Baselines are trusted state, seeded via the operator API (never from the
     // request body). With mean=150/std=10 and compute_units=150 the check runs
@@ -611,6 +617,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         instruction_discriminator: test_discriminator.to_string(),
         account_addresses: vec![authority.to_string(), correct_pda_str.clone()],
         instruction_data: None,
+        real_account_metas: vec![],
     };
 
     let result_correct = resolve_accounts(&input_correct, &registry).unwrap();
@@ -626,6 +633,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         instruction_discriminator: test_discriminator.to_string(),
         account_addresses: vec![authority.to_string(), spoofed_pda.to_string()],
         instruction_data: None,
+        real_account_metas: vec![],
     };
 
     let result_spoofed = resolve_accounts(&input_spoofed, &registry).unwrap();
@@ -659,6 +667,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
     };
 
     let verdict = core.verify(&full_input).unwrap();
@@ -761,6 +770,7 @@ fn test_pda_mismatch_correct_pda_passes() {
         instruction_discriminator: test_discriminator.to_string(),
         account_addresses: vec![authority.to_string(), correct_pda_str.clone()],
         instruction_data: None,
+        real_account_metas: vec![],
     };
 
     let result = resolve_accounts(&input, &registry).unwrap();
@@ -794,6 +804,7 @@ fn test_pda_mismatch_correct_pda_passes() {
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
     };
 
     let verdict = core.verify(&full_input).unwrap();

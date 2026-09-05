@@ -153,6 +153,7 @@ fn valid_input_strategy() -> impl Strategy<Value = VerificationInput> {
                 cpi_trace: None,
                 uses_versioned_transaction: false,
                 lookup_table_count: 0,
+                real_account_metas: vec![],
             },
         )
 }

@@ -79,6 +79,40 @@ pub struct ResolvedAccount {
     /// The verification pipeline MUST treat this as a risk finding (Constitution P4).
     #[serde(default)]
     pub pda_mismatch: bool,
+    /// P1 fix (2026-09-05 audit): set when a caller-supplied
+    /// `RealAccountMeta` for this position DISAGREES with the manifest's
+    /// declared expectation in a security-relevant direction:
+    ///
+    /// - the manifest requires a signer, but the real transaction shows
+    ///   it is NOT signed (the role this account is supposed to play
+    ///   cannot actually be authorized), or
+    /// - the manifest declares this position read-only, but the real
+    ///   transaction marks it writable (a privilege ESCALATION beyond
+    ///   what the manifest's own account-role analysis accounted for —
+    ///   the classic shape of a hidden-write/drain attempt).
+    ///
+    /// The reverse directions (manifest expects signer/writable but the
+    /// real transaction is more restrictive) are NOT flagged here — an
+    /// over-cautious real transaction is not a security concern and would
+    /// self-limit on-chain regardless. `None`/absent `real_account_metas`
+    /// (the common case — most callers don't have this data) means this
+    /// stays `false`, honestly reflecting "not checked", not "matched".
+    #[serde(default)]
+    pub privilege_mismatch: bool,
+}
+
+/// P1 fix (2026-09-05 audit, "signer/writable metadata is not grounded in
+/// actual transaction AccountMeta data"): the REAL per-account signer/
+/// writable bits from the actual transaction, when a caller has them
+/// available (e.g. an SDK/bridge holding a real `AccountMeta[]` before
+/// calling Graphite). Distinct from `ResolvedAccount.is_signer`/
+/// `is_writable`, which are manifest-declared EXPECTATIONS, not
+/// observations — this is the ground truth to check those expectations
+/// against.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RealAccountMeta {
+    pub is_signer: bool,
+    pub is_writable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -88,6 +122,15 @@ pub struct AccountResolutionInput {
     pub account_addresses: Vec<String>,    // base58
     #[serde(default)]
     pub instruction_data: Option<Vec<u8>>,
+    /// Real per-account signer/writable flags, in the same order as
+    /// `account_addresses`. Empty (the default) means "not supplied" — most
+    /// callers don't have this readily available, and its absence is
+    /// honestly disclosed via `ResolvedAccount.privilege_mismatch` staying
+    /// `false` rather than silently assumed to match. If the length doesn't
+    /// match `account_addresses`, it is treated as not supplied (fail-safe,
+    /// never indexed out of bounds).
+    #[serde(default)]
+    pub real_account_metas: Vec<RealAccountMeta>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -157,6 +200,12 @@ pub fn resolve_accounts(
     let mut order = Vec::with_capacity(pubkeys.len());
     let mut pda_mismatches: Vec<String> = Vec::new();
     let mut expected_address_mismatches: Vec<String> = Vec::new();
+    // P1 fix: a length mismatch means the caller's real-meta list doesn't
+    // correspond to this account list at all — treat the WHOLE thing as not
+    // supplied (never partially apply it to a prefix of positions, which
+    // could silently skip checking exactly the positions that were added or
+    // reordered).
+    let real_metas_usable = input.real_account_metas.len() == pubkeys.len();
 
     for (i, pk) in pubkeys.iter().enumerate() {
         let role_def = ix_def.accounts.get(i);
@@ -241,6 +290,14 @@ pub fn resolve_accounts(
         } else {
             AccountIdentity::Unverified
         };
+        // P1 fix: compare the manifest's declared expectation against the
+        // REAL AccountMeta, when the caller supplied one for this position.
+        // Only the security-relevant directions are flagged — see
+        // `ResolvedAccount::privilege_mismatch`'s doc comment.
+        let privilege_mismatch = real_metas_usable
+            .then(|| &input.real_account_metas[i])
+            .map(|real| (is_signer && !real.is_signer) || (!is_writable && real.is_writable))
+            .unwrap_or(false);
         resolved.push(ResolvedAccount {
             address: pk.to_base58(),
             role,
@@ -251,6 +308,7 @@ pub fn resolve_accounts(
             identity,
             expected_address_mismatch,
             pda_mismatch,
+            privilege_mismatch,
         });
         order.push(i);
     }
@@ -278,6 +336,7 @@ fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionRe
             identity: AccountIdentity::Unverified,
             expected_address_mismatch: false,
             pda_mismatch: false,
+            privilege_mismatch: false,
         })
         .collect();
 
@@ -380,6 +439,7 @@ mod tests {
             instruction_discriminator: disc.to_string(),
             account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
             instruction_data: None,
+            real_account_metas: vec![],
         }
     }
 
@@ -503,6 +563,7 @@ mod tests {
             instruction_discriminator: "deadbeef".to_string(),
             account_addresses: vec![signer_pk.to_base58(), pda_pk.to_base58()],
             instruction_data: None,
+            real_account_metas: vec![],
         };
         let result = resolve_accounts(&input, &registry).unwrap();
         assert!(result.manifest_found);
@@ -575,6 +636,7 @@ mod tests {
                 derived_address.to_string(),
             ],
             instruction_data: Some(data.clone()),
+            real_account_metas: vec![],
         };
         let _ = program_pk;
         resolve_accounts(&input, &registry).unwrap()
@@ -724,6 +786,7 @@ mod tests {
             instruction_discriminator: disc.to_string(),
             account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
             instruction_data: data,
+            real_account_metas: vec![],
         };
         resolve_accounts(&input, &registry).unwrap()
     }

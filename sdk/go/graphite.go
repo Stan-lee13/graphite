@@ -54,7 +54,7 @@ func NewClientWithAPIKey(baseURL, apiKey string) *Client {
 type ProposedIntent struct {
 	IntentType          string               `json:"intent_type"`
 	RawNaturalLanguage  string               `json:"raw_natural_language"`
-	ConfidenceOfParse  float64              `json:"confidence_of_parse"`
+	ConfidenceOfParse   float64              `json:"confidence_of_parse"`
 	ExtractedParameters *ExtractedParameters `json:"extracted_parameters,omitempty"`
 }
 
@@ -120,27 +120,27 @@ func (b *ByteArray) UnmarshalJSON(data []byte) error {
 type WalletProfile string
 
 const (
-	WalletProfileTreasury     WalletProfile = "Treasury"
-	WalletProfileTradingBot    WalletProfile = "TradingBot"
-	WalletProfileGaming        WalletProfile = "Gaming"
-	WalletProfileEnterprise    WalletProfile = "Enterprise"
+	WalletProfileTreasury   WalletProfile = "Treasury"
+	WalletProfileTradingBot WalletProfile = "TradingBot"
+	WalletProfileGaming     WalletProfile = "Gaming"
+	WalletProfileEnterprise WalletProfile = "Enterprise"
 )
 
 // VerificationInput is the full input to the verification pipeline.
 // This struct MUST match the Rust server's VerificationInput exactly.
 type VerificationInput struct {
-	ProposedIntent          ProposedIntent       `json:"proposed_intent"`
-	ProgramID                string               `json:"program_id"`
-	ProtocolVersion          string               `json:"protocol_version"`
-	InstructionDiscriminator string               `json:"instruction_discriminator"`
-	AccountAddresses        []string             `json:"account_addresses"`
-	InstructionData         ByteArray             `json:"instruction_data,omitempty"`
-	CPITargets              []string             `json:"cpi_targets,omitempty"`
-	WalletProfile           WalletProfile        `json:"wallet_profile"`
-	BehaviorEvidence        BehaviorEvidence     `json:"behavior_evidence"`
-	ComputeUnits            uint64               `json:"compute_units"`
-	AccountWrites           uint32               `json:"account_writes"`
-	CPIHops                 uint32               `json:"cpi_hops"`
+	ProposedIntent           ProposedIntent   `json:"proposed_intent"`
+	ProgramID                string           `json:"program_id"`
+	ProtocolVersion          string           `json:"protocol_version"`
+	InstructionDiscriminator string           `json:"instruction_discriminator"`
+	AccountAddresses         []string         `json:"account_addresses"`
+	InstructionData          ByteArray        `json:"instruction_data,omitempty"`
+	CPITargets               []string         `json:"cpi_targets,omitempty"`
+	WalletProfile            WalletProfile    `json:"wallet_profile"`
+	BehaviorEvidence         BehaviorEvidence `json:"behavior_evidence"`
+	ComputeUnits             uint64           `json:"compute_units"`
+	AccountWrites            uint32           `json:"account_writes"`
+	CPIHops                  uint32           `json:"cpi_hops"`
 	// SignedTransaction is the optional fully-signed transaction blob (JSON
 	// array of bytes, NOT base64 — serde Vec<u8>). The Core simulates this
 	// exact blob for the most accurate L3 result.
@@ -160,8 +160,24 @@ type VerificationInput struct {
 	// LookupTableCount is the number of distinct Address Lookup Tables
 	// referenced, if known. Purely informational.
 	LookupTableCount uint32 `json:"lookup_table_count,omitempty"`
+	// RealAccountMetas holds the REAL per-account signer/writable bits from
+	// the actual transaction, in the same order as AccountAddresses, when
+	// the caller has them (P1, 2026-09-05). Cross-checked against the
+	// manifest's declared expectations — see ResolvedAccount.PrivilegeMismatch.
+	// Omitted/empty (the common case) means "not supplied": nothing is
+	// flagged, never silently assumed to match. A length mismatch against
+	// AccountAddresses is treated the same way (fail-safe).
+	RealAccountMetas []RealAccountMeta `json:"real_account_metas,omitempty"`
 	// Simulation baselines are TRUSTED SERVER STATE (earned via RPC-verified
 	// usage or seeded by the operator) — never sent from the client.
+}
+
+// RealAccountMeta is the real per-account signer/writable bits from an
+// actual transaction. Mirrors graphite-core/src/account_resolution.rs
+// RealAccountMeta.
+type RealAccountMeta struct {
+	IsSigner   bool `json:"is_signer"`
+	IsWritable bool `json:"is_writable"`
 }
 
 // TransactionInstruction is a single compiled instruction in a transaction
@@ -188,28 +204,28 @@ type CpiTraceNode struct {
 
 // VerificationResult is the output of the verification pipeline.
 type VerificationResult struct {
-	Approved             bool                       `json:"approved"`
-	Confidence           float64                    `json:"confidence"`
-	Breakdown            []VerificationBreakdownItem `json:"breakdown"`
-	TrustTier            string                     `json:"trust_tier"`
-	RiskVerdict          RiskVerdictSummary         `json:"risk_verdict"`
-	PolicyVerdict        string                     `json:"policy_verdict"`
-	AuditTrailID         string                     `json:"audit_trail_id"`
-	ContentHash          string                     `json:"content_hash"`
-	Transaction          BuiltTransaction           `json:"transaction"`
-	ResolvedAccounts     []ResolvedAccount          `json:"resolved_accounts"`
-	ProtocolName         string                     `json:"protocol_name"`
-	InstructionName      string                     `json:"instruction_name"`
-	ManifestFound        bool                       `json:"manifest_found"`
-	UnknownProtocol      bool                       `json:"unknown_protocol"`
+	Approved         bool                        `json:"approved"`
+	Confidence       float64                     `json:"confidence"`
+	Breakdown        []VerificationBreakdownItem `json:"breakdown"`
+	TrustTier        string                      `json:"trust_tier"`
+	RiskVerdict      RiskVerdictSummary          `json:"risk_verdict"`
+	PolicyVerdict    string                      `json:"policy_verdict"`
+	AuditTrailID     string                      `json:"audit_trail_id"`
+	ContentHash      string                      `json:"content_hash"`
+	Transaction      BuiltTransaction            `json:"transaction"`
+	ResolvedAccounts []ResolvedAccount           `json:"resolved_accounts"`
+	ProtocolName     string                      `json:"protocol_name"`
+	InstructionName  string                      `json:"instruction_name"`
+	ManifestFound    bool                        `json:"manifest_found"`
+	UnknownProtocol  bool                        `json:"unknown_protocol"`
 	// ManifestVersion is the version label of the protocol manifest this result
 	// was checked against (nil for unknown protocols). Constitution G7 — lets a
 	// consumer confirm which manifest version produced the verification.
-	ManifestVersion      *string                    `json:"manifest_version,omitempty"`
-	SimulationFlagged    *bool                      `json:"simulation_flagged,omitempty"`
-	SimulationDivergence *float64                   `json:"simulation_divergence,omitempty"`
-	Summary              string                     `json:"summary"`
-	Layers               []PipelineLayerResult     `json:"layers,omitempty"`
+	ManifestVersion      *string               `json:"manifest_version,omitempty"`
+	SimulationFlagged    *bool                 `json:"simulation_flagged,omitempty"`
+	SimulationDivergence *float64              `json:"simulation_divergence,omitempty"`
+	Summary              string                `json:"summary"`
+	Layers               []PipelineLayerResult `json:"layers,omitempty"`
 }
 
 // PipelineLayerResult tracks the status of each layer in the 8-layer pipeline.
@@ -224,26 +240,26 @@ type PipelineLayerResult struct {
 
 // VerificationBreakdownItem is a single confidence signal contribution.
 type VerificationBreakdownItem struct {
-	Kind        string  `json:"kind"`
-	RawValue    float64 `json:"raw_value"`
-	Weight      float64 `json:"weight"`
+	Kind         string  `json:"kind"`
+	RawValue     float64 `json:"raw_value"`
+	Weight       float64 `json:"weight"`
 	Contribution float64 `json:"contribution"`
 }
 
 // BuiltTransaction is the decoded transaction structure.
 type BuiltTransaction struct {
-	ProgramID             string             `json:"program_id"`
-	ProtocolVersion       string             `json:"protocol_version"`
-	InstructionName       string             `json:"instruction_name"`
-	InstructionDiscriminator string          `json:"instruction_discriminator"`
-	InstructionCount      int               `json:"instruction_count"`
-	AccountCount          int               `json:"account_count"`
-	SignerCount           int               `json:"signer_count"`
-	WritableCount         int               `json:"writable_count"`
-	ComputeBudgetUnits    uint64            `json:"compute_budget_units"`
-	Accounts              []BuiltAccountMeta `json:"accounts"`
-	DataHex               string            `json:"data_hex"`
-	DataLen               int               `json:"data_len"`
+	ProgramID                string             `json:"program_id"`
+	ProtocolVersion          string             `json:"protocol_version"`
+	InstructionName          string             `json:"instruction_name"`
+	InstructionDiscriminator string             `json:"instruction_discriminator"`
+	InstructionCount         int                `json:"instruction_count"`
+	AccountCount             int                `json:"account_count"`
+	SignerCount              int                `json:"signer_count"`
+	WritableCount            int                `json:"writable_count"`
+	ComputeBudgetUnits       uint64             `json:"compute_budget_units"`
+	Accounts                 []BuiltAccountMeta `json:"accounts"`
+	DataHex                  string             `json:"data_hex"`
+	DataLen                  int                `json:"data_len"`
 }
 
 // BuiltAccountMeta is a single account in a built transaction.
@@ -253,15 +269,41 @@ type BuiltAccountMeta struct {
 	IsWritable bool   `json:"is_writable"`
 }
 
-// ResolvedAccount is a resolved account with PDA verification status.
+// AccountIdentity describes how an account's identity is verified: "Pda"
+// (re-derived from the manifest's seed template), "Constant" (matched
+// against a manifest-declared fixed address), or "Unverified" (genuinely
+// externally-determined — no PDA formula, no fixed constant). Mirrors
+// graphite-core/src/account_resolution.rs AccountIdentity.
+type AccountIdentity string
+
+const (
+	AccountIdentityPda        AccountIdentity = "Pda"
+	AccountIdentityConstant   AccountIdentity = "Constant"
+	AccountIdentityUnverified AccountIdentity = "Unverified"
+)
+
+// ResolvedAccount is a resolved account with identity verification status.
 type ResolvedAccount struct {
-	Address     string   `json:"address"`
-	Role        string   `json:"role"`
-	IsPDA       bool     `json:"is_pda"`
-	IsSigner    bool     `json:"is_signer"`
-	IsWritable  bool     `json:"is_writable"`
-	PDASeeds    []string `json:"pda_seeds"`
-	PDAMismatch bool     `json:"pda_mismatch"`
+	Address     string          `json:"address"`
+	Role        string          `json:"role"`
+	IsPDA       bool            `json:"is_pda"`
+	IsSigner    bool            `json:"is_signer"`
+	IsWritable  bool            `json:"is_writable"`
+	PDASeeds    []string        `json:"pda_seeds"`
+	Identity    AccountIdentity `json:"identity"`
+	PDAMismatch bool            `json:"pda_mismatch"`
+	// ExpectedAddressMismatch is true if a manifest-declared expected_address
+	// constant (e.g. the SPL Token program) does not match the provided
+	// address — an attacker substituting a lookalike program.
+	ExpectedAddressMismatch bool `json:"expected_address_mismatch"`
+	// PrivilegeMismatch is true (P1, 2026-09-05) if a caller-supplied
+	// RealAccountMeta for this position disagrees with the manifest's
+	// declared expectation in a security-relevant direction: a required
+	// signer that the real transaction did not sign, or a manifest-readonly
+	// slot the real transaction marks writable (privilege escalation). The
+	// reverse (more-restrictive) directions are never flagged, and absence
+	// of RealAccountMetas leaves this honestly false ("not checked").
+	PrivilegeMismatch bool `json:"privilege_mismatch"`
 }
 
 // RiskVerdictSummary is the risk assessment result.
@@ -280,20 +322,20 @@ type RiskFinding struct {
 // Field parity with the TypeScript SDK's ProtocolManifest interface and the
 // Rust ProtocolManifest struct (graphite-core/src/manifest.rs).
 type ProtocolManifest struct {
-	GraphiteManifestVersion string          `json:"graphite_manifest_version"`
-	Protocol                ManifestProtocol `json:"protocol"`
-	Version                 ManifestVersion   `json:"version"`
+	GraphiteManifestVersion string                `json:"graphite_manifest_version"`
+	Protocol                ManifestProtocol      `json:"protocol"`
+	Version                 ManifestVersion       `json:"version"`
 	Instructions            []ManifestInstruction `json:"instructions"`
-	TrustTier               string          `json:"trust_tier"`
+	TrustTier               string                `json:"trust_tier"`
 }
 
 // ManifestProtocol identifies the program a manifest describes.
 type ManifestProtocol struct {
-	Name       string `json:"name"`
-	ProgramID  string `json:"program_id"`
-	Website    string `json:"website,omitempty"`
-	Github     string `json:"github,omitempty"`
-	Category   string `json:"category,omitempty"`
+	Name      string `json:"name"`
+	ProgramID string `json:"program_id"`
+	Website   string `json:"website,omitempty"`
+	Github    string `json:"github,omitempty"`
+	Category  string `json:"category,omitempty"`
 }
 
 // ManifestVersion is the version label of a protocol manifest.
@@ -305,12 +347,12 @@ type ManifestVersion struct {
 
 // ManifestInstruction is a single instruction definition in a manifest.
 type ManifestInstruction struct {
-	Name                string                `json:"name"`
-	Discriminator       string                `json:"discriminator"`
-	Accounts            []ManifestAccountRole `json:"accounts"`
+	Name                 string                `json:"name"`
+	Discriminator        string                `json:"discriminator"`
+	Accounts             []ManifestAccountRole `json:"accounts"`
 	ExpectedStateChanges []string              `json:"expected_state_changes"`
-	AllowedCPIs         []string              `json:"allowed_cpis"`
-	RiskRules           []string              `json:"risk_rules"`
+	AllowedCPIs          []string              `json:"allowed_cpis"`
+	RiskRules            []string              `json:"risk_rules"`
 }
 
 // ManifestAccountRole is a single account role definition in a manifest.

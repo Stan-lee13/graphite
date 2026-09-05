@@ -2,7 +2,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "17e9812c24e06cb2b415bfc727aa4720303d6acf90ac22ba52202cc21acc57f7",
+    "content_hash": "fb86bced2334751f27a64492382b232bd0e8a3b2af436db7ab3b3fa239aeacfb",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -61,6 +61,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -68,7 +69,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "aa338b4b3d212473a0e7c4d684cecec571964e8ee12e5eca42fa21b37c77d64f",
+    "content_hash": "cac18023823db9973526e6f83a1e68b9a5cc8ca0c79f3678f110aabc04604a29",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -127,6 +128,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -134,7 +136,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "579ad2fa9af69f3b934bb5185811d911e5af78a0e70ac9b2ea693cc67285ed1a",
+    "content_hash": "92cfb0505451cc464893b4682239c0c91c04a1bb37c30f2489d1b190311df1a4",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -193,6 +195,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -200,7 +203,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "7ccb4bf6e6dbf48b256e5c5ed3325bc89768b6dd92f96c133f7d180c4f2d32e2",
+    "content_hash": "1b625335abc89089c2d371c4d01ab4ddfb3582bf0d4aee4f1acc05ee253f00e9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -267,6 +270,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -274,7 +278,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "8fcdf7cf3a8c36a403dc20bfeacb8b943337e52790a2c74f6158df37d40e38bb",
+    "content_hash": "51627bf97edc605be2b397208095db8cf759b1ce4e0a00baa40c4074780db839",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -333,6 +337,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -340,7 +345,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ed08d7213dc5ed6a31ad4f055959c239370cf3f9b96219dfd34a20b43222cca6",
+    "content_hash": "3b35ae6604cf9a871c520652c4fd043bf1cdc0b20d03476939431f190f2ccbaa",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -378,6 +383,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -385,7 +391,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9c5c61775ce65166fccb5032c7f51265e21fbb97e803135adca9898acbb44cca",
+    "content_hash": "2a2e0eb1e8fe9586f1d42fe98ea342d4a6c2e8cd4987a9629a1a85ab824e5010",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -443,6 +449,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -450,7 +457,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9fa5d0e903c2221106cf6db03921ff3c4782767ef1652cecc23a5fb059b6c01f",
+    "content_hash": "2e08ee65986f560959b13b6f07581a3cd5fd7dbc3f7e529e2fe9807f61f09792",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -508,6 +515,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -515,7 +523,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ca9fc2382be238afe7bbf096dfa51441f39bc3fabe10d80797960be6c93c834c",
+    "content_hash": "495c305f6042c3cceaabc6fbeb0ec06e42d7f68ae977bba75b1bede79dc03a27",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -573,6 +581,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -580,7 +589,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "40b6fa0865fe78e4beb9823040e9607e3b2d37eb2c1130a258b8ad687e293c33",
+    "content_hash": "fd5f217a2ac43fd5171feac18a10718c874fdf435b69d2b2ed3d726f9df6dc40",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -646,6 +655,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -653,7 +663,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "09836b5e08347acec475c99531186fc59f79bb9b385f8bdec6a48074e6db6076",
+    "content_hash": "556225108dc68041316ccbb24a0fc3de037f56024578beecb071a8f1a23caf0b",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -711,6 +721,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -718,7 +729,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "37200337f2fce01f9eb21b44e2335bb7f931f54d1bc0a3e18ea860db52c31ff3",
+    "content_hash": "32b59b9cb92ca9f92f871949465cae396be9e1c00d08a115f8f3e3df4c491ef3",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -774,6 +785,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -781,7 +793,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ad6eaeea9576e833aa85919930901b51f1cc8d5fad2614e84d993ff490e66533",
+    "content_hash": "7283763a1cf3b7a57854a7c493ebfa1fc66f208a06dea93cdb11bfa002a55338",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -837,6 +849,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -844,7 +857,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "5c91abcb2192c5baada0c47901e2907357374e4e3f8ea2cb2cb430176ec1ec94",
+    "content_hash": "42d8fb67068ca15062c142afabf5290a4d9237faa6045ff78c27ea6c5e110eb6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -900,6 +913,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -907,7 +921,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "144eb3ade68c19d93763e3ab3a040daa65735aad47ab674d506156365e68474b",
+    "content_hash": "5ad6f7632ec3e405a3151d24cc1f9caa0730ea47d15315f77bf04f06a02c9d12",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -971,6 +985,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -978,7 +993,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f3438e75b325d388bb96e64fd0e1c9a1d206202e7eba394e304bebb244f4b449",
+    "content_hash": "26ff36e634e750c0997d5268ff7084de3f714cc225f0377609bdaae4536f3044",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1034,6 +1049,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1041,7 +1057,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "2b9d68c533c75bb816f79ee313da29ebd6cd3b1a055975545d7c3e758d209aa6",
+    "content_hash": "4146e2d5de700fd26ceafc78c8a30b592dbaf0140d7e0fa1f8e56828f8553f02",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1096,6 +1112,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1103,7 +1120,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f2a7982e234f2fa194f903f2137a921c135f3d6dce8484f07d7e5a75b329ccd9",
+    "content_hash": "f2b738d0689c308c7a770c1eabf08298e8d7d3663e8735bbe5f2d99eeac3a1c3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1158,6 +1175,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1165,7 +1183,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f55840eda3a9bebe14db8f35374d3a478be79dd3db121e698e5c7e2990af2420",
+    "content_hash": "070342b0e20507017f72fbe5b262cddb8447b2b4c4ecfdf9370f94c1694cf126",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1220,6 +1238,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1227,7 +1246,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f11cc68128531418f30a2d03aab72d3d4f0d1530d8103e310cc5b1b4cd85c5b7",
+    "content_hash": "1fea825b2042dc2a823fe3e59cc3ea2d6b0d43dfa68224b50a830f535f6dd763",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1290,6 +1309,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1297,7 +1317,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "79b2ee07329f8a85362dde655d51bfe310ac04bcb7862f5b4ce877511a542341",
+    "content_hash": "e1dd0c3ecf61a0877f67b44f25db8528dd1bdd5bb8e436b32b439e2ccebb0cab",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1352,6 +1372,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1359,7 +1380,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "99cca56c772c358f411981afe1ac880633a58c3ae2b8ee21a92dfd84ae1fbab2",
+    "content_hash": "260996ddf66b8e8fda0e4931654a213f16eaf87f482aa406294d8d290ddcdbac",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1414,6 +1435,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1421,7 +1443,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "a4ec660d2fb3cdba06e4b1927bd727a59adabecb4be000b8ac1917c9e67c0300",
+    "content_hash": "26428dbc1361f38a3d4a803c23259c3b865d9fcbf8c4d93a33a45a915c37ec46",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1476,6 +1498,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1483,7 +1506,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "16e86532d7991b126251e414873af38668b3fd57d22bbf88185ec25fbc82a9e7",
+    "content_hash": "35f27f37045201f201677249168427b17e666789ccaac1d18ca0a7428cbe96ed",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1538,6 +1561,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1545,7 +1569,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9da0048538e6e9bcb91a9a04f0a5fb90d7f28607ed3357189376a03ed3ce554e",
+    "content_hash": "a659feeaf8e3e236d35392ffcf56a2068c997374f2c960f4942f80e3621f98d2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1608,6 +1632,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1615,7 +1640,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "006d202436aebac6d62a28a57d08c9312b1ef961a50d5171bd87b040e1bafd71",
+    "content_hash": "098ac1237b317f57c01f6bd9f848e4abbc2e8c57c85bc13776f6e6a974e3ee3c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1670,6 +1695,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1677,7 +1703,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "772b487d25e853ef403a9294534a71b29d526b362b500ca21c22c9e2055251af",
+    "content_hash": "33b117a75ce17559392526970f63d7d107a58384e03cb4390a315d62f0990929",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1732,6 +1758,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1739,7 +1766,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1d111e87d882c7cd99698c46dc337d24f4abb50f99bb15bc89e2557e833c6b46",
+    "content_hash": "380ad7753158aa8bd38a0fcfa995010cc87315d80d66b11dcdd6c327f29dd53a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1794,6 +1821,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1801,7 +1829,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "866de9fb3dd918e966aba2831c6f8f78fb3f1cc7d71ef5568d36006279f6b159",
+    "content_hash": "483fb88afdfbfce42e2e04f3cc21c2d27a3f609fccda88fed249e006692ad354",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1856,6 +1884,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1863,7 +1892,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "c266a4559ea92391a746cfb88292919686b4d608b3418af8103db85def6c9484",
+    "content_hash": "742f7f46f616d883cede8fe0acdfdc776ee83e3b9ce76ccd808c18336c6527e9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1926,6 +1955,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1933,7 +1963,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9d855e8cce27086b158e3ffe9cdd51db8cb10afea866b46d90f86db1c571e1fa",
+    "content_hash": "0be2be7c415750920f6d7da6b400f940cf0dc305d4021875a6e976eddf1e01b5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1988,6 +2018,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -1995,7 +2026,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "12d9e544eb27b98e3c87a28e7747167f13fc9f8eabe730188b38267d03d0e86c",
+    "content_hash": "0148ed56f8a836db00d1d1c7207e11fb81e663414a67c266deebdf9517a6db1b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2050,6 +2081,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2057,7 +2089,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "c856af5b9d6492c759ed32bbdc70348419fc9993a806aaabff2f4b46215bc2dc",
+    "content_hash": "3e60040d2d54551ab6c268980bfc64e74333fea824f25fa79dd18131fd31e9ed",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2112,6 +2144,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2119,7 +2152,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "80271bd99dc50bf53a122ea52fe26f3f89a4c09f3e714ee743d6c2fec61b8c27",
+    "content_hash": "55ef6c38d37770889d63f92cad38437cf706b3f9ea5a789443ccaad8b6ec948a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2174,6 +2207,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2181,7 +2215,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "74dc719c5e4df2cb001ac9df7d35e955dbf7ef022182bc1cbd041f7668adcead",
+    "content_hash": "17e42e2fd6e60108ed1977ca726dd79cfe33dbe4be0be89415d33c5b0aed4ee8",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2244,6 +2278,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2251,7 +2286,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b7cbba2e386c179a0cc9f61990db8c558c6d0969a956f5918824ef4fbbadde57",
+    "content_hash": "405053195abd46d863b4a5e5c63a2d0872fb7610557336ce2cb6e16302afae41",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2306,6 +2341,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2313,7 +2349,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6bc4a32e1687617f81c9dc183d66018be1e0229427175482cb4d448990193637",
+    "content_hash": "9e120c19ab9bb2f3717b41e575892ebb65dd25f7753177419e4aa235f8b5a0ea",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2368,6 +2404,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2375,7 +2412,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "226da92753715708cece40bb05f6e49b6dcc092d064757aad82318e3a565d90f",
+    "content_hash": "801444af86f94559b983332099387026a1b93d6c09ecbfad82a3e73745098370",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2430,6 +2467,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2437,7 +2475,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "7781798007c455335b2bd1f42ed5333e7bb1b533b7e89775e7985521976b8937",
+    "content_hash": "6e89c6c504ec950c7d1c3fca31fbe5bf1f21a9474f2e2ea0e724a9134adcecf2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2492,6 +2530,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2499,7 +2538,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1981de699891ee114d9f9876f9953172fa8f5d60d8d82b9d85f057cfdd16c48f",
+    "content_hash": "70e6e163ca44c6384f8368d377a838b192662bb9c399c9a87bcca68da637c471",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2562,6 +2601,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2569,7 +2609,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "24b12b3285cd27aef055b1f0c5f15f4244f2fe6576a470c679cf5775be1d6867",
+    "content_hash": "461d85f68c5c9bb998028d78a80d8e29ceed371f7fc155a70a718298242b1177",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2624,6 +2664,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2631,7 +2672,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "d4d79603fb0bbc16deed394fdcce9a1129f4a2b326102ad3c8152ef469a3a5c8",
+    "content_hash": "a7045fea543d3854465bae78873c786558e040d9796429877d91bfbfbc6c8632",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2686,6 +2727,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2693,7 +2735,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4ec79f339384fa07968fa351632b42426cc5c670c00ec2d6977f065bd6533306",
+    "content_hash": "87d200607feedbb0e27c7fa4179192214006f75bea88e741f671591902355170",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2748,6 +2790,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2755,7 +2798,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "00ab4c32f23b19bd279141eb30072d16e0260c534f741dc996a53de3ae343bfc",
+    "content_hash": "e5d364268f7bc2996edd2138da2340b93a92cfb7123e4c471060a032939157ae",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2810,6 +2853,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2817,7 +2861,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b343ae39aa8b49161d3240c21e7aebfefdd2778b4e9fda5749050f1fc949e3f4",
+    "content_hash": "08c654356da54c436dfb474d16192fb9eabf0e6e3d863b41c44a2bce846b48db",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2880,6 +2924,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2887,7 +2932,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "a7a7bccb64443180ef67087aee6f9c841ec7de7588762637175f4d87a9fc00e3",
+    "content_hash": "78ea12faad6fe77833425c91c52bbc507addb15874ba5efcde500606c0e80675",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -2942,6 +2987,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -2949,7 +2995,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6d849db7652d892bbb48a913796008b5a650cd20c0e76b415b2d11494788ace0",
+    "content_hash": "7c93af36369dc2b1b160fb79463095ab3f21dce02ad63153032f75d770059e75",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3004,6 +3050,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3011,7 +3058,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "bd543a46f87cc77a09371b8cd4ec20fdc6a10af2b8934ae9be4600985680cae7",
+    "content_hash": "cb63274bd1a3b81e3b7eabc310a318ebb95749c2d8bd1b820de68f5595dd61c9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3066,6 +3113,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3073,7 +3121,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e996992e34c77d9b5e236febc9c97dbb0c3233123e179ac32be9f4867eb6c50b",
+    "content_hash": "e74e16f54c9616a23b481aa597756e5fc9a55163238330146f49db640479a14e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3128,6 +3176,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3135,7 +3184,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "c9da519d27eeaeb984d14410d3ab3dad2815bea265a1d68b72fd564f886d58cf",
+    "content_hash": "52b33dfb95a365f12bdb53af88e8c43b2eeff9b32c18d03e0297c57c17ae3774",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3198,6 +3247,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3205,7 +3255,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f8d2afab773c77e656988865ebc0c4ca50d8fdae32680628b1830105df4d5711",
+    "content_hash": "63e37a8df2001900a6bfee8e580fe73e97c230d8d1417287797aacce37931280",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3260,6 +3310,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3267,7 +3318,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3e4a9534ee4d6880d4547c4d5500e7b5736b9df9521ce84909286c6c97c4932f",
+    "content_hash": "ec10d9462a7b091ce171748926530e21af0ba65ae2bb146a03116439c53381e3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3322,6 +3373,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3329,7 +3381,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9894afe3ef1b78505957df6d2c7207ef3fb845a89138056bad0b013bc65ef758",
+    "content_hash": "01f028bf53c0c3fa635e12b5e81a07ee57351aa4164379c7b3ca9d9ed6d14ce5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3384,6 +3436,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3391,7 +3444,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9c1f12c42f8faef17dce1a07ac67f7ec6754a59af35a09bccfbb4b0c5be4fcf1",
+    "content_hash": "cf5f8059c8616a66f9cbc3ed7c57989d4b6818abf7d21eb56fde96ca48ed1c96",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3446,6 +3499,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3453,7 +3507,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1da22a77a9ff2130cd109b049fe413b39fe75e0f74a289c72ac7366287d10e2d",
+    "content_hash": "b4241872ff156d3b2b5c30d972df6c2720483e9840df23c231ccb15d5d97d6db",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3516,6 +3570,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3523,7 +3578,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3aefb0c87786d6295049ed52b724474cca5285b4e0c111870daa3e2b4e3c61e5",
+    "content_hash": "7167a334f4d4a9a15038add1ccaf0719aae14a2d822f4c1274de9d402a1c41ea",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3578,6 +3633,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3585,7 +3641,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4b104feafec55e4fcd991c42dd9e714287bb3e9249f7420cc702d735a2608466",
+    "content_hash": "87cecfee99d3a9e590f2fc7ff4adf9edc6f7f6bce5fee3fc5632c4079b9eedc0",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3640,6 +3696,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3647,7 +3704,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9a48ed21561962b81239e2a3c2227d1466522d7df58cc4ccee96c3c609c735a4",
+    "content_hash": "f63b2bb20c9a0dd223e9b904163905f6a5b93268d9d85bcefefa74e5be237d7a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3702,6 +3759,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3709,7 +3767,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "482735b688c047bf659422c804d201ba71092d5c1758e7cbb424d62fb43419e0",
+    "content_hash": "297adec1ed1b14690feb61361a33380c3bcca3c9f3ca3e9cde2ef10de6584386",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3764,6 +3822,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3771,7 +3830,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "2f71ee977c66875f8abd7764d73b4dc6641f57a5443e0ce14387136a10a3aa5d",
+    "content_hash": "f757673300d72b0f7cedf93c818c70d3bd44886cfeb724b237a15e6b90c8458f",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3834,6 +3893,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3841,7 +3901,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1d88ec5b19d3bdda39158e04cc3536102589baf3647564fc668994d28350ba46",
+    "content_hash": "9c9409c22904e5703383fb0fe77c25735accc2ff1ca18de67669e53d94a43946",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3896,6 +3956,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3903,7 +3964,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b0811049b2b8ec7edfedc5d072fa898b73ea815ebee0481886196f0fc5786c13",
+    "content_hash": "64015a90fec0bff9662ca589ab59f03d62a6b7aa23ec03f9fdbb03d2f44f56d7",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -3958,6 +4019,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -3965,7 +4027,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "ac0dea9f36ce1961dc7add2cd4906e7e4a239fdbe2b740cec72fd2ab82544277",
+    "content_hash": "53d90ee9391b1c77f4fcb5154cd8c85b2b2cb5908ab66d5c74d290359248b348",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4020,6 +4082,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4027,7 +4090,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "1136314ad75a61139bb9b2d19eedef0feef3632b1597fa99d780d51e599679a1",
+    "content_hash": "6382b207a8ae984dabc70c6edfe89e8a50387e5b2dc05474724ef1876e056005",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4082,6 +4145,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4089,7 +4153,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "bdab03f4f575729d37257b8fea69cc53b1042a2e4c2109dd19f0874c4d65d11f",
+    "content_hash": "13a30f67d53839b14d4c6ab7492ed87d0a285d230b8cab6681c548be67cba5d0",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4152,6 +4216,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4159,7 +4224,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "d0b71a00c86e2b7323ba31a42203be588949b2aab8e5e0f94443d2af6843b0ca",
+    "content_hash": "c92557ebaec5ecad80b24551c507fc95ae02cb35d9ab3208576751a9bdf927f3",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4214,6 +4279,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4221,7 +4287,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "cc6deff8f7c6f301b9313a56dd1d0230474493ca3c76a321696b54a1c45fb5b0",
+    "content_hash": "9c29e355f3b8f1a95ae7d9c3dbcf39b0ad6e78762ed6c773bf129ea733de958e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4276,6 +4342,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4283,7 +4350,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6dfc4c5ab4d3bf5c57667ed02242d06ad1c72c889d7eb81f00a79fc9debbf6b2",
+    "content_hash": "559ba48ef90fdef887fa22731e3b3a9e4d70eb1b5866cd1f59db6d2d1eadef65",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4338,6 +4405,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4345,7 +4413,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "820b0ad8f8660d52f1649792e2a18f3bf9fbfe85f51a5b114bed87fa19007634",
+    "content_hash": "f8d956112fe801e5716e7f88080e2ad135bc28ea313ac55816f6f888178b23ee",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4400,6 +4468,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4407,7 +4476,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "0335229f6308281d051961621daa719bb004b73276494570f26b7a88c6479098",
+    "content_hash": "b36d15fac229712b9bac2457c260093a6a8cb701dc8fb2413609cf4413b157b2",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4470,6 +4539,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4477,7 +4547,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "847d04640ddf1f30818f1a2f6f1177a7ea817c9ed16780f1bbce6d8456c676d3",
+    "content_hash": "674d26ae4949192c01c0773b47d3ad74ad938ba59e7724ea8bd3419657ee920c",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4532,6 +4602,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4539,7 +4610,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "2a8a5723500964964ba4e37fa4e0c812091937cf3f0f1e984b425736e1947dc2",
+    "content_hash": "fa8377cfe373225437a5f18d8dd62d4f93d2954bc8f04cb10880daea5430173e",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4594,6 +4665,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4601,7 +4673,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "98be08ad42588660e5651f81188c4a296823ca98b6759f7f68ae66aaba720aaf",
+    "content_hash": "77f7535ef0d5fa115cbcdabce35d406a9734c2e7c8974e1ec77af8940ac2db1d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4656,6 +4728,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4663,7 +4736,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "774bb02f1260e6e8e93856790cbc3e76bbc2fd926a27455a612d792f7cb7efb8",
+    "content_hash": "1945fd19f429dcc5d00f3d2823378b5b287f8b727a391917cd088b39790480ac",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4718,6 +4791,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4725,7 +4799,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "9d9755c22117d1669349aad73b79ee98371821a842bb0b5ed421969340c70c99",
+    "content_hash": "382466a356dfe13875725267e168d004e3905e3babaefd4ec257ea4b3bd544c5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4788,6 +4862,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4795,7 +4870,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "408080a6f98778e9106b5e75e9038539535f1e50849827bcbec253a58a9e5694",
+    "content_hash": "786e1069d66b2abea269742c5077509168ffb1e5133a9a4d72a05c8e86a60d9b",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -4850,6 +4925,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4857,7 +4933,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "6e7dbfda8e6036004455d31f108ad53400100b8a538f0b604664e18ec7e77b6b",
+    "content_hash": "79eec5c6dac22c716f192a4c0bb82a056ccd9eff73244df0cdfe96b9551ed831",
     "expected_approved": false,
     "source": "synthetic-attack",
     "deprecated": false,
@@ -4898,6 +4974,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }
@@ -4905,7 +4982,7 @@
   {
     "program_id": "Stake11111111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3b6f037a3b84c896430076e436785ccabcb32fb5b50bcf8623be6ffc0909b254",
+    "content_hash": "1d03824a85f443caaf75cd7d596f03f8979facc404ba8da072d34bf1cd115432",
     "expected_approved": true,
     "source": "synthetic-benign",
     "deprecated": false,
@@ -4946,6 +5023,7 @@
       "signed_transaction": null,
       "transaction_instructions": [],
       "cpi_trace": null,
+      "real_account_metas": [],
       "uses_versioned_transaction": false,
       "lookup_table_count": 0
     }

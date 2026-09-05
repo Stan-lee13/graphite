@@ -86,6 +86,16 @@ pub struct VerificationInput {
     /// programs, repeated revisits, excessive depth, and impersonation.
     #[serde(default)]
     pub cpi_trace: Option<crate::tx_pattern_analysis::CpiTraceNode>,
+    /// P1 fix (2026-09-05 audit, "signer/writable metadata is not grounded
+    /// in actual transaction AccountMeta data"): the REAL per-account
+    /// signer/writable bits from the actual transaction, in the same order
+    /// as `account_addresses`, when the caller has them available. Empty
+    /// (the default) or a length that doesn't match `account_addresses`
+    /// means "not supplied" — `ResolvedAccount.privilege_mismatch` stays
+    /// honestly `false` (not checked) rather than assumed to match. See
+    /// `account_resolution::RealAccountMeta`.
+    #[serde(default)]
+    pub real_account_metas: Vec<crate::account_resolution::RealAccountMeta>,
     /// P1 fix (2026-09-05 audit, "no real ALT/v0 transaction awareness"):
     /// the caller declares whether the underlying transaction is a
     /// versioned (v0) message that resolves one or more accounts through
@@ -1411,6 +1421,7 @@ impl GraphiteCore {
                 instruction_discriminator: input.instruction_discriminator.clone(),
                 account_addresses: input.account_addresses.clone(),
                 instruction_data: input.instruction_data.clone(),
+                real_account_metas: input.real_account_metas.clone(),
             },
             &self.registry,
         ) {
@@ -1453,6 +1464,7 @@ impl GraphiteCore {
                             identity: crate::account_resolution::AccountIdentity::Unverified,
                             expected_address_mismatch: false,
                             pda_mismatch: false,
+                            privilege_mismatch: false,
                         })
                         .collect(),
                     account_count_shortfall: None,
@@ -1695,16 +1707,17 @@ impl GraphiteCore {
 
         // Step 3c: Account Identity Mismatch Detection
         // If account resolution found PDA mismatches OR expected-address
-        // (constant/well-known-program) mismatches, surface them as risk
-        // findings. Either means the transaction provides an account that
-        // doesn't match what the protocol manifest declares that slot must
-        // be — a potential spoofing/substitution attack (P0-1 fix,
-        // 2026-09-05 audit: expected-address checking is new; PDA mismatch
-        // detection is pre-existing).
+        // (constant/well-known-program) mismatches, or a privilege mismatch
+        // (P1 fix, 2026-09-05 audit: a manifest-required signer that the
+        // real transaction shows is NOT signed, or a manifest-readonly
+        // position the real transaction marks writable), surface them as
+        // risk findings. Each means the transaction provides an account
+        // that doesn't match what the protocol manifest declares that slot
+        // must be — a potential spoofing/substitution/escalation attempt.
         let identity_mismatches: Vec<&ResolvedAccount> = resolution
             .resolved_accounts
             .iter()
-            .filter(|a| a.pda_mismatch || a.expected_address_mismatch)
+            .filter(|a| a.pda_mismatch || a.expected_address_mismatch || a.privilege_mismatch)
             .collect();
         let risk_verdict = if !identity_mismatches.is_empty() {
             let mismatch_reason = format!(
@@ -1720,7 +1733,13 @@ impl GraphiteCore {
                             &a.address
                         },
                         a.role,
-                        if a.pda_mismatch { "pda" } else { "expected_address" }
+                        if a.pda_mismatch {
+                            "pda"
+                        } else if a.expected_address_mismatch {
+                            "expected_address"
+                        } else {
+                            "privilege"
+                        }
                     ))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -2965,6 +2984,7 @@ mod tests {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         }
     }
 
@@ -3060,6 +3080,7 @@ mod tests {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         };
         let result = core
             .verify(&input)
@@ -3137,6 +3158,7 @@ mod tests {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         };
         let result = core.verify(&input).unwrap();
         // Should be blocked due to unverified CPI or authority-related patterns
@@ -3264,6 +3286,7 @@ mod tests {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         };
 
         let result = core.verify(&input).unwrap();
@@ -3328,6 +3351,7 @@ mod tests {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         };
 
         let result = core.verify(&input).unwrap();
@@ -3424,6 +3448,7 @@ mod tests {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         };
 
         let result = core.verify(&input).unwrap();
@@ -3568,6 +3593,7 @@ mod tests {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         };
 
         let result = core.verify(&input).unwrap();

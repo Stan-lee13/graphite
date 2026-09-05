@@ -193,6 +193,7 @@ fn input(
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
     }
 }
 
@@ -1477,6 +1478,7 @@ fn build_holdout() -> (RegressionCorpus, Vec<Note>) {
             cpi_trace: None,
             uses_versioned_transaction: false,
             lookup_table_count: 0,
+            real_account_metas: vec![],
         };
         // The signature is the fixture identity: two distinct real
         // transactions with byte-identical instruction shapes are DIFFERENT

@@ -105,6 +105,7 @@ fn resolve(
             "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7".to_string(),
         ],
         instruction_data: None,
+        real_account_metas: vec![],
     };
     resolve_accounts(&input, &registry)
         .expect("resolution must succeed")
@@ -218,6 +219,7 @@ fn full_pipeline_blocks_on_substituted_token_program() {
         cpi_trace: None,
         uses_versioned_transaction: false,
         lookup_table_count: 0,
+        real_account_metas: vec![],
     };
 
     let result = core.verify(&input).unwrap();
