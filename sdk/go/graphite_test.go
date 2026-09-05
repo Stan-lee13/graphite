@@ -111,7 +111,7 @@ func TestVerificationInputRejectsClientSuppliedSimulationBaseline(t *testing.T) 
 			BattleTestedTxCount:    100000,
 			SimulationMatchCount:   500,
 		},
-		ComputeUnits: 200000,
+		ComputeUnits:  200000,
 		AccountWrites: 5,
 		CPIHops:       3,
 	}
@@ -440,8 +440,8 @@ func TestVerificationResultNoDataLoss(t *testing.T) {
 	// Now that we have all the types, we verify roundtrip fidelity.
 
 	original := VerificationResult{
-		Approved:    true,
-		Confidence:  0.88,
+		Approved:   true,
+		Confidence: 0.88,
 		Breakdown: []VerificationBreakdownItem{
 			{Kind: "ManifestMatch", RawValue: 1.0, Weight: 0.4, Contribution: 0.40},
 		},
@@ -451,10 +451,10 @@ func TestVerificationResultNoDataLoss(t *testing.T) {
 		AuditTrailID:  "gr-test-001",
 		ContentHash:   "aabbccdd",
 		Transaction: BuiltTransaction{
-			ProgramID:        "11111111111111111111111111111111",
-			InstructionName:  "Transfer",
-			AccountCount:     2,
-			SignerCount:      1,
+			ProgramID:       "11111111111111111111111111111111",
+			InstructionName: "Transfer",
+			AccountCount:    2,
+			SignerCount:     1,
 			Accounts: []BuiltAccountMeta{
 				{Address: "addr1", IsSigner: true, IsWritable: true},
 				{Address: "addr2", IsSigner: false, IsWritable: false},

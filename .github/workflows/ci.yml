@@ -136,7 +136,7 @@ jobs:
           npx tsx --test auditbind.test.ts bound-instruction.test.ts
 
   go:
-    name: Go SDK — vet + tests
+    name: Go SDK — fmt, vet, tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -146,6 +146,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+      # Mirrors the Rust job's `cargo fmt --check`. gofmt exits 0 whether or
+      # not it finds anything, so the check is on its OUTPUT being empty —
+      # and the unformatted file list is printed before failing, so the fix
+      # is obvious from the log alone.
+      - name: Format
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt found unformatted files. Run 'gofmt -w sdk/go/'"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Vet
         run: go vet ./...
       - name: Tests
