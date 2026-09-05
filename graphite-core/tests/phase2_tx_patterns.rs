@@ -184,6 +184,107 @@ fn cpi_trace_unknown_program_is_hard_blocked() {
     );
 }
 
+/// A sibling fan-out sweep must hard-block through `verify`, not only inside
+/// `analyze_cpi_trace`.
+///
+/// Rule 2 catches a program re-entered along one PATH. An attacker who reads
+/// that rule flattens the repetitions into siblings: twenty Token::Transfer
+/// calls at depth 1, twenty different source accounts, one destination. Path
+/// occurrences stay at 1, depth stays at 1, and the Token Program is well
+/// known — so before Rule 5 every check in this layer passed it.
+#[test]
+fn cpi_trace_sibling_sweep_is_hard_blocked() {
+    let core = GraphiteCore::new();
+    let mut input = base_input(TOKEN_PROGRAM, "03", &[SOURCE, DEST, OWNER]);
+    let victims: Vec<String> = (0..20)
+        .map(|i| format!("VictimTokenAccount{i:040}"))
+        .collect();
+    input.cpi_trace = Some(CpiTraceNode {
+        program_id: TOKEN_PROGRAM.to_string(),
+        instruction_discriminator: "03".to_string(),
+        depth: 0,
+        account_addresses: vec![],
+        children: victims
+            .iter()
+            .map(|v| CpiTraceNode {
+                program_id: TOKEN_PROGRAM.to_string(),
+                instruction_discriminator: "03".to_string(),
+                depth: 1,
+                account_addresses: vec![v.clone(), DEST.to_string(), OWNER.to_string()],
+                children: vec![],
+            })
+            .collect(),
+    });
+
+    let result = core.verify(&input).unwrap();
+    assert!(
+        !result.approved,
+        "a 20-way sweep must block: {}",
+        result.summary
+    );
+    assert_eq!(result.risk_verdict.status, "Blocked");
+    assert!(
+        result
+            .risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.pattern == "CpiTraceAnomaly" && f.reason.contains("sweep, not a route")),
+        "the finding must name the shape it found (P3): {:?}",
+        result.risk_verdict.findings
+    );
+}
+
+/// The other half: a legitimate multi-hop route has the same raw call count and
+/// the same distinct-account count as the sweep above. If this blocked, the
+/// rule would reject ordinary Jupiter traffic.
+#[test]
+fn cpi_trace_multi_hop_route_still_verifies() {
+    let core = GraphiteCore::new();
+    let mut input = base_input(TOKEN_PROGRAM, "03", &[SOURCE, DEST, OWNER]);
+    let hops: Vec<CpiTraceNode> = (0..6)
+        .map(|i| CpiTraceNode {
+            // Each hop is a different well-known venue; using seed programs
+            // keeps Rule 1 (unknown program) out of the way so this test is
+            // about fan-out and nothing else.
+            program_id: SYSTEM_PROGRAM.to_string(),
+            instruction_discriminator: format!("hop{i}"),
+            depth: 1,
+            account_addresses: vec![],
+            children: (0..2)
+                .map(|j| CpiTraceNode {
+                    program_id: TOKEN_PROGRAM.to_string(),
+                    instruction_discriminator: "03".to_string(),
+                    depth: 2,
+                    account_addresses: vec![
+                        format!("HopAccount{i}_{j:030}"),
+                        DEST.to_string(),
+                        OWNER.to_string(),
+                    ],
+                    children: vec![],
+                })
+                .collect(),
+        })
+        .collect();
+    input.cpi_trace = Some(CpiTraceNode {
+        program_id: TOKEN_PROGRAM.to_string(),
+        instruction_discriminator: "03".to_string(),
+        depth: 0,
+        account_addresses: vec![],
+        children: hops,
+    });
+
+    let result = core.verify(&input).unwrap();
+    assert!(
+        !result
+            .risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.pattern == "CpiTraceAnomaly" && f.reason.contains("sweep")),
+        "twelve token calls spread across six venues is a route, not a sweep: {:?}",
+        result.risk_verdict.findings
+    );
+}
+
 /// CPI trace with ONLY known programs must NOT produce a CpiTraceAnomaly
 /// finding (no false positive on legitimate nesting).
 #[test]

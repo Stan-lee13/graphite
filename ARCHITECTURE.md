@@ -43,6 +43,16 @@ The pipeline executes in order. Each layer is tracked in the verification result
 8. **L8 Execution Verification** — Post-submission: confirm finalized on-chain result matches prediction. Live-validated against real mainnet RPC (C40) — reports honest execution status (Confirmed / Unknown / Unavailable). Production default-on wiring pending public deployment.
 
 ### Key Properties
+### CPI trace analysis
+
+The hierarchical CPI tree of the primary instruction is scrutinised on five axes. Four measure the tree's DEPTH and its membership: an unknown program invoked anywhere in the chain, a program re-entered three or more times along a single path (the compositional-drain signature), unusual nesting depth, and a vanity-impersonated program id inside an otherwise legitimate wrapper.
+
+The fifth measures its BREADTH, because an attacker who reads the fourth flattens their tree. A sweep does not need to nest: an instruction that loops over twenty token accounts emits twenty siblings at the same depth, and every depth-based rule sees path occurrences of one, depth of one, and a perfectly well-known Token Program. That shape was structurally invisible. Sibling fan-out groups a node's direct children by (program, instruction) and reports a group of six or more, blocking at twelve when the calls act on twelve distinct account sets.
+
+Grouping is per PARENT rather than across the whole tree, because that is what separates a sweep from a route: a multi-hop swap also calls the Token Program a dozen times over a dozen distinct account pairs, but those calls hang off a dozen different venue programs, one or two per hop. The distinct-account requirement separates sweeping from rebalancing — repeatedly acting on the same accounts is wide but not a sweep. A trace carrying no account data can only warn: without accounts nothing corroborates the count, and no data means no verdict (P12).
+
+The thresholds are a judgment call, stated as one. There was no corpus of real CPI traces to calibrate against — five fixtures carry a trace and none carry discriminators — so twelve is set well above any routine per-parent fan-out (a route hop makes one or two token calls; an ATA batch a handful), and the warning at six surfaces the shape long before the block. The residual gap is a deliberately shallow bush: three known intermediate programs each calling the target three times evades both the path rule and the per-parent rule, and is genuinely route-shaped.
+
 ### Quarantine (Self-Healing Semantic Graph, 3.8)
 
 An operator can withdraw a program from trust at any time. A quarantined program's tier is forced to `Unknown` and its verifications carry a `ProgramQuarantined` risk finding, which is a hard gate — a tier downgrade alone would still let a permissive profile through, which is not what an operator means when they pull the switch.

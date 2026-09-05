@@ -529,6 +529,98 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
         });
     }
 
+    // Rule 5: sibling fan-out — the same program invoked with the same
+    // instruction many times side by side under ONE parent.
+    //
+    // Rule 2 measures the tree's depth: how many times a program is re-entered
+    // along a single path. That is the nesting a compositional drain uses. But
+    // a sweep does not need to nest — an instruction that loops over N token
+    // accounts emits N siblings, each at the same depth, and every one of
+    // Rules 1-4 misses it. Rule 2 sees path occurrences of 1. Rule 3 sees depth
+    // 1. Rule 1 says nothing because the Token Program is perfectly well known.
+    // A twenty-way drain was structurally invisible.
+    //
+    // Grouping is per PARENT, not across the whole tree, because that is what
+    // separates a sweep from a route. A multi-hop swap also calls the Token
+    // Program a dozen times over a dozen distinct account pairs — but those
+    // calls hang off a dozen DIFFERENT DEX programs, one or two per hop. A
+    // sweep's calls all hang off the same parent, because one instruction is
+    // iterating a list.
+    //
+    // The thresholds are a judgment call and are stated as one: there was no
+    // corpus of real CPI traces to calibrate against (five fixtures carry a
+    // trace, and none carry discriminators). Twelve is set well above any
+    // routine per-parent fan-out — a route hop makes one or two token calls, an
+    // ATA batch a handful — so it does not depend on that calibration being
+    // tight, and the warning at six surfaces the shape long before the block.
+    //
+    // Blocking additionally requires the account sets to be DISTINCT: repeatedly
+    // acting on the same accounts is rebalancing or retrying, while acting on
+    // many different ones is sweeping. When a trace carries no account data the
+    // distinct count cannot corroborate anything, so only the warning fires —
+    // no data, no verdict (P12), rather than a block on a count alone.
+    const FANOUT_WARN: usize = 6;
+    const FANOUT_BLOCK: usize = 12;
+
+    let mut parents: Vec<&CpiTraceNode> = vec![trace];
+    parents.extend(nodes.iter().copied());
+    // Deterministic order (P2): the tree walk above uses a stack, so findings
+    // would otherwise depend on traversal order rather than on the trace.
+    let mut fanouts: Vec<(String, String, usize, usize)> = Vec::new();
+    for parent in parents {
+        let mut groups: std::collections::BTreeMap<(&str, &str), Vec<&CpiTraceNode>> =
+            std::collections::BTreeMap::new();
+        for child in &parent.children {
+            groups
+                .entry((
+                    child.program_id.as_str(),
+                    child.instruction_discriminator.as_str(),
+                ))
+                .or_default()
+                .push(child);
+        }
+        for ((program, disc), siblings) in groups {
+            if siblings.len() < FANOUT_WARN {
+                continue;
+            }
+            let distinct: std::collections::BTreeSet<&[String]> = siblings
+                .iter()
+                .map(|s| s.account_addresses.as_slice())
+                .collect();
+            fanouts.push((
+                program.to_string(),
+                disc.to_string(),
+                siblings.len(),
+                distinct.len(),
+            ));
+        }
+    }
+    fanouts.sort();
+    for (program, disc, count, distinct) in fanouts {
+        let instruction = if disc.is_empty() {
+            "(no discriminator reported)".to_string()
+        } else {
+            format!("instruction {disc}")
+        };
+        if count >= FANOUT_BLOCK && distinct >= FANOUT_BLOCK {
+            findings.push(PatternFinding {
+                pattern: "CpiTraceAnomaly".to_string(),
+                severity: PatternSeverity::Blocked,
+                reason: format!(
+                    "CPI trace invokes {program} {instruction} {count} times side by side under one parent, across {distinct} distinct account sets — a sweep, not a route (a multi-hop swap spreads its token calls across different venue programs)"
+                ),
+            });
+        } else {
+            findings.push(PatternFinding {
+                pattern: "CpiTraceAnomaly".to_string(),
+                severity: PatternSeverity::Warning,
+                reason: format!(
+                    "CPI trace invokes {program} {instruction} {count} times side by side under one parent ({distinct} distinct account set(s)) — unusually wide fan-out"
+                ),
+            });
+        }
+    }
+
     // Rule 4: vanity-impersonated program inside the chain (ISA applied to
     // CPI targets).
     for node in &nodes {
@@ -837,6 +929,234 @@ mod tests {
         }
     }
 
+    /// A CPI node acting on a specific account set, so fan-out tests can vary
+    /// the accounts independently of the program and instruction.
+    fn leaf(program: &str, disc: &str, depth: u32, accounts: &[&str]) -> CpiTraceNode {
+        CpiTraceNode {
+            program_id: program.to_string(),
+            instruction_discriminator: disc.to_string(),
+            depth,
+            account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
+            children: vec![],
+        }
+    }
+
+    fn victim(i: usize) -> String {
+        format!("VictimTokenAccount{i:040}")
+    }
+
+    fn blocked(findings: &[PatternFinding]) -> Vec<&str> {
+        findings
+            .iter()
+            .filter(|f| f.severity == PatternSeverity::Blocked)
+            .map(|f| f.reason.as_str())
+            .collect()
+    }
+
+    // -- Sibling fan-out (Rule 5) --------------------------------------------
+    //
+    // Rule 2 measures depth. An attacker who reads it puts the repetitions side
+    // by side instead of nesting them, and every earlier rule misses: path
+    // occurrences stay at 1, depth stays at 1, and the Token Program is
+    // perfectly well known.
+
+    #[test]
+    fn a_wide_sweep_of_token_accounts_is_blocked() {
+        let victims: Vec<String> = (0..20).map(victim).collect();
+        let children: Vec<CpiTraceNode> = victims
+            .iter()
+            .map(|v| leaf(TOKEN_PROGRAM, "03", 1, &[v.as_str(), "AttackerDest"]))
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "DrainerProgram1111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children,
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            SYSTEM_PROGRAM.into(),
+            "DrainerProgram1111111111111111111111111111".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            blocked(&findings)
+                .iter()
+                .any(|r| r.contains("sweep, not a route")),
+            "a 20-way flat fan-out must block, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_multi_hop_route_is_not_mistaken_for_a_sweep() {
+        // Six hops, twelve token transfers, twelve distinct account sets - the
+        // same raw numbers as a sweep. What differs is the shape: each hop's
+        // transfers hang off its own venue program, so no single parent has a
+        // wide fan-out. Counting across the whole tree instead of per parent
+        // would reject this.
+        let venues = [
+            "Venue1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "Venue2BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            "Venue3CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+            "Venue4DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+            "Venue5EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+            "Venue6FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+        ];
+        let hops: Vec<CpiTraceNode> = venues
+            .iter()
+            .enumerate()
+            .map(|(i, venue)| CpiTraceNode {
+                program_id: (*venue).to_string(),
+                instruction_discriminator: "swap".to_string(),
+                depth: 1,
+                account_addresses: vec![],
+                children: vec![
+                    leaf(TOKEN_PROGRAM, "03", 2, &[&victim(i * 2), "PoolVault"]),
+                    leaf(TOKEN_PROGRAM, "03", 2, &[&victim(i * 2 + 1), "PoolVault"]),
+                ],
+            })
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
+            instruction_discriminator: "route".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children: hops,
+        };
+        let mut known: Vec<String> = venues.iter().map(|v| (*v).to_string()).collect();
+        known.push(TOKEN_PROGRAM.into());
+        known.push("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".into());
+
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(
+            blocked(&findings).is_empty(),
+            "a legitimate six-hop route must not be blocked, got {findings:?}"
+        );
+    }
+
+    #[test]
+    fn repeatedly_touching_the_same_accounts_warns_but_does_not_block() {
+        // Rebalancing or retrying against one account pair is wide but not a
+        // sweep. The distinct-account requirement is what tells them apart.
+        let children: Vec<CpiTraceNode> = (0..20)
+            .map(|_| leaf(TOKEN_PROGRAM, "03", 1, &["SameSource", "SameDest"]))
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children,
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(blocked(&findings).is_empty(), "{findings:?}");
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.reason.contains("unusually wide fan-out")),
+            "the shape must still be visible: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn a_trace_with_no_account_data_warns_rather_than_blocking() {
+        // Without accounts the distinct count cannot corroborate a sweep. No
+        // data, no verdict (P12) - but the fan-out is still reported.
+        let children: Vec<CpiTraceNode> =
+            (0..20).map(|_| leaf(TOKEN_PROGRAM, "03", 1, &[])).collect();
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children,
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+        ];
+        let findings = analyze_cpi_trace(&trace, &known);
+        assert!(blocked(&findings).is_empty(), "{findings:?}");
+        assert!(findings.iter().any(|f| f.reason.contains("wide fan-out")));
+    }
+
+    #[test]
+    fn a_narrow_fan_out_raises_nothing() {
+        // Five siblings is under the warning threshold: batching a handful of
+        // transfers is ordinary, and warning on it would train operators to
+        // ignore the signal.
+        let children: Vec<CpiTraceNode> = (0..5)
+            .map(|i| leaf(TOKEN_PROGRAM, "03", 1, &[&victim(i), "Dest"]))
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children,
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+        ];
+        assert!(analyze_cpi_trace(&trace, &known).is_empty());
+    }
+
+    #[test]
+    fn fan_out_is_grouped_by_instruction_not_just_program() {
+        // Twenty calls to the Token Program that are twenty DIFFERENT
+        // instructions is not a loop. Grouping by program alone would block a
+        // protocol that legitimately exercises many token operations.
+        let children: Vec<CpiTraceNode> = (0..20)
+            .map(|i| leaf(TOKEN_PROGRAM, &format!("{i:02x}"), 1, &[&victim(i), "Dest"]))
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children,
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+        ];
+        assert!(analyze_cpi_trace(&trace, &known).is_empty());
+    }
+
+    #[test]
+    fn fan_out_findings_are_deterministic_across_runs() {
+        // The tree walk uses a stack, so without an explicit sort the findings
+        // would come out in traversal order - P2 applies to the report, not
+        // only to the verdict.
+        let children: Vec<CpiTraceNode> = (0..14)
+            .map(|i| leaf(TOKEN_PROGRAM, "03", 1, &[&victim(i), "Dest"]))
+            .chain((0..14).map(|i| leaf(SYSTEM_PROGRAM, "02", 1, &[&victim(100 + i), "Dest"])))
+            .collect();
+        let trace = CpiTraceNode {
+            program_id: "SomeProtocol111111111111111111111111111111".to_string(),
+            instruction_discriminator: "00".to_string(),
+            depth: 0,
+            account_addresses: vec![],
+            children,
+        };
+        let known: Vec<String> = vec![
+            TOKEN_PROGRAM.into(),
+            SYSTEM_PROGRAM.into(),
+            "SomeProtocol111111111111111111111111111111".into(),
+        ];
+        let first = analyze_cpi_trace(&trace, &known);
+        for _ in 0..20 {
+            assert_eq!(analyze_cpi_trace(&trace, &known), first);
+        }
+        assert_eq!(blocked(&first).len(), 2, "both sweeps must be reported");
+    }
+
     #[test]
     fn trace_with_known_programs_is_clean() {
         let trace = node(
@@ -950,7 +1270,13 @@ mod tests {
     #[test]
     fn trace_sibling_repetition_is_clean() {
         // A -> {A, A} repeats A across SIBLING branches — no single path
-        // contains A more than twice, so this is not a drain chain.
+        // contains A more than twice, so this is not a drain CHAIN, which is
+        // what Rule 2 measures.
+        //
+        // Three siblings is also under Rule 5's fan-out threshold. Read this as
+        // "narrow sibling repetition is clean", not "siblings are always
+        // clean": a wide one is a sweep, and
+        // `a_wide_sweep_of_token_accounts_is_blocked` covers that.
         let trace = node(
             TOKEN_PROGRAM,
             0,
