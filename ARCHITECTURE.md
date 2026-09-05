@@ -43,6 +43,18 @@ The pipeline executes in order. Each layer is tracked in the verification result
 8. **L8 Execution Verification** — Post-submission: confirm finalized on-chain result matches prediction. Live-validated against real mainnet RPC (C40) — reports honest execution status (Confirmed / Unknown / Unavailable). Production default-on wiring pending public deployment.
 
 ### Key Properties
+### Quarantine (Self-Healing Semantic Graph, 3.8)
+
+An operator can withdraw a program from trust at any time. A quarantined program's tier is forced to `Unknown` and its verifications carry a `ProgramQuarantined` risk finding, which is a hard gate — a tier downgrade alone would still let a permissive profile through, which is not what an operator means when they pull the switch.
+
+Both quarantining and lifting are appends (P4): the pre-quarantine record stays in history reporting the tier its evidence earned at the time. Lifting RECOMPUTES the tier from evidence rather than restoring what it used to be (P7). A program with no prior record can be quarantined pre-emptively — reacting to an advisory about a program the gate has never seen traffic for is the normal case.
+
+An accepted manifest submission appends a behaviour record, and a resubmission at the same tier is not a promotion and so is not P10-gated. An append therefore carries an active quarantine forward: otherwise publishing any new version would be a self-service restore, available to the actor whose program had just been withdrawn, with nothing checking that the new version fixed anything.
+
+Reachable through `graphite quarantine add|lift|list` (operating on the server's durable graph, so a restart picks the change up) and `POST/GET /admin/quarantine` on a running server. The endpoint is refused outright unless `GRAPHITE_API_KEY` is configured — elsewhere an absent key means dev mode, but here it would hand anyone who can reach the port a switch that blocks any program.
+
+**Deliberately operator-triggered, not automatic (recorded tradeoff, P14).** Quarantine forces a program to `Unknown`, which is a denial of service on every wallet profile with a tier floor. Triggering it from request traffic — N blocked verifications, N risk findings — would hand that denial to anyone who can send requests, because the inputs those checks judge are chosen by the caller: a handful of crafted transactions would withdraw Jupiter from trust for every user of the gate. The evidence for the decision is surfaced on `/api/policy-violations` and `/api/graph`; the decision itself belongs to an operator or an external monitor holding the API key.
+
 - **L7 Risk Verification is a hard gate** — it blocks independently of confidence score. A malicious pattern blocks the transaction even if confidence is high. The Risk Engine executes early in the pipeline (before L4/L5) for fail-fast performance, but is reported at L7 per this spec.
 - **L2/L4/L5 are hard gates when genuinely Failed** — a confirmed L2 instruction/data mismatch, L4 state-verification failure, or L5 intent-vs-instruction mismatch blocks approval unconditionally, exactly like an L7 risk finding, regardless of trust tier or wallet-profile confidence threshold. This is distinct from `Inconclusive` (insufficient evidence — e.g. an unknown protocol — which never blocks and only reduces confidence via the P12 tier ceiling, never via this gate). A genuine `Failed` also still applies its confidence penalty (0.2 / 0.15 / 0.3 for L2/L4/L5) so the breakdown stays explainable, but the penalty is no longer what enforces the rejection.
 - **L6 Policy Verification applies tier ceilings** — Unknown/Heuristic protocols are capped at 0.55 (hard-coded, not overridable per P12). Confidence computation is included in L6.

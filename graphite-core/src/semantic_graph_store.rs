@@ -159,11 +159,26 @@ impl SemanticGraphStore {
 
     /// Append a new Behavior record (append-only, Constitution P4).
     ///
-    /// A normal `append` is always a non-quarantined record — this method
-    /// unconditionally resets `quarantined` to `false` and clears
-    /// `quarantine_reason`, even if the caller constructed a `Behavior` with
-    /// those fields already set. Quarantine is a distinct, deliberate action
+    /// A caller can never set quarantine state through this method: the fields
+    /// are ignored, because quarantine is a distinct, deliberate action
     /// (`quarantine()`), never a side effect of an ordinary append.
+    ///
+    /// An ACTIVE quarantine is carried forward onto the new record.
+    ///
+    /// This inverts the behaviour up to 2026-09-05, which cleared quarantine on
+    /// any append so that "a legitimate protocol upgrade after an incident is
+    /// resolved" would restore the program. The problem is who gets to declare
+    /// the incident resolved. `manifest_registry::submit` appends, and a
+    /// resubmission at the same trust tier is not a promotion, so it is not
+    /// even P10-gated — which made an upgrade a self-service un-quarantine,
+    /// available to the very actor whose program was withdrawn from trust, with
+    /// no review of whether the new version fixed anything. Nothing verified
+    /// that the upgrade addressed the incident; shipping any new version was
+    /// enough.
+    ///
+    /// Recovery is still possible and is still an append — it just has to be
+    /// asked for: `lift_quarantine()` is the deliberate counterpart, and it is
+    /// an operator action rather than a consequence of publishing.
     pub fn append(&mut self, behavior: Behavior) -> Result<(), SemanticGraphError> {
         // Validate record
         if behavior.program_id.is_empty() {
@@ -172,17 +187,66 @@ impl SemanticGraphStore {
             });
         }
 
-        // Compute trust tier from evidence (Constitution P7) — never trust
-        // whatever the caller put in `behavior.trust_tier`.
-        let trust_tier = compute_trust_tier(&behavior.evidence);
+        let active_quarantine = self
+            .get(&behavior.program_id)
+            .filter(|b| b.quarantined)
+            .map(|b| b.quarantine_reason.clone());
 
         let mut behavior = behavior;
-        behavior.trust_tier = trust_tier;
-        behavior.quarantined = false;
-        behavior.quarantine_reason = None;
+        match active_quarantine {
+            Some(reason) => {
+                // P7: quarantine is an input to tier computation, so a
+                // quarantined record's tier is Unknown regardless of evidence.
+                behavior.trust_tier = TrustTier::Unknown;
+                behavior.quarantined = true;
+                behavior.quarantine_reason = reason;
+            }
+            None => {
+                // Compute trust tier from evidence (Constitution P7) — never
+                // trust whatever the caller put in `behavior.trust_tier`.
+                behavior.trust_tier = compute_trust_tier(&behavior.evidence);
+                behavior.quarantined = false;
+                behavior.quarantine_reason = None;
+            }
+        }
 
         // Append (never mutate existing)
         self.behaviors.push(behavior);
+        Ok(())
+    }
+
+    /// Lift an active quarantine (ARCHITECTURE.md 3.8), the deliberate
+    /// counterpart to `quarantine()`.
+    ///
+    /// Like quarantine, this is an APPEND, not a mutation (P4): the quarantine
+    /// record stays in history and this adds a new fact. The restored tier is
+    /// RECOMPUTED from the record's evidence (P7) rather than restored from
+    /// whatever it was before — trust is re-derived, never handed back.
+    ///
+    /// Returns `NotFound` when the program has no record, and
+    /// `InvalidRecord` when it is not currently quarantined — lifting nothing
+    /// would otherwise append a confusing no-op record to an audit trail whose
+    /// value is that every entry means something.
+    pub fn lift_quarantine(&mut self, program_id: &str) -> Result<(), SemanticGraphError> {
+        let latest = self
+            .get(program_id)
+            .ok_or_else(|| SemanticGraphError::NotFound {
+                program_id: program_id.to_string(),
+            })?
+            .clone();
+
+        if !latest.quarantined {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: format!("program {program_id} is not quarantined"),
+            });
+        }
+
+        self.behaviors.push(Behavior {
+            trust_tier: compute_trust_tier(&latest.evidence),
+            quarantined: false,
+            quarantine_reason: None,
+            ..latest
+        });
         Ok(())
     }
 
@@ -198,25 +262,45 @@ impl SemanticGraphStore {
     /// still reports whatever tier its evidence legitimately earned at the
     /// time — quarantine does not rewrite the past, it adds a new fact.
     ///
-    /// Returns `SemanticGraphError::NotFound` if no record exists yet for
-    /// `program_id` — there is nothing to quarantine.
+    /// A program with NO prior record can be quarantined: the entry is created
+    /// with no evidence and no version.
+    ///
+    /// This returned `NotFound` until 2026-09-05, on the reasoning that there
+    /// was nothing to quarantine. But the operator asking for this is usually
+    /// reacting to an advisory about a program the gate has never had traffic
+    /// for — most seed protocols have no behaviour record on a fresh instance —
+    /// and telling them "unknown program" when they are trying to block it is
+    /// the wrong answer to the right question. Pre-emptive blocking is the
+    /// normal case, not the exception.
+    ///
+    /// Only the empty program id is rejected.
     pub fn quarantine(
         &mut self,
         program_id: &str,
         reason: String,
     ) -> Result<(), SemanticGraphError> {
-        let latest = self
-            .get(program_id)
-            .ok_or_else(|| SemanticGraphError::NotFound {
-                program_id: program_id.to_string(),
-            })?
-            .clone();
+        if program_id.trim().is_empty() {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: "program_id cannot be empty".to_string(),
+            });
+        }
+
+        let base = self.get(program_id).cloned().unwrap_or_else(|| Behavior {
+            program_id: program_id.to_string(),
+            version: String::new(),
+            expected_state_changes: Vec::new(),
+            allowed_cpis: Vec::new(),
+            trust_tier: TrustTier::Unknown,
+            evidence: BehaviorEvidence::default(),
+            quarantined: false,
+            quarantine_reason: None,
+        });
 
         let quarantined_record = Behavior {
             trust_tier: TrustTier::Unknown,
             quarantined: true,
             quarantine_reason: Some(reason),
-            ..latest
+            ..base
         };
 
         self.behaviors.push(quarantined_record);
@@ -726,18 +810,54 @@ mod tests {
     /// silent no-op or an implicitly-created record — there's nothing to
     /// quarantine, and pretending otherwise would hide a caller bug.
     #[test]
-    fn test_quarantine_nonexistent_program_returns_not_found() {
+    fn a_program_with_no_history_can_be_quarantined_pre_emptively() {
+        // This asserted `NotFound` until 2026-09-05. But the operator reaching
+        // for quarantine is usually reacting to an advisory about a program
+        // the gate has never seen traffic for — most seed protocols have no
+        // behaviour record on a fresh instance — and refusing to block it
+        // because it is "unknown" answers the wrong question.
         let mut store = SemanticGraphStore::new();
-        let result = store.quarantine("never-seen-program", "irrelevant".to_string());
-        assert!(matches!(result, Err(SemanticGraphError::NotFound { .. })));
+        store
+            .quarantine("never-seen-program", "upstream advisory".to_string())
+            .expect("blocking an unknown program is the normal case");
+
+        let latest = store.get("never-seen-program").expect("record created");
+        assert!(latest.quarantined);
+        assert_eq!(latest.trust_tier, TrustTier::Unknown);
+        assert_eq!(
+            latest.quarantine_reason.as_deref(),
+            Some("upstream advisory")
+        );
+
+        // And it can be lifted again, leaving no evidence behind to inflate a
+        // tier the program never earned.
+        store.lift_quarantine("never-seen-program").unwrap();
+        let lifted = store.get("never-seen-program").unwrap();
+        assert!(!lifted.quarantined);
+        assert_eq!(lifted.trust_tier, TrustTier::Unknown);
     }
 
-    /// A fresh `append` after a quarantine must NOT inherit the quarantine —
-    /// quarantine is a deliberate action, not sticky state that leaks into
-    /// unrelated future appends for the same program (e.g. a legitimate
-    /// protocol upgrade after an incident is resolved).
     #[test]
-    fn test_append_after_quarantine_is_not_quarantined_by_default() {
+    fn quarantine_rejects_an_empty_program_id() {
+        let mut store = SemanticGraphStore::new();
+        assert!(matches!(
+            store.quarantine("   ", "reason".to_string()),
+            Err(SemanticGraphError::InvalidRecord { .. })
+        ));
+    }
+
+    /// This asserted the OPPOSITE until 2026-09-05: that any append after a
+    /// quarantine cleared it, so "a legitimate protocol upgrade after an
+    /// incident is resolved" would restore the program.
+    ///
+    /// The flaw is who declares the incident resolved. `manifest_registry`
+    /// appends on every accepted submission, and a resubmission at the same
+    /// trust tier is not a promotion and so is not even P10-gated. Publishing
+    /// any new version was therefore a self-service un-quarantine, available to
+    /// the actor whose program had just been withdrawn from trust, with nothing
+    /// checking that the new version fixed anything.
+    #[test]
+    fn an_upgrade_cannot_lift_its_own_quarantine() {
         let mut store = SemanticGraphStore::new();
         let evidence = BehaviorEvidence {
             has_signed_manifest: true,
@@ -760,7 +880,91 @@ mod tests {
             .unwrap();
 
         let latest = store.get("recovering-program").unwrap();
+        assert_eq!(latest.version, "2.0", "the upgrade is still recorded");
+        assert!(
+            latest.quarantined,
+            "shipping a new version must not restore a withdrawn program"
+        );
+        assert_eq!(latest.trust_tier, TrustTier::Unknown);
+        assert_eq!(latest.quarantine_reason.as_deref(), Some("incident"));
+    }
+
+    /// The counterpart: recovery is possible, it just has to be asked for.
+    #[test]
+    fn lifting_a_quarantine_recomputes_the_tier_from_evidence() {
+        let mut store = SemanticGraphStore::new();
+        let evidence = BehaviorEvidence {
+            has_signed_manifest: true,
+            community_verified_count: 0,
+            battle_tested_tx_count: 0,
+            simulation_match_count: 0,
+        };
+        store
+            .append(sample_behavior("recovering-program", "1.0", evidence))
+            .unwrap();
+        store
+            .quarantine("recovering-program", "incident".to_string())
+            .unwrap();
+        store.lift_quarantine("recovering-program").unwrap();
+
+        let latest = store.get("recovering-program").unwrap();
         assert!(!latest.quarantined);
-        assert_eq!(latest.version, "2.0");
+        assert!(latest.quarantine_reason.is_none());
+        // Re-derived from evidence (P7), not restored from what it used to be.
+        assert_eq!(latest.trust_tier, TrustTier::OfficialManifest);
+        // P4: the quarantine itself is still in history.
+        let versions = store.get_all_versions("recovering-program");
+        assert!(
+            versions.iter().any(|b| b.quarantined),
+            "lifting must not erase the quarantine record"
+        );
+    }
+
+    #[test]
+    fn lifting_a_quarantine_that_is_not_active_is_an_error() {
+        // A no-op append to an audit trail whose value is that every entry
+        // means something is worse than an error.
+        let mut store = SemanticGraphStore::new();
+        assert!(matches!(
+            store.lift_quarantine("never-seen"),
+            Err(SemanticGraphError::NotFound { .. })
+        ));
+        store
+            .append(sample_behavior(
+                "clean-program",
+                "1.0",
+                BehaviorEvidence {
+                    has_signed_manifest: true,
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        assert!(matches!(
+            store.lift_quarantine("clean-program"),
+            Err(SemanticGraphError::InvalidRecord { .. })
+        ));
+    }
+
+    #[test]
+    fn a_caller_can_never_set_quarantine_state_through_append() {
+        // The fields exist on `Behavior` because they are read back out of it;
+        // writing them through `append` would be a tier assignment that
+        // bypasses `compute_trust_tier` (P7).
+        let mut store = SemanticGraphStore::new();
+        let mut b = sample_behavior(
+            "sneaky",
+            "1.0",
+            BehaviorEvidence {
+                has_signed_manifest: true,
+                ..Default::default()
+            },
+        );
+        b.quarantined = true;
+        b.quarantine_reason = Some("self-declared".to_string());
+        store.append(b).unwrap();
+
+        let latest = store.get("sneaky").unwrap();
+        assert!(!latest.quarantined, "quarantine is not caller-settable");
+        assert_eq!(latest.trust_tier, TrustTier::OfficialManifest);
     }
 }

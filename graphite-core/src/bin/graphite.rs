@@ -73,6 +73,11 @@ enum Commands {
         action: RegressionAction,
     },
     /// Manifest Registry operator actions (G5 reviewers + signed submissions)
+    /// Withdraw a program from trust, restore it, or list what is withdrawn
+    Quarantine {
+        #[command(subcommand)]
+        action: QuarantineAction,
+    },
     Registry {
         #[command(subcommand)]
         action: RegistryAction,
@@ -108,6 +113,37 @@ enum RegressionAction {
         /// Network label for fixture provenance (mainnet|devnet)
         #[arg(long, default_value = "mainnet")]
         network: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum QuarantineAction {
+    /// Withdraw a program from trust (forces its tier to Unknown)
+    Add {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Program ID (base58) to withdraw from trust
+        #[arg(long)]
+        program: String,
+        /// Why — recorded on the append-only graph and shown in listings
+        #[arg(long)]
+        reason: String,
+    },
+    /// Restore a quarantined program, recomputing its tier from evidence
+    Lift {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Program ID (base58) to restore
+        #[arg(long)]
+        program: String,
+    },
+    /// List every currently quarantined program and why
+    List {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
     },
 }
 
@@ -325,6 +361,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     input_path: input,
                 },
             }),
+        },
+        Commands::Quarantine { action } => match action {
+            QuarantineAction::Add {
+                data_dir,
+                program,
+                reason,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Quarantine {
+                action: graphite_core::cli::QuarantineAction::Add {
+                    data_dir,
+                    program_id: program,
+                    reason,
+                },
+            }),
+            QuarantineAction::Lift { data_dir, program } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Quarantine {
+                    action: graphite_core::cli::QuarantineAction::Lift {
+                        data_dir,
+                        program_id: program,
+                    },
+                })
+            }
+            QuarantineAction::List { data_dir } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Quarantine {
+                    action: graphite_core::cli::QuarantineAction::List { data_dir },
+                })
+            }
         },
         Commands::Plugins { dir } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Plugins { dir })

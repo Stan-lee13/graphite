@@ -124,6 +124,11 @@ pub enum CliCommand {
     Registry {
         action: RegistryAction,
     },
+    /// Withdraw a program from trust, restore it, or list what is withdrawn
+    /// (ARCHITECTURE.md 3.8).
+    Quarantine {
+        action: QuarantineAction,
+    },
     /// Collect REAL on-chain transactions into the regression corpus
     /// (Phase 2 exit: "benchmark uses real on-chain data, not synthetic").
     #[cfg(feature = "rpc")]
@@ -187,10 +192,67 @@ pub enum RegistryAction {
     },
 }
 
+/// Quarantine operator action (dispatched by `CliCommand::Quarantine`).
+///
+/// Quarantine is deliberately an operator decision, never automatic — see
+/// `GraphiteCore::quarantine_program` for the recorded tradeoff (P14).
+///
+/// These operate on the SERVER'S durable semantic graph (`GRAPHITE_DATA_DIR`,
+/// default `./graphite-data`), not on the registry CLI's `graph_state.json`.
+/// Those are two different stores: the server snapshots earned trust into its
+/// data directory and never reads `graph_state.json`, so a quarantine written
+/// there would be invisible to the thing doing the verifying. A running server
+/// also has `POST /admin/quarantine`, which does not require a restart.
+pub enum QuarantineAction {
+    /// Withdraw a program from trust, forcing its tier to Unknown.
+    Add {
+        data_dir: Option<PathBuf>,
+        program_id: String,
+        reason: String,
+    },
+    /// Restore a quarantined program, recomputing its tier from evidence (P7).
+    Lift {
+        data_dir: Option<PathBuf>,
+        program_id: String,
+    },
+    /// List every currently quarantined program and why.
+    List { data_dir: Option<PathBuf> },
+}
+
+/// The server's durable state directory: `--data-dir`, else
+/// `GRAPHITE_DATA_DIR`, else `./graphite-data` — the same resolution order
+/// `serve` uses, so the CLI and the server agree on which graph they mean.
+fn data_dir_path(explicit: Option<PathBuf>) -> PathBuf {
+    explicit
+        .or_else(|| {
+            std::env::var("GRAPHITE_DATA_DIR")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| PathBuf::from("graphite-data"))
+}
+
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         CliCommand::Verify { input, profile } => {
-            let mut core = GraphiteCore::new();
+            // Load the SERVER'S durable semantic graph, not a blank one.
+            // `graphite verify` is how an operator asks "what would the gate
+            // decide about this?", and a core with no earned trust, no
+            // simulation baselines and no quarantines answers a different
+            // question. Most visibly: a program the operator has withdrawn
+            // from trust would still verify as OfficialManifest here while the
+            // server blocked it. A missing directory is the normal first-run
+            // case and starts a fresh store.
+            let data_dir = data_dir_path(None);
+            let mut core = GraphiteCore::with_data_dir(data_dir.clone());
+            let quarantined = core.quarantined_programs().len();
+            if quarantined > 0 {
+                eprintln!(
+                    "graph: {} ({quarantined} quarantined program(s))",
+                    data_dir.display()
+                );
+            }
             // C53: merge community-accepted manifests from the registry state
             // (same contract as the server: `registry_state.json` or
             // GRAPHITE_REGISTRY_STATE) so `graphite verify` sees the same
@@ -336,6 +398,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         CliCommand::Registry { action } => run_registry(action),
+        CliCommand::Quarantine { action } => run_quarantine(action),
         #[cfg(feature = "rpc")]
         CliCommand::RegressionSeedLive {
             rpc_url,
@@ -491,6 +554,66 @@ fn load_corpus_for_seed(
         Ok(c) => Ok(c),
         Err(RegressionError::MissingDirectory(_)) => Ok(RegressionCorpus::new()),
         Err(e) => Err(e),
+    }
+}
+
+/// Withdraw a program from trust, restore it, or list what is withdrawn.
+///
+/// Goes through `GraphiteCore`, so the change lands in the same durable
+/// semantic graph the server loads at startup — writing to a store nothing
+/// verifies against would be the whole point missed.
+fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        QuarantineAction::Add {
+            data_dir,
+            program_id,
+            reason,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let core = GraphiteCore::with_data_dir(dir.clone());
+            core.quarantine_program(&program_id, &reason)?;
+            println!("QUARANTINED {program_id} — {}", reason.trim());
+            println!(
+                "trust tier forced to Unknown until lifted; graph: {}",
+                dir.display()
+            );
+            println!("A running server keeps its own copy in memory — restart it, or use POST /admin/quarantine.");
+            Ok(())
+        }
+        QuarantineAction::Lift {
+            data_dir,
+            program_id,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let core = GraphiteCore::with_data_dir(dir.clone());
+            core.lift_program_quarantine(&program_id)?;
+            println!("LIFTED {program_id} — tier recomputed from evidence (P7)");
+            println!("graph: {}", dir.display());
+            Ok(())
+        }
+        QuarantineAction::List { data_dir } => {
+            let dir = data_dir_path(data_dir);
+            let core = GraphiteCore::with_data_dir(dir.clone());
+            let active = core.quarantined_programs();
+            if active.is_empty() {
+                println!("no programs are quarantined ({})", dir.display());
+            } else {
+                println!(
+                    "{} quarantined program(s) ({}):",
+                    active.len(),
+                    dir.display()
+                );
+                for (program, reason) in active {
+                    let reason = if reason.is_empty() {
+                        "(no reason recorded)".to_string()
+                    } else {
+                        reason
+                    };
+                    println!("  {program}  {reason}");
+                }
+            }
+            Ok(())
+        }
     }
 }
 

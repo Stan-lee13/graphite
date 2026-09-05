@@ -110,6 +110,16 @@ pub enum LifecycleEvent {
     Confirmation,
     /// The transaction reached finalized commitment. Caller-reported.
     Finalization,
+    /// An operator changed the gate's own state — today, withdrawing a program
+    /// from trust or restoring it.
+    ///
+    /// Self-observed: Graphite performs the action itself, so a caller must not
+    /// be able to report one. Otherwise anyone could write "quarantine lifted
+    /// for X" into the audit trail without a quarantine ever being lifted,
+    /// which is exactly the forged history `is_self_observed` exists to stop.
+    /// `content_hash` carries the program id rather than a transaction hash —
+    /// this event is about a program, not a transaction.
+    OperatorAction,
 }
 
 impl LifecycleEvent {
@@ -123,6 +133,7 @@ impl LifecycleEvent {
             LifecycleEvent::Construction
                 | LifecycleEvent::Simulation
                 | LifecycleEvent::Verification
+                | LifecycleEvent::OperatorAction
         )
     }
 }

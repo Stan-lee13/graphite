@@ -863,6 +863,76 @@ impl GraphiteCore {
         Ok(())
     }
 
+    /// Trusted operator API: withdraw a program from trust (ARCHITECTURE.md
+    /// 3.8), forcing its tier to Unknown until the quarantine is lifted.
+    ///
+    /// This is an append, not a mutation (P4): the pre-quarantine record stays
+    /// in history and still reports the tier its evidence earned at the time.
+    /// Quarantine does not rewrite the past, it adds a new fact.
+    ///
+    /// **Deliberately operator-only, not automatic.** Recorded tradeoff (P14):
+    /// quarantine forces a program to Unknown, which is a denial of service on
+    /// every wallet profile with a tier floor. Triggering it from request
+    /// traffic — N blocked verifications, N risk findings — would hand that
+    /// denial to anyone who can send requests, since the inputs those checks
+    /// judge are chosen by the caller. Sending a handful of crafted
+    /// transactions would withdraw Jupiter from trust for every user of the
+    /// gate. So the trigger is an operator decision (or an external monitor
+    /// holding the API key), informed by the evidence Graphite surfaces on
+    /// `/api/policy-violations` and `/api/graph`, rather than a threshold the
+    /// attacker also controls the inputs to.
+    pub fn quarantine_program(
+        &self,
+        program_id: &str,
+        reason: &str,
+    ) -> Result<(), VerificationError> {
+        if reason.trim().is_empty() {
+            return Err(VerificationError::InvalidInput(
+                "quarantine requires a non-empty reason — an unexplained withdrawal of trust is \
+                 not auditable (P9)"
+                    .to_string(),
+            ));
+        }
+        self.graph()
+            .quarantine(program_id, reason.trim().to_string())
+            .map_err(VerificationError::SemanticGraph)?;
+        self.persist_state();
+        Ok(())
+    }
+
+    /// Trusted operator API: lift an active quarantine, restoring the tier the
+    /// program's evidence earns (recomputed, never handed back — P7).
+    ///
+    /// Errors when the program has no record or is not currently quarantined.
+    pub fn lift_program_quarantine(&self, program_id: &str) -> Result<(), VerificationError> {
+        self.graph()
+            .lift_quarantine(program_id)
+            .map_err(VerificationError::SemanticGraph)?;
+        self.persist_state();
+        Ok(())
+    }
+
+    /// Every currently quarantined program with its reason, in program-id
+    /// order so the listing is stable (P2).
+    pub fn quarantined_programs(&self) -> Vec<(String, String)> {
+        let graph = self.graph();
+        let mut seen: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
+        for b in graph.behaviors() {
+            if b.quarantined {
+                seen.insert(
+                    b.program_id.clone(),
+                    b.quarantine_reason.clone().unwrap_or_default(),
+                );
+            } else {
+                // A later non-quarantined record means the quarantine was
+                // lifted; the history still holds both.
+                seen.remove(&b.program_id);
+            }
+        }
+        seen.into_iter().collect()
+    }
+
     /// Trusted operator API: seed or override a program's simulation baseline
     /// (e.g. restoring a previous deployment's export). Never reachable from a
     /// request body — baselines are earned (RPC-verified usage) or seeded here.
@@ -2499,6 +2569,34 @@ impl GraphiteCore {
             risk_summary
         };
 
+        // A quarantined program is a hard block, not merely a tier downgrade.
+        //
+        // Forcing the tier to Unknown alone is not enough: a permissive profile
+        // (Gaming's 0.55 floor with no tier requirement) would still approve a
+        // withdrawn program, which is not what an operator means when they pull
+        // the switch. Quarantine is the operator asserting evidence of a
+        // problem, so it fails closed like any other risk finding (P12) and
+        // says so, rather than leaving the reader to infer it from a tier.
+        let risk_summary = match self.graph().get(&input.program_id) {
+            Some(b) if b.quarantined => RiskVerdictSummary {
+                status: "Blocked".to_string(),
+                findings: {
+                    let mut f = risk_summary.findings.clone();
+                    f.push(RiskFinding {
+                        pattern: "ProgramQuarantined".to_string(),
+                        reason: format!(
+                            "program withdrawn from trust by the operator: {}",
+                            b.quarantine_reason
+                                .as_deref()
+                                .unwrap_or("no reason recorded")
+                        ),
+                    });
+                    f
+                },
+            },
+            _ => risk_summary,
+        };
+
         // Surface plugin findings (L7) on the final risk summary: a Block made
         // the summary Blocked above; plugin Notes are appended as warning
         // findings so the signal is never silently dropped (P3 explainability).
@@ -2613,7 +2711,16 @@ impl GraphiteCore {
             // inflating the TrustTierLevel signal. The Semantic Graph's
             // internally-accumulated tier (earned, never asserted) is still
             // honored; request-body evidence is ignored on the manifest path.
+            //
+            // The `max` is deliberately one-directional — it lets EARNED
+            // evidence raise a tier above the manifest's own claim, and stops
+            // a low graph tier from dragging a manifested protocol down. But a
+            // quarantine is a downgrade, and `max` discarded it: the tier went
+            // straight back to OfficialManifest from the manifest's
+            // self-assessment, which is exactly the claim a quarantine stops
+            // trusting. So a quarantined program is Unknown, full stop.
             match self.graph().get(&input.program_id) {
+                Some(b) if b.quarantined => TrustTier::Unknown,
                 Some(b) => b.trust_tier.max(manifest_tier),
                 None => manifest_tier,
             }

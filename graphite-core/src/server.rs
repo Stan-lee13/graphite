@@ -607,6 +607,13 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         // submission, confirmation, finalization) — recorded by the caller
         // that actually performed them. See `lifecycle_event_handler`.
         .route("/audit/event", post(lifecycle_event_handler))
+        // Operator control: withdraw a program from trust without a restart.
+        // Behind the same API key as everything else; refused outright when no
+        // key is configured (see `quarantine_handler`).
+        .route(
+            "/admin/quarantine",
+            post(quarantine_handler).get(quarantine_list_handler),
+        )
         // Dashboard read-only API (Constitution P4 — no mutation).
         .route("/api/graph", get(graph_handler))
         .route("/api/confidence-history", get(confidence_history_handler))
@@ -1282,6 +1289,152 @@ struct LifecycleEventBody {
 /// Self-observed event types are REJECTED here — a caller must not be able to
 /// inject a "verification" row that no verification produced, which would let
 /// them forge an approval into the audit trail.
+#[derive(Debug, serde::Deserialize)]
+struct QuarantineBody {
+    program_id: String,
+    /// Why. Required when quarantining; ignored when lifting.
+    #[serde(default)]
+    reason: Option<String>,
+    /// `false` (the default) quarantines; `true` lifts an active quarantine.
+    #[serde(default)]
+    lift: bool,
+    /// Who is doing this, recorded on the audit trail. Optional but strongly
+    /// encouraged — "someone with the API key" is a poor incident record.
+    #[serde(default)]
+    reported_by: Option<String>,
+}
+
+/// Refuse an operator action on a server with no API key configured.
+///
+/// Everywhere else an absent key means "dev mode, unauthenticated". That is
+/// tolerable for read paths and for `/verify`, which mutates only earned
+/// baselines. It is not tolerable here: quarantine forces a program's tier to
+/// Unknown, which blocks it for every wallet profile with a tier floor, so an
+/// unauthenticated instance would be handing that switch to anyone who can
+/// reach the port. The server already refuses to bind a non-loopback address
+/// without a key; this refuses the operation itself even on loopback.
+fn require_operator_auth(state: &AppState) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    if state.api_key.is_some() {
+        return Ok(());
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(serde_json::json!({
+            "error": "operator endpoints require GRAPHITE_API_KEY to be configured",
+            "hint": "an unauthenticated instance must not expose a switch that can withdraw any program from trust",
+        })),
+    ))
+}
+
+/// Withdraw a program from trust, or restore it (ARCHITECTURE.md 3.8).
+///
+/// The change takes effect immediately for this process AND is persisted to
+/// the durable semantic graph, so it survives a restart. Both directions are
+/// appends (P4): the history keeps the pre-quarantine record, the quarantine,
+/// and the lift.
+///
+/// Deliberately operator-triggered rather than automatic — see
+/// `GraphiteCore::quarantine_program` for the recorded tradeoff (P14): a
+/// threshold on request traffic would hand a denial of service to anyone able
+/// to send requests, since they choose the inputs those checks judge.
+async fn quarantine_handler(
+    State(state): State<AppState>,
+    payload: Result<Json<QuarantineBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    require_operator_auth(&state)?;
+    let Json(body) = payload.map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": e.body_text(),
+                "error_type": "JsonRejection",
+            })),
+        )
+    })?;
+
+    let program_id = body.program_id.trim().to_string();
+    if program_id.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "program_id is required" })),
+        ));
+    }
+
+    let outcome = if body.lift {
+        state.core.lift_program_quarantine(&program_id)
+    } else {
+        let reason = body.reason.clone().unwrap_or_default();
+        state.core.quarantine_program(&program_id, &reason)
+    };
+
+    if let Err(e) = outcome {
+        // These are caller-fixable (unknown program, not quarantined, missing
+        // reason), so the detail is genuinely useful — unlike an internal
+        // error, whose detail is never disclosed.
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": e.to_string(),
+                "error_type": "QuarantineRejected",
+            })),
+        ));
+    }
+
+    // P9: withdrawing or restoring trust is a lifecycle-grade fact about the
+    // gate itself. Recording it on the same append-only trail is what makes
+    // "why was this blocked in production last Tuesday" answerable.
+    if let Some(log) = &state.audit {
+        log.append_lifecycle(&LifecycleEventRecord {
+            event_type: LifecycleEvent::OperatorAction,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            content_hash: program_id.clone(),
+            audit_trail_id: None,
+            transaction_signature: None,
+            reported_by: body.reported_by.clone(),
+            detail: Some(if body.lift {
+                format!("quarantine lifted for {program_id}")
+            } else {
+                format!(
+                    "quarantined {program_id}: {}",
+                    body.reason.as_deref().unwrap_or("").trim()
+                )
+            }),
+        });
+    }
+
+    let tier = state
+        .core
+        .graph_snapshot()
+        .nodes
+        .into_iter()
+        .find(|n| n.program_id == program_id)
+        .map(|n| n.trust_tier);
+
+    Ok(Json(serde_json::json!({
+        "program_id": program_id,
+        "quarantined": !body.lift,
+        "trust_tier": tier,
+        "persisted": true,
+    })))
+}
+
+/// Every currently quarantined program and why.
+async fn quarantine_list_handler(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    require_operator_auth(&state)?;
+    let programs: Vec<serde_json::Value> = state
+        .core
+        .quarantined_programs()
+        .into_iter()
+        .map(|(program_id, reason)| serde_json::json!({ "program_id": program_id, "reason": reason }))
+        .collect();
+    Ok(Json(serde_json::json!({
+        "count": programs.len(),
+        "quarantined": programs,
+    })))
+}
+
 async fn lifecycle_event_handler(
     State(state): State<AppState>,
     payload: Result<Json<LifecycleEventBody>, axum::extract::rejection::JsonRejection>,
@@ -1795,6 +1948,182 @@ mod tests {
             .unwrap();
         let value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
         (status, value)
+    }
+
+    /// POST helper mirroring `get_json`.
+    async fn post_json(
+        app: &Router,
+        path: &str,
+        key: Option<&str>,
+        body: serde_json::Value,
+    ) -> (axum::http::StatusCode, serde_json::Value) {
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let mut b = axum::http::Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json");
+        if let Some(k) = key {
+            b = b.header("authorization", format!("Bearer {k}"));
+        }
+        let mut req = b.body(Body::from(body.to_string())).unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+        )
+    }
+
+    // ─── Operator quarantine endpoint (ARCHITECTURE.md 3.8) ──────────────────
+
+    /// An instance with no API key must refuse to expose the switch at all.
+    /// Everywhere else an absent key means "dev mode"; here it would mean
+    /// anyone who can reach the port can withdraw any program from trust.
+    #[tokio::test]
+    async fn quarantine_endpoint_is_refused_without_a_configured_api_key() {
+        let (state, _dir) = test_state();
+        assert!(state.api_key.is_none(), "test_state is unauthenticated");
+        let app = build_app(state, vec![]);
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            None,
+            serde_json::json!({"program_id": SYSTEM, "reason": "test"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::FORBIDDEN, "{json}");
+    }
+
+    const SYSTEM: &str = "11111111111111111111111111111111";
+
+    fn keyed_state() -> (AppState, std::path::PathBuf, String) {
+        let (mut state, dir) = test_state();
+        let key = "operator-test-key".to_string();
+        state.api_key = Some(Arc::new(key.clone()));
+        (state, dir, key)
+    }
+
+    #[tokio::test]
+    async fn quarantine_endpoint_blocks_the_program_and_persists_it() {
+        let (state, dir, key) = keyed_state();
+        let core = state.core.clone();
+        let app = build_app(state, vec![]);
+
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({
+                "program_id": SYSTEM,
+                "reason": "GHSA-2026-0001",
+                "reported_by": "oncall@example.com",
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{json}");
+        assert_eq!(json["quarantined"], serde_json::json!(true));
+        assert_eq!(json["trust_tier"], serde_json::json!("Unknown"));
+
+        // In force for this process...
+        assert_eq!(
+            core.quarantined_programs(),
+            vec![(SYSTEM.to_string(), "GHSA-2026-0001".to_string())]
+        );
+        // ...and on disk, so a restart does not silently restore the program.
+        let reloaded = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        assert_eq!(reloaded.quarantined_programs().len(), 1);
+
+        // Visible through the listing.
+        let (status, listed) = {
+            use axum::body::Body;
+            use tower::ServiceExt;
+            let mut req = axum::http::Request::builder()
+                .uri("/admin/quarantine")
+                .header("authorization", format!("Bearer {key}"))
+                .body(Body::empty())
+                .unwrap();
+            let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            let resp = app.clone().oneshot(req).await.unwrap();
+            let st = resp.status();
+            let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+                .await
+                .unwrap();
+            (
+                st,
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+            )
+        };
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert_eq!(listed["count"], serde_json::json!(1));
+
+        // Lifting works and empties the listing.
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "lift": true}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{json}");
+        assert_eq!(json["quarantined"], serde_json::json!(false));
+        assert!(core.quarantined_programs().is_empty());
+    }
+
+    #[tokio::test]
+    async fn quarantine_endpoint_rejects_a_missing_reason_and_a_bogus_lift() {
+        let (state, _dir, key) = keyed_state();
+        let app = build_app(state, vec![]);
+
+        // No reason: an unexplained withdrawal of trust is not auditable (P9).
+        let (status, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+
+        // Lifting something that is not quarantined.
+        let (status, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "lift": true}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+
+        // Empty program id.
+        let (status, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": "  ", "reason": "x"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn quarantine_endpoint_requires_the_api_key_like_every_other_route() {
+        let (state, _dir, _key) = keyed_state();
+        let app = build_app(state, vec![]);
+        let (status, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some("wrong-key"),
+            serde_json::json!({"program_id": SYSTEM, "reason": "x"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
