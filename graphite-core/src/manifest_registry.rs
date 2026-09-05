@@ -24,8 +24,27 @@
 //!   append is likewise append-only.
 //! - **P10 gate:** a submission that would PROMOTE the program's trust tier
 //!   requires a passing regression run over that program's fixtures. The
-//!   engine runs the replay ITSELF (`replay_corpus_for_program`) against the
-//!   supplied corpus — a caller can never hand it a fabricated "passing" run.
+//!   engine runs the replay ITSELF against the supplied corpus — a caller can
+//!   never hand it a fabricated "passing" run — and replays against a core
+//!   carrying the CANDIDATE manifest, so the run answers "does what this
+//!   submission would install still reproduce the recorded outcomes?" rather
+//!   than "does the manifest it replaces still work?". A program with no prior
+//!   record counts as rank 0, so a first submission that earns any tier above
+//!   Unknown is a promotion and is gated like any other.
+//!
+//!   **What the first-submission gate does and does not prove.** A brand-new
+//!   program has no prior recorded behaviour, so there is nothing for its first
+//!   submission to regress AGAINST. A fixture recorded under the candidate
+//!   manifest and immediately replayed under the same manifest agrees with
+//!   itself by construction. The requirement is therefore not a validation of
+//!   the new manifest — claiming otherwise would be overclaiming. What it buys
+//!   is that the regression baseline EXISTS: the program cannot be enshrined
+//!   with an empty history, so its first upgrade has something to be held to.
+//!   Without it, a program admitted with no fixtures could never be
+//!   meaningfully gated on any later version either, and the gate would
+//!   protect only programs that happened to acquire fixtures some other way.
+//!   The submitter still chooses which transaction to pin, which is the same
+//!   assumption the upgrade path already makes.
 //! - **P11:** trust is keyed by the exact `programId` string — no fuzzy match.
 //!
 //! Registry submissions reach at most Tier 4 (`CommunityVerified`): Tier 5
@@ -196,13 +215,39 @@ impl ManifestRegistryEngine {
             .find(|r| r.program_id == program_id)
     }
 
-    /// Accepted manifests retained in the acceptance log, in acceptance
-    /// order. Records persisted before the `manifest` field existed (serde
-    /// default `None`) are skipped. The verification core merges these into
-    /// its runtime registry (C53) so community-accepted protocols actually
-    /// resolve at verification time, not just in the dashboard.
+    /// The CURRENT accepted manifest for each program — the last one accepted,
+    /// emitted in order of each program's first acceptance so the sequence is
+    /// deterministic (P2).
+    ///
+    /// This yielded every record in acceptance order until 2026-09-05, which
+    /// made manifest upgrades silently inert: `merge_community` skips a program
+    /// already present in the registry, so it took the FIRST accepted version
+    /// and dropped every later one. A protocol shipping a corrected manifest
+    /// was told ACCEPTED, the acceptance log recorded the new version and its
+    /// lineage, the dashboard showed it — and `verify` went on resolving
+    /// instructions against the original. A manifest fix that TIGHTENED a rule
+    /// (a corrected account list, an added risk rule) never took effect.
+    ///
+    /// The append-only log is untouched (P4): every version is still recorded.
+    /// This is only about which one is in force.
+    ///
+    /// Records persisted before the `manifest` field existed (serde default
+    /// `None`) are skipped. The verification core merges these into its
+    /// runtime registry (C53) so community-accepted protocols actually resolve
+    /// at verification time, not just in the dashboard.
     pub fn accepted_manifests(&self) -> impl Iterator<Item = &ProtocolManifest> {
-        self.records.iter().filter_map(|r| r.manifest.as_ref())
+        let mut order: Vec<&str> = Vec::new();
+        let mut latest: HashMap<&str, &ProtocolManifest> = HashMap::new();
+        for record in &self.records {
+            let Some(manifest) = record.manifest.as_ref() else {
+                continue;
+            };
+            let key = record.program_id.as_str();
+            if latest.insert(key, manifest).is_none() {
+                order.push(key);
+            }
+        }
+        order.into_iter().filter_map(move |k| latest.remove(k))
     }
 
     /// Submit a community manifest.
@@ -235,16 +280,37 @@ impl ManifestRegistryEngine {
 
         // P10 gate: promotion requires the ENGINE'S OWN replay over this
         // program's fixtures to pass (fabricated runs are impossible).
-        let current_tier = store.get(&program_id).map(|b| b.trust_tier);
-        let is_promotion =
-            current_tier.is_some_and(|current| tier_rank(&tier) > tier_rank(&current));
+        //
+        // A program with no prior record sits at rank 0. A first submission
+        // that lands it above that IS a promotion — it moves the program from
+        // no trust to some trust, which is the largest single step the tier
+        // ladder has. Treating it as exempt (as this did until 2026-09-05)
+        // left the gate protecting only upgrades, so the way past it was
+        // simply to never have a first record: submit a fresh program and it
+        // was enshrined at OfficialManifest, or at CommunityVerified with
+        // enough attestations, with no replay at all.
+        let current_rank = store
+            .get(&program_id)
+            .map(|b| tier_rank(&b.trust_tier))
+            .unwrap_or(0);
+        let is_promotion = tier_rank(&tier) > current_rank;
         if is_promotion {
             let (corpus, core) = regression.ok_or_else(|| {
                 RegistryError::RegressionGateBlocked(
                     "no regression corpus supplied for a tier promotion".to_string(),
                 )
             })?;
-            let run = replay_corpus_for_program(core, corpus, &program_id);
+            // Replay against the manifest the submission WOULD install, not
+            // the one it replaces. Under the old core an upgrade's fixtures
+            // were checked against the manifest being superseded, which only
+            // ever confirmed that the outgoing manifest still worked; and a
+            // first submission had no manifest to replay against at all,
+            // which is what made the gate unreachable for new programs and
+            // motivated exempting them.
+            let candidate_core = core
+                .with_candidate_manifest(&submission.manifest)
+                .map_err(|e| RegistryError::RegressionGateBlocked(e.to_string()))?;
+            let run = replay_corpus_for_program(&candidate_core, corpus, &program_id);
             match decide_promotion(&run) {
                 PromotionDecision::Promote => {}
                 PromotionDecision::Block { reason } => {
@@ -674,7 +740,12 @@ mod tests {
             "v1.0",
             &signer,
         );
-        let decision = engine.submit(&mut store, submission, None).unwrap();
+        // Earning a tier is a promotion, so the P10 gate applies.
+        let core = GraphiteCore::new();
+        let corpus = onboarding_corpus(&core, &submission);
+        let decision = engine
+            .submit(&mut store, submission, Some((&corpus, &core)))
+            .unwrap();
         assert_eq!(
             decision,
             RegistryDecision::Accepted {
@@ -885,7 +956,11 @@ mod tests {
             },
         ];
 
-        let decision = engine.submit(&mut store, submission, None).unwrap();
+        let core = GraphiteCore::new();
+        let corpus = onboarding_corpus(&core, &submission);
+        let decision = engine
+            .submit(&mut store, submission, Some((&corpus, &core)))
+            .unwrap();
         // 2 distinct registered reviewers with valid attestations → Tier 4.
         assert_eq!(
             decision,
@@ -922,6 +997,46 @@ mod tests {
     const SYSTEM: &str = "11111111111111111111111111111111";
     const ACCT_A: &str = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
     const ACCT_B: &str = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+    /// A program with no shipped seed manifest, so a candidate for it actually
+    /// takes effect in `with_candidate_manifest`.
+    const NON_SEED: &str = "GdP9U5aYx7f2kQzVwNmT8jRcL4hB6eX3sDnWqA1uMoH";
+
+    /// Give a program an earned tier inside a CORE's own graph, so the wallet
+    /// profile's tier floor is not what decides every fixture's verdict.
+    fn seed_tier(core: &mut GraphiteCore, program_id: &str) {
+        core.seed_behavior(Behavior {
+            program_id: program_id.to_string(),
+            version: "v1.0".to_string(),
+            expected_state_changes: vec!["debits accounts.from".to_string()],
+            allowed_cpis: vec![],
+            trust_tier: TrustTier::Unknown, // recomputed by append (P7)
+            evidence: BehaviorEvidence {
+                has_signed_manifest: true,
+                community_verified_count: 0,
+                battle_tested_tx_count: 0,
+                simulation_match_count: 0,
+            },
+            quarantined: false,
+            quarantine_reason: None,
+        })
+        .expect("seed behavior");
+    }
+
+    /// One recorded fixture for `submission`'s program, taken under the
+    /// manifest the submission would install — the minimum a first submission
+    /// needs to clear the P10 gate. Mirrors what a real onboarding flow does:
+    /// replay the program against the candidate manifest, pin what you saw.
+    fn onboarding_corpus(core: &GraphiteCore, submission: &ManifestSubmission) -> RegressionCorpus {
+        let program = submission.manifest.protocol.program_id.clone();
+        let candidate_core = core
+            .with_candidate_manifest(&submission.manifest)
+            .expect("candidate core");
+        let input = make_fixture_input(&program, "01", "transfer", &[], &[ACCT_A, ACCT_B]);
+        let observed = candidate_core.verify(&input).expect("verify").approved;
+        let mut corpus = RegressionCorpus::new();
+        crate::regression_engine::record_fixture(&mut corpus, &input, observed, "onboarding");
+        corpus
+    }
 
     #[test]
     fn p10_gate_blocks_promotion_when_engine_replay_fails() {
@@ -1028,7 +1143,11 @@ mod tests {
         m.trust_tier = "BattleTested".to_string();
         let submission = sign_manifest(m, &signer);
 
-        let decision = engine.submit(&mut store, submission, None).unwrap();
+        let core = GraphiteCore::new();
+        let corpus = onboarding_corpus(&core, &submission);
+        let decision = engine
+            .submit(&mut store, submission, Some((&corpus, &core)))
+            .unwrap();
         assert!(matches!(
             decision,
             RegistryDecision::Accepted {
@@ -1078,22 +1197,207 @@ mod tests {
     }
 
     #[test]
-    fn new_program_acceptance_needs_no_regression_gate() {
-        // A brand-new program (no prior record) is not a promotion — accepted
-        // with a signed submission and no regression run.
+    fn a_first_submission_is_a_promotion_and_is_gated() {
+        // This asserted the OPPOSITE until 2026-09-05: "a brand-new program is
+        // not a promotion — accepted with no regression run". That made the
+        // gate trivially avoidable. An attacker holding one registered
+        // reviewer key did not need to defeat the regression gate; they only
+        // needed a program with no prior record, and the first submission
+        // enshrined it at OfficialManifest (or higher with attestations) with
+        // no replay at all. Moving a program from no trust to some trust is
+        // the largest step the ladder has, and it is now gated like any other.
         let mut engine = ManifestRegistryEngine::new();
         let mut store = SemanticGraphStore::new();
         let signer = key(22);
         engine
             .register_reviewer(&pubkey_b58(&signer), 1000)
             .unwrap();
-        let submission = signed_submission(
-            "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
-            "v1.0",
-            &signer,
+        let submission = signed_submission(NON_SEED, "v1.0", &signer);
+        let err = engine.submit(&mut store, submission, None).unwrap_err();
+        assert!(
+            matches!(err, RegistryError::RegressionGateBlocked(_)),
+            "a first submission with no corpus must be gated, got {err:?}"
         );
-        let decision = engine.submit(&mut store, submission, None).unwrap();
+    }
+
+    #[test]
+    fn the_gate_replays_the_candidate_manifest_not_the_core_it_was_handed() {
+        // Two things at once, because they are the same mechanism:
+        //
+        //   1. The gate must be PASSABLE, or it is just a refusal to onboard
+        //      anything. A fixture recorded against the candidate manifest
+        //      replays cleanly under it.
+        //   2. The gate must replay the CANDIDATE. Replaying the core it was
+        //      handed answers "does the manifest already installed still
+        //      work?" — a question no submission can change, and therefore a
+        //      gate that always passes.
+        //
+        // The test is only meaningful if the two cores actually disagree about
+        // this input, so it asserts that first rather than assuming it.
+        const PROGRAM: &str = NON_SEED;
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let signer = key(23);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let submission = signed_submission(PROGRAM, "v1.0", &signer);
+
+        let mut base = GraphiteCore::new();
+        // The program needs an earned tier or the wallet profile's tier floor
+        // rejects it under BOTH manifests, and the test could not tell them
+        // apart.
+        seed_tier(&mut base, PROGRAM);
+        let candidate_core = base
+            .with_candidate_manifest(&submission.manifest)
+            .expect("candidate core");
+        // A discriminator the candidate manifest does NOT declare. With the
+        // manifest present that is an instruction mismatch; without it the
+        // program is simply unknown, which is a different verdict.
+        let input = make_fixture_input(PROGRAM, "99", "transfer", &[], &[ACCT_A, ACCT_B]);
+
+        let under_candidate = candidate_core.verify(&input).expect("verify").approved;
+        let under_base = base.verify(&input).expect("verify").approved;
+        assert_ne!(
+            under_candidate, under_base,
+            "the candidate manifest must change this input's outcome, or the \
+             test cannot tell which core the gate replayed"
+        );
+
+        let mut corpus = RegressionCorpus::new();
+        crate::regression_engine::record_fixture(
+            &mut corpus,
+            &input,
+            under_candidate,
+            "onboarding",
+        );
+
+        let decision = engine
+            .submit(&mut store, submission, Some((&corpus, &base)))
+            .expect(
+                "the gate replayed the core it was handed rather than the \
+                 candidate manifest — the recorded outcome only holds under \
+                 the candidate",
+            );
         assert!(matches!(decision, RegistryDecision::Accepted { .. }));
+    }
+
+    #[test]
+    fn a_first_submission_whose_replay_fails_is_blocked() {
+        // The gate has to be able to say no on a first submission too, or
+        // requiring a corpus is theatre.
+        const PROGRAM: &str = NON_SEED;
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let signer = key(24);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+        let submission = signed_submission(PROGRAM, "v1.0", &signer);
+
+        let base = GraphiteCore::new();
+        let candidate_core = base
+            .with_candidate_manifest(&submission.manifest)
+            .expect("candidate core");
+        let input = make_fixture_input(PROGRAM, "01", "transfer", &[], &[ACCT_A, ACCT_B]);
+        let actual = candidate_core.verify(&input).expect("verify").approved;
+
+        // Record the OPPOSITE of what the candidate manifest produces.
+        let mut corpus = RegressionCorpus::new();
+        crate::regression_engine::record_fixture(&mut corpus, &input, !actual, "onboarding");
+
+        let err = engine
+            .submit(&mut store, submission, Some((&corpus, &base)))
+            .unwrap_err();
+        assert!(
+            matches!(err, RegistryError::RegressionGateBlocked(_)),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn a_candidate_for_a_seed_program_leaves_the_registry_untouched() {
+        // Accepting a submission for a seed program does not install its
+        // manifest — seed-wins — so the manifest in force afterwards is still
+        // the seed one, and that is what the gate must replay. A candidate
+        // that DID take effect here would have the gate approve a submission
+        // against behaviour that will never run.
+        let core = GraphiteCore::new();
+        let mut m = manifest(SYSTEM, "Impostor System Program", "v9.9");
+        m.instructions[0].discriminator = "ff".to_string();
+        let candidate_core = core
+            .with_candidate_manifest(&m)
+            .expect("a seed candidate is evaluable, just inert");
+        let seed = candidate_core
+            .registry()
+            .get(SYSTEM)
+            .expect("seed manifest must survive");
+        assert_ne!(
+            seed.protocol.name, "Impostor System Program",
+            "a candidate must never displace a shipped seed manifest"
+        );
+    }
+
+    #[test]
+    fn an_accepted_upgrade_replaces_the_manifest_that_reaches_verification() {
+        // Found live 2026-09-05: submitting v2.0.0 printed ACCEPTED, recorded
+        // the version and its lineage, and showed it on the dashboard — while
+        // `verify` went on resolving instructions against v1.0.0 forever.
+        // `merge_community` skips a program already in the registry, so
+        // whichever manifest reached it first won permanently. A protocol
+        // could never correct a manifest, including to TIGHTEN a rule.
+        const PROGRAM: &str = NON_SEED;
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let signer = key(31);
+        engine
+            .register_reviewer(&pubkey_b58(&signer), 1000)
+            .unwrap();
+
+        let core = GraphiteCore::new();
+        let v1 = signed_submission(PROGRAM, "v1.0", &signer);
+        let corpus = onboarding_corpus(&core, &v1);
+        engine
+            .submit(&mut store, v1, Some((&corpus, &core)))
+            .unwrap();
+
+        let mut m2 = manifest(PROGRAM, "Renamed Protocol", "v2.0");
+        m2.instructions[0].name = "SecondVersionOp".to_string();
+        engine
+            .submit(&mut store, sign_manifest(m2, &signer), None)
+            .expect("same tier is not a promotion, so no gate applies");
+
+        // What actually reaches verification.
+        let mut registry = crate::manifest::load_seed_manifests();
+        let merged =
+            registry.merge_community(&engine.accepted_manifests().cloned().collect::<Vec<_>>());
+        assert_eq!(merged, 1, "one program, one current manifest");
+        let in_force = registry.get(PROGRAM).expect("merged manifest");
+        assert_eq!(
+            in_force.instructions[0].name, "SecondVersionOp",
+            "the accepted upgrade must be the manifest in force, not the one it replaced"
+        );
+
+        // P4: the append-only log still holds both versions.
+        assert_eq!(
+            engine
+                .records()
+                .iter()
+                .filter(|r| r.program_id == PROGRAM)
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_candidate_that_fails_schema_validation_is_an_error() {
+        // A manifest the runtime loader would refuse must never be replayed as
+        // though it could take effect — that would gate a submission against
+        // behaviour that cannot exist.
+        let core = GraphiteCore::new();
+        let mut m = manifest(NON_SEED, "Bad", "v1.0");
+        m.instructions = vec![];
+        assert!(core.with_candidate_manifest(&m).is_err());
     }
 
     #[test]
@@ -1106,12 +1410,13 @@ mod tests {
             .unwrap();
 
         let program = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";
+        let core = GraphiteCore::new();
+        let v1 = signed_submission(program, "v1.0", &signer);
+        let corpus = onboarding_corpus(&core, &v1);
+        // v1.0 earns a tier (a promotion, so gated); v2.0 earns the same tier
+        // and is not a promotion, so it needs no corpus.
         engine
-            .submit(
-                &mut store,
-                signed_submission(program, "v1.0", &signer),
-                None,
-            )
+            .submit(&mut store, v1, Some((&corpus, &core)))
             .unwrap();
         engine
             .submit(
@@ -1163,18 +1468,20 @@ mod tests {
 
         let mut store_a = SemanticGraphStore::new();
         let mut store_b = SemanticGraphStore::new();
+        let core = GraphiteCore::new();
+        let corpus = onboarding_corpus(&core, &signed_submission(program, "v1.0", &signer));
         let d1 = engine
             .submit(
                 &mut store_a,
                 signed_submission(program, "v1.0", &signer),
-                None,
+                Some((&corpus, &core)),
             )
             .unwrap();
         let d2 = engine
             .submit(
                 &mut store_b,
                 signed_submission(program, "v1.0", &signer),
-                None,
+                Some((&corpus, &core)),
             )
             .unwrap();
         assert_eq!(d1, d2, "same submission ⇒ same decision (P2)");
@@ -1193,11 +1500,13 @@ mod tests {
             .unwrap();
         let program = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
         let mut store = SemanticGraphStore::new();
+        let core = GraphiteCore::new();
+        let corpus = onboarding_corpus(&core, &signed_submission(program, "v1.0", &signer));
         engine
             .submit(
                 &mut store,
                 signed_submission(program, "v1.0", &signer),
-                None,
+                Some((&corpus, &core)),
             )
             .unwrap();
 
@@ -1250,19 +1559,16 @@ mod tests {
         let mut store = SemanticGraphStore::new();
         // Submit a manifest for the community program AND an attempted
         // override of the seed program.
+        let core = GraphiteCore::new();
+        let community_sub = signed_submission(community_program, "v1.0", &signer);
+        let seed_sub = signed_submission(seed_program, "v1.0", &signer);
+        let community_corpus = onboarding_corpus(&core, &community_sub);
+        let seed_corpus = onboarding_corpus(&core, &seed_sub);
         engine
-            .submit(
-                &mut store,
-                signed_submission(community_program, "v1.0", &signer),
-                None,
-            )
+            .submit(&mut store, community_sub, Some((&community_corpus, &core)))
             .unwrap();
         engine
-            .submit(
-                &mut store,
-                signed_submission(seed_program, "v1.0", &signer),
-                None,
-            )
+            .submit(&mut store, seed_sub, Some((&seed_corpus, &core)))
             .unwrap();
 
         let mut registry = load_seed_manifests();

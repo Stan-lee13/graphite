@@ -166,6 +166,23 @@ enum RegistryAction {
         #[arg(long)]
         corpus_dir: Option<PathBuf>,
     },
+    /// Record a regression fixture under a manifest that is not installed yet
+    ///
+    /// The onboarding step the P10 gate requires: a brand-new program has no
+    /// fixtures, and recording one the ordinary way would pin unknown-protocol
+    /// behaviour rather than the protocol's. Prints the outcome it pinned —
+    /// read it before submitting.
+    RecordFixture {
+        /// Regression corpus directory to append to (created if absent)
+        #[arg(long)]
+        corpus_dir: PathBuf,
+        /// The candidate protocol manifest JSON
+        #[arg(long)]
+        manifest: PathBuf,
+        /// A VerificationInput JSON file, same shape `graphite verify` reads
+        #[arg(long)]
+        input: PathBuf,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -297,6 +314,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
+            RegistryAction::RecordFixture {
+                corpus_dir,
+                manifest,
+                input,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
+                action: graphite_core::cli::RegistryAction::RecordFixture {
+                    corpus_dir,
+                    manifest_path: manifest,
+                    input_path: input,
+                },
+            }),
         },
         Commands::Plugins { dir } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Plugins { dir })

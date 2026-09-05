@@ -18,7 +18,11 @@ use crate::policy_engine::WalletProfile;
 use crate::regression_engine::{record_fixture, RegressionCorpus};
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
-#[cfg(feature = "rpc")]
+// `GraphiteCore` itself is not rpc-gated — only the fetch loop that uses it
+// is. The tests below construct one regardless of features, so gating this on
+// `rpc` alone broke `--no-default-features --all-targets`, which no
+// `--all-features` run can ever surface.
+#[cfg(any(feature = "rpc", test))]
 use crate::verification::GraphiteCore;
 use crate::verification::{ProposedIntent, VerificationInput};
 use std::sync::OnceLock;

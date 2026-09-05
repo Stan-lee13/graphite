@@ -164,6 +164,27 @@ pub enum RegistryAction {
         attestations: Vec<String>,
         corpus_dir: Option<PathBuf>,
     },
+    /// Record a regression fixture for a program under a manifest that is not
+    /// installed yet.
+    ///
+    /// This is the onboarding step the P10 gate requires. A brand-new program
+    /// has no fixtures, and a fixture cannot be recorded through the ordinary
+    /// path because the manifest that gives the program its shape has not been
+    /// accepted — so verification would run in unknown-protocol mode and pin
+    /// the wrong behaviour. This replays the input against the CANDIDATE
+    /// manifest and appends what it observed.
+    ///
+    /// It pins observed behaviour; it does not judge it. Read the printed
+    /// outcome before submitting — pinning a transaction you have not looked
+    /// at makes the baseline every future upgrade is held to meaningless.
+    RecordFixture {
+        corpus_dir: PathBuf,
+        /// The candidate manifest, so the replay sees the program's real shape.
+        manifest_path: PathBuf,
+        /// A `VerificationInput` JSON file — the same shape `graphite verify`
+        /// reads.
+        input_path: PathBuf,
+    },
 }
 
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
@@ -452,12 +473,16 @@ fn save_graph(
     Ok(())
 }
 
-/// Load the corpus for a live seed. A missing directory starts a fresh corpus
+/// Load a corpus for appending to. A missing directory starts a fresh corpus
 /// (first run); ANY other load failure (e.g. a corrupt fixture file) is an
 /// error. Silently resetting a corrupt corpus and then saving would DROP the
 /// fixtures of every program whose file was on disk (save_to_dir snapshots
 /// the in-memory model per program) — data loss on partial corruption.
-#[cfg(any(feature = "rpc", test))]
+///
+/// Not feature-gated: `registry record-fixture` needs it in every build, not
+/// only under `rpc`. (It was `#[cfg(any(feature = "rpc", test))]`, which
+/// `--all-features` can never catch — the same shape as the CI break where a
+/// `server`-gated enum variant had an ungated match arm.)
 fn load_corpus_for_seed(
     dir: &Path,
 ) -> Result<crate::regression_engine::RegressionCorpus, crate::regression_engine::RegressionError> {
@@ -590,6 +615,68 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                     std::process::exit(1);
                 }
             }
+        }
+        RegistryAction::RecordFixture {
+            corpus_dir,
+            manifest_path,
+            input_path,
+        } => {
+            let manifest_json = std::fs::read_to_string(&manifest_path)
+                .map_err(|e| format!("reading {}: {e}", manifest_path.display()))?;
+            let manifest: crate::manifest::ProtocolManifest = serde_json::from_str(&manifest_json)
+                .map_err(|e| format!("parsing {}: {e}", manifest_path.display()))?;
+            let input_json = std::fs::read_to_string(&input_path)
+                .map_err(|e| format!("reading {}: {e}", input_path.display()))?;
+            let input: crate::verification::VerificationInput =
+                serde_json::from_str(&input_json)
+                    .map_err(|e| format!("parsing {}: {e}", input_path.display()))?;
+
+            if input.program_id != manifest.protocol.program_id {
+                return Err(format!(
+                    "input program_id {} does not match the manifest's {} — a fixture \
+                     recorded for a different program would never be replayed by the gate",
+                    input.program_id, manifest.protocol.program_id
+                )
+                .into());
+            }
+
+            // Replay against the manifest as it WOULD be installed. Without
+            // this the program is unknown and the pinned outcome describes
+            // unknown-protocol mode rather than the protocol.
+            let core = GraphiteCore::new().with_candidate_manifest(&manifest)?;
+            let result = core.verify(&input)?;
+
+            let mut corpus = load_corpus_for_seed(&corpus_dir)?;
+            let before = corpus.len();
+            crate::regression_engine::record_fixture(
+                &mut corpus,
+                &input,
+                result.approved,
+                "onboarding",
+            );
+            corpus.save_to_dir(&corpus_dir)?;
+
+            println!(
+                "{} — confidence {:.2}, tier {}, {}",
+                if result.approved {
+                    "APPROVED"
+                } else {
+                    "BLOCKED"
+                },
+                result.confidence,
+                result.trust_tier,
+                result.summary
+            );
+            if corpus.len() == before {
+                println!("fixture already present (deduped by content hash) — corpus unchanged");
+            } else {
+                println!("recorded 1 fixture into {}", corpus_dir.display());
+            }
+            println!(
+                "This pins what the pipeline DID, not what it should do. Every future \
+                 version of this manifest is regressed against it — check the outcome above."
+            );
+            Ok(())
         }
     }
 }
@@ -745,13 +832,41 @@ mod tests {
         let manifest_path = dir.join("manifest.json");
         std::fs::write(&manifest_path, manifest_json).unwrap();
 
+        // A first submission earns a tier, which is a promotion, which the P10
+        // gate requires a regression baseline for. This walks the real
+        // onboarding flow rather than reaching past it: record a fixture under
+        // the candidate manifest, then submit against that corpus.
+        let corpus_dir = dir.join("corpus");
+        let input_path = dir.join("input.json");
+        let input_json = serde_json::json!({
+            "proposed_intent": {
+                "intent_type": "transfer",
+                "raw_natural_language": "ping the audit test program",
+                "confidence_of_parse": 0.9
+            },
+            "program_id": "AuditTest1111111111111111111111111111111111",
+            "protocol_version": "1.0.0",
+            "instruction_discriminator": "aabbccdd",
+            "account_addresses": ["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
+            "compute_units": 150,
+            "account_writes": 1,
+            "cpi_hops": 0
+        });
+        std::fs::write(&input_path, input_json.to_string()).unwrap();
+        run_registry(RegistryAction::RecordFixture {
+            corpus_dir: corpus_dir.clone(),
+            manifest_path: manifest_path.clone(),
+            input_path,
+        })
+        .expect("recording an onboarding fixture must work, or the gate is unreachable");
+
         run_registry(RegistryAction::Submit {
             state: Some(state.clone()),
             graph_state: Some(graph.clone()),
             manifest_path,
             signer_key_hex: Some(hex::encode([7u8; 32])),
             attestations: vec![],
-            corpus_dir: None,
+            corpus_dir: Some(corpus_dir),
         })
         .unwrap();
 

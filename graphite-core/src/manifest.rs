@@ -225,6 +225,39 @@ impl ManifestRegistry {
         merged
     }
 
+    /// A copy of this registry with `candidate` applied, for evaluating a
+    /// manifest submission BEFORE it is accepted.
+    ///
+    /// Unlike `merge_community`, the candidate REPLACES an existing non-seed
+    /// manifest for the same program. That is the point: the P10 regression
+    /// gate has to replay a program's recorded fixtures against the behaviour
+    /// the submission would actually produce, and replaying an upgrade against
+    /// the manifest it is replacing answers the wrong question — it can only
+    /// tell you the old manifest still works.
+    ///
+    /// Seed manifests stay immutable, so a candidate for a seed program leaves
+    /// this registry unchanged. That is not the candidate being ignored — it is
+    /// the accurate answer. Accepting a submission for a seed program does not
+    /// install its manifest (`merge_community` is seed-wins), so the manifest
+    /// in force afterwards is still the seed one, and that is what a replay
+    /// must run against. Returning an error here would instead refuse to
+    /// evaluate a submission that can legitimately be accepted for its
+    /// attestation evidence.
+    ///
+    /// A candidate that fails schema validation IS an error — a manifest the
+    /// runtime loader would refuse must never be replayed as though it could
+    /// take effect.
+    pub fn with_candidate(&self, candidate: &ProtocolManifest) -> Result<Self, ManifestError> {
+        self.validate(candidate)?;
+        let key = candidate.protocol.program_id.clone();
+        if self.seed_program_ids.contains(&key) {
+            return Ok(self.clone());
+        }
+        let mut next = self.clone();
+        next.manifests.insert(key, candidate.clone());
+        Ok(next)
+    }
+
     /// Find an instruction definition by discriminator (hex), allowing
     /// exact or input-starts-with-manifest matches for short discriminators.
     pub fn find_instruction<'a>(

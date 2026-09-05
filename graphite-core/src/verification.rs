@@ -797,6 +797,29 @@ impl GraphiteCore {
         self.registry.merge_community(&manifests)
     }
 
+    /// A clone of this core whose registry has `candidate` applied, sharing
+    /// this core's semantic graph.
+    ///
+    /// This is what makes the P10 regression gate mean something: a submission
+    /// is replayed against the behaviour it WOULD produce once accepted, not
+    /// against the manifest it is replacing. Without it the gate can only
+    /// confirm that the old manifest still works, which no submission changes.
+    ///
+    /// A candidate for a seed program leaves the registry unchanged, because
+    /// accepting such a submission does not install its manifest — the seed
+    /// manifest stays in force, so that is what a replay must run against.
+    /// A candidate that fails schema validation is an error.
+    pub fn with_candidate_manifest(
+        &self,
+        candidate: &crate::manifest::ProtocolManifest,
+    ) -> Result<Self, crate::manifest::ManifestError> {
+        let registry = self.registry.with_candidate(candidate)?;
+        Ok(Self {
+            registry,
+            ..self.clone()
+        })
+    }
+
     /// Access the plugin orchestrator (P8 surface).
     pub fn plugins(&self) -> &crate::plugin_orchestrator::PluginOrchestrator {
         &self.plugins
