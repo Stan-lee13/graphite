@@ -61,7 +61,7 @@ jobs:
         run: |
           npm install
           npx tsc --noEmit -p tsconfig.json
-          npx tsx --test auditbind.test.ts
+          npx tsx --test auditbind.test.ts bound-instruction.test.ts
 
   go:
     name: Go SDK — vet + tests

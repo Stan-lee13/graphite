@@ -49,6 +49,12 @@ import type {
 // Re-export types
 export type { VerificationResult, VerificationInput, ProposedIntent, WalletProfile };
 
+// TOCTOU closure for the swap payload path (P1 fix, 2026-09-05 audit) lives
+// in its own module, deliberately isolated from the SAK plugin tree — see
+// bound-instruction.ts's doc comment for why.
+import { buildInstructionFromPayload, type BoundInstructionPayload } from "./bound-instruction.js";
+export { buildInstructionFromPayload, type BoundInstructionPayload };
+
 /**
  * RPC Simulation helper — calls simulateTransaction to get real resource usage.
  * The compute/writes/hops feed the Core's Simulation Integrity check (L3) and
@@ -287,21 +293,33 @@ export class VerifiedSakAgent {
   /**
    * Execute a swap under the Graphite verification gate.
    *
-   * TOCTOU hardening (audit finding C2): pass `payload` — the EXACT swap
-   * instruction (programId, discriminator, full account list, raw data
-   * bytes) — to bind AuditBind to the real instruction that will be
-   * submitted. Any mutation of that instruction between verification and
-   * execution changes the content_hash and ABORTS.
+   * TOCTOU hardening (audit finding C2, CLOSED 2026-09-05 for the
+   * payload-provided path — see P1 "SAK swap-path TOCTOU residual"): pass
+   * `payload` — the EXACT swap instruction (programId, discriminator, full
+   * account list WITH per-account isSigner/isWritable, raw data bytes) — to
+   * bind AuditBind to the real instruction that will be submitted. Any
+   * mutation of that instruction between verification and execution changes
+   * the content_hash and ABORTS. Previously a bound payload was still handed
+   * off to `sakAgent.methods.swap()`, which REBUILDS the swap instruction
+   * internally — the executed instruction was not actually guaranteed to be
+   * the verified one (the "HONEST BOUNDARY" this comment used to document).
+   * That gap is now closed: when `payload` is supplied, this method builds
+   * the `TransactionInstruction` directly from the SAME bound fields and
+   * submits it itself (mirroring `executeTransfer`), never touching SAK's
+   * internal builder. This requires the caller to supply the real
+   * isSigner/isWritable flags (previously missing from the payload schema,
+   * which is exactly why the bridge could not safely do this before).
    *
-   * Without `payload` the swap check is a reduced projection
-   * (programId + discriminator + wallet). In that case, set
-   * `GRAPHITE_SWAP_STRICT=1` to FAIL CLOSED (the opaque SAK `methods.swap`
-   * path cannot be payload-bound, so a strict operator must supply a built
-   * payload via the Jupiter swap API / transaction builder).
+   * Without `payload` the swap check remains a reduced projection
+   * (programId + discriminator + wallet) and execution still goes through
+   * the opaque SAK `methods.swap()` path — that residual is unchanged and
+   * intentional (SAK's swap builder needs live routing data this bridge
+   * does not have). Set `GRAPHITE_SWAP_STRICT=1` to FAIL CLOSED instead of
+   * accepting that residual.
    */
   async executeSwap(
     naturalLanguage: string,
-    payload?: { programId: string; discriminator: string; accounts: string[]; instructionData?: number[] },
+    payload?: BoundInstructionPayload,
   ): Promise<{ executed: boolean; verification: VerificationResult; signature?: string }> {
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
@@ -322,18 +340,7 @@ export class VerifiedSakAgent {
           "so AuditBind can bind the exact instruction — the opaque SAK swap path cannot be TOCTOU-bound. ABORTING."
       );
     }
-    // HONEST BOUNDARY (final-forensic finding): a bound payload is verified
-    // against the approved content_hash, but `sakAgent.methods.swap` below
-    // REBUILDS the swap instruction internally — the executed instruction is
-    // not guaranteed to be the payload. The payload schema (base58 account
-    // strings only) lacks isSigner/isWritable flags, so the bridge cannot
-    // safely reconstruct + sign the bound instruction itself. Full TOCTOU
-    // closure therefore requires the OPERATOR to build, verify, and submit
-    // the exact instruction (see ARCHITECTURE.md → Known Boundary
-    // Limitations). GRAPHITE_SWAP_STRICT=1 only forces a payload to exist;
-    // it does not by itself make the executor submit it.
-
-    const accountAddresses = payload?.accounts ?? [this.walletPublicKey];
+    const accountAddresses = payload?.accounts.map((a) => a.pubkey) ?? [this.walletPublicKey];
     const verification = await this.verifyTransaction({
       programId: payload?.programId ?? JUPITER_V6_PROGRAM,
       instructionDiscriminator: payload?.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
@@ -350,25 +357,43 @@ export class VerifiedSakAgent {
         {
           programId: payload.programId,
           data: Uint8Array.from(payload.instructionData ?? []),
-          accounts: payload.accounts,
+          accounts: accountAddresses,
         },
         verification.content_hash ?? verification.audit_trail_id,
       );
       console.log("[Graphite] Swap payload bound to AuditBind (instruction data + full account list).");
-    } else {
-      AuditBind.verify({
-        transaction: { programId: JUPITER_V6_PROGRAM, instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR, accountAddresses },
-        contentHash: verification.content_hash ?? verification.audit_trail_id,
-      });
-      console.warn(
-        "[Graphite] WARNING: swap AuditBind is minimal-projection (no payload bound). " +
-          "Supply a built payload or set GRAPHITE_SWAP_STRICT=1 to close the TOCTOU window."
-      );
+
+      // TOCTOU closure: submit the SAME instruction that was just bound —
+      // never SAK's internal rebuild. buildInstructionFromPayload uses the
+      // identical (programId, accounts, instructionData) fields that were
+      // just hashed above, so what executes is byte-identical to what was
+      // verified by construction, not by trusting a second code path to
+      // agree with the first.
+      const ix = buildInstructionFromPayload(payload);
+      const tx = new Transaction().add(ix);
+      console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound instruction directly (bypassing SAK's builder)...");
+      const signature = await sendAndConfirmTransaction(this.connection, tx, [this.walletKeypair]);
+      console.log(`[Solana] Confirmed: ${signature}`);
+      return { executed: true, verification, signature };
     }
+
+    // No payload: reduced projection, unchanged residual (SAK's swap
+    // builder needs live routing data this bridge does not have access to
+    // ahead of time). GRAPHITE_SWAP_STRICT=1 (checked above) already
+    // refuses to reach this branch for strict operators.
+    AuditBind.verify({
+      transaction: { programId: JUPITER_V6_PROGRAM, instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR, accountAddresses },
+      contentHash: verification.content_hash ?? verification.audit_trail_id,
+    });
+    console.warn(
+      "[Graphite] WARNING: swap AuditBind is minimal-projection (no payload bound); execution goes through SAK's internal " +
+        "builder, which is NOT guaranteed to submit the verified instruction. Supply a built payload or set " +
+        "GRAPHITE_SWAP_STRICT=1 to close the TOCTOU window."
+    );
 
     if (!this.sakAgent) throw new Error("Swap requires SAK plugins. Use executeTransfer for raw web3.js mode.");
 
-    console.log("[Graphite] Swap approved + AuditBind verified — executing...");
+    console.log("[Graphite] Swap approved + AuditBind verified — executing via SAK (residual TOCTOU window, see warning above)...");
     const result = await (this.sakAgent as any).methods.swap(
       params.input_token, params.output_token, params.amount, params.slippage_bps ?? 300,
     );
