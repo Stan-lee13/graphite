@@ -152,7 +152,7 @@ pub fn build_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::account_resolution::ResolvedAccount;
+    use crate::account_resolution::{AccountIdentity, ResolvedAccount};
 
     fn make_account(addr: &str, signer: bool, writable: bool) -> ResolvedAccount {
         ResolvedAccount {
@@ -162,6 +162,8 @@ mod tests {
             is_signer: signer,
             is_writable: writable,
             pda_seeds: vec![],
+            identity: AccountIdentity::Unverified,
+            expected_address_mismatch: false,
             pda_mismatch: false,
         }
     }

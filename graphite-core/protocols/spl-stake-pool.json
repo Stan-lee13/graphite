@@ -78,7 +78,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "deposit_authority",
@@ -185,7 +189,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_program",
@@ -343,7 +350,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_program",
@@ -457,7 +467,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_program",
@@ -631,7 +644,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -775,7 +792,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "stake_program",
@@ -882,7 +903,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "stake_program",
@@ -1079,14 +1104,21 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "sol_deposit_authority",
@@ -1230,7 +1262,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "sol_withdraw_authority",
@@ -1309,7 +1345,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -1467,7 +1506,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_program",
@@ -1567,7 +1609,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_program",
@@ -1660,7 +1705,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_program",
@@ -1788,7 +1836,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_program",
@@ -1909,7 +1960,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "stake_program",
@@ -2016,7 +2071,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "stake_program",
@@ -2102,14 +2161,21 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "sol_deposit_authority",
@@ -2216,7 +2282,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "sol_withdraw_authority",

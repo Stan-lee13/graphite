@@ -57,7 +57,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -138,7 +141,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -194,7 +201,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -247,7 +257,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -335,7 +349,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -412,7 +430,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -517,7 +539,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -594,7 +620,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -824,7 +854,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -856,7 +889,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -980,7 +1016,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -1222,7 +1262,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -1300,7 +1344,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -1370,7 +1418,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -1440,7 +1492,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -1496,7 +1552,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -1552,7 +1612,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -1615,7 +1679,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "mint",
@@ -1777,7 +1845,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -1882,7 +1954,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -1959,7 +2035,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -2229,14 +2309,21 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         },
         {
           "name": "tokenProgram",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2285,7 +2372,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2373,14 +2463,21 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         },
         {
           "name": "tokenProgram",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2436,7 +2533,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2482,7 +2582,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2528,7 +2631,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2595,7 +2701,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2669,7 +2778,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "rent",
@@ -2683,7 +2796,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2767,7 +2883,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2820,7 +2939,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2901,7 +3023,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -2979,7 +3104,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3025,7 +3153,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3071,7 +3202,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3110,7 +3244,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         },
         {
           "name": "state",
@@ -3177,7 +3314,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3223,7 +3363,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3283,7 +3426,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3371,7 +3517,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3417,7 +3566,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3456,7 +3608,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3537,14 +3692,21 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         },
         {
           "name": "tokenProgram",
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3611,7 +3773,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -3667,7 +3832,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -4024,7 +4192,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -4129,7 +4301,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -4273,7 +4449,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -4385,7 +4565,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "ammCache",
@@ -4504,7 +4688,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -5429,7 +5617,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         },
         {
           "name": "state",
@@ -5510,7 +5701,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -5715,7 +5910,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -5761,7 +5959,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -5842,7 +6043,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -5898,7 +6103,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -5982,7 +6191,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -6233,7 +6446,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -6335,7 +6552,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -6693,7 +6914,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "driftSigner",
@@ -6845,7 +7070,10 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
         },
         {
           "name": "state",
@@ -10753,7 +10981,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -10828,7 +11060,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -10901,7 +11137,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         }
       ],
       "expected_state_changes": [
@@ -10971,7 +11211,11 @@
           "role": "readonly",
           "is_writable": false,
           "is_signer": false,
-          "pda_seeds": []
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
         },
         {
           "name": "mint",

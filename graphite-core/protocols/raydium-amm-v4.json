@@ -23,7 +23,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "amm",
@@ -129,7 +133,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "amm",
@@ -237,7 +245,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "amm",
@@ -379,7 +391,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "amm",
@@ -521,7 +537,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "amm",
@@ -593,7 +613,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "amm",
@@ -699,7 +723,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "amm",
@@ -785,14 +813,21 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "system_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "rent",

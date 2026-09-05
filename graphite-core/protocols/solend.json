@@ -36,7 +36,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "Oracle program id",
@@ -226,7 +230,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -360,7 +368,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -448,7 +460,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -508,7 +524,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -621,7 +641,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -702,7 +726,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -878,7 +906,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -980,7 +1012,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -1054,7 +1090,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "Flash loan receiver program id",
@@ -1082,7 +1122,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -1307,7 +1351,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [

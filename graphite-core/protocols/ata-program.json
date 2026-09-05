@@ -17,18 +17,65 @@
       "name": "CreateAssociatedTokenAccount",
       "discriminator": "00",
       "accounts": [
-        { "name": "funding_account", "role": "writable", "is_writable": true, "is_signer": true, "pda_seeds": [] },
-        { "name": "associated_account_address", "role": "pda", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "wallet_address", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "token_mint", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "system_program", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "token_program", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "funding_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "associated_account_address",
+          "role": "pda",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "wallet_address",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
+        }
       ],
       "expected_state_changes": [
         "creates a new associated token account (rent-exempt, funded by the funding account)",
         "no token balance changes"
       ],
-      "allowed_cpis": ["11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
+      "allowed_cpis": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
       "risk_rules": [
         "fails if the associated account already exists (use idempotent variant for retries)"
       ]
@@ -37,18 +84,65 @@
       "name": "CreateAssociatedTokenAccountIdempotent",
       "discriminator": "01",
       "accounts": [
-        { "name": "funding_account", "role": "writable", "is_writable": true, "is_signer": true, "pda_seeds": [] },
-        { "name": "associated_account_address", "role": "pda", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "wallet_address", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "token_mint", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "system_program", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "token_program", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "funding_account",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "associated_account_address",
+          "role": "pda",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "wallet_address",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
+        }
       ],
       "expected_state_changes": [
         "creates the associated token account if absent; succeeds silently if present (idempotent)",
         "no token balance changes"
       ],
-      "allowed_cpis": ["11111111111111111111111111111111", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
+      "allowed_cpis": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
       "risk_rules": [
         "observed live in mainnet transactions (2026-08-08 pinned fixtures)"
       ]
@@ -57,16 +151,53 @@
       "name": "RecoverNested",
       "discriminator": "02",
       "accounts": [
-        { "name": "source", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "nested", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "owner", "role": "readonly", "is_writable": false, "is_signer": true, "pda_seeds": [] },
-        { "name": "token_mint", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "token_program", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "source",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "nested",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "owner",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_mint",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "token_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [],
+          "expected_address": [
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          ]
+        }
       ],
       "expected_state_changes": [
         "recovers funds from a nested associated token account into the parent wallet's ATA"
       ],
-      "allowed_cpis": ["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"],
+      "allowed_cpis": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
       "risk_rules": []
     }
   ],

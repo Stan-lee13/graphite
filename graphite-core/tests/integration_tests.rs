@@ -293,7 +293,7 @@ fn test_e2e_conservative_profile_rejects_unknown() {
 
 #[test]
 fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
-    use graphite_core::account_resolution::ResolvedAccount;
+    use graphite_core::account_resolution::{AccountIdentity, ResolvedAccount};
     use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
 
     let bad_account = ResolvedAccount {
@@ -303,6 +303,8 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
         is_signer: true,
         is_writable: true,
         pda_seeds: vec![],
+        identity: AccountIdentity::Unverified,
+        expected_address_mismatch: false,
         pda_mismatch: false,
     };
 
@@ -332,7 +334,7 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
 
 #[test]
 fn test_fix4_invalid_program_id_is_hard_error() {
-    use graphite_core::account_resolution::ResolvedAccount;
+    use graphite_core::account_resolution::{AccountIdentity, ResolvedAccount};
     use graphite_core::transaction_builder::{build_transaction, TransactionPlan};
 
     let good_account = ResolvedAccount {
@@ -342,6 +344,8 @@ fn test_fix4_invalid_program_id_is_hard_error() {
         is_signer: true,
         is_writable: true,
         pda_seeds: vec![],
+        identity: AccountIdentity::Unverified,
+        expected_address_mismatch: false,
         pda_mismatch: false,
     };
 
@@ -656,15 +660,18 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         verdict.approved
     );
 
-    // Verify the risk finding mentions PDA mismatch
-    let has_pda_finding = verdict
-        .risk_verdict
-        .findings
-        .iter()
-        .any(|f| f.pattern == "PdaMismatch" || f.reason.contains("PDA mismatch"));
+    // Verify the risk finding mentions the account identity mismatch (P0-1
+    // fix, 2026-09-05 audit: the finding pattern was renamed from
+    // "PdaMismatch" to "AccountIdentityMismatch" to also cover
+    // expected_address constant-address mismatches).
+    let has_pda_finding = verdict.risk_verdict.findings.iter().any(|f| {
+        f.pattern == "AccountIdentityMismatch"
+            || f.reason.contains("identity mismatch")
+            || f.reason.contains("PDA mismatch")
+    });
     assert!(
         has_pda_finding,
-        "Risk findings must include PdaMismatch — got: {:?}",
+        "Risk findings must include AccountIdentityMismatch — got: {:?}",
         verdict
             .risk_verdict
             .findings
@@ -784,9 +791,9 @@ fn test_pda_mismatch_correct_pda_passes() {
         .risk_verdict
         .findings
         .iter()
-        .any(|f| f.pattern == "PdaMismatch");
+        .any(|f| f.pattern == "AccountIdentityMismatch");
     assert!(
         !has_pda_finding,
-        "Correct PDA must not produce PdaMismatch finding"
+        "Correct PDA must not produce an AccountIdentityMismatch finding"
     );
 }

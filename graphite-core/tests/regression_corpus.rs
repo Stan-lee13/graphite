@@ -294,9 +294,23 @@ fn instruction_accounts(
     let program_pk = Pubkey::from_base58(program).expect("manifest program id must be base58");
     let n = ins.accounts.len();
     let mut addrs: Vec<Option<Pubkey>> = vec![None; n];
-    // Pass 1: non-PDA roles.
+    // Pass 1: non-PDA roles. A slot with a manifest-declared
+    // `expected_address` (P0-1 fix, 2026-09-05 audit: fixed well-known
+    // program constants — token_program, system_program, etc.) MUST get one
+    // of its accepted constants here, not a synthetic placeholder — a
+    // synthetic address at a constant-address slot is now (correctly)
+    // rejected as an identity mismatch, so a fixture using one would no
+    // longer represent a realistic transaction. The `{program_id}`
+    // self-reference sentinel resolves to this instruction's own program.
     for (i, a) in ins.accounts.iter().enumerate() {
-        if a.pda_seeds.is_empty() {
+        if let Some(expected) = a.expected_address.first() {
+            let resolved = if expected == "{program_id}" {
+                program.to_string()
+            } else {
+                expected.clone()
+            };
+            addrs[i] = Some(Pubkey::from_base58(&resolved).expect("valid expected_address"));
+        } else if a.pda_seeds.is_empty() {
             addrs[i] =
                 Some(Pubkey::from_base58(&gen_addr(seed_base + i as u64)).expect("valid addr"));
         }
@@ -948,7 +962,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         JUPITER,
         "e517cb977ae3ad2a",
         vec![
-            gen_addr(1),
+            // P0-1 fix (2026-09-05 audit): jupiter-v6.json's "route" account
+            // index 0 is `token_program`, now constrained by
+            // `expected_address` — a synthetic placeholder there is
+            // (correctly) rejected as an identity mismatch, so these
+            // hand-built CPI-trace fixtures (which are testing trace
+            // traversal semantics, not account identity) must use the real
+            // constant instead.
+            TOKEN.to_string(),
             gen_addr(2),
             gen_addr(3),
             gen_addr(4),
@@ -982,7 +1003,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         JUPITER,
         "e517cb977ae3ad2a",
         vec![
-            gen_addr(1),
+            // P0-1 fix (2026-09-05 audit): jupiter-v6.json's "route" account
+            // index 0 is `token_program`, now constrained by
+            // `expected_address` — a synthetic placeholder there is
+            // (correctly) rejected as an identity mismatch, so these
+            // hand-built CPI-trace fixtures (which are testing trace
+            // traversal semantics, not account identity) must use the real
+            // constant instead.
+            TOKEN.to_string(),
             gen_addr(2),
             gen_addr(3),
             gen_addr(4),
@@ -1020,7 +1048,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         JUPITER,
         "e517cb977ae3ad2a",
         vec![
-            gen_addr(1),
+            // P0-1 fix (2026-09-05 audit): jupiter-v6.json's "route" account
+            // index 0 is `token_program`, now constrained by
+            // `expected_address` — a synthetic placeholder there is
+            // (correctly) rejected as an identity mismatch, so these
+            // hand-built CPI-trace fixtures (which are testing trace
+            // traversal semantics, not account identity) must use the real
+            // constant instead.
+            TOKEN.to_string(),
             gen_addr(2),
             gen_addr(3),
             gen_addr(4),
@@ -1047,7 +1082,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         JUPITER,
         "e517cb977ae3ad2a",
         vec![
-            gen_addr(1),
+            // P0-1 fix (2026-09-05 audit): jupiter-v6.json's "route" account
+            // index 0 is `token_program`, now constrained by
+            // `expected_address` — a synthetic placeholder there is
+            // (correctly) rejected as an identity mismatch, so these
+            // hand-built CPI-trace fixtures (which are testing trace
+            // traversal semantics, not account identity) must use the real
+            // constant instead.
+            TOKEN.to_string(),
             gen_addr(2),
             gen_addr(3),
             gen_addr(4),
@@ -1071,7 +1113,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         JUPITER,
         "e517cb977ae3ad2a",
         vec![
-            gen_addr(1),
+            // P0-1 fix (2026-09-05 audit): jupiter-v6.json's "route" account
+            // index 0 is `token_program`, now constrained by
+            // `expected_address` — a synthetic placeholder there is
+            // (correctly) rejected as an identity mismatch, so these
+            // hand-built CPI-trace fixtures (which are testing trace
+            // traversal semantics, not account identity) must use the real
+            // constant instead.
+            TOKEN.to_string(),
             gen_addr(2),
             gen_addr(3),
             gen_addr(4),
@@ -1281,7 +1330,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         JUPITER,
         "e517cb977ae3ad2a",
         vec![
-            gen_addr(1),
+            // P0-1 fix (2026-09-05 audit): jupiter-v6.json's "route" account
+            // index 0 is `token_program`, now constrained by
+            // `expected_address` — a synthetic placeholder there is
+            // (correctly) rejected as an identity mismatch, so these
+            // hand-built CPI-trace fixtures (which are testing trace
+            // traversal semantics, not account identity) must use the real
+            // constant instead.
+            TOKEN.to_string(),
             gen_addr(2),
             gen_addr(3),
             gen_addr(4),
@@ -1315,7 +1371,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         JUPITER,
         "e517cb977ae3ad2a",
         vec![
-            gen_addr(1),
+            // P0-1 fix (2026-09-05 audit): jupiter-v6.json's "route" account
+            // index 0 is `token_program`, now constrained by
+            // `expected_address` — a synthetic placeholder there is
+            // (correctly) rejected as an identity mismatch, so these
+            // hand-built CPI-trace fixtures (which are testing trace
+            // traversal semantics, not account identity) must use the real
+            // constant instead.
+            TOKEN.to_string(),
             gen_addr(2),
             gen_addr(3),
             gen_addr(4),

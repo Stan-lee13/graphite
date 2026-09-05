@@ -30,7 +30,8 @@ pub mod verification;
 
 // Re-export core API
 pub use account_resolution::{
-    resolve_accounts, AccountResolutionInput, AccountResolutionResult, ResolvedAccount,
+    resolve_accounts, AccountIdentity, AccountResolutionInput, AccountResolutionResult,
+    ResolvedAccount,
 };
 pub use confidence_engine::{
     compute_confidence, ConfidenceResult, SignalKind, TrustTier, WeightedSignal,

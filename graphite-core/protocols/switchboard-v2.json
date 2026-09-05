@@ -185,7 +185,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "dataBuffer",
@@ -321,7 +325,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "programState",
@@ -429,7 +437,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "programState",
@@ -568,7 +580,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -720,21 +735,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "rent",
@@ -892,7 +917,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -944,7 +973,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -1003,7 +1035,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "crankDataBuffer",
@@ -1082,7 +1118,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "crankDataBuffer",
@@ -1231,7 +1271,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -1326,7 +1369,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "programState",
@@ -1399,14 +1446,21 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "owner",
@@ -1538,7 +1592,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "programState",
@@ -1683,7 +1741,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -1735,7 +1796,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "mint",
@@ -1837,7 +1901,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "programState",
@@ -1858,7 +1926,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -1919,7 +1990,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -2043,14 +2117,21 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "daoMint",
@@ -2110,7 +2191,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -2170,7 +2255,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -2256,7 +2345,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -2343,7 +2436,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -2430,21 +2527,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "rent",
@@ -2490,7 +2597,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "escrow",
@@ -2619,7 +2730,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -2692,21 +2807,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "rent",
@@ -2886,7 +3011,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -2924,7 +3053,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "escrow",
@@ -3067,7 +3200,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [

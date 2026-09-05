@@ -1426,6 +1426,8 @@ impl GraphiteCore {
                             is_signer: i == 0,
                             is_writable: i == 0,
                             pda_seeds: vec![],
+                            identity: crate::account_resolution::AccountIdentity::Unverified,
+                            expected_address_mismatch: false,
                             pda_mismatch: false,
                         })
                         .collect(),
@@ -1650,29 +1652,34 @@ impl GraphiteCore {
         // Note: Intent-Program mismatch and FakeSwap checks are now handled
         // inside the risk engine's assess() function (P0 Checks 8 and 9).
 
-        // Step 3c: PDA Mismatch Detection
-        // If account resolution found PDA mismatches, surface them as risk findings.
-        // A PDA mismatch means the transaction provides an account that doesn't match
-        // the protocol manifest's expected PDA derivation — a potential spoofing attack.
-        let pda_mismatches: Vec<&ResolvedAccount> = resolution
+        // Step 3c: Account Identity Mismatch Detection
+        // If account resolution found PDA mismatches OR expected-address
+        // (constant/well-known-program) mismatches, surface them as risk
+        // findings. Either means the transaction provides an account that
+        // doesn't match what the protocol manifest declares that slot must
+        // be — a potential spoofing/substitution attack (P0-1 fix,
+        // 2026-09-05 audit: expected-address checking is new; PDA mismatch
+        // detection is pre-existing).
+        let identity_mismatches: Vec<&ResolvedAccount> = resolution
             .resolved_accounts
             .iter()
-            .filter(|a| a.pda_mismatch)
+            .filter(|a| a.pda_mismatch || a.expected_address_mismatch)
             .collect();
-        let risk_verdict = if !pda_mismatches.is_empty() {
+        let risk_verdict = if !identity_mismatches.is_empty() {
             let mismatch_reason = format!(
-                "PDA mismatch: {} account(s) do not match manifest-derived addresses: {}",
-                pda_mismatches.len(),
-                pda_mismatches
+                "Account identity mismatch: {} account(s) do not match manifest-declared identity: {}",
+                identity_mismatches.len(),
+                identity_mismatches
                     .iter()
                     .map(|a| format!(
-                        "{} (role={})",
+                        "{} (role={}, kind={})",
                         if a.address.len() >= 8 {
                             &a.address[..8]
                         } else {
                             &a.address
                         },
-                        a.role
+                        a.role,
+                        if a.pda_mismatch { "pda" } else { "expected_address" }
                     ))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -1685,10 +1692,10 @@ impl GraphiteCore {
                     }
                 }
                 crate::risk_engine::RiskVerdict::Blocked { ref pattern, .. } => {
-                    // Already blocked — add PDA mismatch to findings via summarize_risk downstream
+                    // Already blocked — add the mismatch to findings via summarize_risk downstream
                     crate::risk_engine::RiskVerdict::Blocked {
                         pattern: *pattern,
-                        reason: format!("{} | PDA mismatch detected", mismatch_reason),
+                        reason: format!("{} | account identity mismatch detected", mismatch_reason),
                     }
                 }
             }
@@ -1854,29 +1861,29 @@ impl GraphiteCore {
             }
         };
 
-        // Step 3c.5: Add PDA mismatch findings to risk summary
-        let risk_summary = if !pda_mismatches.is_empty() && risk_summary.status == "Clear" {
+        // Step 3c.5: Add account identity mismatch findings to risk summary
+        let risk_summary = if !identity_mismatches.is_empty() && risk_summary.status == "Clear" {
             RiskVerdictSummary {
                 status: "Blocked".to_string(),
                 findings: vec![RiskFinding {
-                    pattern: "PdaMismatch".to_string(),
+                    pattern: "AccountIdentityMismatch".to_string(),
                     reason: format!(
-                        "PDA mismatch on {} account(s) — derived address does not match provided",
-                        pda_mismatches.len()
+                        "identity mismatch on {} account(s) — derived/expected address does not match provided",
+                        identity_mismatches.len()
                     ),
                 }],
             }
-        } else if !pda_mismatches.is_empty() {
-            // Already blocked — append the PDA mismatch finding
+        } else if !identity_mismatches.is_empty() {
+            // Already blocked — append the mismatch finding
             RiskVerdictSummary {
                 status: "Blocked".to_string(),
                 findings: {
                     let mut f = risk_summary.findings.clone();
                     f.push(RiskFinding {
-                        pattern: "PdaMismatch".to_string(),
+                        pattern: "AccountIdentityMismatch".to_string(),
                         reason: format!(
-                            "PDA mismatch on {} account(s) — derived address does not match provided",
-                            pda_mismatches.len()
+                            "identity mismatch on {} account(s) — derived/expected address does not match provided",
+                            identity_mismatches.len()
                         ),
                     });
                     f
@@ -2973,6 +2980,15 @@ mod tests {
             let addr = crate::solana_types::Pubkey(bytes).to_base58();
             accounts.push(addr);
         }
+        // P0-1 fix (2026-09-05 audit): route_v2's manifest now constrains
+        // slots 5 (token_program) and 6 (token_2022_program) via
+        // `expected_address` — placeholder synthetic pubkeys at those
+        // positions are correctly rejected by the new check (that is the
+        // whole point of the fix). Use the REAL constants there so this
+        // test keeps isolating what it actually claims to test (the
+        // 256-account cap, not account identity).
+        accounts[5] = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string();
+        accounts[6] = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb".to_string();
         let input = VerificationInput {
             proposed_intent: ProposedIntent {
                 intent_type: "swap".to_string(),

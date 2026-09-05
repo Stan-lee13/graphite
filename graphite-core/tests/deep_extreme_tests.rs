@@ -630,6 +630,11 @@ fn test_verify_orca_swap_passes_risk() {
 #[test]
 fn test_verify_meteora_swap_passes_risk() {
     let core = GraphiteCore::default();
+    // meteora-dlmm.json's "swap" (f8c69e91e17587c8) constrains indices 11
+    // (token_x_program) and 12 (token_y_program) via `expected_address`
+    // (P0-1 fix, 2026-09-05 audit) — both must be SPL Token or Token-2022,
+    // not the arbitrary known-program addresses this stress fixture
+    // originally scattered across every position.
     let accounts_15: Vec<&str> = vec![
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
@@ -642,8 +647,8 @@ fn test_verify_meteora_swap_passes_risk() {
         "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
-        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-        "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", // index 11: token_x_program
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", // index 12: token_y_program
         "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
         "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
     ];

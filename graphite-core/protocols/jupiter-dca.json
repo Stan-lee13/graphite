@@ -77,21 +77,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -193,21 +203,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -303,21 +323,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -407,21 +437,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -490,7 +530,11 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -566,21 +610,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -656,21 +710,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -767,21 +831,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -871,21 +945,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -996,21 +1080,31 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
     },
     {
      "name": "tokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "associatedTokenProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+     ]
     },
     {
      "name": "eventAuthority",
@@ -1047,7 +1141,7 @@
  "verification": {
   "program_id_verified_on_chain": true,
   "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true 2026-08-07",
-  "discriminators_source": "C52: rebuilt from official DCA IDL (jupiter-python-sdk embedded IDL, 0xTaoDev/jupiter-python-sdk). Discriminators = sha256('global:'+snake_case)[:8], verified on-chain (initiate_flash_fill 8fcd03bfa2d7f531 observed in a real mainnet tx). Account layouts now match the IDL (previously user-first/truncated \u2014 a positional-mapping defect). dca PDA seeds ['dca', user, inputMint, outputMint, uid(applicationIdx u64 LE at data[8:16])] verified against a live mainnet DCA account (Ck1Ct3vsMfzxeEM2RmKmTS4FVXoCB3YAUunKVFyNsFiq) with the official @solana/web3.js findProgramAddressSync.",
+  "discriminators_source": "C52: rebuilt from official DCA IDL (jupiter-python-sdk embedded IDL, 0xTaoDev/jupiter-python-sdk). Discriminators = sha256('global:'+snake_case)[:8], verified on-chain (initiate_flash_fill 8fcd03bfa2d7f531 observed in a real mainnet tx). Account layouts now match the IDL (previously user-first/truncated — a positional-mapping defect). dca PDA seeds ['dca', user, inputMint, outputMint, uid(applicationIdx u64 LE at data[8:16])] verified against a live mainnet DCA account (Ck1Ct3vsMfzxeEM2RmKmTS4FVXoCB3YAUunKVFyNsFiq) with the official @solana/web3.js findProgramAddressSync.",
   "verified_at": "2026-08-12",
   "notes": "Rebuilt C52 from official IDL after audit found account-order/count mismatches vs on-chain txs."
  }

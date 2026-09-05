@@ -23,6 +23,35 @@ pub enum AccountResolutionError {
     PdaDerivationFailed { account: String, reason: String },
 }
 
+/// P0-1 fix (2026-09-05 audit, "account identity / positional trust"): how
+/// (if at all) this account slot's identity was independently verified,
+/// rather than merely trusted by position/count. Most account roles are
+/// genuinely externally-determined (which token account to debit, who the
+/// recipient is) and cannot be pre-verified — `Unverified` discloses that
+/// honestly (P12: absence of verification is not itself evidence of harm)
+/// instead of reporting the same shape as a fully-checked account.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountIdentity {
+    /// Re-derived from the manifest's PDA seed template; matched (or, if
+    /// not, `pda_mismatch` below is set).
+    Pda,
+    /// Checked against the manifest's `expected_address` constant(s);
+    /// matched (or, if not, `expected_address_mismatch` below is set). Used
+    /// for fixed, well-known addresses that are neither a PDA nor
+    /// caller-chosen (System/Token/Compute-Budget/ATA programs, sysvars,
+    /// the manifest's own program self-reference).
+    Constant,
+    /// The manifest declares neither a PDA seed template nor an
+    /// `expected_address` constraint for this slot: its identity is
+    /// externally determined and Graphite has no deterministic way to
+    /// confirm it is the intended account rather than an attacker
+    /// substitution. This is the honest, disclosed residual trust boundary
+    /// — not a finding, not a penalty, just visibility.
+    #[default]
+    Unverified,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedAccount {
     pub address: String, // base58
@@ -31,6 +60,18 @@ pub struct ResolvedAccount {
     pub is_signer: bool,
     pub is_writable: bool,
     pub pda_seeds: Vec<String>,
+    /// How this account's identity was (or was not) independently verified.
+    /// See `AccountIdentity`.
+    #[serde(default)]
+    pub identity: AccountIdentity,
+    /// True if the account's supplied address does not match any of the
+    /// manifest's declared `expected_address` constants for this slot (a
+    /// fixed/well-known-program mismatch — e.g. a substituted fake "token
+    /// program"). Independent of `pda_mismatch` below (a slot is either a
+    /// PDA or a constant-address slot, never both). SECURITY SIGNAL: treated
+    /// as a hard block exactly like `pda_mismatch` (Constitution P4).
+    #[serde(default)]
+    pub expected_address_mismatch: bool,
     /// True if the account is a PDA and the derived address does not match
     /// the provided address. This is a SECURITY SIGNAL: the transaction is
     /// providing an account that doesn't match the protocol's expected PDA,
@@ -115,10 +156,11 @@ pub fn resolve_accounts(
     let mut resolved = Vec::with_capacity(pubkeys.len());
     let mut order = Vec::with_capacity(pubkeys.len());
     let mut pda_mismatches: Vec<String> = Vec::new();
+    let mut expected_address_mismatches: Vec<String> = Vec::new();
 
     for (i, pk) in pubkeys.iter().enumerate() {
         let role_def = ix_def.accounts.get(i);
-        let (role, is_pda, is_signer, is_writable, pda_seeds) = match role_def {
+        let (role, is_pda, is_signer, is_writable, pda_seeds, expected_addrs) = match role_def {
             Some(r) => {
                 let is_pda = !r.pda_seeds.is_empty();
                 let seeds = if is_pda {
@@ -155,15 +197,50 @@ pub fn resolve_accounts(
                 } else {
                     vec![]
                 };
-                (r.role.clone(), is_pda, r.is_signer, r.is_writable, seeds)
+                // P0-1 fix: a fixed-constant slot (`expected_address` — never
+                // a PDA, so this branch is mutually exclusive with the PDA
+                // check above by manifest authoring convention). The literal
+                // sentinel "{program_id}" resolves to THIS transaction's own
+                // program_id, so a manifest can pin a self-referential
+                // "program" account (an Anchor event-CPI convention) without
+                // hardcoding a value that differs per protocol.
+                if !r.expected_address.is_empty() {
+                    let matches = r.expected_address.iter().any(|expected| {
+                        if expected == "{program_id}" {
+                            input.program_id == pk.to_base58()
+                        } else {
+                            expected == &pk.to_base58()
+                        }
+                    });
+                    if !matches {
+                        expected_address_mismatches.push(pk.to_base58());
+                    }
+                }
+                (
+                    r.role.clone(),
+                    is_pda,
+                    r.is_signer,
+                    r.is_writable,
+                    seeds,
+                    r.expected_address.clone(),
+                )
             }
             None => {
                 // Extra accounts not in manifest — assign generic role
-                ("extra".to_string(), false, false, false, vec![])
+                ("extra".to_string(), false, false, false, vec![], vec![])
             }
         };
 
         let pda_mismatch = is_pda && pda_mismatches.contains(&pk.to_base58());
+        let expected_address_mismatch =
+            !expected_addrs.is_empty() && expected_address_mismatches.contains(&pk.to_base58());
+        let identity = if is_pda {
+            AccountIdentity::Pda
+        } else if !expected_addrs.is_empty() {
+            AccountIdentity::Constant
+        } else {
+            AccountIdentity::Unverified
+        };
         resolved.push(ResolvedAccount {
             address: pk.to_base58(),
             role,
@@ -171,6 +248,8 @@ pub fn resolve_accounts(
             is_signer,
             is_writable,
             pda_seeds,
+            identity,
+            expected_address_mismatch,
             pda_mismatch,
         });
         order.push(i);
@@ -196,6 +275,8 @@ fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionRe
             is_signer: false,
             is_writable: false,
             pda_seeds: vec![],
+            identity: AccountIdentity::Unverified,
+            expected_address_mismatch: false,
             pda_mismatch: false,
         })
         .collect();
@@ -392,6 +473,7 @@ mod tests {
                         is_writable: false,
                         is_signer: true,
                         pda_seeds: vec![],
+                        expected_address: vec![],
                     },
                     AccountRoleDef {
                         name: "derived".to_string(),
@@ -399,6 +481,7 @@ mod tests {
                         is_writable: false,
                         is_signer: false,
                         pda_seeds: vec!["{program_id}".to_string(), "{account_0}".to_string()],
+                        expected_address: vec![],
                     },
                 ],
                 expected_state_changes: vec![],
@@ -461,6 +544,7 @@ mod tests {
                         is_writable: false,
                         is_signer: true,
                         pda_seeds: vec![],
+                        expected_address: vec![],
                     },
                     AccountRoleDef {
                         name: "derived".to_string(),
@@ -468,6 +552,7 @@ mod tests {
                         is_writable: true,
                         is_signer: false,
                         pda_seeds: seed_templates.iter().map(|s| s.to_string()).collect(),
+                        expected_address: vec![],
                     },
                 ],
                 expected_state_changes: vec![],

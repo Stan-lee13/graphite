@@ -27,7 +27,7 @@ fail-closed.
 
 The pipeline executes in order. Each layer is tracked in the verification result with pass/fail status and a human-readable reason.
 
-1. **L1 Account Resolution** — Resolves all accounts, verifies PDAs against protocol manifests (PDA derivation uses Solana's actual `create_program_address` hash-chain algorithm)
+1. **L1 Account Resolution** — Resolves all accounts, verifies PDAs against protocol manifests (PDA derivation uses Solana's actual `create_program_address` hash-chain algorithm), and — for the fixed, well-known-constant account roles (SPL Token/Token-2022/System/Compute Budget/Associated-Token-Account programs, a manifest's own program self-reference) that are neither a PDA nor legitimately caller-chosen — checks the supplied address against the manifest's declared `expected_address` constant(s). See "Account Identity" below.
 2. **L2 Instruction Verification** — Confirms the instruction discriminator and account count match the manifest's declared shape (exact-match, no prefix bypass since C33)
 3. **L3 Simulation Verification** — Runs `simulateTransaction` and checks compute/account-write/CPI divergence. Active whenever an RPC client is attached (`GRAPHITE_RPC_URL`); the simulation-integrity module runs a 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm against earned baselines, plus median/MAD baseline (C28) for poisoning resistance. Live-validated against real Solana devnet transactions (C40). Without an RPC client the layer reports an honest `Inconclusive` state, never a phantom pass.
 4. **L4 State Verification** — Diffs pre/post account state against the manifest's expected state changes
@@ -42,6 +42,14 @@ The pipeline executes in order. Each layer is tracked in the verification result
 - **L6 Policy Verification applies tier ceilings** — Unknown/Heuristic protocols are capped at 0.55 (hard-coded, not overridable per P12). Confidence computation is included in L6.
 - **L6 Policy Verification is the final gate** — it checks both confidence threshold and minimum trust tier for the wallet's profile, AND that no L2/L4/L5 layer genuinely failed.
 - **L3 Simulation Verification is active when an RPC client is attached** — `GRAPHITE_RPC_URL` wires a live `simulateTransaction` call into the pipeline, live-validated against real Solana devnet transactions (C40). Without an RPC client, L3 reports `Inconclusive` (honest tri-state: `Passed` / `Failed` / `Inconclusive`) rather than a phantom pass. A flagged simulation (genuine `Failed`) is folded into the L7 risk finding `SimulationSpoofing` and is therefore already a hard gate, consistent with L2/L4/L5 above.
+
+### Account Identity (P0-1 fix, 2026-09-05)
+
+Most account roles in an instruction are genuinely **externally-determined** — which token account to debit, who the recipient is — and cannot be pre-verified by any means; requiring a PDA seed or an expected address on every role would be both wrong (there is nothing to check against) and infeasible. But a large, high-value subset of roles are **fixed, well-known constants**: the SPL Token, Token-2022, System, Compute Budget, and Associated-Token-Account program IDs, and a manifest's own program self-reference (the `"{program_id}"` seed-template sentinel). These are neither a PDA (no seed formula exists) nor legitimately caller-chosen.
+
+`AccountRoleDef.expected_address` (a manifest-declared constant, or a small set of acceptable constants — e.g. a generic "token program" slot that legitimately accepts either classic SPL Token or Token-2022) lets the manifest pin these slots. Account resolution checks the supplied address against them and, on mismatch, sets `ResolvedAccount.expected_address_mismatch` — folded into the SAME hard-block risk finding (`AccountIdentityMismatch`) that a PDA mismatch already produces (Constitution P4). 542 account roles across 19 manifests are pinned this way as of this fix (`graphite-core/scripts/populate_expected_addresses.py` — rerun when onboarding a new protocol).
+
+`ResolvedAccount.identity` (`Pda` / `Constant` / `Unverified`) makes the **remaining, unavoidable trust boundary** visible rather than silently assumed safe: an externally-determined account (the large majority of roles) reports `Unverified` honestly — this is not a finding or a penalty, just disclosure (P12: absence of verification is not itself evidence of harm). Closing that remaining boundary for fund-critical externally-determined accounts (e.g. confirming a token account's on-chain owner matches the transaction signer) requires live account data and is tracked as a follow-up, not claimed here.
 
 ## Security Boundaries (Constitution)
 

@@ -17,9 +17,17 @@
       "name": "InitializeBuffer",
       "discriminator": "00",
       "accounts": [
-        { "name": "buffer", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "buffer",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
-      "expected_state_changes": ["initializes a buffer account for program deployment"],
+      "expected_state_changes": [
+        "initializes a buffer account for program deployment"
+      ],
       "allowed_cpis": [],
       "risk_rules": []
     },
@@ -27,9 +35,17 @@
       "name": "Write",
       "discriminator": "01",
       "accounts": [
-        { "name": "buffer", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "buffer",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
-      "expected_state_changes": ["writes a chunk of program ELF bytes into the buffer account"],
+      "expected_state_changes": [
+        "writes a chunk of program ELF bytes into the buffer account"
+      ],
       "allowed_cpis": [],
       "risk_rules": []
     },
@@ -37,28 +53,105 @@
       "name": "DeployWithMaxDataLen",
       "discriminator": "02",
       "accounts": [
-        { "name": "program", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "buffer", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "upgrade_authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] },
-        { "name": "payer", "role": "writable", "is_writable": true, "is_signer": true, "pda_seeds": [] },
-        { "name": "system_program", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "rent", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "program",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "buffer",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "upgrade_authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "payer",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "system_program",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": [],
+          "expected_address": [
+            "11111111111111111111111111111111"
+          ]
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
-      "expected_state_changes": ["deploys a new upgradeable program from the buffer"],
-      "allowed_cpis": ["11111111111111111111111111111111"],
-      "risk_rules": ["program deployment primitive — deployer must be trusted"]
+      "expected_state_changes": [
+        "deploys a new upgradeable program from the buffer"
+      ],
+      "allowed_cpis": [
+        "11111111111111111111111111111111"
+      ],
+      "risk_rules": [
+        "program deployment primitive — deployer must be trusted"
+      ]
     },
     {
       "name": "Upgrade",
       "discriminator": "03",
       "accounts": [
-        { "name": "program", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "buffer", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] },
-        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] },
-        { "name": "spill", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "rent", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "program",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "buffer",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "spill",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "rent",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
-      "expected_state_changes": ["replaces the program's executable bytes from the buffer — program upgrade"],
+      "expected_state_changes": [
+        "replaces the program's executable bytes from the buffer — program upgrade"
+      ],
       "allowed_cpis": [],
       "risk_rules": [
         "program-upgrade primitive: if the upgrade authority is compromised, the program's behavior changes silently — verifier should flag upgrades to known protocols"
@@ -68,11 +161,31 @@
       "name": "SetAuthority",
       "discriminator": "04",
       "accounts": [
-        { "name": "program", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] },
-        { "name": "new_authority", "role": "readonly", "is_writable": false, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "program",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "new_authority",
+          "role": "readonly",
+          "is_writable": false,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
-      "expected_state_changes": ["transfers the program's upgrade authority to a new key"],
+      "expected_state_changes": [
+        "transfers the program's upgrade authority to a new key"
+      ],
       "allowed_cpis": [],
       "risk_rules": [
         "authority-transfer primitive: transfer to an unexpected address is a prelude to upgrade abuse"
@@ -82,11 +195,31 @@
       "name": "Close",
       "discriminator": "05",
       "accounts": [
-        { "name": "buffer", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] },
-        { "name": "authority", "role": "signer", "is_writable": false, "is_signer": true, "pda_seeds": [] },
-        { "name": "recipient", "role": "writable", "is_writable": true, "is_signer": false, "pda_seeds": [] }
+        {
+          "name": "buffer",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        },
+        {
+          "name": "authority",
+          "role": "signer",
+          "is_writable": false,
+          "is_signer": true,
+          "pda_seeds": []
+        },
+        {
+          "name": "recipient",
+          "role": "writable",
+          "is_writable": true,
+          "is_signer": false,
+          "pda_seeds": []
+        }
       ],
-      "expected_state_changes": ["closes a buffer account, returning lamports to the recipient"],
+      "expected_state_changes": [
+        "closes a buffer account, returning lamports to the recipient"
+      ],
       "allowed_cpis": [],
       "risk_rules": []
     }

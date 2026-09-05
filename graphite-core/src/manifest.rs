@@ -62,6 +62,26 @@ pub struct AccountRoleDef {
     /// PDA seeds template, if this account is a PDA (e.g., ["mint", "{program_id}"]).
     #[serde(default)]
     pub pda_seeds: Vec<String>,
+    /// P0-1 fix (2026-09-05 audit, "account identity / positional trust"):
+    /// for an account slot whose identity is a FIXED, well-known constant —
+    /// never a PDA (no seed formula exists) and never legitimately
+    /// caller-chosen (the well-known SPL Token/System/Compute-Budget/ATA
+    /// program IDs, sysvars, or the manifest's own program self-reference
+    /// via the literal `"{program_id}"` sentinel) — the manifest declares
+    /// the set of addresses that slot is allowed to hold. Empty (the
+    /// default) means "no constraint" — most account roles are genuinely
+    /// externally-determined (which token account to send from, who the
+    /// recipient is) and PDA/expected-address verification cannot and must
+    /// not apply to them; see account_resolution.rs's `identity` field on
+    /// `ResolvedAccount` for how that remaining, unavoidable trust boundary
+    /// is made VISIBLE rather than silently assumed safe.
+    ///
+    /// Deliberately a `Vec`, not a single `String`: some protocols
+    /// legitimately accept either classic SPL Token or Token-2022 in the
+    /// same generic "token_program" slot — a single expected address would
+    /// false-positive-block half of those legitimate calls.
+    #[serde(default)]
+    pub expected_address: Vec<String>,
 }
 
 /// A protocol manifest — describes one Solana program's instruction surface.

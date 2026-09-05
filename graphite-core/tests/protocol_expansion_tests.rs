@@ -31,10 +31,29 @@ const ORCA_TS_V2: &str = "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP";
 fn dca_input(discriminator: &str, intent: &str) -> VerificationInput {
     // Jupiter DCA layouts carry 12-15 accounts per the official IDL (C52).
     let mut input = base_input(JUPITER_DCA, discriminator, intent);
+    // P0-1 fix (2026-09-05 audit): several closeDca/openDca slots (system_
+    // program, tokenProgram, associatedTokenProgram) now carry a manifest
+    // `expected_address` constraint. A single repeated placeholder for
+    // every padded position is (correctly) rejected as an identity
+    // mismatch at those specific indices — look up the real manifest to
+    // place the real constant where one is declared, and the generic
+    // placeholder everywhere else.
+    let registry = load_seed_manifests();
+    let ix_def = registry.find_instruction(JUPITER_DCA, discriminator);
     while input.account_addresses.len() < 15 {
-        input
-            .account_addresses
-            .push("4rQz2f4Wc1y7DpQ8v6mW2nN5uM3sR9bHjC1kTv8XwYdL".to_string());
+        let idx = input.account_addresses.len();
+        let addr = ix_def
+            .and_then(|ix| ix.accounts.get(idx))
+            .and_then(|a| a.expected_address.first())
+            .map(|e| {
+                if e == "{program_id}" {
+                    JUPITER_DCA.to_string()
+                } else {
+                    e.clone()
+                }
+            })
+            .unwrap_or_else(|| "4rQz2f4Wc1y7DpQ8v6mW2nN5uM3sR9bHjC1kTv8XwYdL".to_string());
+        input.account_addresses.push(addr);
     }
     input
 }
@@ -677,6 +696,10 @@ fn orca_discriminators_pin_onchain_verified_values() {
     // A verified swap value passes the pipeline as a swap. Orca swap declares
     // 11 accounts (variable_accounts=true), so pad the fixture accordingly.
     let mut input = base_input(orca, "f8c69e91e17587c8", "swap");
+    // P0-1 fix (2026-09-05 audit): account index 0 is `token_program`, now
+    // constrained by `expected_address` — base_input's generic placeholder
+    // there is (correctly) rejected as an identity mismatch.
+    input.account_addresses[0] = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string();
     // Pad to the declared 11-account minimum with valid base58 pubkeys.
     for extra in [
         "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU",
