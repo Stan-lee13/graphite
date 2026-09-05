@@ -60,6 +60,29 @@ struct AppState {
     rate: RateLimiter,
     /// Only honor `X-Forwarded-For` when behind a trusted proxy.
     trust_proxy_hops: u8,
+    /// Operational counters exported at `/metrics`.
+    metrics: Metrics,
+}
+
+/// Process-lifetime counters for `/metrics`.
+///
+/// Deliberately a small set that is genuinely maintained at the point each
+/// event happens — a metrics surface that looks comprehensive but is never
+/// incremented is worse than none, because operators build alerts on it.
+#[derive(Clone, Default)]
+struct Metrics {
+    verify_requests: Arc<std::sync::atomic::AtomicU64>,
+    verify_approved: Arc<std::sync::atomic::AtomicU64>,
+    verify_blocked: Arc<std::sync::atomic::AtomicU64>,
+    verify_errors: Arc<std::sync::atomic::AtomicU64>,
+    auth_failures: Arc<std::sync::atomic::AtomicU64>,
+    rate_limited: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl Metrics {
+    fn inc(counter: &Arc<std::sync::atomic::AtomicU64>) {
+        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// Per-IP token bucket (GCRA-style). Shared across clones via Arc.
@@ -369,16 +392,38 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         })
         .unwrap_or_default();
 
-    let audit = match AuditLog::open(audit_path(&data_dir)) {
-        Ok(log) => {
-            tracing_log(&format!("audit log: {}", audit_path(&data_dir).display()));
-            Some(log)
-        }
-        Err(e) => {
-            tracing_log(&format!("WARNING: audit log unavailable: {}", e));
-            None
-        }
-    };
+    // Audit log rotation bounds BOTH unbounded disk growth and the dashboard
+    // endpoints' full-file scan cost. Archives are kept forever by default
+    // (P9): pruning is opt-in via GRAPHITE_AUDIT_MAX_ARCHIVES, so discarding
+    // audit history is always an explicit operator decision.
+    let rotate_bytes = std::env::var("GRAPHITE_AUDIT_ROTATE_BYTES")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(crate::durable::DEFAULT_ROTATE_BYTES);
+    let max_archives = std::env::var("GRAPHITE_AUDIT_MAX_ARCHIVES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    let audit =
+        match AuditLog::open_with_rotation(audit_path(&data_dir), rotate_bytes, max_archives) {
+            Ok(log) => {
+                tracing_log(&format!(
+                    "audit log: {} (rotate at {} bytes, archives kept: {})",
+                    audit_path(&data_dir).display(),
+                    rotate_bytes,
+                    if max_archives == 0 {
+                        "all".to_string()
+                    } else {
+                        max_archives.to_string()
+                    }
+                ));
+                Some(log)
+            }
+            Err(e) => {
+                tracing_log(&format!("WARNING: audit log unavailable: {}", e));
+                None
+            }
+        };
 
     // X-Forwarded-For is only honored behind an explicitly-trusted proxy.
     // The value is the NUMBER OF TRUSTED PROXY HOPS in front of this server
@@ -443,6 +488,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         registry_engine,
         rate: RateLimiter::new(rate_per_sec),
         trust_proxy_hops,
+        metrics: Metrics::default(),
     };
 
     tracing_log(&format!(
@@ -520,6 +566,7 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
     Router::new()
         .route("/verify", post(verify_handler))
         .route("/health", get(health_handler))
+        .route("/metrics", get(metrics_handler))
         .route("/manifests", get(manifests_handler))
         // Dashboard read-only API (Constitution P4 — no mutation).
         .route("/api/graph", get(graph_handler))
@@ -578,6 +625,7 @@ async fn auth_middleware(
             .and_then(|v| v.strip_prefix("Bearer "))
             .unwrap_or("");
         if !ct_eq(provided, key.as_str()) {
+            Metrics::inc(&state.metrics.auth_failures);
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
@@ -600,6 +648,7 @@ async fn rate_limit_middleware(
 ) -> Response {
     let ip = client_ip(&req, addr, state.trust_proxy_hops);
     if !state.rate.check(ip) {
+        Metrics::inc(&state.metrics.rate_limited);
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(serde_json::json!({ "error": "rate limit exceeded" })),
@@ -634,11 +683,56 @@ impl VerificationHttpError {
         }
     }
 
+    /// The FULL message, including internal detail. For server-side logging
+    /// and the audit trail only — never send this to a client for a 5xx.
     pub fn message(&self) -> &str {
         match self {
             Self::BadRequest(msg) => msg,
             Self::Internal(msg) => msg,
         }
+    }
+
+    /// The message that is safe to return to the caller.
+    ///
+    /// SECURITY (2026-09-05 production audit): a `TransactionBuild` error
+    /// whose text didn't match one of a handful of hardcoded substrings fell
+    /// through to `Internal` and its RAW internal text was echoed verbatim in
+    /// the 500 response body. That couples an information-disclosure boundary
+    /// to incidental error wording elsewhere in the codebase — any future
+    /// rewording silently changes what external callers can see.
+    ///
+    /// A 400 message is caller-fixable input feedback and is deliberately
+    /// specific (P3 — the caller must be able to act on it). A 500 means a
+    /// bug in Graphite, where the caller can act on nothing: they get a
+    /// generic message while the detail goes to the log and audit trail.
+    pub fn client_message(&self) -> &str {
+        match self {
+            Self::BadRequest(msg) => msg,
+            Self::Internal(_) => {
+                "internal verification error — the request was not approved; \
+                 see server logs for detail"
+            }
+        }
+    }
+}
+
+/// A stable, non-disclosing error CLASS for the client.
+///
+/// `format!("{:?}", e)` (used for the log line and the audit record) renders
+/// the variant's payload too — e.g. `TransactionBuild("<internal detail>")` —
+/// so it must never be returned to a caller. This returns only the variant
+/// name: enough for a client to branch on programmatically, nothing about
+/// Graphite's internals.
+fn error_kind(e: &VerificationError) -> &'static str {
+    use VerificationError::*;
+    match e {
+        AccountResolution(_) => "AccountResolution",
+        RiskAssessment(_) => "RiskAssessment",
+        PolicyEvaluation(_) => "PolicyEvaluation",
+        TransactionBuild(_) => "TransactionBuild",
+        SemanticGraph(_) => "SemanticGraph",
+        Confidence(_) => "Confidence",
+        InvalidInput(_) => "InvalidInput",
     }
 }
 
@@ -738,8 +832,14 @@ async fn verify_handler(
         }
     };
 
+    Metrics::inc(&state.metrics.verify_requests);
     match state.core.verify_async(&input).await {
         Ok(result) => {
+            Metrics::inc(if result.approved {
+                &state.metrics.verify_approved
+            } else {
+                &state.metrics.verify_blocked
+            });
             tracing_log(&format!(
                 "verify: {} | {} | confidence={:.2} | {}",
                 input.program_id,
@@ -786,6 +886,7 @@ async fn verify_handler(
             Ok(Json(result))
         }
         Err(e) => {
+            Metrics::inc(&state.metrics.verify_errors);
             let http_error = classify_error(&e);
             let status = http_error.status_code();
             let error_type = format!("{:?}", e);
@@ -821,8 +922,12 @@ async fn verify_handler(
             Err((
                 status,
                 Json(serde_json::json!({
-                    "error": http_error.message(),
-                    "error_type": error_type,
+                    // client_message()/error_kind() deliberately withhold
+                    // internal detail on a 5xx — the full text is already in
+                    // the log line above and the audit record below. A 4xx
+                    // still carries the specific, caller-fixable message.
+                    "error": http_error.client_message(),
+                    "error_type": error_kind(&e),
                     "status": status.as_u16(),
                     "hint": if status.is_client_error() {
                         "Fix the request input and retry"
@@ -835,12 +940,117 @@ async fn verify_handler(
     }
 }
 
-async fn health_handler() -> Json<serde_json::Value> {
+/// Liveness + durability health.
+///
+/// Reports whether the append-only audit trail is actually being written.
+/// Audit writes are non-fatal by design (a failing audit disk must not take
+/// down verification), which previously made a stopped audit trail invisible
+/// to operators — `audit.writes_failed` is what makes it alertable.
+async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let audit = state.audit.as_ref().map(|a| a.health());
+    let degraded = match &audit {
+        Some(h) => h.writes_failed > 0,
+        // No audit log at all is degraded, not healthy: verification still
+        // works, but the P9 trail does not exist.
+        None => true,
+    };
     Json(serde_json::json!({
+        // `status` stays "ok" while the service can serve traffic so load
+        // balancers don't pull a working node; `degraded` is the operator
+        // signal.
         "status": "ok",
+        "degraded": degraded,
         "service": "graphite-core",
         "version": env!("CARGO_PKG_VERSION"),
+        "audit": match audit {
+            Some(h) => serde_json::json!({
+                "enabled": true,
+                "writes_ok": h.writes_ok,
+                "writes_failed": h.writes_failed,
+                "active_bytes": h.active_bytes,
+            }),
+            None => serde_json::json!({ "enabled": false }),
+        },
     }))
+}
+
+/// Prometheus text-format metrics.
+///
+/// Enterprise deployments had no numeric signal at all before this: no way to
+/// alert on auth failures, rate-limit rejections, audit-write failures, or
+/// approve/block ratios. Deliberately a small, honest set of counters that
+/// are actually maintained — not a large surface of plausible-looking
+/// metrics that are never incremented.
+async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
+    let m = &state.metrics;
+    let audit = state.audit.as_ref().map(|a| a.health());
+    let mut out = String::with_capacity(1024);
+    let mut push = |name: &str, help: &str, kind: &str, value: u64| {
+        out.push_str(&format!(
+            "# HELP {name} {help}\n# TYPE {name} {kind}\n{name} {value}\n"
+        ));
+    };
+    push(
+        "graphite_verify_requests_total",
+        "Verification requests that reached the handler.",
+        "counter",
+        m.verify_requests.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_verify_approved_total",
+        "Verifications that returned approved=true.",
+        "counter",
+        m.verify_approved.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_verify_blocked_total",
+        "Verifications that returned approved=false.",
+        "counter",
+        m.verify_blocked.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_verify_errors_total",
+        "Verification requests that failed before producing a result.",
+        "counter",
+        m.verify_errors.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_auth_failures_total",
+        "Requests rejected with 401 by the auth middleware.",
+        "counter",
+        m.auth_failures.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_rate_limited_total",
+        "Requests rejected with 429 by the rate limiter.",
+        "counter",
+        m.rate_limited.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_audit_writes_ok_total",
+        "Audit records successfully appended.",
+        "counter",
+        audit.map(|h| h.writes_ok).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_writes_failed_total",
+        "Audit records that failed to append (durability is degraded).",
+        "counter",
+        audit.map(|h| h.writes_failed).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_active_bytes",
+        "Size of the active audit log file in bytes.",
+        "gauge",
+        audit.map(|h| h.active_bytes).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_enabled",
+        "1 when an audit log is attached, 0 otherwise.",
+        "gauge",
+        u64::from(audit.is_some()),
+    );
+    ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], out)
 }
 
 async fn manifests_handler(
@@ -1268,6 +1478,7 @@ mod tests {
             registry_engine: crate::manifest_registry::ManifestRegistryEngine::new(),
             rate: RateLimiter::new(1000.0),
             trust_proxy_hops: 0,
+            metrics: Metrics::default(),
         };
         (state, dir)
     }
@@ -1479,6 +1690,152 @@ mod tests {
         req.extensions_mut().insert(ConnectInfo(addr));
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), axum::http::StatusCode::UNAUTHORIZED);
+        let _ = dir;
+    }
+
+    /// A 5xx must never echo internal error text to the caller. The detail
+    /// belongs in the log and the audit record; the client gets a generic
+    /// message plus a stable error CLASS it can branch on.
+    ///
+    /// Asserted at the classification boundary rather than by trying to
+    /// provoke a specific internal failure over HTTP: the property under test
+    /// is "Internal never discloses its payload", which is exactly what this
+    /// checks, and it keeps holding as new internal error sources are added.
+    #[test]
+    fn internal_errors_never_disclose_their_detail_to_clients() {
+        let secret = "connection string user=admin password=hunter2 at /srv/internal";
+        let err = VerificationHttpError::Internal(secret.to_string());
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(
+            !err.client_message().contains(secret),
+            "internal detail leaked to the client: {}",
+            err.client_message()
+        );
+        assert!(
+            !err.client_message().contains("password"),
+            "internal detail leaked to the client: {}",
+            err.client_message()
+        );
+        // …but it is still available for the log line and audit record.
+        assert!(
+            err.message().contains(secret),
+            "internal detail must remain available server-side for diagnosis"
+        );
+
+        // A 400 is caller-fixable input feedback and stays specific (P3).
+        let bad = VerificationHttpError::BadRequest("Invalid address: xyz".to_string());
+        assert_eq!(bad.status_code(), StatusCode::BAD_REQUEST);
+        assert_eq!(bad.client_message(), "Invalid address: xyz");
+    }
+
+    /// `error_type` is returned to clients, so it must be the variant NAME
+    /// only — `format!("{:?}", e)` renders the payload too and would leak the
+    /// same internal detail the message redaction just removed.
+    #[test]
+    fn error_kind_exposes_only_the_variant_name() {
+        let secret = "internal path /srv/graphite/secret";
+        let e = VerificationError::TransactionBuild(secret.to_string());
+        assert_eq!(error_kind(&e), "TransactionBuild");
+        assert!(
+            !error_kind(&e).contains(secret),
+            "error_type must not carry the payload"
+        );
+        // Guard the actual regression: the Debug form (used for logs/audit)
+        // DOES contain the payload, which is exactly why it must not be the
+        // thing sent to clients.
+        assert!(
+            format!("{e:?}").contains(secret),
+            "Debug is the detailed form — if this ever stops being true, the \
+             log/audit path lost detail"
+        );
+    }
+
+    /// `/metrics` exposes operational counters — but it also reveals traffic
+    /// volume, block rates, and auth-failure counts, so it must sit BEHIND the
+    /// API key like every other non-health endpoint. Only `/health` is open,
+    /// for load balancers.
+    #[tokio::test]
+    async fn metrics_endpoint_requires_auth_and_health_does_not() {
+        let (state, dir) = test_state();
+        let state = AppState {
+            api_key: Some(std::sync::Arc::new("sekret".to_string())),
+            ..state
+        };
+        let app = build_app(state, vec![]);
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+
+        let mut unauth = axum::http::Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+        unauth.extensions_mut().insert(ConnectInfo(addr));
+        assert_eq!(
+            app.clone().oneshot(unauth).await.unwrap().status(),
+            axum::http::StatusCode::UNAUTHORIZED,
+            "/metrics must not be publicly readable"
+        );
+
+        let mut health = axum::http::Request::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        health.extensions_mut().insert(ConnectInfo(addr));
+        assert_eq!(
+            app.clone().oneshot(health).await.unwrap().status(),
+            axum::http::StatusCode::OK,
+            "/health stays open for load balancers"
+        );
+        let _ = dir;
+    }
+
+    /// The metrics surface must be real: counters that are exported but never
+    /// incremented are worse than absent, because operators build alerts on
+    /// them. Drive a rejected request and assert the counter actually moves.
+    #[tokio::test]
+    async fn metrics_counters_reflect_real_events() {
+        let (state, dir) = test_state();
+        let state = AppState {
+            api_key: Some(std::sync::Arc::new("sekret".to_string())),
+            ..state
+        };
+        let app = build_app(state, vec![]);
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+
+        // Two unauthenticated calls -> two auth failures.
+        for _ in 0..2 {
+            let mut req = axum::http::Request::builder()
+                .uri("/manifests")
+                .body(Body::empty())
+                .unwrap();
+            req.extensions_mut().insert(ConnectInfo(addr));
+            let _ = app.clone().oneshot(req).await.unwrap();
+        }
+
+        let mut req = axum::http::Request::builder()
+            .uri("/metrics")
+            .header(header::AUTHORIZATION, "Bearer sekret")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        let text = String::from_utf8_lossy(&body);
+
+        assert!(
+            text.contains("graphite_auth_failures_total 2"),
+            "auth failures must be counted, got:\n{text}"
+        );
+        // Prometheus text format requires HELP/TYPE metadata to be parseable.
+        assert!(text.contains("# TYPE graphite_auth_failures_total counter"));
+        assert!(text.contains("graphite_audit_enabled 1"));
         let _ = dir;
     }
 

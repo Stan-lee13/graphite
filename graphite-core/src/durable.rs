@@ -9,17 +9,56 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+
+/// Default size at which the ACTIVE audit file is rotated (64 MiB).
+///
+/// Rotation exists for two reasons found by the 2026-09-05 production audit:
+/// the log grew without bound (disk exhaustion on any long-running
+/// deployment), and the dashboard endpoints do a full forward scan of it on
+/// every poll, so read cost grew linearly forever. Bounding the ACTIVE file
+/// bounds both.
+pub const DEFAULT_ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Append-only audit log of verification results.
 ///
 /// `Clone` shares the same underlying file (used inside axum State).
+///
+/// ROTATION AND RETENTION (P9): the audit trail is append-only and rotation
+/// never rewrites or edits a record — when the active file passes
+/// `rotate_bytes` it is RENAMED to `audit.jsonl.<unix-millis>` and a fresh
+/// active file is started. Archives are retained indefinitely by default
+/// (`max_archives == 0`), so the complete trail survives; an operator who
+/// needs a hard disk bound sets `GRAPHITE_AUDIT_MAX_ARCHIVES` and accepts
+/// that the oldest archives are pruned. Deleting audit history is therefore
+/// always an explicit operator decision, never something Graphite does on its
+/// own initiative.
 #[derive(Debug, Clone)]
 pub struct AuditLog {
     file: std::sync::Arc<Mutex<File>>,
     /// The log's path, kept so the read path (`read_all`) can re-open the
     /// file for reading without disturbing the append handle.
     path: Arc<PathBuf>,
+    /// Rotate the active file once it exceeds this many bytes (0 = never).
+    rotate_bytes: u64,
+    /// Archives to keep (0 = keep all — the default, P9-preserving).
+    max_archives: usize,
+    /// Health counters. Audit writes are deliberately non-fatal (a failing
+    /// audit disk must not take down verification), which previously meant a
+    /// silent failure mode: nothing recorded, nothing surfaced. These are
+    /// exported via /health and /metrics so an operator can alert on them.
+    writes_ok: Arc<AtomicU64>,
+    writes_failed: Arc<AtomicU64>,
+}
+
+/// A point-in-time view of audit-log health, surfaced by /health and /metrics.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct AuditHealth {
+    pub writes_ok: u64,
+    pub writes_failed: u64,
+    /// Current size of the ACTIVE audit file in bytes (archives excluded).
+    pub active_bytes: u64,
 }
 
 /// A minimal, self-contained record of a verification outcome. Deliberately
@@ -65,12 +104,126 @@ impl AuditLog {
     /// Open (creating if needed) the audit log at `path`. The parent
     /// directory must already exist (callers create the data dir first).
     pub fn open(path: impl AsRef<Path>) -> std::io::Result<Self> {
+        Self::open_with_rotation(path, DEFAULT_ROTATE_BYTES, 0)
+    }
+
+    /// Open with explicit rotation settings. `rotate_bytes == 0` disables
+    /// rotation entirely; `max_archives == 0` keeps every archive (default).
+    pub fn open_with_rotation(
+        path: impl AsRef<Path>,
+        rotate_bytes: u64,
+        max_archives: usize,
+    ) -> std::io::Result<Self> {
         let path = path.as_ref().to_path_buf();
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
         Ok(Self {
             file: std::sync::Arc::new(Mutex::new(file)),
             path: Arc::new(path),
+            rotate_bytes,
+            max_archives,
+            writes_ok: Arc::new(AtomicU64::new(0)),
+            writes_failed: Arc::new(AtomicU64::new(0)),
         })
+    }
+
+    /// Current audit-log health for /health and /metrics.
+    pub fn health(&self) -> AuditHealth {
+        AuditHealth {
+            writes_ok: self.writes_ok.load(Ordering::Relaxed),
+            writes_failed: self.writes_failed.load(Ordering::Relaxed),
+            active_bytes: std::fs::metadata(self.path.as_ref())
+                .map(|m| m.len())
+                .unwrap_or(0),
+        }
+    }
+
+    /// Rotate the active file if it has grown past `rotate_bytes`.
+    ///
+    /// Called with the append handle already locked, so no writer can append
+    /// between the size check and the rename. The rename preserves every
+    /// record (P9 — rotation is not deletion); only explicit `max_archives`
+    /// pruning removes anything, and that is opt-in.
+    fn rotate_if_needed(&self, file: &mut File) {
+        if self.rotate_bytes == 0 {
+            return;
+        }
+        let size = match file.metadata() {
+            Ok(m) => m.len(),
+            Err(_) => return,
+        };
+        if size < self.rotate_bytes {
+            return;
+        }
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let archive = self
+            .path
+            .with_extension(format!("jsonl.{stamp}"))
+            .to_path_buf();
+        // If the rename fails (permissions, cross-device), keep appending to
+        // the current file rather than losing the record — an oversized log
+        // is strictly better than a dropped audit trail.
+        if std::fs::rename(self.path.as_ref(), &archive).is_err() {
+            return;
+        }
+        match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.path.as_ref())
+        {
+            Ok(fresh) => {
+                *file = fresh;
+                tracing::info!("audit log rotated to {}", archive.display());
+                self.prune_archives();
+            }
+            Err(e) => {
+                // We already renamed the old file away; try to restore it so
+                // no window exists with no audit file at all.
+                let _ = std::fs::rename(&archive, self.path.as_ref());
+                tracing::error!("audit rotation failed to reopen log: {}", e);
+            }
+        }
+    }
+
+    /// Prune the oldest archives when an explicit retention limit is set.
+    /// No-op when `max_archives == 0` (keep everything — the P9 default).
+    fn prune_archives(&self) {
+        if self.max_archives == 0 {
+            return;
+        }
+        let dir = match self.path.parent() {
+            Some(d) => d,
+            None => return,
+        };
+        let stem = match self.path.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s,
+            None => return,
+        };
+        let prefix = format!("{stem}.");
+        let mut archives: Vec<PathBuf> = match std::fs::read_dir(dir) {
+            Ok(entries) => entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|n| n.starts_with(&prefix))
+                        .unwrap_or(false)
+                })
+                .collect(),
+            Err(_) => return,
+        };
+        // Names embed a zero-padded-by-magnitude unix-millis stamp; lexical
+        // sort matches chronological order for all realistic timestamps.
+        archives.sort();
+        while archives.len() > self.max_archives {
+            let oldest = archives.remove(0);
+            if let Err(e) = std::fs::remove_file(&oldest) {
+                tracing::warn!("audit archive prune failed for {}: {}", oldest.display(), e);
+            }
+        }
     }
 
     /// Bounded stream of the most recent `tail` records, oldest-first in the
@@ -188,8 +341,18 @@ impl AuditLog {
             Err(poisoned) => poisoned.into_inner(),
         };
         if let Err(e) = writeln!(file, "{}", line).and_then(|_| file.flush()) {
+            // Non-fatal by design (a failing audit disk must not take down
+            // verification) — but counted, so /health and /metrics can expose
+            // it and an operator can alert instead of silently losing the
+            // trail.
+            self.writes_failed.fetch_add(1, Ordering::Relaxed);
             tracing::error!("audit write failed: {}", e);
+            return;
         }
+        self.writes_ok.fetch_add(1, Ordering::Relaxed);
+        // Rotate AFTER a successful append, while still holding the lock, so
+        // the size check and rename cannot interleave with another writer.
+        self.rotate_if_needed(&mut file);
     }
 }
 
@@ -232,6 +395,153 @@ pub fn now_utc_rfc3339() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rec(id: &str) -> AuditRecord {
+        AuditRecord {
+            timestamp: "2026-09-05T00:00:00.000Z".to_string(),
+            audit_trail_id: id.to_string(),
+            content_hash: "hash".to_string(),
+            program_id: "11111111111111111111111111111111".to_string(),
+            instruction_name: "transfer".to_string(),
+            protocol_name: "system-program".to_string(),
+            manifest_version: None,
+            approved: true,
+            confidence: 0.9,
+            risk_status: "Clear".to_string(),
+            policy_verdict: "Approved".to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+        }
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-rotate-{tag}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn archives_in(dir: &Path) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|n| n.starts_with("audit.jsonl."))
+                    .unwrap_or(false)
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// The active audit file must be bounded: an unbounded log means both disk
+    /// exhaustion and an ever-growing full-file scan on every dashboard poll
+    /// (2026-09-05 production audit).
+    #[test]
+    fn active_audit_file_is_bounded_by_rotation() {
+        let dir = temp_dir("bounded");
+        // Rotate aggressively so a handful of records crosses the threshold.
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        for i in 0..200 {
+            log.append(&rec(&format!("id-{i}")));
+        }
+        let active = std::fs::metadata(audit_path(&dir)).unwrap().len();
+        assert!(
+            active < 4096,
+            "active audit file must stay bounded by rotation, got {active} bytes"
+        );
+        assert!(
+            !archives_in(&dir).is_empty(),
+            "rotation must have produced at least one archive"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// P9: rotation is not deletion. With the default retention (keep all),
+    /// every record written must still exist somewhere on disk — the archive
+    /// set plus the active file must account for all of them.
+    #[test]
+    fn rotation_preserves_every_record_by_default() {
+        let dir = temp_dir("preserve");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        let total = 150;
+        for i in 0..total {
+            log.append(&rec(&format!("id-{i}")));
+        }
+        let mut seen = 0usize;
+        let mut files = archives_in(&dir);
+        files.push(audit_path(&dir));
+        for f in files {
+            let content = std::fs::read_to_string(&f).unwrap_or_default();
+            seen += content.lines().filter(|l| !l.trim().is_empty()).count();
+        }
+        assert_eq!(
+            seen, total,
+            "default retention must preserve every audit record (P9)"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Pruning is opt-in and, when enabled, actually bounds the archive count.
+    #[test]
+    fn explicit_retention_prunes_oldest_archives_only() {
+        let dir = temp_dir("prune");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 2).unwrap();
+        for i in 0..300 {
+            log.append(&rec(&format!("id-{i}")));
+        }
+        let archives = archives_in(&dir);
+        assert!(
+            archives.len() <= 2,
+            "explicit retention must bound archive count, got {}",
+            archives.len()
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Rotation disabled must behave exactly as before (no archives at all) —
+    /// operators who need a single append-only file keep it.
+    #[test]
+    fn rotation_can_be_disabled() {
+        let dir = temp_dir("disabled");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        for i in 0..200 {
+            log.append(&rec(&format!("id-{i}")));
+        }
+        assert!(
+            archives_in(&dir).is_empty(),
+            "rotate_bytes=0 must never rotate"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A stopped audit trail was previously invisible. Successful writes must
+    /// be counted so /health and /metrics can expose durability state.
+    #[test]
+    fn audit_health_counts_successful_writes() {
+        let dir = temp_dir("health");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        assert_eq!(log.health().writes_ok, 0);
+        for i in 0..5 {
+            log.append(&rec(&format!("id-{i}")));
+        }
+        let h = log.health();
+        assert_eq!(h.writes_ok, 5);
+        assert_eq!(h.writes_failed, 0);
+        assert!(
+            h.active_bytes > 0,
+            "active_bytes must reflect the real file"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     /// GAP-2026-08-06-3: the audit record must carry the REAL L3/L8 layer
     /// states (never the old phantom `passed: true`).

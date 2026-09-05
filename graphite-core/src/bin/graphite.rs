@@ -142,9 +142,23 @@ enum RegistryAction {
         /// Path to the protocol manifest JSON to submit
         #[arg(long)]
         manifest: PathBuf,
-        /// ed25519 secret key as 64 hex chars — signs the submission
+        /// ed25519 secret key as 64 hex chars — signs the submission.
+        ///
+        /// DEPRECATED and insecure: a value passed here is visible in shell
+        /// history and to every other user on the machine via `ps`/
+        /// `/proc/<pid>/cmdline`. Prefer `--signer-key-file` (or
+        /// `GRAPHITE_SIGNER_KEY_FILE`), which reads the key from a file whose
+        /// permissions you control. Kept only for backward compatibility;
+        /// using it prints a warning.
         #[arg(long)]
         signer_key: Option<String>,
+        /// Path to a file containing the ed25519 secret key (64 hex chars).
+        ///
+        /// The file's contents are trimmed, so a trailing newline is fine.
+        /// Overrides `--signer-key` when both are given. Also settable via
+        /// `GRAPHITE_SIGNER_KEY_FILE`.
+        #[arg(long)]
+        signer_key_file: Option<PathBuf>,
         /// Reviewer attestation as <pubkey>:<signature_hex> (repeatable)
         #[arg(long)]
         attestation: Vec<String>,
@@ -235,18 +249,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 graph_state,
                 manifest,
                 signer_key,
+                signer_key_file,
                 attestation,
                 corpus_dir,
-            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
-                action: graphite_core::cli::RegistryAction::Submit {
-                    state,
-                    graph_state,
-                    manifest_path: manifest,
-                    signer_key_hex: signer_key,
-                    attestations: attestation,
-                    corpus_dir,
-                },
-            }),
+            } => {
+                // Resolve the signing key without ever requiring it on the
+                // command line: --signer-key-file wins, then the env var
+                // pointing at a file, then the deprecated inline flag.
+                let key_file = signer_key_file.or_else(|| {
+                    std::env::var("GRAPHITE_SIGNER_KEY_FILE")
+                        .ok()
+                        .filter(|s| !s.trim().is_empty())
+                        .map(PathBuf::from)
+                });
+                let signer_key_hex = match key_file {
+                    Some(path) => {
+                        let raw = std::fs::read_to_string(&path).map_err(|e| {
+                            format!("failed to read signer key file {}: {e}", path.display())
+                        })?;
+                        Some(raw.trim().to_string())
+                    }
+                    None => {
+                        if signer_key.is_some() {
+                            eprintln!(
+                                "[graphite] WARNING: --signer-key exposes the secret key in shell \
+                                 history and to other users via `ps`. Use --signer-key-file (or \
+                                 GRAPHITE_SIGNER_KEY_FILE) instead."
+                            );
+                        }
+                        signer_key
+                    }
+                };
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
+                    action: graphite_core::cli::RegistryAction::Submit {
+                        state,
+                        graph_state,
+                        manifest_path: manifest,
+                        signer_key_hex,
+                        attestations: attestation,
+                        corpus_dir,
+                    },
+                })
+            }
         },
         Commands::Plugins { dir } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Plugins { dir })

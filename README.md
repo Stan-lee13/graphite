@@ -244,6 +244,16 @@ cargo run --release --bin graphite -- server --port 7331
 | `GRAPHITE_RPC_URL` | *(off)* | Attaches a Solana RPC client — live L3: `simulateTransaction` runs and real compute usage feeds the trusted baseline accumulator. Usually embeds a provider API key; Graphite redacts endpoint URLs from every error it surfaces, but treat the value as a secret. |
 | `GRAPHITE_TRUST_PROXY` | `0` | Number of **trusted reverse-proxy hops** in front of the server, for per-IP rate limiting. `0` ignores `X-Forwarded-For` entirely (correct whenever clients can reach the server directly). Set it to the real number of proxies you control — the client IP is counted that many entries from the *right*, because proxies append the peer they observed and the left end is whatever the caller claimed. Over-counting re-opens the spoofing bypass. |
 | `GRAPHITE_LOG_FORMAT` | *(text)* | `json` emits structured logs for aggregators. Level via `RUST_LOG` (default `info`). |
+| `GRAPHITE_AUDIT_ROTATE_BYTES` | `67108864` (64 MiB) | Rotate the active audit file at this size, bounding disk growth and the dashboard's per-poll scan cost. `0` disables rotation. |
+| `GRAPHITE_AUDIT_MAX_ARCHIVES` | `0` (keep all) | Rotated archives to retain. The default keeps the complete audit trail (P9); set a limit only if you accept that the oldest history is deleted. |
+
+**Observability.** `GET /metrics` serves Prometheus text format (behind the API
+key, like every endpoint except `/health`): verification request/approve/block/
+error counts, auth failures, rate-limit rejections, and audit-log write
+success/failure counters plus active log size. `GET /health` is open for load
+balancers and reports a `degraded` flag when the audit trail is unavailable or
+has failed writes — audit writes are non-fatal by design, so this is what makes
+a silently-stopped audit trail alertable.
 
 ```bash
 # Minimal production launch (auth + rate limit + durability)
