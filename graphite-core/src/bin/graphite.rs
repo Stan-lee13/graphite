@@ -206,6 +206,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Server { port, host } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Server { port, host })
         }
+        // Must carry the same gate as the variant it matches: `Healthcheck` is
+        // `#[cfg(feature = "server")]`, so without that feature the variant
+        // does not exist and an ungated arm fails to compile. Caught by CI's
+        // `--no-default-features --features cli` job, which is exactly why
+        // that job exists — `--all-features` can never surface this.
+        #[cfg(feature = "server")]
         Commands::Healthcheck { port } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Healthcheck { port })
         }

@@ -290,6 +290,35 @@ pub fn analyze_multi_instruction(instructions: &[TransactionInstruction]) -> Vec
             .filter_map(|ix| transfer_destination(ix))
             .collect();
         let mass_sweep = destinations.len() >= 3 || (transfers.len() >= 4 && sources.len() >= 3);
+
+        // Dead-zone disclosure (2026-09-05 red-team): exactly 3 transfers
+        // draining 3 distinct sources into 2 destinations satisfies NEITHER
+        // arm — `destinations.len() >= 3` is false (2), and the multi-source
+        // arm needs 4+ transfers. That is a plausible drainer shape (split the
+        // proceeds across two wallets so it looks less like a sweep) sitting
+        // one transfer under the floor, and the attacker chooses the count.
+        //
+        // It is NOT promoted to a block, deliberately: 3 inputs paying out to
+        // a user account plus a fee account is an ordinary DeFi shape, and
+        // Graphite has no amount or account-ownership data here to tell the
+        // two apart. Blocking on this evidence would be a guess, and a
+        // false-positive on fee-split routes is a real cost (P12: absence of
+        // certainty is not evidence of harm). Surfacing it keeps the boundary
+        // visible to a human or downstream reviewer instead of silent —
+        // the same disclosure posture used for ALT usage and repeated
+        // unmanifested programs.
+        if !mass_sweep && transfers.len() == 3 && sources.len() >= 3 && destinations.len() == 2 {
+            findings.push(PatternFinding {
+                pattern: "MultiInstructionDrain".to_string(),
+                severity: PatternSeverity::Warning,
+                reason: format!(
+                    "3 transfers drain {} distinct source account(s) into {} destination(s) — just under the mass-sweep threshold. Consistent with a split-destination drain, but also with an ordinary fee-split route; disclosed, not blocked (no amount or ownership data to distinguish them)",
+                    sources.len(),
+                    destinations.len()
+                ),
+            });
+        }
+
         if mass_sweep {
             findings.push(PatternFinding {
                 pattern: "MultiInstructionDrain".to_string(),
@@ -702,6 +731,53 @@ mod tests {
             ix(TOKEN_PROGRAM, "03", &[DEST3, DEST, SOURCE]),
         ];
         assert!(analyze_multi_instruction(&txs).is_empty());
+    }
+
+    /// Dead-zone disclosure (2026-09-05 red-team): 3 transfers, 3 distinct
+    /// sources, 2 destinations satisfies neither mass-sweep arm — and the
+    /// attacker picks the transfer count, so this shape sits one step under
+    /// the floor by choice. Disclosed as a WARNING, never blocked: the same
+    /// shape is an ordinary fee-split route, and there is no amount or
+    /// ownership data here to tell a drain from a payout.
+    #[test]
+    fn three_transfers_to_two_destinations_is_disclosed_but_not_blocked() {
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST2, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST3, MINT, SOURCE]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert_eq!(
+            findings.len(),
+            1,
+            "expected exactly one disclosure: {findings:?}"
+        );
+        assert_eq!(
+            findings[0].severity,
+            PatternSeverity::Warning,
+            "the dead-zone shape must be disclosed, not blocked — blocking it would \
+             false-positive on fee-split routes: {findings:?}"
+        );
+        assert!(findings[0]
+            .reason
+            .contains("just under the mass-sweep threshold"));
+    }
+
+    /// Crossing the real threshold must still BLOCK, not degrade to a warning.
+    #[test]
+    fn crossing_the_mass_sweep_threshold_still_blocks() {
+        let txs = vec![
+            ix(TOKEN_PROGRAM, "03", &[SOURCE, DEST, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST2, DEST3, SOURCE]),
+            ix(TOKEN_PROGRAM, "03", &[DEST3, MINT, SOURCE]),
+        ];
+        let findings = analyze_multi_instruction(&txs);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.severity == PatternSeverity::Blocked),
+            "3 distinct destinations is the real mass-sweep signature and must block: {findings:?}"
+        );
     }
 
     #[test]

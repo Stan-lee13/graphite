@@ -410,7 +410,9 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     }
 
     // P0 Check 6a: MaliciousAccountChange - CloseAccount when intent is not "close"
-    if !input.proposed_intent_type.is_empty() && input.proposed_intent_type != "close" {
+    if !input.proposed_intent_type.is_empty()
+        && canonical_intent(&input.proposed_intent_type) != "close"
+    {
         let close_discriminators = ["09", "0x09"];
         for close_disc in &close_discriminators {
             if disc_matches(close_disc, &input.instruction_discriminator) {
@@ -433,7 +435,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
 
     // P0 Check 6b: MaliciousAccountChange - Allocate/CreateAccount when intent is not "create"
     if !input.proposed_intent_type.is_empty()
-        && input.proposed_intent_type != "create"
+        && canonical_intent(&input.proposed_intent_type) != "create"
         && input.program_id == "11111111111111111111111111111111"
     {
         // Full System account-creation family (canonical 8-byte LE discriminators):
@@ -458,8 +460,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // If the instruction is Approve (0x04) but the declared intent is NOT approve/revoke,
     // someone is granting delegate authority without declaring it.
     if !input.proposed_intent_type.is_empty()
-        && input.proposed_intent_type != "approve"
-        && input.proposed_intent_type != "revoke"
+        && canonical_intent(&input.proposed_intent_type) != "approve"
     {
         let approve_discriminators = ["04", "0x04"];
         for approve_disc in &approve_discriminators {
@@ -823,7 +824,10 @@ pub fn detect_fake_swap(
     proposed_intent_type: &str,
     _extracted_output_token: Option<&str>,
 ) -> Option<RiskPattern> {
-    if proposed_intent_type != "swap" {
+    // Every synonym the vocabulary treats as a swap is held to the swap
+    // standard — see `canonical_intent`. Matching the bare literal let
+    // `"exchange"` walk past this check entirely.
+    if canonical_intent(proposed_intent_type) != "swap" {
         return None;
     }
 
@@ -875,8 +879,46 @@ impl RiskPattern {
 /// create/approve/revoke transaction even when the instruction matched the
 /// intent exactly. The fail-closed default for genuinely unknown intents is
 /// unchanged.
-fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
+/// Collapse a declared intent to its CANONICAL form.
+///
+/// The intent vocabulary has documented synonym groups (`swap|trade|exchange`,
+/// `close|close_account`, `create|create_account`, `transfer|send`,
+/// `stake|delegate`, `approve|revoke`). `program_supports_intent` honoured
+/// them; the individual risk checks did not — each compared against a single
+/// literal. That inconsistency broke in BOTH directions (2026-09-05 red-team):
+///
+/// - UNDER-blocking: `detect_fake_swap` fired only on the literal `"swap"`, so
+///   declaring `"exchange"` on a trusted DEX skipped the check built to catch
+///   a swap that produces no output — while `program_supports_intent`
+///   simultaneously accepted `"exchange"` as a valid swap intent, so the
+///   intent-mismatch check stayed quiet too. One word, and a FakeSwap drain
+///   passed. Reproduced before fixing.
+/// - OVER-blocking: Check 6b uses the literal in the opposite direction
+///   (`intent != "create"` ⇒ flag account creation), so a caller honestly
+///   declaring `"create_account"` — a synonym the vocabulary explicitly
+///   supports — had a legitimate account creation flagged as malicious.
+///
+/// Defining the vocabulary in ONE place and routing every comparison through
+/// it removes the whole class rather than patching the two known sites; a new
+/// check that forgets the synonyms is no longer possible without bypassing
+/// this function deliberately.
+pub(crate) fn canonical_intent(intent_type: &str) -> &str {
     match intent_type {
+        "swap" | "trade" | "exchange" => "swap",
+        "transfer" | "send" => "transfer",
+        "stake" | "delegate" => "stake",
+        "close" | "close_account" => "close",
+        "create" | "create_account" => "create",
+        // approve/revoke are two directions of the same delegate-authority
+        // capability and are treated as one class by every check that
+        // references them.
+        "approve" | "revoke" => "approve",
+        other => other,
+    }
+}
+
+fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
+    match canonical_intent(intent_type) {
         "swap" | "trade" | "exchange" => is_swap_program(program_id),
         "stake" | "delegate" => {
             program_id == "Stake11111111111111111111111111111111111111"

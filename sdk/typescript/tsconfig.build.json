@@ -1,0 +1,11 @@
+{
+  // Build config for the PUBLISHED package.
+  //
+  // Identical to tsconfig.json except that tests are excluded from emit: the
+  // test file lives under src/ (next to the code it covers), and building with
+  // the base config would ship `auditbind.test.js` and its declarations inside
+  // dist/. `npm run check` still uses the base config, so tests remain fully
+  // type-checked — they just are not published.
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts"]
+}

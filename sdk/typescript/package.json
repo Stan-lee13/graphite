@@ -5,10 +5,13 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/auditbind.test.ts"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
     "typescript": "^5.9.3"
   }
 }
