@@ -2288,9 +2288,44 @@ impl GraphiteCore {
                 }
             }
         }
-        // The effective policy outcome: core verdict AND no plugin veto.
-        let l6_passed = matches!(policy_verdict, PolicyVerdict::Approved) && l6_block.is_none();
-        let policy_str = if l6_block.is_some() {
+        // P0 fix (2026-09-05 audit, "L2/L4/L5 approval-gate discrepancy"):
+        // a GENUINE Failed (never Inconclusive — GAP-2026-08-06-3 preserves
+        // that distinction below) L2/L4/L5 result is Graphite POSITIVELY
+        // CONFIRMING a structural mismatch, not merely absent evidence:
+        //   - L2 Failed means the caller's OWN instruction_data contradicts
+        //     its OWN declared discriminator (a self-contradictory input,
+        //     the exact HIGH #1 "Discriminator Check Bypass" class).
+        //   - L4 Failed means the manifest's expected state changes are
+        //     structurally unsatisfiable by the resolved accounts (e.g. an
+        //     authority-changing instruction with zero signers — which
+        //     could not execute on-chain either).
+        //   - L5 Failed means the declared intent does not match what the
+        //     instruction actually does — precisely the mismatch Graphite
+        //     exists to catch.
+        // Each is categorically different from Inconclusive (insufficient
+        // evidence, P12 fail-open-with-explanation) and, like L3's
+        // flagged-simulation case (already folded into risk_summary as a
+        // hard Block), must not be reducible to a confidence penalty that a
+        // high trust tier or a loose wallet profile threshold can absorb.
+        // GRAPHITE_FINAL_CERTIFICATION_REPORT.md's "CRITICAL #6" originally
+        // required exactly this hard gate; the later GAP-2026-08-06-3
+        // tri-state refactor correctly preserved the confidence PENALTY
+        // (so Inconclusive layers never wrongly penalize) but silently
+        // dropped the HARD GATE for genuine failures, leaving e.g. a
+        // BattleTested-tier transaction with a confirmed L2 discriminator/
+        // data mismatch able to clear TradingBot's 0.80 threshold (raw
+        // confidence 1.0 − 0.2 penalty = 0.80). This restores the gate,
+        // correctly scoped to Failed only.
+        let structural_layer_failed = l2_result.status == LayerStatus::Failed
+            || l4_result.status == LayerStatus::Failed
+            || l5_result.status == LayerStatus::Failed;
+
+        // The effective policy outcome: core verdict AND no plugin veto AND
+        // no structural layer failure.
+        let l6_passed = matches!(policy_verdict, PolicyVerdict::Approved)
+            && l6_block.is_none()
+            && !structural_layer_failed;
+        let policy_str = if l6_block.is_some() || structural_layer_failed {
             "Rejected"
         } else {
             policy_str
@@ -2472,6 +2507,12 @@ impl GraphiteCore {
             l6_reason = format!(
                 "Rejected by policy plugin ({}): {} | {}",
                 pattern, reason, l6_reason
+            );
+        }
+        if structural_layer_failed {
+            l6_reason = format!(
+                "Rejected: structural verification failed (L2={:?}, L4={:?}, L5={:?}) — see layer reports | {}",
+                l2_result.status, l4_result.status, l5_result.status, l6_reason
             );
         }
 

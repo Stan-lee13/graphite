@@ -140,7 +140,9 @@ Whitespace-only `program_id` rejection in `seed_simulation_baseline` (GAP-9); pr
 
 **Root Cause:** When instruction verification (L2), state verification (L4), or semantic verification (L5) failed, the engine only applied small confidence penalties (-0.2, -0.15, -0.3). The `approved` calculation did NOT check these layer pass/fail flags. A transaction with high initial signals could be approved even with L2/L4/L5 failures.
 
-**Fix:** `approved` now requires `l2_result.passed && l4_result.passed && l5_result.passed`.
+**Fix (as of this report, 2026-08-02/07):** `approved` now requires `l2_result.passed && l4_result.passed && l5_result.passed`.
+
+**2026-09-05 addendum — this fix had regressed and has been re-applied.** A later tri-state refactor (`GAP-2026-08-06-3`, which introduced `LayerStatus::{Passed, Failed, Inconclusive}` so an `Inconclusive` layer — e.g. an unknown protocol — never wrongly penalizes) replaced the boolean `.passed` this fix relied on with a model that only applied a confidence penalty for a genuine `Failed`, without restoring an equivalent hard gate. That reopened this exact class of bug: a BattleTested-tier transaction with a confirmed L2 discriminator/data mismatch could reach exactly the TradingBot profile's 0.80 threshold after the 0.2 penalty. Re-verified against the current codebase, confirmed via direct code reading (not assumed from this document), and re-fixed with `structural_layer_failed` in `verification.rs`, correctly scoped so `Inconclusive` layers are unaffected. See `tests/l2_l4_l5_hard_gate.rs` and `SECURITY.md` for the current, tested contract. Lesson: a "FIXED" entry in this document describes the state of the codebase on the date given, not a permanent guarantee — a later refactor can silently reopen a closed finding, which is exactly what happened here. Treat this report as a historical record to verify against, not as ongoing assurance.
 
 ### HIGH #1: Discriminator Check Bypass on Short Instruction Data
 

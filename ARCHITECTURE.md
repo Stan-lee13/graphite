@@ -38,9 +38,10 @@ The pipeline executes in order. Each layer is tracked in the verification result
 
 ### Key Properties
 - **L7 Risk Verification is a hard gate** — it blocks independently of confidence score. A malicious pattern blocks the transaction even if confidence is high. The Risk Engine executes early in the pipeline (before L4/L5) for fail-fast performance, but is reported at L7 per this spec.
+- **L2/L4/L5 are hard gates when genuinely Failed** — a confirmed L2 instruction/data mismatch, L4 state-verification failure, or L5 intent-vs-instruction mismatch blocks approval unconditionally, exactly like an L7 risk finding, regardless of trust tier or wallet-profile confidence threshold. This is distinct from `Inconclusive` (insufficient evidence — e.g. an unknown protocol — which never blocks and only reduces confidence via the P12 tier ceiling, never via this gate). A genuine `Failed` also still applies its confidence penalty (0.2 / 0.15 / 0.3 for L2/L4/L5) so the breakdown stays explainable, but the penalty is no longer what enforces the rejection.
 - **L6 Policy Verification applies tier ceilings** — Unknown/Heuristic protocols are capped at 0.55 (hard-coded, not overridable per P12). Confidence computation is included in L6.
-- **L6 Policy Verification is the final gate** — it checks both confidence threshold and minimum trust tier for the wallet's profile.
-- **L3 Simulation Verification is active when an RPC client is attached** — `GRAPHITE_RPC_URL` wires a live `simulateTransaction` call into the pipeline, live-validated against real Solana devnet transactions (C40). Without an RPC client, L3 reports `Inconclusive` (honest tri-state: `Passed` / `Failed` / `Inconclusive`) rather than a phantom pass.
+- **L6 Policy Verification is the final gate** — it checks both confidence threshold and minimum trust tier for the wallet's profile, AND that no L2/L4/L5 layer genuinely failed.
+- **L3 Simulation Verification is active when an RPC client is attached** — `GRAPHITE_RPC_URL` wires a live `simulateTransaction` call into the pipeline, live-validated against real Solana devnet transactions (C40). Without an RPC client, L3 reports `Inconclusive` (honest tri-state: `Passed` / `Failed` / `Inconclusive`) rather than a phantom pass. A flagged simulation (genuine `Failed`) is folded into the L7 risk finding `SimulationSpoofing` and is therefore already a hard gate, consistent with L2/L4/L5 above.
 
 ## Security Boundaries (Constitution)
 
