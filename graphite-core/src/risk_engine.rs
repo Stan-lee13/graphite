@@ -144,10 +144,25 @@ const RISKY_CPI_PROGRAMS: &[&str] = &[
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", // Token-2022
 ];
 
-/// Known DEX/aggregator programs that legitimately CPI to SPL Token for transfers.
-/// These are trusted to only call safe instructions (Transfer) on token programs.
-/// Unknown programs that CPI to SPL Token are blocked (P12: fail-closed).
-const TRUSTED_CPI_ROOTS: &[&str] = &[
+/// Programs onboarded as trusted, high-complexity composability roots: DEXes/
+/// aggregators/multisigs that legitimately (a) CPI to SPL Token/Token-2022
+/// for transfers — exempted from Check 1b's "risky CPI target from an
+/// untrusted root" block, (b) have naturally high/variable account counts
+/// (many pool/route/signer accounts) — exempted from the drainer heuristic,
+/// and (c) route through deep (5+) multi-program CPI chains — exempted from
+/// Pattern 2's deep-chain drain signal.
+///
+/// P1 fix (2026-09-05 audit, "CPI-allowlist maintainability"): this was
+/// previously TWO separately hand-maintained lists (`TRUSTED_CPI_ROOTS` and
+/// `DEX_PROGRAMS`) with byte-identical contents kept in sync only by
+/// discipline — and that discipline already failed once for real: the C56
+/// comment below documents three DEXes that were added to one list but not
+/// the other, silently misflagging their legitimate swaps as
+/// `AuthorityHijack` until caught by audit. A single canonical list means
+/// onboarding a new protocol into this trust category now requires editing
+/// exactly ONE place, not two (or three, counting Pattern 2's separate
+/// reference) that can independently drift.
+const TRUSTED_COMPOSABILITY_PROGRAMS: &[&str] = &[
     "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
     "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
     "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
@@ -167,25 +182,17 @@ const TRUSTED_CPI_ROOTS: &[&str] = &[
     "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", // Orca TokenSwap V2
 ];
 
-/// Trusted programs that naturally have high/variable account counts.
-/// The drainer heuristic is skipped for these — high account-to-change ratio
-/// is normal behavior for DEX routing (many pool accounts) and multisig
-/// execution (many signer/proposal accounts).
-const DEX_PROGRAMS: &[&str] = &[
-    "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
-    "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
-    "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
-    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
-    "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf", // Squads V4 (multisig)
-    "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA
-    "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (curve: many accounts)
-    "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", // Phoenix spot DEX
-    "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb", // OpenBook V2 CLOB
-    "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu", // Jupiter Limit Order
-    "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK", // Raydium CLMM
-    "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C", // Raydium CPMM
-    "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", // Orca TokenSwap V2
-];
+/// Check 1b's CPI-trust view of `TRUSTED_COMPOSABILITY_PROGRAMS` — programs
+/// exempt from the "risky CPI target from an untrusted root" block because
+/// they legitimately CPI to SPL Token/Token-2022. Same underlying list, kept
+/// as a distinct name at call sites for readability (see the doc comment
+/// above for why it is no longer a separately maintained array).
+const TRUSTED_CPI_ROOTS: &[&str] = TRUSTED_COMPOSABILITY_PROGRAMS;
+
+/// The drainer-heuristic-skip view of `TRUSTED_COMPOSABILITY_PROGRAMS` —
+/// programs whose naturally high/variable account counts must not trip the
+/// drainer heuristic. Same underlying list; see the doc comment above.
+const DEX_PROGRAMS: &[&str] = TRUSTED_COMPOSABILITY_PROGRAMS;
 
 /// Assess a transaction for adversarial risk patterns.
 ///
@@ -999,6 +1006,26 @@ fn detect_system_account_impersonation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P1 fix (2026-09-05 audit, "CPI-allowlist maintainability"): TRUSTED_CPI_ROOTS
+    /// and DEX_PROGRAMS were previously two independently hand-maintained lists
+    /// with byte-identical contents — C56 already documented one real drift
+    /// (three DEXes present in one list but missing from the other,
+    /// misflagging their legitimate swaps). Both are now aliases of a single
+    /// canonical `TRUSTED_COMPOSABILITY_PROGRAMS` array, which makes this
+    /// assertion trivially true by construction — but it stays here as an
+    /// explicit, discoverable guard: if a future edit ever reintroduces
+    /// separate lists (e.g. to special-case one call site), this test fails
+    /// immediately and points at this exact historical bug class, instead of
+    /// silently reintroducing the C56 drift risk.
+    #[test]
+    fn trusted_cpi_roots_and_dex_programs_share_one_canonical_list() {
+        assert_eq!(
+            TRUSTED_CPI_ROOTS, DEX_PROGRAMS,
+            "TRUSTED_CPI_ROOTS and DEX_PROGRAMS must stay a single source of truth \
+             (TRUSTED_COMPOSABILITY_PROGRAMS) — see the C56 drift this consolidation fixes"
+        );
+    }
 
     /// ISA: a System transfer whose destination ends in a vanity 11111 suffix
     /// (a real documented phishing address shape) must be blocked with the
