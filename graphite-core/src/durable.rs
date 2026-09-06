@@ -225,6 +225,47 @@ pub struct AuditErrorRecord {
     pub status: u16,
 }
 
+/// The longest any single field of an error record may be on disk.
+///
+/// Generous for a genuine diagnostic and small enough that no request can turn
+/// the audit trail into storage the caller controls.
+const MAX_AUDIT_FIELD_CHARS: usize = 256;
+
+fn bound_field(value: &str) -> String {
+    if value.chars().count() <= MAX_AUDIT_FIELD_CHARS {
+        return value.to_string();
+    }
+    let kept: String = value.chars().take(MAX_AUDIT_FIELD_CHARS).collect();
+    // Record what was dropped: a silently shortened field would make an
+    // investigator believe they were reading the whole value.
+    format!("{kept}… [truncated, {} chars total]", value.chars().count())
+}
+
+impl AuditErrorRecord {
+    /// The record as it may be written to disk, with every caller-influenced
+    /// field bounded.
+    ///
+    /// Defence in depth behind the entry-point length caps in `verify_async`.
+    /// Those stop the known path — an oversized `program_id` reaching this
+    /// record — but the audit trail is a P9 guarantee and it must not be
+    /// possible for ANY future code path to let a caller choose how many bytes
+    /// land on the operator's volume. Found 2026-09-06: a 100,000-character
+    /// `program_id` was written here verbatim, so probing alone grew
+    /// `/data/audit.jsonl` to 3.6 MB. Burying real verifications under chosen
+    /// padding degrades the trail as effectively as deleting it, and disk
+    /// exhaustion sits behind that.
+    fn bounded(&self) -> AuditErrorRecord {
+        AuditErrorRecord {
+            timestamp: self.timestamp.clone(),
+            program_id: bound_field(&self.program_id),
+            instruction_name: bound_field(&self.instruction_name),
+            error: bound_field(&self.error),
+            error_type: bound_field(&self.error_type),
+            status: self.status,
+        }
+    }
+}
+
 impl AuditLog {
     /// Open (creating if needed) the audit log at `path`. The parent
     /// directory must already exist (callers create the data dir first).
@@ -489,7 +530,7 @@ impl AuditLog {
 
     /// Append an error-path record (same durability contract).
     pub fn append_error(&self, record: &AuditErrorRecord) {
-        self.append_line(record);
+        self.append_line(&record.bounded());
     }
 
     /// Append a lifecycle event (P9). Same durability contract as `append`:

@@ -1736,6 +1736,55 @@ impl GraphiteCore {
                 )));
             }
         }
+        // Identifier LENGTH caps.
+        //
+        // Account count, instruction data and CPI target count were bounded;
+        // the string fields were not. A base58-encoded Solana pubkey is at most
+        // 44 characters, so anything longer cannot be a program id or an
+        // address — it can be refused in O(1), before it reaches the
+        // transaction builder, the error formatter, the log line, or the
+        // append-only audit record.
+        //
+        // That last one is why this is a security check and not tidiness.
+        // Found 2026-09-06 against the running container: a `program_id` of
+        // 100,000 characters was echoed verbatim into `/data/audit.jsonl`, so
+        // anyone who could reach the port could write close to a megabyte of
+        // chosen bytes per request into the operator's audit volume. Probing
+        // alone grew that file to 3.6 MB. The audit trail is a P9 guarantee —
+        // it is the one file the system must not lose — and burying real
+        // verifications under attacker-chosen padding degrades it just as
+        // effectively as deleting it, with disk exhaustion behind that.
+        //
+        // The message deliberately reports the LENGTH and never the value, so
+        // the rejection itself cannot become the amplification vector.
+        const MAX_BASE58_PUBKEY: usize = 44;
+        // Real discriminators are 1-8 bytes (2-16 hex). 128 is far past any
+        // legitimate encoding while still being a bound.
+        const MAX_DISCRIMINATOR_CHARS: usize = 128;
+        if input.program_id.len() > MAX_BASE58_PUBKEY {
+            return Err(VerificationError::InvalidInput(format!(
+                "program_id is {} characters; a base58 Solana pubkey is at most {MAX_BASE58_PUBKEY}",
+                input.program_id.len()
+            )));
+        }
+        if input.instruction_discriminator.len() > MAX_DISCRIMINATOR_CHARS {
+            return Err(VerificationError::InvalidInput(format!(
+                "instruction_discriminator is {} characters; the maximum is {MAX_DISCRIMINATOR_CHARS}",
+                input.instruction_discriminator.len()
+            )));
+        }
+        if let Some((i, addr)) = input
+            .account_addresses
+            .iter()
+            .enumerate()
+            .find(|(_, a)| a.len() > MAX_BASE58_PUBKEY)
+        {
+            return Err(VerificationError::InvalidInput(format!(
+                "account_addresses[{i}] is {} characters; a base58 Solana pubkey is at most {MAX_BASE58_PUBKEY}",
+                addr.len()
+            )));
+        }
+
         if input.cpi_targets.len() > MAX_CPI_TARGETS {
             return Err(VerificationError::InvalidInput(format!(
                 "cpi_targets exceeds maximum of {} entries (got {})",
