@@ -912,6 +912,19 @@ impl GraphiteCore {
         Ok(())
     }
 
+    /// The program's latest EARNED behaviour record, if it has one.
+    ///
+    /// Distinct from `graph_snapshot`, which merges the graph with the
+    /// manifest and falls back to the manifest's self-declared tier when no
+    /// record exists. That merge is right for a dashboard but wrong for anything
+    /// reporting what a program has actually earned: a manifest may declare
+    /// `BattleTested` with zero evidence behind it, and the verify path caps
+    /// that at OfficialManifest (P7). `None` here means "nothing earned",
+    /// which is a different fact from "tier Unknown".
+    pub fn program_behavior(&self, program_id: &str) -> Option<Behavior> {
+        self.graph().get(program_id).cloned()
+    }
+
     /// Every currently quarantined program with its reason, in program-id
     /// order so the listing is stable (P2).
     pub fn quarantined_programs(&self) -> Vec<(String, String)> {

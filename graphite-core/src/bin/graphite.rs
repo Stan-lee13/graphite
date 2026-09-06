@@ -72,12 +72,43 @@ enum Commands {
         #[command(subcommand)]
         action: RegressionAction,
     },
-    /// Manifest Registry operator actions (G5 reviewers + signed submissions)
     /// Withdraw a program from trust, restore it, or list what is withdrawn
     Quarantine {
         #[command(subcommand)]
         action: QuarantineAction,
     },
+    /// Verify a transaction and print WHY, layer by layer, instead of JSON
+    ///
+    /// Same pipeline and same verdict as `verify` — a renderer, not a second
+    /// decision path. Exits 1 when the transaction is blocked.
+    Explain {
+        /// Path to a VerificationInput JSON file
+        #[arg(long)]
+        file: PathBuf,
+        /// Override the input's wallet profile
+        #[arg(long)]
+        profile: Option<String>,
+        /// Minimum confidence for --profile custom
+        #[arg(long)]
+        min_confidence: Option<f64>,
+        /// Minimum trust tier for --profile custom
+        #[arg(long)]
+        min_trust_tier: Option<String>,
+    },
+    /// Inspect what the gate knows about a program, or compare manifests
+    Protocol {
+        #[command(subcommand)]
+        action: ProtocolAction,
+    },
+    /// Validate a manifest against the runtime loader's schema
+    ///
+    /// The check that belongs BEFORE a reviewer signs. Exits 1 when invalid.
+    ManifestVerify {
+        /// Path to the protocol manifest JSON
+        #[arg(long)]
+        manifest: PathBuf,
+    },
+    /// Manifest Registry operator actions (G5 reviewers + signed submissions)
     Registry {
         #[command(subcommand)]
         action: RegistryAction,
@@ -113,6 +144,36 @@ enum RegressionAction {
         /// Network label for fixture provenance (mainnet|devnet)
         #[arg(long, default_value = "mainnet")]
         network: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProtocolAction {
+    /// Show the manifest, earned trust tier, evidence, baseline and quarantine
+    /// state for one program
+    Status {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Program ID (base58)
+        #[arg(long)]
+        program: String,
+    },
+    /// Compare a candidate manifest against the one currently in force
+    ///
+    /// The reviewer's tool: see which instructions moved, which account roles
+    /// changed and which CPI targets were added before attesting to a
+    /// submission.
+    Diff {
+        /// The candidate manifest JSON
+        #[arg(long)]
+        manifest: PathBuf,
+        /// Compare against this file instead of the manifest in force
+        #[arg(long)]
+        against: Option<PathBuf>,
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
     },
 }
 
@@ -388,6 +449,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
             }
         },
+        Commands::Explain {
+            file,
+            profile,
+            min_confidence,
+            min_trust_tier,
+        } => {
+            let json = std::fs::read_to_string(&file)
+                .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
+            let input: graphite_core::verification::VerificationInput = serde_json::from_str(&json)
+                .map_err(|e| format!("failed to parse {}: {e}", file.display()))?;
+            graphite_core::cli::run(graphite_core::cli::CliCommand::Explain {
+                input: Box::new(input),
+                profile: graphite_core::cli::ProfileArg {
+                    name: profile,
+                    min_confidence,
+                    min_trust_tier,
+                },
+            })
+        }
+        Commands::Protocol { action } => match action {
+            ProtocolAction::Status { data_dir, program } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Protocol {
+                    action: graphite_core::cli::ProtocolAction::Status {
+                        data_dir,
+                        program_id: program,
+                    },
+                })
+            }
+            ProtocolAction::Diff {
+                manifest,
+                against,
+                data_dir,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Protocol {
+                action: graphite_core::cli::ProtocolAction::Diff {
+                    candidate: manifest,
+                    against,
+                    data_dir,
+                },
+            }),
+        },
+        Commands::ManifestVerify { manifest } => {
+            graphite_core::cli::run(graphite_core::cli::CliCommand::ManifestVerify {
+                path: manifest,
+            })
+        }
         Commands::Plugins { dir } => {
             graphite_core::cli::run(graphite_core::cli::CliCommand::Plugins { dir })
         }

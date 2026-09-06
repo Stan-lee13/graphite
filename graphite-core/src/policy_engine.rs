@@ -47,6 +47,41 @@ pub enum WalletProfile {
     },
 }
 
+impl WalletProfile {
+    /// The `(min_confidence, min_trust_tier)` this profile requires.
+    ///
+    /// The single source of truth for the built-in thresholds. `evaluate_policy`
+    /// reads them here, and so does anything that reports them — `graphite
+    /// profiles`, `graphite explain`. They were inlined inside
+    /// `evaluate_policy`, which meant every other place that wanted to SHOW a
+    /// threshold had to restate it, and a restated constant is one that goes
+    /// quietly wrong: a tool would print 0.80 while the gate enforced something
+    /// else, and the number on screen is exactly what an operator would trust.
+    pub fn thresholds(&self) -> (f64, TrustTier) {
+        match *self {
+            WalletProfile::Treasury => (0.95, TrustTier::CommunityVerified),
+            WalletProfile::TradingBot => (0.80, TrustTier::SimulationValidated),
+            WalletProfile::Gaming => (0.55, TrustTier::HeuristicInferred),
+            WalletProfile::Enterprise => (0.99, TrustTier::BattleTested),
+            WalletProfile::Custom {
+                min_confidence,
+                min_trust_tier,
+            } => (min_confidence, min_trust_tier),
+        }
+    }
+
+    /// Short label for display.
+    pub fn label(&self) -> &'static str {
+        match self {
+            WalletProfile::Treasury => "Treasury",
+            WalletProfile::TradingBot => "TradingBot",
+            WalletProfile::Gaming => "Gaming",
+            WalletProfile::Enterprise => "Enterprise",
+            WalletProfile::Custom { .. } => "Custom",
+        }
+    }
+}
+
 /// Verdict from policy evaluation.
 ///
 /// `Eq` is deliberately NOT derived here (only `PartialEq`) for the same
@@ -107,16 +142,7 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
     }
 
     // STEP 2: Get profile thresholds
-    let (min_confidence, min_trust_tier) = match input.profile {
-        WalletProfile::Treasury => (0.95, TrustTier::CommunityVerified),
-        WalletProfile::TradingBot => (0.80, TrustTier::SimulationValidated),
-        WalletProfile::Gaming => (0.55, TrustTier::HeuristicInferred),
-        WalletProfile::Enterprise => (0.99, TrustTier::BattleTested),
-        WalletProfile::Custom {
-            min_confidence,
-            min_trust_tier,
-        } => (min_confidence, min_trust_tier),
-    };
+    let (min_confidence, min_trust_tier) = input.profile.thresholds();
 
     // STEP 3: Check confidence threshold
     // Use epsilon comparison to avoid floating-point precision issues

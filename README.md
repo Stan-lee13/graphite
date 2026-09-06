@@ -354,6 +354,55 @@ curl -X POST http://localhost:7331/verify \
 > jq '.wallet_profile = {"Custom": {"min_confidence": 0.40, "min_trust_tier": "OfficialManifest"}}' ../examples/verify-input.json | curl -X POST http://localhost:7331/verify -H "Content-Type: application/json" -d @- | jq .approved
 > ```
 
+### Operator CLI
+
+`graphite verify` answers "what does the gate decide?" as JSON. These answer the questions an operator actually asks around it. All of them read the same durable semantic graph the server does (`GRAPHITE_DATA_DIR`, default `./graphite-data`), so the CLI and the server never disagree about a program's earned trust.
+
+```bash
+# WHY did the gate decide that? Layer by layer, with the confidence breakdown,
+# the risk findings, and the accounts. Same pipeline as `verify` — a renderer,
+# not a second decision path. Exits 1 when the transaction is blocked.
+graphite explain --file examples/verify-input.json
+```
+
+```bash
+# What does the gate know about this program? Manifest, EARNED trust tier and
+# the evidence behind it, simulation baseline, declared CPI targets, quarantine
+# state. A declared tier is labelled as declared — a manifest claiming
+# BattleTested with no evidence must not read as fact.
+graphite protocol status --program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+```
+
+```bash
+# What am I signing off on? Compares a candidate manifest against the one
+# currently in force: instructions added and removed, renames (identified by an
+# unchanged discriminator, so a rename never reads as a breaking removal),
+# account privilege changes, new CPI targets, changed risk classes.
+# The reviewer's missing tool — their attestation is what earns the tier.
+graphite protocol diff --manifest ./candidate.json
+```
+
+```bash
+# Would the loader accept this? Run before signing, not after.
+graphite manifest-verify --manifest ./candidate.json
+```
+
+```bash
+# Withdraw a program from trust immediately, restore it, or see what is withdrawn.
+graphite quarantine add --program <id> --reason "GHSA-2026-0001 authority takeover"
+graphite quarantine list
+graphite quarantine lift --program <id>
+```
+
+```bash
+# Onboarding a new program: the P10 gate needs a regression baseline, and one
+# cannot be recorded the ordinary way because the manifest is not installed yet.
+graphite registry record-fixture --corpus-dir ./corpus   --manifest ./candidate.json --input ./tx.json
+graphite registry submit --manifest ./candidate.json   --signer-key-file ./key.hex --corpus-dir ./corpus
+```
+
+There is deliberately no `build --simulate`. `verify` already simulates when an RPC client is attached, and a separate build-and-simulate command would need its own transaction-plan input format — inventing one to round out a list is the kind of surface that exists to be listed rather than used.
+
 ### 3. Run the SAK integration demo
 
 ```bash

@@ -1,6 +1,7 @@
 //! CLI module for Graphite Core.
 
 use crate::confidence_engine::TrustTier;
+use crate::manifest::ProtocolManifest;
 use crate::policy_engine::WalletProfile;
 use crate::verification::{GraphiteCore, VerificationInput};
 use std::path::{Path, PathBuf};
@@ -129,6 +130,29 @@ pub enum CliCommand {
     Quarantine {
         action: QuarantineAction,
     },
+    /// Verify a transaction and render WHY, layer by layer, instead of JSON.
+    ///
+    /// Same pipeline and same verdict as `verify` — this is a renderer, not a
+    /// second decision path. P3 says a verdict must be explainable; a JSON blob
+    /// is auditable but not readable, and the operator deciding whether to
+    /// override a block is reading it under time pressure.
+    Explain {
+        input: Box<VerificationInput>,
+        profile: ProfileArg,
+    },
+    /// Inspect what the gate knows about one program, or compare manifests.
+    Protocol {
+        action: ProtocolAction,
+    },
+    /// Validate a manifest against the runtime loader's schema without
+    /// submitting it.
+    ///
+    /// The registry rejects a malformed manifest, but only after a reviewer has
+    /// signed it — which is the wrong order. This is the check that belongs
+    /// before the signature.
+    ManifestVerify {
+        path: PathBuf,
+    },
     /// Collect REAL on-chain transactions into the regression corpus
     /// (Phase 2 exit: "benchmark uses real on-chain data, not synthetic").
     #[cfg(feature = "rpc")]
@@ -217,6 +241,32 @@ pub enum QuarantineAction {
     },
     /// List every currently quarantined program and why.
     List { data_dir: Option<PathBuf> },
+}
+
+/// Protocol inspection action (dispatched by `CliCommand::Protocol`).
+pub enum ProtocolAction {
+    /// Everything the gate knows about one program: its manifest, the trust
+    /// tier it has earned and the evidence behind it, its simulation baseline,
+    /// its declared CPI targets, and whether it is quarantined.
+    Status {
+        data_dir: Option<PathBuf>,
+        program_id: String,
+    },
+    /// Compare a candidate manifest against the one currently in force for the
+    /// same program (or against another file).
+    ///
+    /// This is the reviewer's missing tool. The registry asks a reviewer to
+    /// sign a manifest, and until now gave them nothing to see what they were
+    /// signing off on — which instructions moved, which account roles changed,
+    /// which CPI targets were added. A reviewer who cannot see the change
+    /// cannot meaningfully attest to it, and their attestation is what earns
+    /// the program a trust tier.
+    Diff {
+        candidate: PathBuf,
+        /// Compare against this file instead of the manifest in force.
+        against: Option<PathBuf>,
+        data_dir: Option<PathBuf>,
+    },
 }
 
 /// The server's durable state directory: `--data-dir`, else
@@ -399,6 +449,9 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
         }
         CliCommand::Registry { action } => run_registry(action),
         CliCommand::Quarantine { action } => run_quarantine(action),
+        CliCommand::Explain { input, profile } => run_explain(*input, &profile),
+        CliCommand::Protocol { action } => run_protocol(action),
+        CliCommand::ManifestVerify { path } => run_manifest_verify(&path),
         #[cfg(feature = "rpc")]
         CliCommand::RegressionSeedLive {
             rpc_url,
@@ -554,6 +607,520 @@ fn load_corpus_for_seed(
         Ok(c) => Ok(c),
         Err(RegressionError::MissingDirectory(_)) => Ok(RegressionCorpus::new()),
         Err(e) => Err(e),
+    }
+}
+
+/// Build the same core `verify` uses, so an explanation cannot disagree with a
+/// verdict. Shared by `verify` and `explain`.
+fn operator_core() -> GraphiteCore {
+    let data_dir = data_dir_path(None);
+    let mut core = GraphiteCore::with_data_dir(data_dir);
+    let registry_path = registry_state_path(None);
+    if let Ok(engine) = load_registry(&registry_path) {
+        core.merge_community_manifests(&engine);
+    }
+    core
+}
+
+fn tier_label(tier: TrustTier) -> String {
+    format!("{tier:?}")
+}
+
+/// Render a verification result as prose rather than JSON.
+fn run_explain(
+    mut input: VerificationInput,
+    profile: &ProfileArg,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(p) = resolve_profile(profile)? {
+        input.wallet_profile = p;
+    }
+    let core = operator_core();
+    let result = core.verify(&input)?;
+    let (min_confidence, min_tier) = input.wallet_profile.thresholds();
+
+    println!(
+        "{} {}",
+        result.protocol_name,
+        result
+            .manifest_version
+            .as_deref()
+            .map(|v| format!("v{v}"))
+            .unwrap_or_else(|| "(no manifest)".to_string())
+    );
+    println!("  program      {}", input.program_id);
+    println!(
+        "  instruction  {} ({})",
+        result.instruction_name, input.instruction_discriminator
+    );
+    println!(
+        "  intent       {} — {:?}",
+        input.proposed_intent.intent_type, input.proposed_intent.raw_natural_language
+    );
+    println!("  content hash {}", result.content_hash);
+    println!();
+
+    println!(
+        "VERDICT  {}",
+        if result.approved {
+            "APPROVED"
+        } else {
+            "BLOCKED"
+        }
+    );
+    println!(
+        "  confidence   {:.2}   (profile {} requires {:.2})",
+        result.confidence,
+        input.wallet_profile.label(),
+        min_confidence
+    );
+    println!(
+        "  trust tier   {}   (profile requires {})",
+        result.trust_tier,
+        tier_label(min_tier)
+    );
+    println!("  policy       {}", result.policy_verdict);
+    println!("  risk         {}", result.risk_verdict.status);
+    println!();
+
+    println!("Layers");
+    for layer in &result.layers {
+        // The tri-state matters more than pass/fail: Inconclusive means "not
+        // enough evidence to judge", which is a different thing from "checked
+        // and fine" and must not read like it.
+        let mark = match layer.status {
+            crate::verification::LayerStatus::Passed => "pass",
+            crate::verification::LayerStatus::Failed => "FAIL",
+            crate::verification::LayerStatus::Inconclusive => "n/a ",
+        };
+        println!("  {mark}  {:<26} {}", layer.layer, layer.reason);
+    }
+    println!();
+
+    println!("Confidence breakdown");
+    if result.breakdown.is_empty() {
+        println!("  (no signals contributed)");
+    } else {
+        for item in &result.breakdown {
+            println!(
+                "  {:<24} raw {:>5.2}  weight {:>5.2}  ->  {:+.3}",
+                item.kind, item.raw_value, item.weight, item.contribution
+            );
+        }
+        let total: f64 = result.breakdown.iter().map(|b| b.contribution).sum();
+        println!("  {:<24} {:>36.3}", "sum of contributions", total);
+        // P3: the breakdown must explain the score it is presented alongside.
+        // A mismatch is a bug worth surfacing rather than hiding.
+        if (total - result.confidence).abs() > 0.005 {
+            println!(
+                "  NOTE: the contributions sum to {total:.3} but the final confidence is {:.2} — \
+                 a ceiling or penalty was applied after scoring.",
+                result.confidence
+            );
+        }
+    }
+    println!();
+
+    println!("Risk findings");
+    if result.risk_verdict.findings.is_empty() {
+        println!("  (none)");
+    } else {
+        for f in &result.risk_verdict.findings {
+            println!("  {:<26} {}", f.pattern, f.reason);
+        }
+    }
+    println!();
+
+    println!("Accounts");
+    for (i, a) in result.resolved_accounts.iter().enumerate() {
+        let mut flags: Vec<&str> = Vec::new();
+        if a.is_signer {
+            flags.push("signer");
+        }
+        if a.is_writable {
+            flags.push("writable");
+        }
+        if a.is_pda {
+            flags.push("pda");
+        }
+        if a.expected_address_mismatch {
+            flags.push("EXPECTED-ADDRESS-MISMATCH");
+        }
+        if a.pda_mismatch {
+            flags.push("PDA-MISMATCH");
+        }
+        if a.privilege_mismatch {
+            flags.push("PRIVILEGE-MISMATCH");
+        }
+        println!(
+            "  #{i:<3} {:<14} {}  {}",
+            a.role,
+            a.address,
+            flags.join(" ")
+        );
+    }
+    println!();
+    println!("{}", result.summary);
+
+    if !result.approved {
+        // Same convention as `regression`: usable as a shell gate.
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        ProtocolAction::Status {
+            data_dir,
+            program_id,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let mut core = GraphiteCore::with_data_dir(dir.clone());
+            let registry_path = registry_state_path(None);
+            if let Ok(engine) = load_registry(&registry_path) {
+                core.merge_community_manifests(&engine);
+            }
+
+            let snapshot = core.graph_snapshot();
+            let node = snapshot.nodes.iter().find(|n| n.program_id == program_id);
+            let manifest = core.registry().get(&program_id);
+
+            if node.is_none() && manifest.is_none() {
+                println!("{program_id}");
+                println!("  UNKNOWN — no manifest and no behaviour record.");
+                println!(
+                    "  Verification would run in unknown-protocol mode, capped at the P6 \
+                     confidence ceiling."
+                );
+                return Ok(());
+            }
+
+            println!("{}", node.map(|n| n.name.as_str()).unwrap_or("(unnamed)"));
+            println!("  program        {program_id}");
+            match manifest {
+                Some(m) => {
+                    println!("  manifest       v{}", m.version.label);
+                    println!("  instructions   {}", m.instructions.len());
+                }
+                None => println!("  manifest       (none — behaviour record only)"),
+            }
+
+            // P7: a manifest's declared tier is the protocol's claim about
+            // itself; only a behaviour record is earned. `graph_snapshot`
+            // merges the two, which is right for a dashboard and wrong here —
+            // printing "BattleTested" beside zero evidence would read as fact.
+            let earned = core.program_behavior(&program_id);
+            match &earned {
+                Some(b) => {
+                    println!("  trust tier     {:?}   (earned)", b.trust_tier);
+                    println!(
+                        "  evidence       battle-tested {} tx, community-verified {}, \
+                         simulation matches {}, signed manifest {}",
+                        b.evidence.battle_tested_tx_count,
+                        b.evidence.community_verified_count,
+                        b.evidence.simulation_match_count,
+                        b.evidence.has_signed_manifest
+                    );
+                }
+                None => {
+                    println!(
+                        "  trust tier     {}   (DECLARED by the manifest, not earned)",
+                        manifest.map(|m| m.trust_tier.as_str()).unwrap_or("Unknown")
+                    );
+                    println!(
+                        "  evidence       none — nothing recorded, so the verify path caps this \
+                         program at OfficialManifest (P7)"
+                    );
+                }
+            }
+            if let Some(n) = node {
+                println!(
+                    "  sim baseline   {}",
+                    match n.baseline_samples {
+                        Some(c) if c > 0 => format!("{c} samples"),
+                        _ => "none — L3 cannot judge divergence yet".to_string(),
+                    }
+                );
+                if n.quarantined {
+                    println!(
+                        "  QUARANTINED    {}",
+                        n.quarantine_reason
+                            .as_deref()
+                            .unwrap_or("no reason recorded")
+                    );
+                    println!(
+                        "                 tier is forced to Unknown and verification hard-blocks"
+                    );
+                }
+                if !n.cpi_targets.is_empty() {
+                    println!("  declared CPI   {}", n.cpi_targets.join(", "));
+                }
+            }
+
+            if let Some(m) = manifest {
+                println!();
+                println!("Instructions");
+                for ix in &m.instructions {
+                    let class = if ix.risk_class.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  [{}]", ix.risk_class)
+                    };
+                    println!("  {:<28} {}{}", ix.name, ix.discriminator, class);
+                    if !ix.expected_state_changes.is_empty() {
+                        println!("      changes: {}", ix.expected_state_changes.join("; "));
+                    }
+                    if !ix.allowed_cpis.is_empty() {
+                        println!("      cpi:     {}", ix.allowed_cpis.join(", "));
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        ProtocolAction::Diff {
+            candidate,
+            against,
+            data_dir,
+        } => {
+            let candidate_manifest: ProtocolManifest = serde_json::from_str(
+                &std::fs::read_to_string(&candidate)
+                    .map_err(|e| format!("reading {}: {e}", candidate.display()))?,
+            )
+            .map_err(|e| format!("parsing {}: {e}", candidate.display()))?;
+
+            let baseline: ProtocolManifest = match against {
+                Some(path) => serde_json::from_str(
+                    &std::fs::read_to_string(&path)
+                        .map_err(|e| format!("reading {}: {e}", path.display()))?,
+                )
+                .map_err(|e| format!("parsing {}: {e}", path.display()))?,
+                None => {
+                    let dir = data_dir_path(data_dir);
+                    let mut core = GraphiteCore::with_data_dir(dir);
+                    if let Ok(engine) = load_registry(&registry_state_path(None)) {
+                        core.merge_community_manifests(&engine);
+                    }
+                    match core.registry().get(&candidate_manifest.protocol.program_id) {
+                        Some(m) => m.clone(),
+                        None => {
+                            println!(
+                                "no manifest in force for {} — this candidate would be its first",
+                                candidate_manifest.protocol.program_id
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
+            };
+
+            for line in manifest_diff(&baseline, &candidate_manifest) {
+                println!("{line}");
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Compare two manifests instruction by instruction.
+///
+/// Deliberately structural rather than textual: a reviewer needs to see that a
+/// discriminator moved or an account became writable, not that a JSON key was
+/// reordered. Ordering is by name so the output is stable (P2).
+/// Everything that differs between two versions of one instruction, as lines a
+/// reviewer can read. Shared by the changed-in-place path and the rename path,
+/// so a rename can never hide a privilege change riding along with it.
+fn instruction_changes(
+    a: &crate::manifest::InstructionDef,
+    b: &crate::manifest::InstructionDef,
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    if a.discriminator != b.discriminator {
+        lines.push(format!(
+            "discriminator {} -> {}",
+            a.discriminator, b.discriminator
+        ));
+    }
+    if a.accounts.len() != b.accounts.len() {
+        lines.push(format!(
+            "account count {} -> {}",
+            a.accounts.len(),
+            b.accounts.len()
+        ));
+    }
+    for (i, (x, y)) in a.accounts.iter().zip(b.accounts.iter()).enumerate() {
+        if x.name != y.name || x.is_signer != y.is_signer || x.is_writable != y.is_writable {
+            lines.push(format!(
+                "account #{i}: {} (signer {}, writable {}) -> {} (signer {}, writable {})",
+                x.name, x.is_signer, x.is_writable, y.name, y.is_signer, y.is_writable
+            ));
+        }
+    }
+    if a.expected_state_changes != b.expected_state_changes {
+        lines.push(format!(
+            "declared changes {:?} -> {:?}",
+            a.expected_state_changes, b.expected_state_changes
+        ));
+    }
+    if a.allowed_cpis != b.allowed_cpis {
+        lines.push(format!(
+            "allowed CPI {:?} -> {:?}",
+            a.allowed_cpis, b.allowed_cpis
+        ));
+    }
+    if a.risk_class != b.risk_class {
+        lines.push(format!(
+            "risk class {:?} -> {:?}",
+            a.risk_class, b.risk_class
+        ));
+    }
+    if a.variable_accounts != b.variable_accounts {
+        lines.push(format!(
+            "variable accounts {} -> {}",
+            a.variable_accounts, b.variable_accounts
+        ));
+    }
+    lines
+}
+
+pub fn manifest_diff(before: &ProtocolManifest, after: &ProtocolManifest) -> Vec<String> {
+    use std::collections::BTreeMap;
+    let mut out: Vec<String> = Vec::new();
+
+    out.push(format!(
+        "{} : v{} -> v{}",
+        after.protocol.program_id, before.version.label, after.version.label
+    ));
+    if before.protocol.program_id != after.protocol.program_id {
+        out.push(format!(
+            "  !! PROGRAM ID DIFFERS: {} -> {} — these are not versions of the same protocol",
+            before.protocol.program_id, after.protocol.program_id
+        ));
+    }
+    if before.protocol.name != after.protocol.name {
+        out.push(format!(
+            "  name           {:?} -> {:?}",
+            before.protocol.name, after.protocol.name
+        ));
+    }
+
+    let old: BTreeMap<&str, _> = before
+        .instructions
+        .iter()
+        .map(|i| (i.name.as_str(), i))
+        .collect();
+    let new: BTreeMap<&str, _> = after
+        .instructions
+        .iter()
+        .map(|i| (i.name.as_str(), i))
+        .collect();
+
+    // An instruction that vanished from one side and appeared on the other with
+    // the SAME discriminator was renamed, not removed and re-added. The
+    // distinction is the reviewer's to make: a rename is cosmetic, a genuine
+    // removal is breaking, and reporting both as "- X / + Y" invites approving
+    // one while believing it is the other.
+    let renames: BTreeMap<&str, &str> = old
+        .iter()
+        .filter(|(name, _)| !new.contains_key(*name))
+        .filter_map(|(old_name, old_ix)| {
+            new.iter()
+                .find(|(new_name, new_ix)| {
+                    !old.contains_key(*new_name) && new_ix.discriminator == old_ix.discriminator
+                })
+                .map(|(new_name, _)| (*old_name, *new_name))
+        })
+        .collect();
+    let renamed_to: std::collections::BTreeSet<&str> = renames.values().copied().collect();
+
+    let mut changed = false;
+    for (old_name, new_name) in &renames {
+        changed = true;
+        out.push(format!(
+            "  ~ {old_name} -> {new_name}  (renamed, discriminator {} unchanged)",
+            old[old_name].discriminator
+        ));
+        // A rename can carry other changes with it; show them here rather than
+        // letting the rename line stand in for a full comparison.
+        for line in instruction_changes(old[old_name], new[new_name]) {
+            out.push(format!("      {line}"));
+        }
+    }
+    for (name, ix) in &new {
+        if !old.contains_key(name) && !renamed_to.contains(name) {
+            changed = true;
+            out.push(format!("  + {name}  ({})", ix.discriminator));
+            if !ix.expected_state_changes.is_empty() {
+                out.push(format!(
+                    "      changes: {}",
+                    ix.expected_state_changes.join("; ")
+                ));
+            }
+        }
+    }
+    for (name, ix) in &old {
+        if !new.contains_key(name) && !renames.contains_key(name) {
+            changed = true;
+            out.push(format!("  - {name}  ({}) removed", ix.discriminator));
+        }
+    }
+    for (name, a) in &old {
+        let Some(b) = new.get(name) else { continue };
+        let lines = instruction_changes(a, b);
+        if !lines.is_empty() {
+            changed = true;
+            out.push(format!("  ~ {name}"));
+            for l in lines {
+                out.push(format!("      {l}"));
+            }
+        }
+    }
+
+    if !changed {
+        out.push("  no instruction-level changes".to_string());
+    }
+    out
+}
+
+/// Validate a manifest exactly as the runtime loader would.
+fn run_manifest_verify(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let json =
+        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+    let manifest: ProtocolManifest =
+        serde_json::from_str(&json).map_err(|e| format!("parsing {}: {e}", path.display()))?;
+
+    // Run the REAL loader rather than a re-implementation of its rules: a
+    // second copy of the schema check would eventually accept something the
+    // loader rejects, and this command exists to predict the loader.
+    let mut registry = crate::manifest::ManifestRegistry::new();
+    match registry.load_from_json(&json) {
+        Ok(_) => {
+            println!("VALID  {}", path.display());
+            println!("  protocol      {}", manifest.protocol.name);
+            println!("  program       {}", manifest.protocol.program_id);
+            println!("  version       v{}", manifest.version.label);
+            println!("  instructions  {}", manifest.instructions.len());
+            for ix in &manifest.instructions {
+                println!(
+                    "    {:<28} {:<20} {} account(s)",
+                    ix.name,
+                    ix.discriminator,
+                    ix.accounts.len()
+                );
+            }
+            println!();
+            println!(
+                "This is the loader's schema check only. It does not verify the manifest is TRUE \
+                 about the program — that is what a reviewer attestation and the P10 regression \
+                 gate are for."
+            );
+            Ok(())
+        }
+        Err(e) => {
+            println!("INVALID  {}", path.display());
+            println!("  {e}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -904,6 +1471,224 @@ mod tests {
         ));
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    // ── Manifest diff (the reviewer's tool) ─────────────────────────────────
+
+    fn diff_manifest(program: &str, version: &str) -> ProtocolManifest {
+        use crate::manifest::{AccountRoleDef, InstructionDef, ManifestVersion, ProtocolInfo};
+        ProtocolManifest {
+            graphite_manifest_version: "1.0".to_string(),
+            protocol: ProtocolInfo {
+                name: "Demo".to_string(),
+                program_id: program.to_string(),
+                website: String::new(),
+                github: String::new(),
+                category: String::new(),
+            },
+            version: ManifestVersion {
+                label: version.to_string(),
+                effective_from_slot: 0,
+                previous_version_ref: None,
+            },
+            instructions: vec![InstructionDef {
+                name: "Deposit".to_string(),
+                discriminator: "01".to_string(),
+                accounts: vec![AccountRoleDef {
+                    name: "vault".to_string(),
+                    role: "vault".to_string(),
+                    is_writable: false,
+                    is_signer: false,
+                    pda_seeds: vec![],
+                    expected_address: vec![],
+                }],
+                expected_state_changes: vec!["debits depositor".to_string()],
+                allowed_cpis: vec![],
+                risk_rules: vec![],
+                variable_accounts: false,
+                risk_class: String::new(),
+            }],
+            trust_tier: String::new(),
+        }
+    }
+
+    const DIFF_PROGRAM: &str = "GdP9U5aYx7f2kQzVwNmT8jRcL4hB6eX3sDnWqA1uMoH";
+
+    #[test]
+    fn an_unchanged_manifest_diffs_to_nothing() {
+        let a = diff_manifest(DIFF_PROGRAM, "1.0");
+        let out = manifest_diff(&a, &a);
+        assert!(
+            out.iter()
+                .any(|l| l.contains("no instruction-level changes")),
+            "{out:?}"
+        );
+    }
+
+    #[test]
+    fn the_diff_surfaces_every_change_a_reviewer_is_attesting_to() {
+        // A reviewer's signature is what earns the program a trust tier, so
+        // each of these has to be visible before they sign. A privilege
+        // change in particular is invisible in a version bump.
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let mut after = diff_manifest(DIFF_PROGRAM, "2.0");
+        after.instructions[0].accounts[0].is_writable = true;
+        after.instructions[0].allowed_cpis =
+            vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()];
+        after.instructions[0].risk_class = "withdraw".to_string();
+        after.instructions[0].expected_state_changes = vec![
+            "debits depositor".to_string(),
+            "assigns authority".to_string(),
+        ];
+        let mut added = after.instructions[0].clone();
+        added.name = "EmergencyWithdraw".to_string();
+        added.discriminator = "ff".to_string();
+        after.instructions.push(added);
+
+        let out = manifest_diff(&before, &after).join("\n");
+        assert!(out.contains("v1.0 -> v2.0"), "{out}");
+        assert!(
+            out.contains("+ EmergencyWithdraw"),
+            "new instruction: {out}"
+        );
+        assert!(out.contains("writable false"), "privilege change: {out}");
+        assert!(out.contains("allowed CPI"), "new CPI target: {out}");
+        assert!(out.contains("risk class"), "risk class change: {out}");
+        assert!(out.contains("assigns authority"), "declared changes: {out}");
+    }
+
+    #[test]
+    fn a_rename_is_not_reported_as_a_removal_plus_an_addition() {
+        // A rename is cosmetic; a removal is breaking. Reporting both the same
+        // way invites a reviewer to approve one while believing it is the
+        // other. The discriminator staying put is what identifies the rename.
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let mut after = diff_manifest(DIFF_PROGRAM, "2.0");
+        after.instructions[0].name = "DepositV2".to_string();
+
+        let out = manifest_diff(&before, &after).join(
+            "
+",
+        );
+        assert!(out.contains("Deposit -> DepositV2"), "{out}");
+        assert!(out.contains("renamed"), "{out}");
+        assert!(!out.contains("removed"), "a rename is not a removal: {out}");
+        assert!(!out.contains("+ DepositV2"), "nor an addition: {out}");
+    }
+
+    #[test]
+    fn a_rename_cannot_hide_a_privilege_change_riding_along_with_it() {
+        // The dangerous case: the eye reads "renamed" and stops. Whatever else
+        // moved has to be on the same screen.
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let mut after = diff_manifest(DIFF_PROGRAM, "2.0");
+        after.instructions[0].name = "DepositV2".to_string();
+        after.instructions[0].accounts[0].is_writable = true;
+        after.instructions[0].risk_class = "withdraw".to_string();
+
+        let out = manifest_diff(&before, &after).join(
+            "
+",
+        );
+        assert!(out.contains("renamed"), "{out}");
+        assert!(out.contains("writable false"), "privilege change: {out}");
+        assert!(out.contains("risk class"), "risk class change: {out}");
+    }
+
+    #[test]
+    fn a_genuine_removal_is_still_reported_as_one() {
+        // The guard on the rename heuristic: a removal whose discriminator does
+        // not reappear anywhere must not be quietly paired with an unrelated
+        // new instruction.
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let mut after = diff_manifest(DIFF_PROGRAM, "2.0");
+        after.instructions[0].name = "SomethingElse".to_string();
+        after.instructions[0].discriminator = "ff".to_string();
+
+        let out = manifest_diff(&before, &after).join(
+            "
+",
+        );
+        assert!(out.contains("- Deposit"), "{out}");
+        assert!(out.contains("+ SomethingElse"), "{out}");
+        assert!(!out.contains("renamed"), "different discriminators: {out}");
+    }
+
+    #[test]
+    fn a_removed_instruction_is_reported() {
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let mut after = diff_manifest(DIFF_PROGRAM, "2.0");
+        after.instructions.clear();
+        let out = manifest_diff(&before, &after).join("\n");
+        assert!(out.contains("- Deposit"), "{out}");
+    }
+
+    #[test]
+    fn a_diff_across_two_different_programs_says_so_loudly() {
+        // Diffing unrelated manifests produces a plausible-looking instruction
+        // diff. Without this line a reviewer could read it as a version change.
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let after = diff_manifest("11111111111111111111111111111111", "2.0");
+        let out = manifest_diff(&before, &after).join("\n");
+        assert!(out.contains("PROGRAM ID DIFFERS"), "{out}");
+    }
+
+    #[test]
+    fn the_diff_is_deterministic_regardless_of_instruction_order() {
+        // Manifests are hand-authored JSON; instruction order is not
+        // meaningful, and a diff that changed with it would be unreviewable.
+        let before = diff_manifest(DIFF_PROGRAM, "1.0");
+        let mut after = diff_manifest(DIFF_PROGRAM, "2.0");
+        let mut b = after.instructions[0].clone();
+        b.name = "Withdraw".to_string();
+        b.discriminator = "02".to_string();
+        after.instructions.push(b);
+
+        let forward = manifest_diff(&before, &after);
+        after.instructions.reverse();
+        let reversed = manifest_diff(&before, &after);
+        assert_eq!(forward, reversed);
+    }
+
+    // ── Profile thresholds (single source of truth) ─────────────────────────
+
+    #[test]
+    fn reported_profile_thresholds_are_the_ones_the_policy_engine_enforces() {
+        // These were inlined inside `evaluate_policy`, so anything that DISPLAYED
+        // a threshold restated it. A restated constant drifts, and the number on
+        // screen is exactly the one an operator trusts.
+        use crate::policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict};
+        for profile in [
+            WalletProfile::Treasury,
+            WalletProfile::TradingBot,
+            WalletProfile::Gaming,
+            WalletProfile::Enterprise,
+        ] {
+            let (min_conf, _) = profile.thresholds();
+            // Just below the reported threshold must be rejected for being
+            // below threshold, and the engine must report the same number.
+            let verdict = evaluate_policy(&PolicyInput {
+                profile,
+                confidence_result: crate::confidence_engine::ConfidenceResult {
+                    confidence: min_conf - 0.01,
+                    breakdown: vec![],
+                    trust_tier_applied: TrustTier::BattleTested,
+                    ceiling_triggered: false,
+                    ceiling_applied: 1.0,
+                },
+                risk_verdict: crate::risk_engine::RiskVerdict::Passed,
+            })
+            .expect("policy evaluation");
+            match verdict {
+                PolicyVerdict::RejectedBelowThreshold { required, .. } => {
+                    assert!(
+                        (required - min_conf).abs() < 1e-9,
+                        "{profile:?}: reported {min_conf}, enforced {required}"
+                    );
+                }
+                other => panic!("{profile:?}: expected a threshold rejection, got {other:?}"),
+            }
+        }
     }
 
     /// Deterministic E2E of the registry operator path: register a reviewer,
