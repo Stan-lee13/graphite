@@ -1402,18 +1402,30 @@ async fn quarantine_handler(
         });
     }
 
-    let tier = state
+    // Deliberately named `earned_trust_tier`, not `trust_tier`.
+    //
+    // This is what the program has EARNED from evidence. It is the effective
+    // tier while quarantined (the verify path forces Unknown), but after a lift
+    // the two diverge: verification takes the greater of the earned tier and
+    // the manifest's own capped claim, so a lifted program with no earned
+    // evidence reports Unknown here and verifies at OfficialManifest. Found
+    // during a live smoke test, where the unqualified name read as "the lift
+    // did not work". A field named `trust_tier` that is not the tier
+    // verification uses is worse than no field.
+    let earned = state
         .core
-        .graph_snapshot()
-        .nodes
-        .into_iter()
-        .find(|n| n.program_id == program_id)
-        .map(|n| n.trust_tier);
+        .program_behavior(&program_id)
+        .map(|b| format!("{:?}", b.trust_tier));
 
     Ok(Json(serde_json::json!({
         "program_id": program_id,
         "quarantined": !body.lift,
-        "trust_tier": tier,
+        "earned_trust_tier": earned,
+        "note": if body.lift {
+            "verification uses the greater of this and the manifest's own capped tier (P7)"
+        } else {
+            "verification forces Unknown and hard-blocks while quarantined"
+        },
         "persisted": true,
     })))
 }
@@ -2028,7 +2040,8 @@ mod tests {
         .await;
         assert_eq!(status, axum::http::StatusCode::OK, "{json}");
         assert_eq!(json["quarantined"], serde_json::json!(true));
-        assert_eq!(json["trust_tier"], serde_json::json!("Unknown"));
+        // The EARNED tier, which while quarantined is also the effective one.
+        assert_eq!(json["earned_trust_tier"], serde_json::json!("Unknown"));
 
         // In force for this process...
         assert_eq!(
