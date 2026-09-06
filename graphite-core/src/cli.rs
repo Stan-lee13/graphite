@@ -144,6 +144,20 @@ pub enum CliCommand {
     Protocol {
         action: ProtocolAction,
     },
+    /// Seed operator-asserted evidence or a simulation baseline into the
+    /// durable semantic graph.
+    ///
+    /// Bootstrapping and state restore. A fresh deployment has an empty graph,
+    /// and the three evidence-derived confidence signals — simulation matches,
+    /// historical volume, community verification — are half the available
+    /// weight, so nothing can clear any profile's threshold until the graph has
+    /// something in it. Evidence is normally EARNED (RPC-verified simulation,
+    /// observed volume, reviewer attestations); this is the operator path for
+    /// restoring an export or standing an instance up before that history
+    /// exists.
+    Evidence {
+        action: EvidenceAction,
+    },
     /// Validate a manifest against the runtime loader's schema without
     /// submitting it.
     ///
@@ -241,6 +255,43 @@ pub enum QuarantineAction {
     },
     /// List every currently quarantined program and why.
     List { data_dir: Option<PathBuf> },
+}
+
+/// Operator evidence-seeding action (dispatched by `CliCommand::Evidence`).
+///
+/// CLI-only by design. Nothing on the HTTP surface may write here: caller
+/// evidence is request-body JSON, and honouring it would let anyone mint an
+/// earned-looking tier for a program with no on-chain reputation (G4). Reaching
+/// this requires the same access as editing the deployment's configuration.
+///
+/// P7 is preserved because what is seeded is EVIDENCE, not a tier: `append`
+/// recomputes the tier from that evidence exactly as it does for an earned
+/// record, so an operator cannot name a tier directly.
+pub enum EvidenceAction {
+    /// Seed behaviour evidence for a program (tier is recomputed, never set).
+    Seed {
+        data_dir: Option<PathBuf>,
+        program_id: String,
+        signed_manifest: bool,
+        community_verified: u32,
+        battle_tested: u64,
+        simulation_matches: u64,
+    },
+    /// Seed a simulation baseline so L3 can judge divergence.
+    Baseline {
+        data_dir: Option<PathBuf>,
+        program_id: String,
+        mean_compute_units: f64,
+        std_compute_units: f64,
+        samples: u64,
+        mean_account_writes: f64,
+        mean_cpi_hops: f64,
+    },
+    /// Show what the graph currently holds for a program.
+    Show {
+        data_dir: Option<PathBuf>,
+        program_id: String,
+    },
 }
 
 /// Protocol inspection action (dispatched by `CliCommand::Protocol`).
@@ -451,6 +502,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
         CliCommand::Quarantine { action } => run_quarantine(action),
         CliCommand::Explain { input, profile } => run_explain(*input, &profile),
         CliCommand::Protocol { action } => run_protocol(action),
+        CliCommand::Evidence { action } => run_evidence(action),
         CliCommand::ManifestVerify { path } => run_manifest_verify(&path),
         #[cfg(feature = "rpc")]
         CliCommand::RegressionSeedLive {
@@ -1120,6 +1172,185 @@ fn run_manifest_verify(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             println!("INVALID  {}", path.display());
             println!("  {e}");
             std::process::exit(1);
+        }
+    }
+}
+
+/// Seed operator-asserted evidence into the durable semantic graph.
+///
+/// Deliberately loud about provenance. Evidence seeded here was ASSERTED by an
+/// operator, not earned by observation, and it feeds the same confidence
+/// signals that RPC-verified history feeds. Anyone reading a later approval has
+/// to be able to tell those apart, and the append-only graph plus this
+/// command's output are what make that possible.
+fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::semantic_graph_store::{Behavior, BehaviorEvidence};
+
+    match action {
+        EvidenceAction::Seed {
+            data_dir,
+            program_id,
+            signed_manifest,
+            community_verified,
+            battle_tested,
+            simulation_matches,
+        } => {
+            if program_id.trim().is_empty() {
+                return Err("--program must not be empty".into());
+            }
+            if !signed_manifest
+                && community_verified == 0
+                && battle_tested == 0
+                && simulation_matches == 0
+            {
+                // Seeding nothing appends a record asserting NO evidence, which
+                // recomputes to Unknown — a downgrade the operator did not ask
+                // for, arriving through a command named "seed".
+                return Err("nothing to seed - supply at least one evidence flag".into());
+            }
+            let dir = data_dir_path(data_dir);
+            let mut core = GraphiteCore::with_data_dir(dir.clone());
+            let evidence = BehaviorEvidence {
+                has_signed_manifest: signed_manifest,
+                community_verified_count: community_verified,
+                battle_tested_tx_count: battle_tested,
+                simulation_match_count: simulation_matches,
+            };
+            let name = core
+                .registry()
+                .get(&program_id)
+                .map(|m| m.protocol.name.clone())
+                .unwrap_or_else(|| "(no manifest)".to_string());
+            let version = core
+                .registry()
+                .get(&program_id)
+                .map(|m| m.version.label.clone())
+                .unwrap_or_else(|| "operator-seeded".to_string());
+            core.seed_behavior(Behavior {
+                program_id: program_id.clone(),
+                version,
+                expected_state_changes: vec![],
+                allowed_cpis: vec![],
+                // Ignored: `append` recomputes it from the evidence (P7).
+                trust_tier: TrustTier::Unknown,
+                evidence,
+                quarantined: false,
+                quarantine_reason: None,
+            })?;
+
+            let earned = core
+                .program_behavior(&program_id)
+                .map(|b| format!("{:?}", b.trust_tier))
+                .unwrap_or_else(|| "Unknown".to_string());
+            println!("SEEDED {program_id}  ({name})");
+            println!(
+                "  evidence     signed_manifest={signed_manifest} community={community_verified} \
+                 battle_tested={battle_tested} simulation_matches={simulation_matches}"
+            );
+            println!("  trust tier   {earned}   (recomputed from that evidence, not set - P7)");
+            println!("  graph        {}", dir.display());
+            println!();
+            println!(
+                "This evidence is OPERATOR-ASSERTED, not earned by observation. It feeds the same"
+            );
+            println!(
+                "confidence signals as RPC-verified history, so seed it only for programs whose"
+            );
+            println!(
+                "history you are restoring or can vouch for. A running server keeps its own copy"
+            );
+            println!("in memory - restart it to pick this up.");
+            Ok(())
+        }
+
+        EvidenceAction::Baseline {
+            data_dir,
+            program_id,
+            mean_compute_units,
+            std_compute_units,
+            samples,
+            mean_account_writes,
+            mean_cpi_hops,
+        } => {
+            if samples < crate::simulation_integrity::MIN_SAMPLES {
+                // Below MIN_SAMPLES the integrity check is skipped entirely, so
+                // a baseline seeded under it silently does nothing while the
+                // command still reports success.
+                return Err(format!(
+                    "--samples must be at least {} or the simulation-integrity check stays \
+                     disabled and this baseline would have no effect",
+                    crate::simulation_integrity::MIN_SAMPLES
+                )
+                .into());
+            }
+            if std_compute_units < 0.0 || mean_compute_units < 0.0 {
+                return Err("means and deviations must be non-negative".into());
+            }
+            let dir = data_dir_path(data_dir);
+            let core = GraphiteCore::with_data_dir(dir.clone());
+            core.seed_simulation_baseline(
+                &program_id,
+                crate::simulation_integrity::ComputeBaseline {
+                    mean_compute_units,
+                    std_compute_units,
+                    sample_count: samples,
+                    mean_account_writes,
+                    std_account_writes: (mean_account_writes * 0.25).max(0.5),
+                    mean_cpi_hops,
+                    std_cpi_hops: (mean_cpi_hops * 0.25).max(0.1),
+                    ..Default::default()
+                },
+            )?;
+            println!("SEEDED BASELINE {program_id}");
+            println!(
+                "  compute      mean {mean_compute_units} sd {std_compute_units} over {samples} sample(s)"
+            );
+            println!("  writes/hops  mean {mean_account_writes} / {mean_cpi_hops}");
+            println!("  graph        {}", dir.display());
+            println!();
+            println!(
+                "L3 now judges divergence for this program against these numbers. A baseline that"
+            );
+            println!(
+                "does not match real usage will flag legitimate traffic, so restore an exported"
+            );
+            println!("baseline rather than inventing one.");
+            Ok(())
+        }
+
+        EvidenceAction::Show {
+            data_dir,
+            program_id,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let core = GraphiteCore::with_data_dir(dir.clone());
+            match core.program_behavior(&program_id) {
+                Some(b) => {
+                    println!("{program_id}");
+                    println!(
+                        "  trust tier   {:?}   (computed from the evidence below)",
+                        b.trust_tier
+                    );
+                    println!(
+                        "  evidence     signed_manifest={} community={} battle_tested={} simulation_matches={}",
+                        b.evidence.has_signed_manifest,
+                        b.evidence.community_verified_count,
+                        b.evidence.battle_tested_tx_count,
+                        b.evidence.simulation_match_count
+                    );
+                    if b.quarantined {
+                        println!(
+                            "  QUARANTINED  {}",
+                            b.quarantine_reason
+                                .as_deref()
+                                .unwrap_or("no reason recorded")
+                        );
+                    }
+                }
+                None => println!("{program_id}\n  no behaviour record - nothing earned or seeded"),
+            }
+            println!("  graph        {}", dir.display());
+            Ok(())
         }
     }
 }

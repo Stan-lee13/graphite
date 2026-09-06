@@ -804,20 +804,29 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
                 program, disc
             ))
         }
-        TransactionBuild(msg) => {
-            let msg = msg.clone();
-            let lower = msg.to_lowercase();
-            if lower.contains("invalid account")
-                || lower.contains("invalid program_id")
-                || lower.contains("invalid discriminator")
-                || lower.contains("program_id cannot be empty")
-                || lower.contains("missing accounts")
-            {
-                VerificationHttpError::BadRequest(msg)
-            } else {
-                VerificationHttpError::Internal(msg)
-            }
-        }
+        // Every way `build_transaction` can fail is caused by the caller's own
+        // input — `TransactionBuilderError` is exactly {EmptyProgramId,
+        // MissingAccounts, InvalidDiscriminator, InvalidPubkey,
+        // InvalidProgramId}, and the builder is a pure function of the plan it
+        // is handed. There is no server-side failure mode to report, so the
+        // whole class is a client error.
+        //
+        // This used to decide by substring-matching the error TEXT, defaulting
+        // to Internal when nothing matched. The matcher looked for "invalid
+        // discriminator" while the builder emitted "instruction discriminator
+        // is invalid hex", so every malformed discriminator — `"zzzz"`,
+        // `"abc"`, anything odd-length — returned HTTP 500 and logged at ERROR,
+        // with a tower_http failure line behind it. It failed closed, so it was
+        // never an approval bypass; it was a free way for anyone who could
+        // reach the port to manufacture 500s, page an on-call rotation and
+        // bury real errors in noise. Matching on prose that lives in another
+        // module is a classifier that drifts silently; the default is now the
+        // correct one, so a NEW builder error is a 400 by construction rather
+        // than a 500 until someone notices.
+        //
+        // (`load_manifest` also maps into this variant, but that is an operator
+        // API and is not reachable from `/verify`.)
+        TransactionBuild(msg) => VerificationHttpError::BadRequest(msg.clone()),
         AccountResolution(NoManifest(program_id)) => {
             VerificationHttpError::Internal(format!("No manifest found for program {}", program_id))
         }
@@ -1085,7 +1094,7 @@ async fn verify_handler(
             let status = http_error.status_code();
             let error_type = format!("{:?}", e);
 
-            tracing_log(&format!(
+            let line = format!(
                 "verify: {} | ERROR [{}] | {} | {:?}",
                 input.program_id,
                 if status.is_client_error() {
@@ -1095,7 +1104,12 @@ async fn verify_handler(
                 },
                 e,
                 error_type
-            ));
+            );
+            if status.is_client_error() {
+                tracing_client_reject(&line);
+            } else {
+                tracing_server_error(&line);
+            }
 
             // Durability: rejected-by-error verifications are audit-worthy
             // too — probing attacks against /verify (malformed payloads,
@@ -1689,8 +1703,38 @@ async fn registry_handler(State(state): State<AppState>) -> Json<serde_json::Val
     }))
 }
 
+/// Emit an operational line through `tracing`, at INFO.
+///
+/// This was a bare `eprintln!`, which meant every operational line — including
+/// the per-verification verdict lines, the most useful ones an operator has —
+/// bypassed the subscriber entirely. Two consequences, both found by reading
+/// the running container's logs on 2026-09-06:
+///
+///   - `GRAPHITE_LOG_FORMAT=json` installed a JSON subscriber and these lines
+///     came out as plain text anyway, so the "structured logs for
+///     Loki/ELK/Datadog" the compose file promises did not hold for the lines
+///     an aggregator most needs to parse.
+///   - `RUST_LOG` could neither raise nor suppress them.
 fn tracing_log(msg: &str) {
-    eprintln!("[graphite] {}", msg);
+    tracing::info!(target: "graphite", "{}", msg);
+}
+
+/// A rejected request that the CALLER caused (malformed discriminator, bad
+/// address, oversized body).
+///
+/// Deliberately WARN, not ERROR. Anyone who can reach the port can produce
+/// these on demand, so logging them at ERROR hands an attacker a free lever on
+/// the operator's alerting: fill the error stream with attacker-chosen noise
+/// and bury the genuine server faults underneath it. The line is still emitted
+/// — probing must leave a trail — and the audit record is written either way.
+fn tracing_client_reject(msg: &str) {
+    tracing::warn!(target: "graphite", "{}", msg);
+}
+
+/// A fault on Graphite's side. Rare, actionable, and worth paging on — which
+/// is only true while a caller cannot manufacture one.
+fn tracing_server_error(msg: &str) {
+    tracing::error!(target: "graphite", "{}", msg);
 }
 
 #[cfg(test)]
@@ -2388,6 +2432,158 @@ mod tests {
             "Debug is the detailed form — if this ever stops being true, the \
              log/audit path lost detail"
         );
+    }
+
+    // ── Malformed caller input must be a CLIENT error ───────────────────────
+    //
+    // Found live 2026-09-06 against the running container: a discriminator of
+    // "zzzz", "abc", or anything else non-hex returned HTTP 500 and logged at
+    // ERROR. It failed closed — nothing was ever approved — so this is not an
+    // approval bypass. It is a free way for anyone who can reach the port to
+    // manufacture 500s, trip SLO alerting, page an on-call rotation, and bury
+    // genuine server errors in attacker-chosen noise.
+    //
+    // The cause was classification by substring: the matcher looked for
+    // "invalid discriminator" while `transaction_builder` emitted "instruction
+    // discriminator is invalid hex".
+
+    /// Every `TransactionBuilderError` variant, driven through the real
+    /// `build_transaction` and the real classifier.
+    ///
+    /// This is the guard against the same drift returning. The builder consumes
+    /// only the caller's plan, so each of these is a client error; if a future
+    /// variant genuinely represents a server-side failure, this test fails and
+    /// forces that to be a decision rather than an accident.
+    #[test]
+    fn every_transaction_builder_failure_is_a_client_error() {
+        use crate::transaction_builder::{build_transaction, TransactionPlan};
+        use crate::verification::VerificationError;
+
+        let account = |a: &str| crate::account_resolution::ResolvedAccount {
+            address: a.to_string(),
+            role: "signer".to_string(),
+            is_pda: false,
+            is_signer: true,
+            is_writable: true,
+            pda_seeds: vec![],
+            identity: crate::account_resolution::AccountIdentity::Unverified,
+            expected_address_mismatch: false,
+            pda_mismatch: false,
+            privilege_mismatch: false,
+        };
+        let ok_account = account("7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU");
+        let system = "11111111111111111111111111111111";
+
+        let cases: Vec<(&str, TransactionPlan)> = vec![
+            (
+                "EmptyProgramId",
+                TransactionPlan {
+                    program_id: String::new(),
+                    instruction_discriminator: "02000000".to_string(),
+                    resolved_accounts: vec![ok_account.clone()],
+                    protocol_version: "1.0.0".to_string(),
+                    instruction_name: "Transfer".to_string(),
+                    expected_state_changes: vec![],
+                    allowed_cpis: vec![],
+                    instruction_data: vec![],
+                },
+            ),
+            (
+                "MissingAccounts",
+                TransactionPlan {
+                    program_id: system.to_string(),
+                    instruction_discriminator: "02000000".to_string(),
+                    resolved_accounts: vec![],
+                    protocol_version: "1.0.0".to_string(),
+                    instruction_name: "Transfer".to_string(),
+                    expected_state_changes: vec![],
+                    allowed_cpis: vec![],
+                    instruction_data: vec![],
+                },
+            ),
+            (
+                "InvalidDiscriminator (non-hex)",
+                TransactionPlan {
+                    program_id: system.to_string(),
+                    instruction_discriminator: "zzzz".to_string(),
+                    resolved_accounts: vec![ok_account.clone()],
+                    protocol_version: "1.0.0".to_string(),
+                    instruction_name: "Transfer".to_string(),
+                    expected_state_changes: vec![],
+                    allowed_cpis: vec![],
+                    instruction_data: vec![],
+                },
+            ),
+            (
+                "InvalidDiscriminator (odd length)",
+                TransactionPlan {
+                    program_id: system.to_string(),
+                    instruction_discriminator: "abc".to_string(),
+                    resolved_accounts: vec![ok_account.clone()],
+                    protocol_version: "1.0.0".to_string(),
+                    instruction_name: "Transfer".to_string(),
+                    expected_state_changes: vec![],
+                    allowed_cpis: vec![],
+                    instruction_data: vec![],
+                },
+            ),
+            (
+                "InvalidPubkey",
+                TransactionPlan {
+                    program_id: system.to_string(),
+                    instruction_discriminator: "02000000".to_string(),
+                    resolved_accounts: vec![account("not-a-valid-base58-pubkey!!")],
+                    protocol_version: "1.0.0".to_string(),
+                    instruction_name: "Transfer".to_string(),
+                    expected_state_changes: vec![],
+                    allowed_cpis: vec![],
+                    instruction_data: vec![],
+                },
+            ),
+            (
+                "InvalidProgramId",
+                TransactionPlan {
+                    program_id: "OOO-not-base58".to_string(),
+                    instruction_discriminator: "02000000".to_string(),
+                    resolved_accounts: vec![ok_account.clone()],
+                    protocol_version: "1.0.0".to_string(),
+                    instruction_name: "Transfer".to_string(),
+                    expected_state_changes: vec![],
+                    allowed_cpis: vec![],
+                    instruction_data: vec![],
+                },
+            ),
+        ];
+
+        for (label, plan) in cases {
+            let err =
+                build_transaction(&plan).expect_err(&format!("{label}: the plan must not build"));
+            let classified = classify_error(&VerificationError::TransactionBuild(err.to_string()));
+            assert_eq!(
+                classified.status_code(),
+                StatusCode::BAD_REQUEST,
+                "{label}: malformed caller input classified as {} — an attacker can                  manufacture that status for free. error: {err}",
+                classified.status_code()
+            );
+        }
+    }
+
+    /// The specific regression, at the exact input that produced it.
+    #[test]
+    fn a_non_hex_discriminator_is_400_not_500() {
+        use crate::verification::VerificationError;
+        for msg in [
+            "instruction discriminator is invalid hex: Invalid character 'z' at position 0",
+            "instruction discriminator is invalid hex: Odd number of digits",
+            "instruction discriminator is invalid hex: Invalid character ' ' at position 0",
+        ] {
+            let e = VerificationError::TransactionBuild(msg.to_string());
+            assert_eq!(
+                classify_error(&e).status_code(),
+                StatusCode::BAD_REQUEST,
+                "{msg}"
+            );
+        }
     }
 
     // ── Wallet-profile enforcement at the trust boundary ────────────────────

@@ -95,6 +95,15 @@ enum Commands {
         #[arg(long)]
         min_trust_tier: Option<String>,
     },
+    /// Seed operator-asserted evidence or a simulation baseline
+    ///
+    /// Bootstrapping and state restore. A fresh graph has no evidence, and the
+    /// evidence-derived confidence signals are half the available weight, so
+    /// nothing clears a profile threshold until the graph holds something.
+    Evidence {
+        #[command(subcommand)]
+        action: EvidenceAction,
+    },
     /// Inspect what the gate knows about a program, or compare manifests
     Protocol {
         #[command(subcommand)]
@@ -144,6 +153,64 @@ enum RegressionAction {
         /// Network label for fixture provenance (mainnet|devnet)
         #[arg(long, default_value = "mainnet")]
         network: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum EvidenceAction {
+    /// Seed behaviour evidence for a program (the tier is recomputed, never set)
+    Seed {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Program ID (base58)
+        #[arg(long)]
+        program: String,
+        /// The protocol published a signed manifest
+        #[arg(long)]
+        signed_manifest: bool,
+        /// Distinct reviewer attestations (2+ earns CommunityVerified)
+        #[arg(long, default_value_t = 0)]
+        community_verified: u32,
+        /// Observed mainnet transactions (1000+ with credibility earns BattleTested)
+        #[arg(long, default_value_t = 0)]
+        battle_tested: u64,
+        /// Simulation matches observed (3+ earns SimulationValidated)
+        #[arg(long, default_value_t = 0)]
+        simulation_matches: u64,
+    },
+    /// Seed a simulation baseline so L3 can judge divergence
+    Baseline {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Program ID (base58)
+        #[arg(long)]
+        program: String,
+        /// Mean compute units
+        #[arg(long)]
+        mean_compute_units: f64,
+        /// Standard deviation of compute units
+        #[arg(long, default_value_t = 1.0)]
+        std_compute_units: f64,
+        /// Number of samples the baseline represents (must be >= MIN_SAMPLES)
+        #[arg(long)]
+        samples: u64,
+        /// Mean account writes
+        #[arg(long, default_value_t = 2.0)]
+        mean_account_writes: f64,
+        /// Mean CPI hops
+        #[arg(long, default_value_t = 0.0)]
+        mean_cpi_hops: f64,
+    },
+    /// Show what the graph currently holds for a program
+    Show {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Program ID (base58)
+        #[arg(long)]
+        program: String,
     },
 }
 
@@ -468,6 +535,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             })
         }
+        Commands::Evidence { action } => match action {
+            EvidenceAction::Seed {
+                data_dir,
+                program,
+                signed_manifest,
+                community_verified,
+                battle_tested,
+                simulation_matches,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
+                action: graphite_core::cli::EvidenceAction::Seed {
+                    data_dir,
+                    program_id: program,
+                    signed_manifest,
+                    community_verified,
+                    battle_tested,
+                    simulation_matches,
+                },
+            }),
+            EvidenceAction::Baseline {
+                data_dir,
+                program,
+                mean_compute_units,
+                std_compute_units,
+                samples,
+                mean_account_writes,
+                mean_cpi_hops,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
+                action: graphite_core::cli::EvidenceAction::Baseline {
+                    data_dir,
+                    program_id: program,
+                    mean_compute_units,
+                    std_compute_units,
+                    samples,
+                    mean_account_writes,
+                    mean_cpi_hops,
+                },
+            }),
+            EvidenceAction::Show { data_dir, program } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
+                    action: graphite_core::cli::EvidenceAction::Show {
+                        data_dir,
+                        program_id: program,
+                    },
+                })
+            }
+        },
         Commands::Protocol { action } => match action {
             ProtocolAction::Status { data_dir, program } => {
                 graphite_core::cli::run(graphite_core::cli::CliCommand::Protocol {

@@ -3073,24 +3073,30 @@ impl GraphiteCore {
             crate::plugin_orchestrator::fold_runs_into_result(l3_layer_result, l3_plugin_runs);
 
         // L6 layer report reason (includes any policy-plugin veto).
+        //
+        // The thresholds come from `WalletProfile::thresholds()` — the same
+        // call `evaluate_policy` makes — so the explanation cannot disagree
+        // with the decision it is explaining.
+        //
+        // This was a hardcoded second copy until 2026-09-06, and it had gone
+        // stale: C53 lowered Gaming from 0.60 to 0.55 in the policy engine (a
+        // HeuristicInferred protocol sits at a 0.55 ceiling, so the profile
+        // could never approve the very tier it names as its minimum) and this
+        // copy was not updated. Every Gaming verification since then reported
+        // `min_conf: 0.60` in its layer report and on the audit trail while
+        // the gate actually enforced 0.55 — so a transaction approved at 0.57
+        // carried a permanent record saying the minimum was 0.60. The number
+        // was wrong in the direction that understates how permissive the
+        // profile is, which is the worse direction for an auditor.
+        let (reported_min_confidence, reported_min_tier) = input.wallet_profile.thresholds();
         let mut l6_reason = format!(
             "Confidence: {:.4} (tier: {:?}, ceiling: {:.2}) → Policy: {} (min_conf: {:.2}, min_tier: {:?})",
-            confidence, trust_tier, confidence_result.ceiling_applied,
+            confidence,
+            trust_tier,
+            confidence_result.ceiling_applied,
             policy_str,
-            match input.wallet_profile {
-                WalletProfile::Treasury => 0.95,
-                WalletProfile::Enterprise => 0.99,
-                WalletProfile::Gaming => 0.60,
-                WalletProfile::TradingBot => 0.80,
-                WalletProfile::Custom { min_confidence, .. } => min_confidence,
-            },
-            match input.wallet_profile {
-                WalletProfile::Treasury => TrustTier::CommunityVerified,
-                WalletProfile::Enterprise => TrustTier::BattleTested,
-                WalletProfile::Gaming => TrustTier::HeuristicInferred,
-                WalletProfile::TradingBot => TrustTier::SimulationValidated,
-                WalletProfile::Custom { min_trust_tier, .. } => min_trust_tier,
-            }
+            reported_min_confidence,
+            reported_min_tier
         );
         if let Some((pattern, reason)) = &l6_block {
             l6_reason = format!(
