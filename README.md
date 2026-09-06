@@ -388,6 +388,18 @@ graphite manifest-verify --manifest ./candidate.json
 ```
 
 ```bash
+# Bootstrap: a fresh graph has no earned evidence, and the evidence-derived
+# confidence signals are half the total weight -- so an instance with an empty
+# graph and no GRAPHITE_RPC_URL blocks 100% of traffic (max reachable
+# confidence 0.44 against a 0.55 floor). These restore an exported graph or
+# stand an instance up before that history exists. CLI-only: request-body
+# evidence would let any caller mint an earned-looking tier.
+graphite evidence seed --program <id> --signed-manifest --community-verified 2   --battle-tested 1500 --simulation-matches 100
+graphite evidence baseline --program <id> --mean-compute-units 150   --std-compute-units 12 --samples 50
+graphite evidence show --program <id>
+```
+
+```bash
 # Withdraw a program from trust immediately, restore it, or see what is withdrawn.
 graphite quarantine add --program <id> --reason "GHSA-2026-0001 authority takeover"
 graphite quarantine list
