@@ -16,8 +16,15 @@ const MEMO: &str = "9vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
 
 const A1: &str = "7vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
 const A2: &str = "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
-const A3: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const A4: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+// A3/A4 were the SPL Token and Token-2022 PROGRAM ids used as filler account
+// addresses. These cases are about account-count boundaries, not about who the
+// counterparty is, but the filler made them assert that a token transfer whose
+// authority is the Token Program is Clear. No key exists for a program address,
+// so it can neither sign as an authority nor spend what it receives, and
+// `UnspendableDestination` blocks exactly that (2026-09-08). Ordinary valid
+// pubkeys restore the property these cases were written to test.
+const A3: &str = "6vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
+const A4: &str = "8vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
 const A5: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const A6: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 const A7: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";

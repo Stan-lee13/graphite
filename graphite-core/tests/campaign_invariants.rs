@@ -338,6 +338,7 @@ fn every_risk_pattern_has_its_own_name() {
         Impersonation,
         MultiInstructionDrain,
         CpiTraceAnomaly,
+        UnspendableDestination,
         PluginBlock,
     ];
     let mut names: Vec<&str> = all.iter().map(|p| p.name()).collect();

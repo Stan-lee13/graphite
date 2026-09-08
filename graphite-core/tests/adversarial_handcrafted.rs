@@ -16,8 +16,17 @@ const MEMO: &str = "9vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
 
 const A1: &str = "7vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
 const A2: &str = "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
-const A3: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const A4: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+// A3/A4 used to be the SPL Token and Token-2022 PROGRAM ids, used here as
+// filler account addresses. That was incidental — these cases are about
+// account-count gaming ("adding accounts must not by itself raise risk"), not
+// about who the counterparty is — but it made three of them assert that a token
+// transfer whose authority is the Token Program is Clear. It is not: no key
+// exists for a program address, so it can neither sign as an authority nor
+// spend what it receives, and `UnspendableDestination` now blocks exactly that
+// (2026-09-08). Ordinary addresses restore the property the cases were written
+// to test.
+const A3: &str = "6vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
+const A4: &str = "8vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi";
 const A5: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const A6: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 const A7: &str = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";

@@ -45,6 +45,24 @@ pub enum RiskPattern {
     /// program invoked in the chain, repeated revisits (compositional drain),
     /// or vanity-impersonated program inside the tree.
     CpiTraceAnomaly,
+    /// A fund movement whose counterparty is an address nobody can spend from
+    /// — a native program, a loader, or a sysvar.
+    ///
+    /// Distinct from `Impersonation`, which is about addresses that LOOK
+    /// official. This is about the addresses that ARE. Found 2026-09-08: the
+    /// impersonation check kept an `OFFICIAL` allowlist and skipped every
+    /// account on it, on the reasoning that official accounts "legitimately
+    /// appear in transfers". They do appear in transactions — as the program
+    /// being invoked, or as a read-only reference — but never as the
+    /// counterparty of a lamport or token transfer, because no one holds a key
+    /// for them and they are not PDAs any program can sign for. Value sent
+    /// there is gone.
+    ///
+    /// So the check flagged addresses ground to resemble system accounts while
+    /// exempting the system accounts themselves. Measured before the fix: a
+    /// System transfer to `11111111111111111111111111111111` came back
+    /// `approved: true, risk: Clear`.
+    UnspendableDestination,
     /// A registered plugin (P8) vetoed the transaction on L7.
     ///
     /// Not one of the Risk Engine's own checks — it exists so a plugin block is
@@ -534,6 +552,27 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // Only applied to known fund-movement discriminators (System transfer 0x02,
     // Token/Token-2022 transfer 0x03 and transferChecked 0x0c) to avoid flagging
     // legitimate program-authority usage of similar-looking PDAs.
+    // P0 Check 10b: value moving to an address that cannot spend it.
+    //
+    // Stated as the invariant rather than as a signature: a transfer is only
+    // meaningful if the counterparty can move the funds again. Native programs,
+    // loaders and sysvars cannot — nobody holds their keys and no program can
+    // sign for them — so lamports or tokens sent there are permanently locked.
+    // Whether that is an attack, a bug in an agent, or a mistyped address does
+    // not change the outcome for the user's funds.
+    if let Some(dead_end) = detect_unspendable_counterparty(
+        &input.program_id,
+        &input.instruction_discriminator,
+        &input.accounts,
+    ) {
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::UnspendableDestination,
+            reason: format!(
+                "fund movement whose counterparty is {dead_end} — a native program, loader or sysvar. No key exists for that address and no program can sign for it, so anything sent there is permanently unrecoverable"
+            ),
+        });
+    }
+
     if let Some(impersonator) = detect_system_account_impersonation(
         &input.program_id,
         &input.instruction_discriminator,
@@ -877,6 +916,7 @@ impl RiskPattern {
             RiskPattern::Impersonation => "Impersonation",
             RiskPattern::MultiInstructionDrain => "MultiInstructionDrain",
             RiskPattern::CpiTraceAnomaly => "CpiTraceAnomaly",
+            RiskPattern::UnspendableDestination => "UnspendableDestination",
             RiskPattern::PluginBlock => "PluginBlock",
         }
     }
@@ -1004,43 +1044,81 @@ pub fn detect_intent_program_mismatch(program_id: &str, intent_type: &str) -> Op
 /// SPL Token/Token-2022 transfer (0x03) / transferChecked (0x0c). Non-fund
 /// instructions (assign, approve, mint, ...) are out of scope — those have
 /// their own P0 checks.
+const SYSTEM_PROGRAM_ID: &str = "11111111111111111111111111111111";
+const TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022_PROGRAM_ID: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+
+/// Addresses that exist on chain but that nobody can spend from: native
+/// programs, loaders and sysvars. They are runtime- or loader-owned, no private
+/// key exists for them, and no program can sign for them.
+///
+/// They appear in transactions constantly — as the program being invoked, or as
+/// a read-only reference — and never as the counterparty of a transfer.
+const UNSPENDABLE_ADDRESSES: &[&str] = &[
+    SYSTEM_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    TOKEN_2022_PROGRAM_ID,
+    "ComputeBudget111111111111111111111111111111",
+    "SysvarRent111111111111111111111111111111111",
+    "SysvarC1ock11111111111111111111111111111111",
+    "SysvarRecentB1ockHashes11111111111111111111",
+    "Stake11111111111111111111111111111111111111",
+    "Vote111111111111111111111111111111111111111",
+    "BPFLoader2111111111111111111111111111111111",
+    "BPFLoaderUpgradeab1e11111111111111111111111",
+    // 43 characters. The 42-character form that was here until 2026-09-08
+    // base58-decodes to 31 bytes, so it is not a valid pubkey and could never
+    // equal any account Graphite sees — a dead entry in a security allowlist,
+    // which is the kind that is never noticed because nothing fails.
+    "NativeLoader1111111111111111111111111111111",
+];
+
+/// Whether this (program, discriminator) pair moves value.
+///
+/// System transfer (0x02), SPL Token / Token-2022 transfer (0x03) and
+/// transferChecked (0x0c). Their account lists are `[from, to]`,
+/// `[source, dest, authority]` and `[source, mint, dest, authority]` — no slot
+/// in any of them is ever a native program or sysvar.
+fn is_fund_movement(program_id: &str, discriminator: &str) -> bool {
+    let d = discriminator.to_lowercase();
+    match program_id {
+        p if p == SYSTEM_PROGRAM_ID => d.starts_with("02"),
+        p if p == TOKEN_PROGRAM_ID || p == TOKEN_2022_PROGRAM_ID => {
+            d.starts_with("03") || d.starts_with("0c")
+        }
+        _ => false,
+    }
+}
+
+/// A fund movement naming an address that can never spend the funds again.
+fn detect_unspendable_counterparty(
+    program_id: &str,
+    discriminator: &str,
+    accounts: &[String],
+) -> Option<String> {
+    if !is_fund_movement(program_id, discriminator) {
+        return None;
+    }
+    accounts
+        .iter()
+        .find(|acc| UNSPENDABLE_ADDRESSES.contains(&acc.as_str()))
+        .cloned()
+}
+
 fn detect_system_account_impersonation(
     program_id: &str,
     discriminator: &str,
     accounts: &[String],
 ) -> Option<String> {
-    const SYSTEM: &str = "11111111111111111111111111111111";
-    const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-    const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-
-    let is_fund_movement = match program_id {
-        p if p == SYSTEM => discriminator.to_lowercase().starts_with("02"),
-        p if p == TOKEN || p == TOKEN_2022 => {
-            let d = discriminator.to_lowercase();
-            d.starts_with("03") || d.starts_with("0c")
-        }
-        _ => false,
-    };
-    if !is_fund_movement {
+    if !is_fund_movement(program_id, discriminator) {
         return None;
     }
 
-    // Official accounts that legitimately appear in transfers (excluded by
-    // exact match — the vanity check only applies to non-official addresses).
-    const OFFICIAL: &[&str] = &[
-        SYSTEM,
-        TOKEN,
-        TOKEN_2022,
-        "ComputeBudget111111111111111111111111111111",
-        "SysvarRent111111111111111111111111111111111",
-        "SysvarC1ock11111111111111111111111111111111",
-        "SysvarRecentB1ockHashes11111111111111111111",
-        "Stake11111111111111111111111111111111111111",
-        "Vote111111111111111111111111111111111111111",
-        "BPFLoader2111111111111111111111111111111111",
-        "BPFLoaderUpgradeab1e11111111111111111111111",
-        "NativeLoader111111111111111111111111111111",
-    ];
+    // Exact official addresses are handled by
+    // `detect_unspendable_counterparty`, which BLOCKS them rather than
+    // exempting them. Skipping them here keeps this check to what it is named
+    // for: addresses ground to RESEMBLE an official account.
+    const OFFICIAL: &[&str] = UNSPENDABLE_ADDRESSES;
 
     for acc in accounts {
         if acc.len() < 32 {
