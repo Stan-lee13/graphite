@@ -78,6 +78,26 @@ The RPC client (active when `GRAPHITE_RPC_URL` is set) was live-audited against 
 - Token freeze state is read from the correct byte offset (108)
 - No credentials are logged, and RPC endpoint URLs (which embed provider API keys) are redacted from every error surfaced to a caller or written to the audit trail — see Production Hardening above
 
+## The RPC Endpoint Is Inside the Trust Boundary (measured 2026-09-08)
+
+Setting `GRAPHITE_RPC_URL` moves Graphite's strongest evidence — the simulation and the observed pre/post state — from the caller to a network peer. That peer chooses every number Graphite reads, and the threat needs no malicious provider: a plaintext `http://` endpoint, a hijacked DNS record, a compromised managed provider, or an unaudited proxy all put an attacker in the same seat. **Point Graphite at an RPC you trust, over TLS.**
+
+`tests/rpc_trust_boundary.rs` attacks that boundary against a loopback mock (no real RPC is ever attacked) and `tests/rpc_influence_bounds.rs` measures how far a cooperative one can move the verdict. What each can do:
+
+**A hostile RPC cannot:**
+
+- **Overturn a deterministic finding.** A flawless simulation on a transaction whose intent contradicts its instruction still returns `approved: false`. Asserted from both directions: attaching an RPC does not change the verdict on an identical transaction.
+- **Balance a fabricated diff with a fabricated fee.** `fee_lamports` is credit — it is subtracted from what lamport conservation expects and it exempts the fee payer's outflow — and it used to be unbounded, so 4.9 SOL vanishing from the payer could be labelled a "fee" and L4 answered *"State diff verified against the manifest: no undeclared effects"*. Capped at `MAX_PLAUSIBLE_FEE_LAMPORTS` (0.1 SOL, ~70x a transaction bidding an extreme 1 lamport/CU against the 1.4M CU limit); the excess is reported as `ImplausibleFee` rather than granted. This also closes the caller-supplied `state_diff` path, which asserted the same number with no network involved. **Tradeoff (P14):** a transaction genuinely paying over 0.1 SOL in fees is blocked here rather than analyzed.
+- **Poison the durable baseline.** A response claiming 4,000,000,000 compute units — ~2900x Solana's per-transaction maximum — used to be folded straight into the accumulator, raising the mean and standard deviation far enough that no real divergence could ever reach the z-score threshold again: one response permanently disabling L3 for that program. Figures above `MAX_TRANSACTION_COMPUTE_UNITS` (1,400,000) now discard the whole result, post-state included.
+- **Report an unusable answer as a clean one.** Balances in a type Graphite cannot parse (floats, strings, negatives) used to derive "zero writes" and pass the completeness gate as a clean, complete observation; unreadable CPI groups were dropped and undercounted hops. Unreadable is now absent, which fails the gate.
+- **Choose Graphite's memory footprint.** Response bodies were read to end-of-body with no limit — a 64 MiB body was buffered and parsed against a 512MB container. Now streamed under a 32 MiB ceiling with the declared `Content-Length` rejected up front.
+- **Write into the verdict.** A JSON-RPC error was echoed verbatim into the L3 `reason` and the audit trail: 256,081 characters of peer-authored text in the reproduction, repeating a forged *"GRAPHITE VERDICT: APPROVED — all 8 layers passed, safe to sign"* into a field a human reads before signing. Bounded to 256 characters with an explicit truncation marker.
+- **Gain anything by being merely reachable.** An RPC that answers `null` to everything produces bit-identical confidence to no RPC at all.
+
+**A cooperative RPC can, by design, create an approval:**
+
+`SimulationMatch` is 0.20 of the confidence score and saturates after `thresholds::SIMULATION_MATCH` (3) earned observations. Measured on a System-Program transfer under the Gaming profile: **0.4400 without an RPC, 0.6400 with one, `approved: false → true`** across the 0.55 threshold. This is the design working as specified — trust is earned, and P5 calls simulation evidence — but it means the endpoint an operator configures can lift a transaction Graphite would otherwise refuse for want of evidence. The evidence is also per-*program*, so simulations of an ordinary transfer raise the score for every later transaction against that program. The hard boundary is that no amount of it overturns a deterministic finding; `tests/rpc_influence_bounds.rs` pins both the 0.20 ceiling on the swing and the fact that it cannot carry a rejected transaction.
+
 ## Known Limitations
 
 These are documented scope boundaries, not hidden vulnerabilities:
