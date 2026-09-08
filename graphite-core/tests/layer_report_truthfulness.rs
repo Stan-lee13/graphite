@@ -174,3 +174,75 @@ fn an_approval_inside_the_stale_windows_gap_is_recorded_consistently() {
         }
     }
 }
+
+// ── L1 states its own identity coverage (added 2026-09-08) ──────────────────
+//
+// "Resolved 2 account(s), manifest found" was true and, at a glance, wrong: it
+// reads as two accounts checked. Identity is only confirmed where the manifest
+// gives Graphite something to check — a PDA seed template to re-derive or a
+// constant address to compare — which across the shipped manifests is 1.9% of
+// account slots by PDA and 10.8% by constant address, leaving 87.3% accepted in
+// the position the caller supplied them (34 manifests, 5,010 slots).
+//
+// Most of that is irreducible: which token account to debit and who the
+// recipient is are externally determined. The defect was not the trust, it was
+// the silence about it — the layer named "Account Resolution" reported a pass
+// in wording that made no distinction between an instruction whose accounts are
+// all re-derived and one where none of them are. No test pinned this string
+// before, which is why it went unnoticed.
+
+#[test]
+fn l1_reports_how_many_account_identities_it_actually_confirmed() {
+    let core = graphite_core::verification::GraphiteCore::new();
+    let result = core
+        .verify(&input(WalletProfile::Gaming))
+        .expect("verify ok");
+    let l1 = result
+        .layers
+        .iter()
+        .find(|l| l.layer.contains("L1"))
+        .expect("L1 present");
+
+    assert!(
+        l1.reason.contains("identity confirmed for"),
+        "L1 does not say how much of the account list it confirmed: {}",
+        l1.reason
+    );
+
+    // A System transfer's accounts are both externally determined, so the
+    // honest answer is zero — and it must be stated, not implied by omission.
+    let unverified = result
+        .resolved_accounts
+        .iter()
+        .filter(|a| a.identity == graphite_core::account_resolution::AccountIdentity::Unverified)
+        .count();
+    if unverified == result.resolved_accounts.len() && !result.resolved_accounts.is_empty() {
+        assert!(
+            l1.reason.contains("identity confirmed for 0 of")
+                && l1.reason.contains("accepted in the position"),
+            "every account was accepted by position and L1 did not say so: {}",
+            l1.reason
+        );
+    }
+}
+
+#[test]
+fn l1_never_claims_more_confirmed_identities_than_it_resolved() {
+    // The counts in the sentence have to agree with the accounts in the
+    // payload; a summary that can drift from its own data is worse than none.
+    let core = graphite_core::verification::GraphiteCore::new();
+    let result = core
+        .verify(&input(WalletProfile::Gaming))
+        .expect("verify ok");
+    let l1 = result
+        .layers
+        .iter()
+        .find(|l| l.layer.contains("L1"))
+        .expect("L1 present");
+    let total = result.resolved_accounts.len();
+    assert!(
+        l1.reason.contains(&format!("Resolved {total} account(s)")),
+        "L1's resolved count disagrees with resolved_accounts ({total}): {}",
+        l1.reason
+    );
+}

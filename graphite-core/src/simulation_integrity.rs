@@ -234,9 +234,10 @@ pub fn check_simulation_integrity(
     }
 
     // Signal 2: Account writes.
-    if !input.baseline.mean_account_writes.is_nan()
-        && !(input.baseline.std_account_writes == 0.0 && input.baseline.mean_account_writes == 0.0)
-    {
+    if signal_is_observed(
+        input.baseline.mean_account_writes,
+        input.baseline.std_account_writes,
+    ) {
         if let Some(z) = mean_std_z(
             input.simulation_usage.account_writes as f64,
             input.baseline.mean_account_writes,
@@ -262,9 +263,7 @@ pub fn check_simulation_integrity(
     }
 
     // Signal 3: CPI hops.
-    if !input.baseline.mean_cpi_hops.is_nan()
-        && !(input.baseline.std_cpi_hops == 0.0 && input.baseline.mean_cpi_hops == 0.0)
-    {
+    if signal_is_observed(input.baseline.mean_cpi_hops, input.baseline.std_cpi_hops) {
         if let Some(z) = mean_std_z(
             input.simulation_usage.cpi_hops as f64,
             input.baseline.mean_cpi_hops,
@@ -416,6 +415,24 @@ fn robust_signal_z(
 /// boundary. `seed_simulation_baseline` validates what an operator supplies;
 /// this is the equivalent gate on what the network supplies.
 pub const MAX_TRANSACTION_COMPUTE_UNITS: u64 = 1_400_000;
+
+/// Whether a baseline signal carries enough information to judge against.
+///
+/// Two states mean "no verdict available", and they are different: a NaN mean
+/// is a corrupted baseline, and a mean and standard deviation that are both
+/// exactly zero mean the signal was never observed — every recorded sample was
+/// zero, which is what an unpopulated counter looks like. Judging against
+/// either would manufacture a divergence out of an absent measurement.
+///
+/// Written as an early return rather than a compound boolean because the two
+/// cases have nothing to do with each other and reading them as one expression
+/// obscures that.
+fn signal_is_observed(mean: f64, std: f64) -> bool {
+    if mean.is_nan() {
+        return false;
+    }
+    !(std == 0.0 && mean == 0.0)
+}
 
 pub fn update_baseline(
     baseline: &mut ComputeBaseline,

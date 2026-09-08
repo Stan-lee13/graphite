@@ -281,18 +281,47 @@ export class VerifiedSakAgent {
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
     if (!verification.approved) { console.log("[Graphite] Transfer BLOCKED."); return { executed: false, verification }; }
 
-    AuditBind.verify({
-      transaction: {
-        programId: SYSTEM_PROGRAM,
-        instructionDiscriminator: TRANSFER_DISCRIMINATOR,
-        accountAddresses: [this.walletPublicKey, destination],
-        instructionData: transferData,
-      },
-      contentHash: verification.content_hash ?? verification.audit_trail_id,
+    // Build the transaction FIRST, then bind what is actually in it.
+    //
+    // This used to re-hash the local constants above — SYSTEM_PROGRAM,
+    // `destination`, and a `transferData` copy taken before verification — and
+    // then sign `transferIx`. Those are two different artifacts. The
+    // reconstruction is a snapshot from before the window it was meant to
+    // cover, so mutating the instruction object after approval left the check
+    // passing and printing "Hash verified" while the redirected instruction
+    // went to the signer (reproduced in toctou-signing-boundary.test.ts).
+    //
+    // Everything below is projected from the live objects on the path to
+    // `sendAndConfirmTransaction`. The discriminator is passed explicitly
+    // because System Transfer's is 4 bytes and the Anchor default would read 8,
+    // picking up half the lamport amount and never matching Graphite's hash.
+    const tx = new Transaction().add(transferIx);
+    const project = (ix: TransactionInstruction) => ({
+      programId: ix.programId.toBase58(),
+      data: ix.data,
+      accounts: ix.keys.map((k) => k.pubkey.toBase58()),
+      discriminator: TRANSFER_DISCRIMINATOR,
     });
 
+    // 1. The verified instruction is still the one in the transaction.
+    AuditBind.verifyInstruction(
+      project(tx.instructions[0]),
+      verification.content_hash ?? verification.audit_trail_id,
+    );
+    // 2. And nothing else joined it. content_hash covers the instruction
+    //    Graphite saw; it cannot cover one that did not exist yet, so an
+    //    appended drain passes a per-instruction check untouched.
+    if (tx.instructions.length !== 1) {
+      throw new Error(
+        `AuditBind FAILED: ${tx.instructions.length} instructions present, 1 verified. ABORTING.`,
+      );
+    }
+    const binding = AuditBind.transactionBinding(tx.instructions.map(project));
+
     console.log("[Graphite] Transfer approved + AuditBind verified — executing...");
-    const tx = new Transaction().add(transferIx);
+    // 3. Re-checked immediately before signing, so the binding covers the
+    //    window rather than preceding it.
+    AuditBind.verifyTransactionUnchanged(tx.instructions.map(project), binding);
     const signature = await sendAndConfirmTransaction(this.connection, tx, [this.walletKeypair]);
     console.log(`[Solana] Confirmed: ${signature}`);
     return { executed: true, verification, signature };

@@ -206,6 +206,150 @@ fn build_rpc_state_diff(
     }
 }
 
+/// L1's layer report, stating how much of the account list Graphite actually
+/// CONFIRMED rather than accepted by position.
+///
+/// "Resolved 12 account(s), manifest found" was true and, at a glance, wrong:
+/// it reads as twelve accounts checked. Identity is only confirmed where the
+/// manifest gives Graphite something to check against — a PDA seed template it
+/// can re-derive, or a constant address it can compare. Across the shipped
+/// manifests that is 1.9% of account slots by PDA and 10.8% by constant
+/// address; the remaining 87.3% are accepted in the position the caller put
+/// them in (measured 2026-09-08 over 34 manifests / 5,010 slots).
+///
+/// Most of that residue is irreducible and not a defect: which token account to
+/// debit and who the recipient is are externally determined, and no manifest can
+/// pin them. `AccountIdentity::Unverified` was already computed per account and
+/// serialized in `resolved_accounts` for exactly this reason. What was missing
+/// was the summary — the layer named "Account Resolution" reported a pass in
+/// wording that made no distinction between an instruction whose accounts are
+/// all cryptographically re-derived and one where none of them are.
+///
+/// That is the same rule this codebase already applies to L3, L4 and L8: an
+/// absent check reports its absence, in words no completed check uses.
+fn account_resolution_reason(
+    resolution: &crate::account_resolution::AccountResolutionResult,
+    manifest_found: bool,
+) -> String {
+    use crate::account_resolution::AccountIdentity;
+    let total = resolution.resolved_accounts.len();
+    let count = |k: AccountIdentity| {
+        resolution
+            .resolved_accounts
+            .iter()
+            .filter(|a| a.identity == k)
+            .count()
+    };
+    let pda = count(AccountIdentity::Pda);
+    let constant = count(AccountIdentity::Constant);
+    let unverified = count(AccountIdentity::Unverified);
+
+    let coverage = if total == 0 {
+        "no accounts to resolve".to_string()
+    } else if unverified == 0 {
+        format!("identity confirmed for all {total} ({pda} re-derived as PDAs, {constant} matched against fixed addresses)")
+    } else if pda == 0 && constant == 0 {
+        format!(
+            "identity confirmed for 0 of {total} — the manifest declares no PDA seeds or fixed addresses for this instruction, so every account is accepted in the position the caller supplied it"
+        )
+    } else {
+        format!(
+            "identity confirmed for {} of {total} ({pda} re-derived as PDAs, {constant} matched against fixed addresses); {unverified} accepted by position",
+            pda + constant
+        )
+    };
+
+    format!(
+        "Resolved {total} account(s), manifest {}; {coverage}",
+        if manifest_found { "found" } else { "not found" }
+    )
+}
+
+/// The wall-clock budget ONE verification may spend talking to an RPC.
+///
+/// Found 2026-09-08 auditing the server as production infrastructure: the
+/// timeout budget was inverted. `server.rs` gives every request a 10-second
+/// `REQUEST_TIMEOUT`, and attaches an RPC client built from `RpcConfig::default()`
+/// — a 30-second per-call timeout with 3 retries and backoff. A verification
+/// makes up to three RPC calls, so the worst case was on the order of six
+/// minutes of RPC work behind a ten-second deadline.
+///
+/// The inner budget must always expire before the outer one, and here it never
+/// could. The consequence is not slowness, it is a hole in the guarantees:
+///
+///   - the caller gets a bare `408` with no verdict, no layer report and no
+///     reason — from a system whose entire premise is fail-closed WITH an
+///     explanation;
+///   - nothing reaches the append-only audit trail, because the verification
+///     never finished. A request Graphite could not decide leaves no trace,
+///     under the single most likely production degradation there is: an RPC
+///     that is slow or rate-limiting. That is P9 failing exactly when it
+///     matters;
+///   - and an SDK reading `408` as "the server was slow" retries, which is the
+///     worst possible response to an overloaded RPC.
+///
+/// Bounding the TOTAL rather than the per-call timeout is what makes this
+/// hold. Three calls each safely under the deadline can still exceed it
+/// together, so every call is issued against a shared deadline and gets only
+/// the time that is left. When it runs out the pipeline continues with no
+/// simulation and no diff — which is the same fail-closed path an unreachable
+/// RPC already takes, and it says so in the layer report.
+#[derive(Debug, Clone, Copy)]
+pub struct RpcBudget {
+    started: std::time::Instant,
+    total: std::time::Duration,
+}
+
+impl RpcBudget {
+    pub fn new(total: std::time::Duration) -> Self {
+        Self {
+            started: std::time::Instant::now(),
+            total,
+        }
+    }
+    /// Time left, saturating at zero.
+    pub fn remaining(&self) -> std::time::Duration {
+        self.total.saturating_sub(self.started.elapsed())
+    }
+    pub fn is_exhausted(&self) -> bool {
+        self.remaining().is_zero()
+    }
+    pub fn total(&self) -> std::time::Duration {
+        self.total
+    }
+}
+
+/// The default RPC budget for one verification.
+///
+/// Chosen against `server::REQUEST_TIMEOUT` (10s) with headroom for the rest of
+/// the pipeline and for serializing the response. `server.rs` asserts the
+/// relationship so the two cannot drift apart silently.
+pub const DEFAULT_RPC_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// Run one RPC call against the shared deadline.
+///
+/// `Err(())` means the budget ran out — distinct from the call itself failing,
+/// because they are reported differently.
+#[cfg(feature = "rpc")]
+async fn within_budget<F: std::future::Future>(
+    budget: &RpcBudget,
+    call: F,
+) -> Result<F::Output, ()> {
+    within_budget_of(budget.remaining(), call).await
+}
+
+/// Run one call under an explicit slice of time.
+#[cfg(feature = "rpc")]
+async fn within_budget_of<F: std::future::Future>(
+    slice: std::time::Duration,
+    call: F,
+) -> Result<F::Output, ()> {
+    if slice.is_zero() {
+        return Err(());
+    }
+    tokio::time::timeout(slice, call).await.map_err(|_| ())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerificationBreakdownItem {
     pub kind: String,
@@ -547,6 +691,8 @@ pub struct GraphiteCore {
     data_dir: Option<PathBuf>,
     /// P8 plugin orchestrator (sole caller of every plugin).
     plugins: crate::plugin_orchestrator::PluginOrchestrator,
+    /// Total wall-clock one verification may spend on RPC. See `RpcBudget`.
+    rpc_budget: std::time::Duration,
 }
 
 impl std::fmt::Debug for GraphiteCore {
@@ -577,6 +723,7 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            rpc_budget: DEFAULT_RPC_BUDGET,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -592,6 +739,7 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            rpc_budget: DEFAULT_RPC_BUDGET,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
         }
     }
@@ -604,6 +752,7 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            rpc_budget: DEFAULT_RPC_BUDGET,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -788,6 +937,21 @@ impl GraphiteCore {
     #[cfg(feature = "rpc")]
     pub fn attach_rpc_client(&mut self, client: SolanaRpcClient) {
         self.rpc_client = Some(client);
+    }
+
+    /// Set the total wall-clock budget one verification may spend on RPC.
+    ///
+    /// The caller owns this because only the caller knows its own deadline: a
+    /// server has a request timeout, a CLI run has a human waiting. See
+    /// `RpcBudget` for why the total, rather than the per-call timeout, is the
+    /// number that has to fit.
+    pub fn set_rpc_budget(&mut self, budget: std::time::Duration) {
+        self.rpc_budget = budget;
+    }
+
+    /// The configured RPC budget.
+    pub fn rpc_budget(&self) -> std::time::Duration {
+        self.rpc_budget
     }
 
     /// L8 execution verification — the POST-SUBMISSION confirmation path.
@@ -2264,13 +2428,36 @@ impl GraphiteCore {
         // `unused_mut` would fire, so silence it there.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut l3_rpc_account_info: Option<String> = None;
+        // ONE deadline for every RPC call this verification makes, started
+        // before the first of them. Declared here rather than inside the
+        // simulation block because this decorative fetch is also an RPC call,
+        // and a budget that does not cover every call bounds nothing —
+        // measured 2026-09-08 at 242 SECONDS for a single verification against
+        // a stalled endpoint, spent entirely in this fetch, while the budget
+        // installed further down went untouched.
+        #[cfg(feature = "rpc")]
+        let budget = RpcBudget::new(self.rpc_budget);
         #[cfg(feature = "rpc")]
         {
             if let Some(client) = &self.rpc_client {
                 if let Some(first_addr) = input.account_addresses.first() {
                     if let Ok(pk) = crate::solana_types::Pubkey::from_base58(first_addr) {
-                        match client.get_account(&pk).await {
-                            Ok(acc) => {
+                        // This call decorates the L3 report with live account
+                        // state (P3). It informs no decision, so it must never
+                        // be able to starve the calls that do: it gets a fixed
+                        // slice of the budget rather than whatever is left.
+                        //
+                        // It also sits on the critical path of EVERY
+                        // verification with an RPC attached, which is a real
+                        // cost in latency and in RPC quota for something purely
+                        // explanatory. Bounded rather than removed: the
+                        // account's live state next to the verdict is worth a
+                        // second, and is not worth four minutes.
+                        const CONTEXT_FETCH_SLICE: std::time::Duration =
+                            std::time::Duration::from_secs(1);
+                        let slice = CONTEXT_FETCH_SLICE.min(budget.remaining());
+                        match within_budget_of(slice, client.get_account(&pk)).await {
+                            Ok(Ok(acc)) => {
                                 l3_rpc_account_info = Some(format!(
                                     "RPC account {}: lamports={}, owner={}, data_len={}",
                                     acc.pubkey,
@@ -2279,8 +2466,16 @@ impl GraphiteCore {
                                     acc.data.len()
                                 ));
                             }
-                            Err(e) => {
+                            Ok(Err(e)) => {
                                 l3_rpc_account_info = Some(format!("RPC error: {}", e));
+                            }
+                            Err(()) => {
+                                tracing::warn!(
+                                    "L3 context fetch exceeded its {:?} slice — continuing without it",
+                                    slice
+                                );
+                                l3_rpc_account_info =
+                                    Some(format!("RPC context unavailable within {slice:?}"));
                             }
                         }
                     }
@@ -2668,14 +2863,19 @@ impl GraphiteCore {
                 };
 
                 let sim_outcome = if diff_addresses.is_empty() {
-                    client
-                        .simulate_transaction(&tx_bytes)
+                    within_budget(&budget, client.simulate_transaction(&tx_bytes))
                         .await
+                        .unwrap_or_else(|()| {
+                            Err(crate::rpc_client::RpcError::Timeout(budget.total()))
+                        })
                         .map(|s| (s, Vec::new()))
                 } else {
-                    match client
-                        .simulate_transaction_with_accounts(&tx_bytes, &diff_addresses)
-                        .await
+                    match within_budget(
+                        &budget,
+                        client.simulate_transaction_with_accounts(&tx_bytes, &diff_addresses),
+                    )
+                    .await
+                    .unwrap_or_else(|()| Err(crate::rpc_client::RpcError::Timeout(budget.total())))
                     {
                         Ok(pair) => Ok(pair),
                         // An RPC that will not return post-state (too many
@@ -2684,9 +2884,11 @@ impl GraphiteCore {
                         // simulate and leave the diff absent.
                         Err(e) => {
                             tracing::warn!("state-diff simulation unavailable: {}", e);
-                            client
-                                .simulate_transaction(&tx_bytes)
+                            within_budget(&budget, client.simulate_transaction(&tx_bytes))
                                 .await
+                                .unwrap_or_else(|()| {
+                                    Err(crate::rpc_client::RpcError::Timeout(budget.total()))
+                                })
                                 .map(|s| (s, Vec::new()))
                         }
                     }
@@ -2800,7 +3002,14 @@ impl GraphiteCore {
                             sim_res.err
                         );
                         if !implausible_units && !post.is_empty() && sim_res.err.is_none() {
-                            match client.get_multiple_accounts(&diff_addresses).await {
+                            match within_budget(
+                                &budget,
+                                client.get_multiple_accounts(&diff_addresses),
+                            )
+                            .await
+                            .unwrap_or_else(|()| {
+                                Err(crate::rpc_client::RpcError::Timeout(budget.total()))
+                            }) {
                                 Ok(pre) => {
                                     // The diff covers every writable account
                                     // only when the primary instruction IS the
@@ -2838,6 +3047,15 @@ impl GraphiteCore {
                     Err(e) => {
                         tracing::warn!("simulateTransaction failed: {}", e);
                         // keep usage as-is (caller-provided)
+                        //
+                        // And say so. Without this the layer fell through to
+                        // its structural fallback and reported "State
+                        // verification passed" — the wording of a completed
+                        // diff — whenever simulation failed outright, which is
+                        // every RPC outage, timeout and budget exhaustion.
+                        // Sibling arms already set this; this one was missed,
+                        // and it is the arm that fires when the RPC is down.
+                        diff_unavailable = Some(format!("simulation failed: {e}"));
                     }
                 }
             }
@@ -3582,11 +3800,7 @@ impl GraphiteCore {
                 PipelineLayerResult::new(
                     "L1_AccountResolution",
                     LayerStatus::Passed,
-                    format!(
-                        "Resolved {} account(s), manifest {}",
-                        resolution.resolved_accounts.len(),
-                        if manifest_found { "found" } else { "not found" }
-                    ),
+                    account_resolution_reason(&resolution, manifest_found),
                 ),
                 // L2: Instruction Verification — confirm discriminator + args match known shape
                 // ARCHITECTURE.md 3.12: "Confirm instruction discriminator + args match a known shape"
@@ -3597,13 +3811,16 @@ impl GraphiteCore {
                 ),
                 // L3: Simulation Verification — run simulateTransaction, confirm it succeeds
                 // ARCHITECTURE.md 3.12: "Run simulateTransaction, confirm it succeeds"
-                // Phase 1: SKIPPED — no RPC connection available. Simulation requires a
-                // Solana RPC endpoint to call simulateTransaction. This is a Phase 2
-                // feature (requires infrastructure provisioning). The simulation_integrity
-                // module IS wired in and checks for compute-unit divergence when
-                // simulation data is provided by the caller, but the full L3 (actually
-                // running simulateTransaction against an RPC node) is not yet active.
-                // GAP-2026-08-06-3: the L3 layer result now carries the REAL
+                //
+                // This comment used to say L3 was "Phase 1: SKIPPED — no RPC
+                // connection available … not yet active". It has been active
+                // since GRAPHITE_RPC_URL was wired through: with a client
+                // attached the pipeline calls simulateTransaction, derives the
+                // usage figures from the response, and grows its own baseline.
+                // A stale comment describing a shipped layer as unbuilt is how
+                // the next reader concludes there is nothing here to review.
+                //
+                // GAP-2026-08-06-3: the L3 layer result carries the REAL
                 // simulation-integrity verdict. The provenance-aware tri-state:
                 //   Some(true)  → Failed   (integrity check flagged)
                 //   Some(false) → Passed   (RPC-verified clean)

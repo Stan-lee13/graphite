@@ -370,12 +370,42 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
 
     if let Ok(endpoint) = std::env::var("GRAPHITE_RPC_URL") {
         if !endpoint.is_empty() {
+            // The RPC budget has to fit INSIDE the request timeout, and until
+            // 2026-09-08 it did not: this used `RpcConfig::default()`, a
+            // 30-second per-call timeout with 3 retries, behind a 10-second
+            // REQUEST_TIMEOUT. A verification makes up to three calls, so the
+            // worst case was minutes of RPC work behind a ten-second deadline —
+            // and the deadline always won, returning a bare 408 with no verdict
+            // and writing nothing to the audit trail. See `RpcBudget`.
+            //
+            // Per-call timeout and retries are sized so a single stalled call
+            // cannot consume the whole budget; the shared deadline inside the
+            // pipeline is what enforces the total.
+            const PER_CALL: Duration = Duration::from_secs(3);
+            const RETRIES: u32 = 1;
+            // A compile-time statement of the relationship the two constants
+            // have to keep. If someone raises the RPC budget or lowers the
+            // request timeout, this stops the build instead of quietly
+            // recreating the inverted-timeout bug.
+            const _: () = assert!(
+                crate::verification::DEFAULT_RPC_BUDGET.as_secs() + 2 <= REQUEST_TIMEOUT.as_secs(),
+                "the RPC budget must leave headroom inside REQUEST_TIMEOUT for the rest of the pipeline"
+            );
             let client = crate::rpc_client::SolanaRpcClient::new(crate::rpc_client::RpcConfig {
                 endpoint,
+                timeout: PER_CALL,
+                max_retries: RETRIES,
                 ..Default::default()
             });
             core.attach_rpc_client(client);
-            tracing_log("RPC client attached — live L3 simulation enabled (GRAPHITE_RPC_URL)");
+            core.set_rpc_budget(crate::verification::DEFAULT_RPC_BUDGET);
+            tracing_log(&format!(
+                "RPC client attached — live L3/L4 enabled (GRAPHITE_RPC_URL); per-call timeout {}s, {} retry, total budget {}s inside a {}s request timeout",
+                PER_CALL.as_secs(),
+                RETRIES,
+                crate::verification::DEFAULT_RPC_BUDGET.as_secs(),
+                REQUEST_TIMEOUT.as_secs()
+            ));
         }
     }
 

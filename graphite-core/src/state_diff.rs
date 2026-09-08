@@ -738,7 +738,12 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             // declaration it is read as the takeover, which is fail-closed.
             let allocation =
                 from == SYSTEM_PROGRAM && d.before.as_ref().is_some_and(|s| s.data_len == 0);
-            if !(allocation && declared.create) && !declared.authority {
+            // Two ways the manifest can account for an owner change: it
+            // declares the creation this allocation is part of, or it declares
+            // an authority change outright. Neither means the takeover reading
+            // stands.
+            let declared_by_manifest = (allocation && declared.create) || declared.authority;
+            if !declared_by_manifest {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredOwnerReassignment",
                     acct,
