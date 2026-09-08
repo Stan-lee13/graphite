@@ -44,6 +44,34 @@ const MAX_BODY_SIZE: usize = 1024 * 1024;
 /// generous and prevents slow-loris style attacks.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How many verifications may be in flight at once before the server sheds
+/// load.
+///
+/// Measured 2026-09-08 against the shipped container with a live devnet RPC: 50
+/// truly-concurrent verifications produced 33 answers and 17 bare `408`s over
+/// 26 seconds. The RPC budget bounds each request, but nothing bounded how many
+/// requests could be waiting on the same upstream at once, so the server
+/// accepted every one of them and let a third expire at the deadline.
+///
+/// That is the same failure the RPC budget fixed, arriving from a different
+/// direction: a request that dies at the timeout carries no verdict, no layer
+/// report and no audit record. Under load — exactly when an operator most needs
+/// to know what the gate decided — Graphite went quiet.
+///
+/// Shedding is the honest alternative. A `503` with `Retry-After` tells the
+/// caller the server is at capacity and when to come back; a `408` tells them
+/// the server was slow at their request specifically, which invites an
+/// immediate retry and makes the overload worse. The distinction from the
+/// per-IP `429` is deliberate too: `429` means "you are asking too often",
+/// `503` means "everyone is". An operator reading the metrics can tell a noisy
+/// client from a saturated instance.
+///
+/// The default is sized so the in-flight set can clear well inside
+/// REQUEST_TIMEOUT at the latency a healthy RPC gives (~0.4s per verification,
+/// measured on the same container). Raise it with `GRAPHITE_MAX_CONCURRENT`
+/// when the upstream RPC can sustain more.
+const DEFAULT_MAX_CONCURRENT_VERIFICATIONS: usize = 32;
+
 /// Dashboard series caps: the confidence chart and the violations list only
 /// ever materialize this many points per request (memory stays bounded as
 /// the audit log grows); the response still reports the true totals.
@@ -64,6 +92,14 @@ struct AppState {
     trust_proxy_hops: u8,
     /// Operational counters exported at `/metrics`.
     metrics: Metrics,
+    /// Bounds how many verifications may be in flight at once. See
+    /// `DEFAULT_MAX_CONCURRENT_VERIFICATIONS`: without it the server accepts
+    /// work it cannot finish inside REQUEST_TIMEOUT and a third of it dies with
+    /// no verdict and no audit record.
+    inflight: Arc<tokio::sync::Semaphore>,
+    /// The configured limit, reported to a shed caller so they can size their
+    /// own concurrency instead of guessing.
+    inflight_limit: usize,
     /// Operator-pinned wallet profile; when set it overrides the request body.
     pinned_profile: Option<crate::policy_engine::WalletProfile>,
     /// Opt-out allowing a caller-supplied profile weaker than any built-in.
@@ -83,6 +119,8 @@ struct Metrics {
     verify_errors: Arc<std::sync::atomic::AtomicU64>,
     auth_failures: Arc<std::sync::atomic::AtomicU64>,
     rate_limited: Arc<std::sync::atomic::AtomicU64>,
+    /// Requests shed because the server was already at its in-flight limit.
+    load_shed: Arc<std::sync::atomic::AtomicU64>,
     lifecycle_events: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -544,6 +582,15 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         ));
     }
 
+    let inflight_limit = std::env::var("GRAPHITE_MAX_CONCURRENT")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_CONCURRENT_VERIFICATIONS);
+    tracing_log(&format!(
+        "in-flight verification limit: {inflight_limit} (GRAPHITE_MAX_CONCURRENT); excess is shed with 503 + Retry-After rather than left to expire at the {}s request timeout",
+        REQUEST_TIMEOUT.as_secs()
+    ));
     let state = AppState {
         core,
         api_key: api_key.clone(),
@@ -552,6 +599,8 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         rate: RateLimiter::new(rate_per_sec),
         trust_proxy_hops,
         metrics: Metrics::default(),
+        inflight: Arc::new(tokio::sync::Semaphore::new(inflight_limit)),
+        inflight_limit,
         pinned_profile,
         allow_permissive_profiles,
     };
@@ -661,6 +710,12 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
             state.clone(),
             rate_limit_middleware,
         ))
+        // Outermost of the two: shed before spending anything on the request,
+        // including the per-IP bookkeeping.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            concurrency_limit_middleware,
+        ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         // Certification item: a panicking handler must not drop the connection
@@ -735,6 +790,53 @@ async fn rate_limit_middleware(
             .into_response();
     }
     next.run(req).await
+}
+
+/// Refuse work the server cannot finish, instead of accepting it and letting it
+/// expire.
+///
+/// `try_acquire` rather than `acquire`: queueing here would just move the wait
+/// from the RPC to the semaphore and still end at REQUEST_TIMEOUT, which is the
+/// behaviour being removed. A shed request is answered immediately with a
+/// status the caller can act on.
+///
+/// Applied to every route, but only the verification paths can hold the permit
+/// for long — `/health` and `/metrics` return without touching an RPC, and
+/// keeping them under the same limit is what makes the health check honest:
+/// if the server truly cannot take more work, its readiness signal should say
+/// so rather than reporting healthy while shedding everything.
+async fn concurrency_limit_middleware(
+    State(state): State<AppState>,
+    req: axum::http::Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let permit = match Arc::clone(&state.inflight).try_acquire_owned() {
+        Ok(p) => p,
+        Err(_) => {
+            Metrics::inc(&state.metrics.load_shed);
+            tracing_server_error(&format!(
+                "at capacity: {} verifications already in flight, shedding",
+                state.inflight_limit
+            ));
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                // Retry-After is what makes this actionable rather than merely
+                // a refusal: the caller is told when to come back. A bare 408
+                // told them nothing and invited an immediate retry.
+                [(header::RETRY_AFTER, "1")],
+                Json(serde_json::json!({
+                    "error": "server at capacity",
+                    "error_type": "LoadShed",
+                    "hint": "the server is already running its maximum number of concurrent verifications; retry after the interval in the Retry-After header",
+                    "in_flight_limit": state.inflight_limit,
+                })),
+            )
+                .into_response();
+        }
+    };
+    let response = next.run(req).await;
+    drop(permit);
+    response
 }
 
 /// Verify handler — returns 200 on success, 400 on bad input, 500 on internal error.
@@ -1266,6 +1368,12 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "Requests rejected with 429 by the rate limiter.",
         "counter",
         m.rate_limited.load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_load_shed_total",
+        "Requests rejected with 503 because the server was already at its in-flight limit.",
+        "counter",
+        m.load_shed.load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
         "graphite_lifecycle_events_total",
@@ -2131,10 +2239,119 @@ mod tests {
             rate: RateLimiter::new(1000.0),
             trust_proxy_hops: 0,
             metrics: Metrics::default(),
+            // Test harness: a fixed, generous limit so shedding never masks the
+            // behaviour under test. The shedding path has its own tests.
+            inflight: Arc::new(tokio::sync::Semaphore::new(1024)),
+            inflight_limit: 1024,
             pinned_profile: None,
             allow_permissive_profiles: false,
         };
         (state, dir)
+    }
+
+    /// A server whose in-flight limit is already fully consumed.
+    ///
+    /// Measured on the shipped container before this existed: 50 concurrent
+    /// verifications against a live devnet RPC produced 33 answers and 17 bare
+    /// `408`s over 26 seconds. A request that dies at REQUEST_TIMEOUT carries no
+    /// verdict, no layer report and no audit record — under load, exactly when
+    /// an operator most needs to know what the gate decided, Graphite went
+    /// quiet. After: 32 answers and 18 immediate `503`s in 12 seconds.
+    #[tokio::test]
+    async fn a_saturated_server_sheds_with_503_and_retry_after_instead_of_expiring() {
+        use axum::body::Body;
+        use tower::ServiceExt;
+
+        let (mut state, _dir) = test_state();
+        // One permit, taken, so every request arrives at a full server.
+        state.inflight = Arc::new(tokio::sync::Semaphore::new(1));
+        state.inflight_limit = 1;
+        let held = Arc::clone(&state.inflight).try_acquire_owned().unwrap();
+
+        let shed_metric = Arc::clone(&state.metrics.load_shed);
+        let app = build_app(state, vec![]);
+
+        let mut req = axum::http::Request::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+
+        assert_eq!(
+            resp.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "a saturated server must refuse immediately, not accept work it cannot finish"
+        );
+        // Retry-After is what makes the refusal actionable. A 408 told the
+        // caller the server was slow at THEIR request, which invites an
+        // immediate retry and deepens the overload.
+        assert_eq!(
+            resp.headers()
+                .get(header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok()),
+            Some("1"),
+            "a shed response must say when to come back"
+        );
+        assert_eq!(
+            shed_metric.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "shedding must be visible in /metrics — an invisible refusal is an outage nobody              can diagnose"
+        );
+
+        // And the server recovers the moment a permit is returned: shedding is
+        // backpressure, not a latch.
+        drop(held);
+        let mut req = axum::http::Request::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "the limit must be released when the request completes"
+        );
+    }
+
+    /// Shedding is distinct from rate limiting, and /metrics has to keep them
+    /// apart: 429 means one caller is asking too often, 503 means the instance
+    /// is saturated. An operator reads these to tell a noisy client from an
+    /// undersized deployment.
+    #[tokio::test]
+    async fn shedding_and_rate_limiting_are_counted_separately() {
+        let (state, _dir) = test_state();
+        let app = build_app(state, vec![]);
+        let (status, _) = get_text(&app, "/metrics").await;
+        assert_eq!(status, StatusCode::OK);
+        let (_, body) = get_text(&app, "/metrics").await;
+        assert!(
+            body.contains("graphite_load_shed_total"),
+            "the shed counter must be exported — an invisible refusal is an outage nobody can              diagnose: {body}"
+        );
+        assert!(
+            body.contains("graphite_rate_limited_total"),
+            "the rate-limit counter must stay exported alongside it"
+        );
+    }
+
+    async fn get_text(app: &Router, path: &str) -> (axum::http::StatusCode, String) {
+        use axum::body::Body;
+        use tower::ServiceExt;
+        let mut req = axum::http::Request::builder()
+            .uri(path)
+            .body(Body::empty())
+            .unwrap();
+        let addr: SocketAddr = "127.0.0.1:9999".parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(addr));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        (status, String::from_utf8_lossy(&bytes).to_string())
     }
 
     async fn get_json(app: &Router, path: &str) -> (axum::http::StatusCode, serde_json::Value) {

@@ -237,6 +237,7 @@ cargo run --release --bin graphite -- server --port 7331
 | Env var | Default | Purpose |
 |---------|---------|---------|
 | `GRAPHITE_API_KEY` | *(unset = open)* | **Set this in production.** Bearer token required on `/verify` and `/manifests` (constant-time compared). `/health` stays open for load balancers. |
+| `GRAPHITE_MAX_CONCURRENT` | `32` | Verifications allowed in flight at once. Excess is shed immediately with `503` + `Retry-After` rather than accepted and left to expire at the 10s request timeout — a request that dies at the timeout carries no verdict and no audit record. Distinct from the per-IP `429`: `429` means one caller is asking too often, `503` means the instance is saturated. Both are counted separately at `/metrics`. Raise it when the upstream RPC can sustain more. |
 | `GRAPHITE_RATE_LIMIT` | `30` | Per-IP token bucket, requests/second. Returns `429` when exceeded. |
 | `GRAPHITE_CORS_ORIGINS` | *(denied)* | Comma-separated allowed browser origins. Default denies all cross-origin browser calls; server-to-server clients are unaffected. |
 | `GRAPHITE_DATA_DIR` | `./graphite-data` | Durability: semantic-graph snapshot (trust tiers + earned simulation baselines) and append-only `audit.jsonl` written after every verification, reloaded on restart. **The server probes this directory for writability at startup and refuses to boot if it cannot write** — it never serves traffic with no audit trail (P9). |
