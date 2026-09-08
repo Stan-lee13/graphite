@@ -166,6 +166,7 @@ fn build_rpc_state_diff(
     post: &[Option<crate::rpc_client::AccountState>],
     fee_lamports: u64,
     artifact_balance_writes: Option<u32>,
+    artifact_account_universe: Option<(usize, usize)>,
 ) -> StateDiff {
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
@@ -221,6 +222,7 @@ fn build_rpc_state_diff(
             None => false,
         },
         artifact_balance_writes,
+        artifact_account_universe,
     }
 }
 
@@ -614,6 +616,19 @@ fn verification_scope(
             // transaction is the one the rest of this verdict describes.
             unobserved.push(
                 "Graphite does not parse the transaction's wire format, so it does not confirm that the described program/discriminator/accounts are the primary instruction of these bytes — only that these bytes simulate to the effects it checked"
+                    .to_string(),
+            );
+            // The precise residual left by the account-universe check, stated
+            // where a caller will see it rather than only in a test.
+            //
+            // Graphite compares HOW MANY accounts the artifact references
+            // against how many this request names. It cannot compare WHICH,
+            // because a simulation response carries balances in the
+            // transaction's key order and never the keys themselves. A request
+            // that names one extra address restores the count. Closing this
+            // needs the artifact parsed, not measured.
+            unobserved.push(
+                "the IDENTITY of the accounts inside the artifact: Graphite compares how many accounts the transaction references against how many this request names, not which ones, so naming an address the transaction does not contain can mask one it does"
                     .to_string(),
             );
             VerificationScope::ArtifactBound {
@@ -3202,12 +3217,46 @@ impl GraphiteCore {
                                     // from the response's own balance arrays,
                                     // which span the transaction's entire
                                     // account list.
+                                    // Every account this request names
+                                    // anywhere, against every account the
+                                    // artifact actually references.
+                                    //
+                                    // The described universe is deliberately
+                                    // generous: the instruction's accounts, its
+                                    // program, every account and program of
+                                    // every declared instruction, and every CPI
+                                    // target. Being generous is what keeps this
+                                    // from firing on honest traffic, and it
+                                    // still cannot be inflated into covering an
+                                    // account the caller never wrote down.
+                                    let mut described: std::collections::HashSet<&str> =
+                                        std::collections::HashSet::new();
+                                    described.insert(input.program_id.as_str());
+                                    for a in &input.account_addresses {
+                                        described.insert(a.as_str());
+                                    }
+                                    for t in &input.cpi_targets {
+                                        described.insert(t.as_str());
+                                    }
+                                    for ix in &input.transaction_instructions {
+                                        described.insert(ix.program_id.as_str());
+                                        for a in &ix.account_addresses {
+                                            described.insert(a.as_str());
+                                        }
+                                        for t in &ix.cpi_targets {
+                                            described.insert(t.as_str());
+                                        }
+                                    }
+                                    let universe = sim_res
+                                        .artifact_account_count
+                                        .map(|n| (n, described.len()));
                                     observed_diff = Some(build_rpc_state_diff(
                                         &diff_addresses,
                                         &pre,
                                         &post,
                                         sim_res.fee.unwrap_or(0),
                                         sim_res.account_writes,
+                                        universe,
                                     ));
                                 }
                                 Err(e) => {

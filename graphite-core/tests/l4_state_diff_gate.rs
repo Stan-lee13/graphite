@@ -119,6 +119,7 @@ fn diff(deltas: Vec<AccountDelta>) -> StateDiff {
         // No artifact was simulated in this fixture, so there is no
         // measured effect count to compare coverage against.
         artifact_balance_writes: None,
+        artifact_account_universe: None,
     }
 }
 

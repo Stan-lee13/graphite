@@ -414,6 +414,24 @@ pub struct StateDiff {
     /// compare against and coverage falls back to what the caller described.
     #[serde(default)]
     pub artifact_balance_writes: Option<u32>,
+    /// `(accounts the artifact references, accounts the request accounts for)`.
+    ///
+    /// Balance deltas are a FLOOR on what a transaction did — they see value
+    /// moving and nothing else. A secondary instruction that reassigns an
+    /// account's owner, grants a delegate, sets a close authority or freezes a
+    /// token account moves no lamports at all.
+    ///
+    /// Measured on live devnet 2026-09-08: a benign transfer and the same
+    /// transfer carrying a second instruction that hands an account to an
+    /// attacker program BOTH report exactly two lamport-moved accounts. The
+    /// hostile one references four accounts instead of three. Coverage computed
+    /// from balance movement saw nothing; the account universe is a whole
+    /// account larger, and cannot be hidden — an account has to be in the
+    /// transaction to be touched by it.
+    ///
+    /// `None` when no artifact was simulated.
+    #[serde(default)]
+    pub artifact_account_universe: Option<(usize, usize)>,
 }
 
 impl StateDiff {
@@ -685,6 +703,32 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // parsing the artifact and without trusting the caller. If the diff
     // accounts for fewer of them than the artifact changed, this verdict is
     // about a different transaction.
+    // ── Does the request account for every account the artifact touches? ────
+    //
+    // The check below this one compares BALANCE movement, which is a floor: it
+    // cannot see an owner reassignment, a delegate grant, a close-authority
+    // change, a freeze, or any other state mutation that moves no value. This
+    // one compares the size of the account universe instead, and an account
+    // cannot be mutated without appearing in the transaction that mutates it.
+    //
+    // Reported rather than silently folded into the coverage flag because the
+    // two say different things, and an operator investigating an alert needs to
+    // know which one fired: "value moved somewhere you did not look" is a
+    // different problem from "this transaction involves accounts you never
+    // mentioned".
+    if let Some((artifact_accounts, described_accounts)) = input.diff.artifact_account_universe {
+        if artifact_accounts > described_accounts {
+            findings.push(StateDiffFinding::critical(
+                "ArtifactAccountsNotDescribed",
+                None,
+                format!(
+                    "the simulated transaction references {artifact_accounts} account(s); this request describes {described_accounts}. The {} unaccounted account(s) are named nowhere in it, so nothing here examined what the transaction does to them — and a state change that moves no lamports (an owner reassignment, a delegate grant, a freeze) leaves no trace a balance diff can see",
+                    artifact_accounts - described_accounts
+                ),
+            ));
+        }
+    }
+
     if let Some(artifact_writes) = input.diff.artifact_balance_writes {
         let covered = input
             .diff
@@ -1154,6 +1198,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1182,6 +1227,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -1215,6 +1261,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1235,6 +1282,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1262,6 +1310,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -1285,6 +1334,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1314,6 +1364,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1342,6 +1393,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1369,6 +1421,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1391,6 +1444,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1415,6 +1469,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1438,6 +1493,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         // "Update the metadata URI" promises no value movement at all.
@@ -1464,6 +1520,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -1489,6 +1546,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -1515,6 +1573,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1548,6 +1607,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -1573,6 +1633,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -1594,6 +1655,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(BOB, false)];
         let declared = ["credit destination".to_string()];
@@ -1636,6 +1698,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1668,6 +1731,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -1716,6 +1780,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["frobnicate the widget".to_string()]);
@@ -1746,6 +1811,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(BOB, true)];
         // `before: None` means owner_change() cannot fire — there is no prior
@@ -1777,6 +1843,7 @@ mod tests {
             // No artifact was simulated in this fixture, so there is no
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
+            artifact_account_universe: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(

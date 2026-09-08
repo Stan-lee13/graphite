@@ -91,9 +91,11 @@ fn account(lamports: u64) -> String {
 /// `changed_accounts == 2` is the honest case (payer + Bob). `3` is the attack:
 /// the artifact also paid someone the request never named.
 fn cluster(changed_accounts: usize) -> String {
-    // Balance arrays span the transaction's whole account list. Entry 0 is the
-    // payer; the rest are recipients, of which `changed_accounts - 1` move.
-    let total = 4;
+    // Balance arrays span the transaction's whole account list: the payer, the
+    // recipients, and the System Program itself. An honest two-account transfer
+    // is therefore three entries, and each extra account the artifact touches
+    // is one more — which is exactly what the account-universe check reads.
+    let total = changed_accounts + 1;
     let pre: Vec<String> = (0..total).map(|_| "1000000000".to_string()).collect();
     let post: Vec<String> = (0..total)
         .map(|i| {
@@ -313,5 +315,157 @@ async fn no_artifact_means_no_coverage_claim() {
         !l4.reason.contains("ArtifactEffectsNotCovered"),
         "there is no artifact to compare coverage against; the check must not fire: {}",
         l4.reason
+    );
+}
+
+// ── Silent state mutation: no lamports move at all ──────────────────────────
+//
+// Balance deltas are a FLOOR on what a transaction did. An owner reassignment,
+// a delegate grant, a close-authority change and a token freeze all move zero
+// lamports, so a coverage measure built on balance movement cannot see any of
+// them.
+//
+// Measured on live devnet 2026-09-08: a benign transfer, and the same transfer
+// carrying a second instruction that hands an account to an attacker program,
+// BOTH report exactly two lamport-moved accounts. The hostile one references
+// four accounts where the benign one references three.
+//
+// Before the account-universe check, L4 answered "State diff verified against
+// the manifest: 2 account(s) changed, no undeclared effects" on the hostile
+// artifact. The transaction was blocked, but by L3's compute divergence — the
+// statistical signal documented in SECURITY.md as a false-positive source, not
+// a control reasoning about ownership. An attacker whose baseline already
+// includes two-instruction traffic loses nothing by that block.
+
+/// A cluster where the artifact touches `extra` accounts beyond the two the
+/// request describes, and NONE of them move lamports.
+fn cluster_silent(extra: usize) -> String {
+    // Two accounts move value in every case — the payer and Bob — exactly as in
+    // the benign transfer. Only the size of the account universe changes.
+    let total = 3 + extra;
+    let pre: Vec<String> = (0..total).map(|_| "1000000000".to_string()).collect();
+    let post: Vec<String> = (0..total)
+        .map(|i| match i {
+            0 => "998995000".to_string(),
+            1 => "1001000000".to_string(),
+            _ => "1000000000".to_string(),
+        })
+        .collect();
+    let sim = format!(
+        r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":{{
+            "err":null,"logs":[],"unitsConsumed":150,"fee":5000,
+            "preBalances":[{}],"postBalances":[{}],
+            "innerInstructions":[],"loadedAddresses":{{"writable":[],"readonly":[]}},
+            "accounts":[{},{}],"returnData":null}}}}}}"#,
+        pre.join(","),
+        post.join(","),
+        account(998_995_000),
+        account(2_000_000),
+    );
+    let accounts = format!(
+        r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":[{},{}]}}}}"#,
+        account(1_000_000_000),
+        account(1_000_000)
+    );
+    let mut m = HashMap::new();
+    m.insert("simulateTransaction".to_string(), sim);
+    m.insert("getMultipleAccounts".to_string(), accounts);
+    serve(m)
+}
+
+/// The exploit: a secondary instruction mutating an account the request never
+/// names, moving no lamports, so every balance-based measure reads clean.
+#[tokio::test]
+async fn an_artifact_touching_an_undescribed_account_is_refused_even_with_no_value_moved() {
+    let endpoint = cluster_silent(1);
+    // `declared == 0` only. Declaring instructions ADDS their programs and
+    // accounts to the described universe, which is what the padding limitation
+    // below is about — see
+    // `padding_the_described_universe_defeats_the_count_and_that_is_a_known_limit`.
+    for declared in [0usize] {
+        let (approved, status, reason) = l4(&endpoint, declared).await;
+        assert!(
+            !approved,
+            "an artifact referencing an account the request never named was approved with \
+             {declared} declared instruction(s). No lamports moved, so nothing balance-based \
+             could see it: {reason}"
+        );
+        assert!(
+            matches!(status, LayerStatus::Failed),
+            "L4 must fail: {status:?} {reason}"
+        );
+        assert!(
+            reason.contains("ArtifactAccountsNotDescribed"),
+            "blocked, but not by the check that reasons about the artifact's account universe — \
+             a block from some other layer is incidental and an attacker can engineer around \
+             it: {reason}"
+        );
+    }
+}
+
+/// Anti-vacuity: an artifact whose account universe the request does cover must
+/// still pass, or the check above is satisfied by blocking everything.
+#[tokio::test]
+async fn an_artifact_whose_accounts_are_all_described_still_passes_l4() {
+    let endpoint = cluster_silent(0);
+    let (_approved, status, reason) = l4(&endpoint, 0).await;
+    assert!(
+        matches!(status, LayerStatus::Passed),
+        "an artifact whose accounts the request fully describes failed L4 — the universe check \
+         is over-blocking: {status:?} {reason}"
+    );
+    assert!(
+        !reason.contains("ArtifactAccountsNotDescribed"),
+        "full account coverage was reported as incomplete: {reason}"
+    );
+}
+
+/// The check scales with how much is hidden, and never reports fewer
+/// unaccounted accounts than there are.
+#[tokio::test]
+async fn the_number_of_unaccounted_accounts_is_reported_accurately() {
+    for extra in [1usize, 3, 7] {
+        let endpoint = cluster_silent(extra);
+        let (_, _, reason) = l4(&endpoint, 0).await;
+        assert!(
+            reason.contains(&format!("references {} account(s)", 3 + extra)),
+            "the artifact's account count is misreported for extra={extra}: {reason}"
+        );
+        assert!(
+            reason.contains(&format!("The {extra} unaccounted")),
+            "the number of unexamined accounts is misreported for extra={extra}: {reason}"
+        );
+    }
+}
+
+/// A limitation of the check above, demonstrated rather than described.
+///
+/// The account-universe comparison is a COUNT. An attacker who needs to hide
+/// one account simply names one more — any address, or an instruction carrying
+/// one — and the two numbers agree again. Counting cannot distinguish "the four
+/// accounts you described" from "four accounts, one of which is not the one in
+/// the transaction", because nothing in a simulation response reveals the
+/// artifact's account IDENTITIES. `preBalances` is a list of numbers in the
+/// transaction's key order; the keys are in the wire format, which Graphite
+/// does not parse.
+///
+/// So this test asserts the gap is still there. It exists so nobody later reads
+/// `ArtifactAccountsNotDescribed` as a proof of correspondence when it is a
+/// floor — and so that closing it (by parsing the artifact) has a failing test
+/// waiting to confirm the closure.
+///
+/// What the check still buys: an attacker can no longer hide an account for
+/// free. They have to make the request name an account the transaction does not
+/// contain, which is a concrete, auditable lie recorded on the P9 trail rather
+/// than an omission.
+#[tokio::test]
+async fn padding_the_described_universe_defeats_the_count_and_that_is_a_known_limit() {
+    let endpoint = cluster_silent(1);
+    // One declared instruction contributes its program id to the described
+    // universe, restoring the count the hidden account broke.
+    let (_approved, status, reason) = l4(&endpoint, 1).await;
+    assert!(
+        matches!(status, LayerStatus::Passed),
+        "padding no longer defeats the count. If the artifact's account identities are now          established — by parsing the transaction, most likely — then this limitation is          closed, `ArtifactAccountsNotDescribed` means more than it did, and both this test and          the `unobserved` entry claiming the gap should be rewritten: {status:?} {reason}"
     );
 }

@@ -349,6 +349,13 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         }
     });
 
+    // Length of the balance arrays = the transaction's whole account universe.
+    let artifact_account_count = value
+        .get("preBalances")
+        .and_then(|v| v.as_array())
+        .or_else(|| value.get("postBalances").and_then(|v| v.as_array()))
+        .map(|a| a.len());
+
     Ok(SimulationResult {
         logs,
         units_consumed,
@@ -358,6 +365,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         cpi_hops,
         fee: value.get("fee").and_then(|v| v.as_u64()),
         loaded_addresses,
+        artifact_account_count,
     })
 }
 
@@ -418,6 +426,22 @@ pub struct SimulationResult {
     /// transaction that references no lookup table are indistinguishable here,
     /// and the code that consumes this must not read empty as "legacy".
     pub loaded_addresses: Option<LoadedAddresses>,
+    /// How many accounts the transaction references in total, from the length
+    /// of the balance arrays.
+    ///
+    /// `preBalances` spans the transaction's ENTIRE account list — every static
+    /// key plus everything resolved through a lookup table — so its length is
+    /// the size of the account universe the runtime actually executed against.
+    /// Graphite gets that number without parsing the transaction and without
+    /// believing anything the caller said about it.
+    ///
+    /// It answers a question a lamport-delta counter cannot ask: not "which
+    /// accounts moved value" but "how many accounts are in play at all". A
+    /// secondary instruction that reassigns an account's owner, sets a delegate
+    /// or freezes a token account moves no lamports and is invisible to a
+    /// balance diff — but it cannot be invisible here, because the account it
+    /// touches has to be in the transaction to be touched.
+    pub artifact_account_count: Option<usize>,
 }
 
 /// The `loadedAddresses` half of a `simulateTransaction` response: the accounts
