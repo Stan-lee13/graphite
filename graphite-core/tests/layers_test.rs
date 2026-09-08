@@ -331,9 +331,29 @@ fn l8_reports_not_yet_verified() {
         !l8.passed,
         "L8 must not report passed — execution verification has not run yet"
     );
+    // The reason must say the transaction has not been SUBMITTED yet, and must
+    // not read as "the layer is unimplemented".
+    //
+    // This asserted `contains("not yet verified")` against the old text,
+    // "Phase 1: execution verification not yet verified (post-submission
+    // feature)". That was accurate when written — L8 was reachable from no
+    // route and no command — and became false on 2026-09-07 when the layer was
+    // wired to `POST /verify/execution` and `graphite execution`. A test that
+    // pins a placeholder keeps the placeholder alive, so it now pins the
+    // property that actually matters: the caller is told what to do next.
     assert!(
-        l8.reason.contains("not yet verified"),
-        "L8 reason must say 'not yet verified', got: {}",
+        !l8.reason.contains("Phase 1"),
+        "L8 must not describe itself as an unimplemented phase — it is implemented: {}",
+        l8.reason
+    );
+    assert!(
+        l8.reason.contains("Not yet submitted"),
+        "L8 must say the transaction has not been submitted yet, got: {}",
+        l8.reason
+    );
+    assert!(
+        l8.reason.contains("/verify/execution") && l8.reason.contains("content_hash"),
+        "L8 must point the caller at the endpoint that completes it, and at the          content_hash that joins the two halves, got: {}",
         l8.reason
     );
 }

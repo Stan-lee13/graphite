@@ -95,6 +95,24 @@ enum Commands {
         #[arg(long)]
         min_trust_tier: Option<String>,
     },
+    /// L8 - confirm a submitted transaction and reconcile it against the record
+    ///
+    /// Exits 1 when Graphite blocked a transaction that executed anyway.
+    #[cfg(feature = "rpc")]
+    Execution {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// On-chain transaction signature (base58)
+        #[arg(long)]
+        signature: String,
+        /// content_hash of the verification this execution corresponds to
+        #[arg(long)]
+        content_hash: Option<String>,
+        /// RPC endpoint (default: GRAPHITE_RPC_URL)
+        #[arg(long)]
+        rpc_url: Option<String>,
+    },
     /// Seed operator-asserted evidence or a simulation baseline
     ///
     /// Bootstrapping and state restore. A fresh graph has no evidence, and the
@@ -535,6 +553,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             })
         }
+        #[cfg(feature = "rpc")]
+        Commands::Execution {
+            data_dir,
+            signature,
+            content_hash,
+            rpc_url,
+        } => graphite_core::cli::run(graphite_core::cli::CliCommand::Execution {
+            data_dir,
+            signature,
+            content_hash,
+            rpc_url,
+        }),
         Commands::Evidence { action } => match action {
             EvidenceAction::Seed {
                 data_dir,

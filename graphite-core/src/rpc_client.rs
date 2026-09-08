@@ -83,6 +83,43 @@ pub(crate) fn redact_transport_error(e: &reqwest::Error) -> String {
     }
 }
 
+/// The `simulateTransaction` config Graphite sends.
+///
+/// `replaceRecentBlockhash` is the load-bearing one. A Solana blockhash is
+/// valid for roughly 150 slots (~60 seconds); without this, simulating a
+/// transaction whose blockhash has aged even slightly comes back
+/// `BlockhashNotFound`, `unitsConsumed` is 0, and every downstream conclusion
+/// collapses — L3 gets no trusted verdict, the baseline cannot grow, and L4
+/// abandons its state diff and silently falls back to the shape heuristic.
+///
+/// Found live on 2026-09-07: the devnet fixtures simulated cleanly by hand and
+/// then failed inside Graphite purely because minutes had passed. In production
+/// the window is whatever sits between transaction construction and
+/// verification — a human approval step, a queue, a retry — so this was a
+/// latent, timing-dependent way for the two most expensive layers to quietly
+/// stop working.
+///
+/// Replacing the blockhash is what wallets do for preflight and is correct for
+/// the question Graphite asks: "what state effect would these instructions
+/// have?" The blockhash is not part of what `content_hash` binds (program,
+/// discriminator, accounts, data, CPI targets), so substituting it weakens no
+/// binding and changes no observed effect.
+///
+/// `innerInstructions` is what makes a real CPI count available; see
+/// `parse_simulation_value`.
+fn simulate_config(commitment: &str, addresses: Option<&[String]>) -> serde_json::Value {
+    let mut cfg = serde_json::json!({
+        "encoding": "base64",
+        "commitment": commitment,
+        "replaceRecentBlockhash": true,
+        "innerInstructions": true,
+    });
+    if let Some(addrs) = addresses {
+        cfg["accounts"] = serde_json::json!({ "encoding": "base64", "addresses": addrs });
+    }
+    cfg
+}
+
 /// Decode one account object from an RPC response.
 ///
 /// `null` means the account does not exist and yields `Ok(None)` — never a
@@ -133,6 +170,19 @@ fn parse_account_value(
     }))
 }
 
+/// Test seam for the simulation-response parser.
+///
+/// The parser is the contract between what a Solana RPC actually sends and what
+/// Graphite treats as trustworthy evidence, and three separate defects have
+/// lived in it. It is worth testing directly against captured real responses
+/// rather than only through a live network call, which cannot be replayed and
+/// cannot be made to produce a truncated or hostile shape on demand.
+pub fn simulation_result_from_value_for_test(
+    value: &serde_json::Value,
+) -> Result<SimulationResult, RpcError> {
+    parse_simulation_value(value)
+}
+
 /// Decode a `simulateTransaction` `result.value` object.
 ///
 /// Shared by the plain simulate call and the state-diff one so the two can
@@ -163,18 +213,80 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     let units_consumed = nested("unitsConsumed").unwrap_or(0);
 
     let as_u32 = |v: Option<u64>| v.filter(|n| *n <= u64::from(u32::MAX)).map(|n| n as u32);
-    let account_writes = as_u32(nested("accountWrites").or_else(|| {
-        value
-            .get("meta")
-            .and_then(|m| m.get("numAccountWrites"))
-            .and_then(|v| v.as_u64())
-    }));
-    let cpi_hops = as_u32(nested("cpiHops").or_else(|| {
-        value
-            .get("meta")
-            .and_then(|m| m.get("cpi_hops"))
-            .and_then(|v| v.as_u64())
-    }));
+
+    // `accountWrites` and `cpiHops` are NOT fields any Solana RPC returns.
+    //
+    // Confirmed against api.devnet.solana.com on 2026-09-07: a
+    // `simulateTransaction` response carries exactly {accounts, err, fee,
+    // innerInstructions, loadedAccountsDataSize, loadedAddresses, logs,
+    // postBalances, postTokenBalances, preBalances, preTokenBalances,
+    // replacementBlockhash, returnData, unitsConsumed}. Neither invented name
+    // appears, under any nesting.
+    //
+    // The caller of this function treats "both fields present" as the test for
+    // whether a simulation result is COMPLETE enough to trust (`rpc_sim_ok`),
+    // and only a trusted result may grow the baseline or certify a clean L3.
+    // Reading for fields that never arrive made that test permanently false, so
+    // with a real RPC attached the Simulation Integrity Layer could accumulate
+    // nothing and could only ever return "flagged" or "no verdict" — never
+    // "clean". The layer was live and structurally unable to reach its own
+    // positive result.
+    //
+    // Both are derived instead, from data the RPC does send, so they stay
+    // RPC-DERIVED rather than caller-supplied and the provenance rule is
+    // unchanged. The invented names are still read first: a provider that does
+    // supply them wins over the derivation.
+    let derived_account_writes = match (
+        value.get("preBalances").and_then(|v| v.as_array()),
+        value.get("postBalances").and_then(|v| v.as_array()),
+    ) {
+        // An account whose lamport balance moved was written. This undercounts
+        // a write that changed only account DATA at identical lamports, so it
+        // is a floor rather than an exact count — which is the safe direction
+        // for a divergence baseline: it cannot inflate a spike into normality.
+        (Some(pre), Some(post)) if pre.len() == post.len() => Some(
+            pre.iter()
+                .zip(post.iter())
+                .filter(|(a, b)| a.as_u64() != b.as_u64())
+                .count() as u64,
+        ),
+        _ => None,
+    };
+    // Total inner instructions across every top-level instruction: the real
+    // CPI count for this execution. Requires `innerInstructions: true` on the
+    // request; a `null` here means it was not asked for, which is different
+    // from an empty array meaning "no CPI happened".
+    let derived_cpi_hops = value
+        .get("innerInstructions")
+        .and_then(|v| v.as_array())
+        .map(|groups| {
+            groups
+                .iter()
+                .filter_map(|g| g.get("instructions").and_then(|i| i.as_array()))
+                .map(|i| i.len() as u64)
+                .sum::<u64>()
+        });
+
+    let account_writes = as_u32(
+        nested("accountWrites")
+            .or_else(|| {
+                value
+                    .get("meta")
+                    .and_then(|m| m.get("numAccountWrites"))
+                    .and_then(|v| v.as_u64())
+            })
+            .or(derived_account_writes),
+    );
+    let cpi_hops = as_u32(
+        nested("cpiHops")
+            .or_else(|| {
+                value
+                    .get("meta")
+                    .and_then(|m| m.get("cpi_hops"))
+                    .and_then(|v| v.as_u64())
+            })
+            .or(derived_cpi_hops),
+    );
 
     let return_data = value
         .get("returnData")
@@ -207,6 +319,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         err,
         account_writes,
         cpi_hops,
+        fee: value.get("fee").and_then(|v| v.as_u64()),
     })
 }
 
@@ -245,6 +358,12 @@ pub struct SimulationResult {
     pub account_writes: Option<u32>,
     /// Optional CPI hop count observed in simulation (if RPC reports it)
     pub cpi_hops: Option<u32>,
+    /// Transaction fee in lamports, as the simulator charged it.
+    ///
+    /// The simulated post-state has this deducted from the fee payer, so any
+    /// lamport-conservation arithmetic over that post-state must account for
+    /// it. `None` when the RPC did not report a fee.
+    pub fee: Option<u64>,
 }
 
 /// Oracle price data
@@ -455,7 +574,7 @@ impl SolanaRpcClient {
         );
 
         let tx_b64 = base64::engine::general_purpose::STANDARD.encode(transaction_data);
-        let params = serde_json::json!([tx_b64, {"encoding":"base64"}]);
+        let params = serde_json::json!([tx_b64, simulate_config(&self.config.commitment, None)]);
         let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":params});
         let result = self.post_rpc(body).await?;
         let value = result
@@ -535,14 +654,15 @@ impl SolanaRpcClient {
             )));
         }
 
+        tracing::info!(
+            "RPC: simulate_transaction_with_accounts called with {} bytes, {} address(es)",
+            transaction_data.len(),
+            addresses.len()
+        );
         let tx_b64 = base64::engine::general_purpose::STANDARD.encode(transaction_data);
         let params = serde_json::json!([
             tx_b64,
-            {
-                "encoding": "base64",
-                "commitment": self.config.commitment,
-                "accounts": { "encoding": "base64", "addresses": addresses }
-            }
+            simulate_config(&self.config.commitment, Some(addresses))
         ]);
         let body = serde_json::json!({
             "jsonrpc":"2.0","id":1,"method":"simulateTransaction","params":params

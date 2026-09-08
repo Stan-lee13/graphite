@@ -607,6 +607,9 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         // submission, confirmation, finalization) — recorded by the caller
         // that actually performed them. See `lifecycle_event_handler`.
         .route("/audit/event", post(lifecycle_event_handler))
+        // L8: confirm a submitted transaction on-chain and reconcile it against
+        // the verdict Graphite recorded for it.
+        .route("/verify/execution", post(execution_handler))
         // Operator control: withdraw a program from trust without a restart.
         // Behind the same API key as everything else; refused outright when no
         // key is configured (see `quarantine_handler`).
@@ -1303,6 +1306,125 @@ struct LifecycleEventBody {
 /// Self-observed event types are REJECTED here — a caller must not be able to
 /// inject a "verification" row that no verification produced, which would let
 /// them forge an approval into the audit trail.
+/// Body for `POST /verify/execution`.
+#[derive(Debug, serde::Deserialize)]
+struct ExecutionBody {
+    /// The on-chain signature to confirm.
+    signature: String,
+    /// The `content_hash` of the verification this execution corresponds to.
+    ///
+    /// Optional, but without it there is nothing to reconcile against and the
+    /// endpoint can only report chain status. The caller asserting the link is
+    /// caller-attested, exactly like the P9 lifecycle events: Graphite cannot
+    /// prove a signature is the execution of a verification it performed
+    /// earlier, and claiming otherwise would put fabricated certainty in the
+    /// audit trail.
+    #[serde(default)]
+    content_hash: Option<String>,
+    /// Who is reporting this, recorded on the audit trail.
+    #[serde(default)]
+    reported_by: Option<String>,
+}
+
+/// L8 — Execution Verification, the post-submission half of the pipeline.
+///
+/// Every verification response already says "audit_trail_id bound to
+/// transaction for future L8 replay". Until 2026-09-07 there was no replay:
+/// `verify_execution` existed in the library, was unit-tested, and was reachable
+/// from no HTTP route and no CLI command, so a deployed Graphite could not
+/// perform execution verification at all. One of the eight advertised layers was
+/// documented, tested, and unreachable.
+///
+/// What makes this a control rather than a status lookup is the reconciliation.
+/// Graphite holds an append-only record of what it decided; the chain holds what
+/// happened. The outcome worth paging on is `BlockedButExecuted` — a transaction
+/// Graphite refused that was submitted anyway. That means the gate was bypassed
+/// rather than obeyed, and no layer inside a verification request can ever see
+/// it, because it happens entirely outside one.
+///
+/// Fail-closed: no RPC client, an RPC failure, or no audit log yields
+/// `Unavailable`. An unavailable check reports that it is unavailable; it never
+/// reports a confirmation.
+async fn execution_handler(
+    State(state): State<AppState>,
+    payload: Result<Json<ExecutionBody>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let Json(body) = payload.map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": e.body_text(),
+                "error_type": "JsonRejection",
+            })),
+        )
+    })?;
+
+    let signature = body.signature.trim().to_string();
+    if signature.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "signature is required" })),
+        ));
+    }
+    // A base58 Solana signature is 64 bytes => 87-88 characters. Bounding this
+    // keeps an oversized value out of the log line and the audit record, the
+    // same reasoning as the identifier caps on /verify.
+    if signature.len() > 90 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "signature is {} characters; a base58 Solana signature is at most 88",
+                    signature.len()
+                ),
+            })),
+        ));
+    }
+
+    let audit = state.audit.as_ref();
+    let result = state
+        .core
+        .audit_execution(&signature, body.content_hash.as_deref(), audit)
+        .await;
+
+    // P9: the reconciliation is a lifecycle-grade fact about a transaction
+    // Graphite verified, and a discrepancy is the single most important thing
+    // this system can record. It goes on the same append-only trail.
+    if let Some(log) = audit {
+        log.append_lifecycle(&LifecycleEventRecord {
+            event_type: LifecycleEvent::Confirmation,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            content_hash: result
+                .recorded_content_hash
+                .clone()
+                .or_else(|| body.content_hash.clone())
+                .unwrap_or_default(),
+            audit_trail_id: result.recorded_audit_trail_id.clone(),
+            transaction_signature: Some(signature.clone()),
+            reported_by: body.reported_by.clone(),
+            detail: Some(format!("L8 reconciliation: {:?}", result.reconciliation)),
+        });
+    }
+
+    if result.reconciliation.is_discrepancy() {
+        // Loud on purpose. This is Graphite telling the operator that its own
+        // decision did not govern the wallet.
+        tracing_server_error(&format!(
+            "L8 DISCREPANCY: signature {} executed on-chain but Graphite BLOCKED it              (audit_trail_id {:?})",
+            signature, result.recorded_audit_trail_id
+        ));
+    }
+
+    Ok(Json(serde_json::json!({
+        "signature": result.signature,
+        "chain_status": result.chain_status,
+        "recorded_approved": result.recorded_approved,
+        "recorded_audit_trail_id": result.recorded_audit_trail_id,
+        "reconciliation": result.reconciliation,
+        "discrepancy": result.reconciliation.is_discrepancy(),
+    })))
+}
+
 #[derive(Debug, serde::Deserialize)]
 struct QuarantineBody {
     program_id: String,

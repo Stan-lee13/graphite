@@ -149,6 +149,8 @@ fn build_rpc_state_diff(
     addresses: &[String],
     pre: &[Option<crate::rpc_client::AccountState>],
     post: &[Option<crate::rpc_client::AccountState>],
+    fee_lamports: u64,
+    covers_all_writable: bool,
 ) -> StateDiff {
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
@@ -167,12 +169,26 @@ fn build_rpc_state_diff(
     StateDiff {
         deltas,
         provenance: DiffProvenance::RpcSimulated,
-        // `simulateTransaction` reports no fee — it does not charge one, and
-        // the simulated post-state therefore does not deduct it. Leaving this
-        // at zero is the honest value for a simulated diff, and it makes the
-        // conservation identity exact rather than off by an invented fee.
-        fee_lamports: 0,
-        covers_all_writable: true,
+        // The REAL fee the simulator charged.
+        //
+        // This was hardcoded to 0 on the reasoning that "simulateTransaction
+        // does not charge a fee". It does: the response carries a `fee` field
+        // and the simulated post-state has it deducted from the fee payer. The
+        // conservation identity therefore came out short by exactly the fee,
+        // and EVERY RPC-diffed transaction — including an ordinary SOL
+        // transfer — failed L4 with a spurious `LamportsNotConserved`. Caught
+        // on 2026-09-07 the first time real RPC data reached the diff; a
+        // synthetic fixture with fee 0 could not have surfaced it, and shipping
+        // it would have rejected all legitimate traffic the moment an operator
+        // set GRAPHITE_RPC_URL.
+        fee_lamports,
+        // Only claim complete coverage when it is true. The address list is the
+        // PRIMARY instruction's writable accounts; a transaction with more
+        // instructions touches accounts this diff never fetched, so the
+        // identity must not be applied to it. Asserting coverage
+        // unconditionally made every multi-instruction transaction fail the
+        // same check for a second, independent reason.
+        covers_all_writable,
     }
 }
 
@@ -239,7 +255,7 @@ pub struct GraphEdge {
 /// "assumed executed" fallback (GAP-2026-08-06-3: Inconclusive, never a
 /// phantom pass).
 #[cfg(feature = "rpc")]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecutionVerification {
     /// Transaction included in a slot; `success` is the on-chain status.
     Confirmed {
@@ -252,6 +268,71 @@ pub enum ExecutionVerification {
     UnknownSignature(String),
     /// Cannot confirm right now (no RPC client, RPC failure, timeout).
     Unavailable(String),
+}
+
+/// What L8 concluded by comparing the on-chain outcome against the verdict
+/// Graphite recorded for the same transaction.
+///
+/// The status lookup on its own is not a security control — it says a signature
+/// landed, which the caller already knew. The control is the RECONCILIATION:
+/// Graphite holds an append-only record of what it decided, and the chain holds
+/// what actually happened. Where those disagree is where the interesting
+/// failures live.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ExecutionReconciliation {
+    /// Graphite approved it and it executed successfully. The expected case.
+    ApprovedAndExecuted,
+    /// Graphite approved it and the chain rejected it. Not a security failure —
+    /// Graphite verifies intent and structure, not that a transaction will
+    /// succeed — but it is worth surfacing, because a pattern of these means
+    /// the verified shape and the executable shape are drifting apart.
+    ApprovedButFailedOnChain { error: Option<String> },
+    /// **Graphite BLOCKED this transaction and it was submitted anyway.**
+    ///
+    /// The one outcome that means the gate was bypassed rather than obeyed.
+    /// Whatever the cause — an integration ignoring the verdict, a key used out
+    /// of band, an operator override — the decision Graphite recorded was not
+    /// the decision that governed the wallet, and no other layer can detect
+    /// that because it happens entirely outside the verification request.
+    BlockedButExecuted,
+    /// Blocked, and correctly never landed.
+    BlockedAndNotExecuted,
+    /// The chain has no record of this signature yet: still pending, dropped,
+    /// or never sent. Deliberately NOT treated as "blocked and not executed" —
+    /// absence of a record is not evidence of non-execution.
+    NotFound,
+    /// Graphite has no verification on file for this transaction, so there is
+    /// nothing to reconcile against. An execution it never saw.
+    NoVerificationOnRecord,
+    /// The comparison could not be made (no RPC, RPC failure, no audit log).
+    /// Never a pass: an unavailable check states that it is unavailable.
+    Unavailable { reason: String },
+}
+
+impl ExecutionReconciliation {
+    /// True when this outcome should page someone.
+    pub fn is_discrepancy(&self) -> bool {
+        matches!(self, Self::BlockedButExecuted)
+    }
+}
+
+/// The full L8 answer: the chain status, the recorded verdict, and what the two
+/// together mean.
+///
+/// Gated on `rpc` because it carries an `ExecutionVerification`, which only
+/// exists when there is a client to produce one. A no-feature library build has
+/// no way to reach the chain, so the type would be uninhabitable rather than
+/// merely unused.
+#[cfg(feature = "rpc")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExecutionAudit {
+    pub signature: String,
+    pub chain_status: ExecutionVerification,
+    /// The verdict Graphite recorded for this transaction, when one is on file.
+    pub recorded_approved: Option<bool>,
+    pub recorded_audit_trail_id: Option<String>,
+    pub recorded_content_hash: Option<String>,
+    pub reconciliation: ExecutionReconciliation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -733,6 +814,99 @@ impl GraphiteCore {
             Err(e) => Ok(ExecutionVerification::Unavailable(format!(
                 "RPC error confirming signature: {e}"
             ))),
+        }
+    }
+
+    /// L8 in production: confirm a submitted transaction on-chain and reconcile
+    /// it against what Graphite decided.
+    ///
+    /// `verify_execution` alone reports chain status, which is a lookup the
+    /// caller could do itself. This is the layer that earns its place: it joins
+    /// the chain outcome to the append-only verification record and reports
+    /// where they disagree — above all, a transaction Graphite BLOCKED that was
+    /// submitted anyway, which is the signature of the gate being bypassed
+    /// rather than obeyed, and which nothing inside a verification request can
+    /// ever detect.
+    ///
+    /// `content_hash` is how the two sides are joined. It is the deterministic
+    /// hash of the transaction Graphite verified, so the caller supplying it is
+    /// asserting "this signature is the execution of that verification". That
+    /// assertion is caller-attested, exactly like the P9 lifecycle events —
+    /// Graphite cannot independently prove a signature corresponds to a
+    /// verification it performed earlier, and pretending otherwise would put
+    /// fabricated certainty in the audit trail.
+    ///
+    /// Fail-closed throughout: with no RPC client, an RPC failure, or no audit
+    /// log to read, the result is `Unavailable`, never a confirmation.
+    #[cfg(feature = "rpc")]
+    pub async fn audit_execution(
+        &self,
+        signature: &str,
+        content_hash: Option<&str>,
+        audit: Option<&crate::durable::AuditLog>,
+    ) -> ExecutionAudit {
+        let chain_status = match self.verify_execution(signature).await {
+            Ok(s) => s,
+            Err(e) => ExecutionVerification::Unavailable(e.to_string()),
+        };
+
+        // Find what Graphite decided for this transaction, if anything.
+        let recorded = match (content_hash, audit) {
+            (Some(hash), Some(log)) => {
+                let hash = hash.trim().to_string();
+                let (records, _errors, _n, _m) =
+                    log.read_tail_filtered(20_000, move |r| r.content_hash == hash);
+                // The LAST verification for this content hash is the one that
+                // governed: a caller may verify the same transaction more than
+                // once, and the decision that mattered is the most recent one
+                // before submission.
+                records.into_iter().next_back()
+            }
+            _ => None,
+        };
+
+        let reconciliation = match (&chain_status, &recorded) {
+            (ExecutionVerification::Unavailable(reason), _) => {
+                ExecutionReconciliation::Unavailable {
+                    reason: reason.clone(),
+                }
+            }
+            (_, None) if content_hash.is_none() => ExecutionReconciliation::Unavailable {
+                reason: "no content_hash supplied — nothing to reconcile against".to_string(),
+            },
+            (_, None) if audit.is_none() => ExecutionReconciliation::Unavailable {
+                reason: "no audit log available to read the recorded verdict from".to_string(),
+            },
+            (_, None) => ExecutionReconciliation::NoVerificationOnRecord,
+            (ExecutionVerification::UnknownSignature(_), Some(rec)) => {
+                if rec.approved {
+                    // Approved and not (yet) on chain is ordinary: the caller
+                    // may not have submitted, or it is still pending.
+                    ExecutionReconciliation::NotFound
+                } else {
+                    ExecutionReconciliation::BlockedAndNotExecuted
+                }
+            }
+            (ExecutionVerification::Confirmed { success, error, .. }, Some(rec)) => {
+                if !rec.approved {
+                    ExecutionReconciliation::BlockedButExecuted
+                } else if *success {
+                    ExecutionReconciliation::ApprovedAndExecuted
+                } else {
+                    ExecutionReconciliation::ApprovedButFailedOnChain {
+                        error: error.clone(),
+                    }
+                }
+            }
+        };
+
+        ExecutionAudit {
+            signature: signature.to_string(),
+            chain_status,
+            recorded_approved: recorded.as_ref().map(|r| r.approved),
+            recorded_audit_trail_id: recorded.as_ref().map(|r| r.audit_trail_id.clone()),
+            recorded_content_hash: recorded.as_ref().map(|r| r.content_hash.clone()),
+            reconciliation,
         }
     }
 
@@ -2433,6 +2607,17 @@ impl GraphiteCore {
         // outranks a claim about evidence (P5).
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut observed_diff: Option<crate::state_diff::StateDiff> = None;
+        // Why Graphite could NOT build its own diff, when it tried and failed.
+        //
+        // L4 has two very different modes — a real pre/post state diff, and a
+        // structural consistency check on the manifest prose — and until
+        // 2026-09-07 they were indistinguishable from outside: an abandoned
+        // diff reported "State verification passed" in exactly the words a
+        // successful heuristic uses. An operator reading that had no way to
+        // know the layer's real capability had not run. Whatever the reason, it
+        // belongs in the layer report (P3).
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut diff_unavailable: Option<String> = None;
         #[cfg(feature = "rpc")]
         {
             if let Some(client) = &self.rpc_client {
@@ -2501,19 +2686,50 @@ impl GraphiteCore {
                         // A simulation that errored describes a transaction
                         // that would not land; its post-state is not evidence
                         // about anything and must not be diffed.
+                        // Why the state diff did or did not get built. Without
+                        // this the L4 fallback and the L4 diff path are
+                        // indistinguishable from outside, which is exactly how
+                        // a disconnected diff would go unnoticed.
+                        tracing::info!(
+                            "state-diff inputs: {} writable address(es), {} post-state entr(ies), sim_err={:?}",
+                            diff_addresses.len(),
+                            post.len(),
+                            sim_res.err
+                        );
                         if !post.is_empty() && sim_res.err.is_none() {
                             match client.get_multiple_accounts(&diff_addresses).await {
                                 Ok(pre) => {
-                                    observed_diff =
-                                        Some(build_rpc_state_diff(&diff_addresses, &pre, &post));
+                                    // The diff covers every writable account
+                                    // only when the primary instruction IS the
+                                    // whole transaction.
+                                    let single_instruction =
+                                        input.transaction_instructions.len() <= 1;
+                                    observed_diff = Some(build_rpc_state_diff(
+                                        &diff_addresses,
+                                        &pre,
+                                        &post,
+                                        sim_res.fee.unwrap_or(0),
+                                        single_instruction,
+                                    ));
                                 }
                                 Err(e) => {
                                     // Without pre-state there is no diff. Half
                                     // a diff would read every account as newly
                                     // created.
                                     tracing::warn!("state-diff pre-state fetch failed: {}", e);
+                                    diff_unavailable = Some(format!("pre-state fetch failed: {e}"));
                                 }
                             }
+                        } else if let Some(err) = &sim_res.err {
+                            // A simulation that errored describes a transaction
+                            // that would not land, so its post-state is not
+                            // evidence about anything.
+                            diff_unavailable = Some(format!("simulation did not execute: {err}"));
+                        } else if !diff_addresses.is_empty() {
+                            diff_unavailable = Some(
+                                "the RPC returned no post-state for the writable accounts"
+                                    .to_string(),
+                            );
                         }
                     }
                     Err(e) => {
@@ -2708,11 +2924,24 @@ impl GraphiteCore {
                     .find(|a| a.is_signer)
                     .map(|a| a.address.as_str()),
             ),
-            None => self.verify_state(
-                &expected_state_changes,
-                &resolution.resolved_accounts,
-                manifest_found,
-            ),
+            None => {
+                let mut fallback = self.verify_state(
+                    &expected_state_changes,
+                    &resolution.resolved_accounts,
+                    manifest_found,
+                );
+                // Say so when the diff was ATTEMPTED and abandoned. "State
+                // verification passed" on its own reads as though the layer did
+                // its strongest work; it did not, and the difference is the
+                // whole value of L4.
+                if let Some(reason) = &diff_unavailable {
+                    fallback.reason = format!(
+                        "{} | NOTE: the pre/post state diff was attempted and could not be                          built ({reason}) — this result is the structural consistency check                          only, not a diff of what the transaction actually does",
+                        fallback.reason
+                    );
+                }
+                fallback
+            }
         };
         // L4: plugin folds (Block → layer Failed; Note → report annotation).
         let l4_result = self
@@ -3094,21 +3323,62 @@ impl GraphiteCore {
                         } else {
                             format!("{:.2}σ", d)
                         };
+                        // Report the usage the check ACTUALLY ran on, and say
+                        // where it came from. These printed `input.*` — the
+                        // caller's own numbers — even when the check had used
+                        // RPC-derived ones, so a flagged result could name a
+                        // figure that had nothing to do with the divergence it
+                        // was reporting (observed live: "0 CU" beside a 2.24σ
+                        // divergence computed from a real 300 CU simulation).
                         format!(
-                            "Simulation integrity FLAGGED: {} CU / {} writes / {} hops (divergence {} vs baseline)",
-                            input.compute_units, input.account_writes, input.cpi_hops, div
+                            "Simulation integrity FLAGGED: {} CU / {} writes / {} hops [{}] (divergence {} vs baseline)",
+                            usage.compute_units,
+                            usage.account_writes,
+                            usage.cpi_hops,
+                            if rpc_sim_ok { "RPC-measured" } else { "caller-supplied" },
+                            div
                         )
                     }
                     (Some(false), _) => format!(
                         "Simulation integrity clean (RPC-verified): {} CU / {} writes / {} hops",
-                        input.compute_units, input.account_writes, input.cpi_hops
+                        usage.compute_units, usage.account_writes, usage.cpi_hops
                     ),
                     (None, Some(_)) => format!(
                         "Simulation integrity NOT RPC-verified: caller-supplied usage ({} CU / {} writes / {} hops) — advisory only, cannot certify clean (P5)",
                         input.compute_units, input.account_writes, input.cpi_hops
                     ),
                     (None, None) => {
-                        "Phase 1: simulation not checked (no baseline or insufficient samples) — active when a trusted baseline exists".to_string()
+                        {
+                            // No verdict — but say WHICH of the two reasons, and
+                            // never imply the layer is unimplemented. This read
+                            // "Phase 1: simulation not checked", which was
+                            // indistinguishable from "L3 does not exist" even
+                            // when a live RPC had just simulated the
+                            // transaction.
+                            let has_rpc = {
+                                #[cfg(feature = "rpc")]
+                                {
+                                    self.rpc_client.is_some()
+                                }
+                                #[cfg(not(feature = "rpc"))]
+                                {
+                                    false
+                                }
+                            };
+                            if !has_rpc {
+                                "No simulation: no RPC endpoint configured (set GRAPHITE_RPC_URL).                                  Compute usage cannot be verified, so no divergence verdict is                                  possible (P12: no evidence, no verdict)."
+                                    .to_string()
+                            } else {
+                                format!(
+                                    "Simulation ran, but no trusted baseline exists for this program                                      yet ({} of {} samples needed). The baseline grows only from                                      RPC-verified observations, so this becomes active once enough                                      traffic has been seen.",
+                                    trusted_baseline
+                                        .as_ref()
+                                        .map(|b| b.sample_count)
+                                        .unwrap_or(0),
+                                    crate::simulation_integrity::MIN_SAMPLES
+                                )
+                            }
+                        }
                     }
                 };
                 if let Some(ref info) = l3_rpc_account_info {
@@ -3167,7 +3437,14 @@ impl GraphiteCore {
         let l8_layer_result = PipelineLayerResult::new(
             "L8_ExecutionVerification",
             LayerStatus::Inconclusive,
-            "Phase 1: execution verification not yet verified (post-submission feature) — audit_trail_id bound to transaction for future L8 replay",
+            // Inconclusive because this transaction has not been submitted yet
+            // — not because the layer is unimplemented. That distinction was
+            // wrong here until 2026-09-07: the text said "Phase 1: not yet
+            // verified (post-submission feature)", which read as "L8 does not
+            // exist" and was accurate at the time, since `verify_execution`
+            // was reachable from no route and no command. It is now reachable,
+            // and the message has to say what the caller should actually do.
+            "Not yet submitted — execution verification runs after submission. Call              POST /verify/execution (or `graphite execution`) with this content_hash and              the transaction signature to confirm it on-chain and reconcile the outcome              against this verdict.",
         );
         let l8_layer_result =
             self.plugins

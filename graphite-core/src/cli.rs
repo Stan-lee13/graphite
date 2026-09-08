@@ -144,6 +144,18 @@ pub enum CliCommand {
     Protocol {
         action: ProtocolAction,
     },
+    /// L8 — confirm a submitted transaction on-chain and reconcile it against
+    /// the verdict Graphite recorded for it.
+    ///
+    /// Requires an RPC endpoint (`GRAPHITE_RPC_URL`). Exits 1 on a discrepancy,
+    /// so it can be used as a monitoring check.
+    #[cfg(feature = "rpc")]
+    Execution {
+        data_dir: Option<PathBuf>,
+        signature: String,
+        content_hash: Option<String>,
+        rpc_url: Option<String>,
+    },
     /// Seed operator-asserted evidence or a simulation baseline into the
     /// durable semantic graph.
     ///
@@ -503,6 +515,13 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
         CliCommand::Explain { input, profile } => run_explain(*input, &profile),
         CliCommand::Protocol { action } => run_protocol(action),
         CliCommand::Evidence { action } => run_evidence(action),
+        #[cfg(feature = "rpc")]
+        CliCommand::Execution {
+            data_dir,
+            signature,
+            content_hash,
+            rpc_url,
+        } => run_execution(data_dir, &signature, content_hash.as_deref(), rpc_url),
         CliCommand::ManifestVerify { path } => run_manifest_verify(&path),
         #[cfg(feature = "rpc")]
         CliCommand::RegressionSeedLive {
@@ -1173,6 +1192,92 @@ fn run_manifest_verify(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             println!("  {e}");
             std::process::exit(1);
         }
+    }
+}
+
+/// L8 in the operator's hands: did what Graphite decided actually govern what
+/// happened on chain?
+///
+/// The reconciliation is the point. A chain-status lookup tells the caller
+/// something they already know; comparing it against the append-only record
+/// tells them whether the gate was obeyed. `BlockedButExecuted` is the outcome
+/// worth waking someone for, and nothing inside a verification request can ever
+/// detect it, because it happens outside one.
+#[cfg(feature = "rpc")]
+fn run_execution(
+    data_dir: Option<PathBuf>,
+    signature: &str,
+    content_hash: Option<&str>,
+    rpc_url: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::verification::ExecutionReconciliation;
+
+    let endpoint = rpc_url
+        .or_else(|| std::env::var("GRAPHITE_RPC_URL").ok())
+        .filter(|u| !u.trim().is_empty())
+        .ok_or("no RPC endpoint: pass --rpc-url or set GRAPHITE_RPC_URL")?;
+
+    let dir = data_dir_path(data_dir);
+    let mut core = GraphiteCore::with_data_dir(dir.clone());
+    core.attach_rpc_client(crate::rpc_client::SolanaRpcClient::new(
+        crate::rpc_client::RpcConfig {
+            endpoint,
+            ..Default::default()
+        },
+    ));
+
+    // Read the same audit trail the server writes, so the CLI reconciles
+    // against the real record rather than a second source of truth.
+    let audit = crate::durable::AuditLog::open(crate::durable::audit_path(&dir)).ok();
+
+    let rt = tokio::runtime::Runtime::new()?;
+    let result = rt.block_on(core.audit_execution(signature, content_hash, audit.as_ref()));
+
+    println!("signature   {}", result.signature);
+    println!("chain       {:?}", result.chain_status);
+    match result.recorded_approved {
+        Some(a) => println!(
+            "recorded    approved={a}  audit_trail_id={}",
+            result.recorded_audit_trail_id.as_deref().unwrap_or("-")
+        ),
+        None => println!("recorded    (no verification on file for this content_hash)"),
+    }
+    println!("verdict     {:?}", result.reconciliation);
+    println!();
+
+    match &result.reconciliation {
+        ExecutionReconciliation::BlockedButExecuted => {
+            println!(
+                "DISCREPANCY: Graphite BLOCKED this transaction and it executed anyway. The gate\n\
+                 was bypassed rather than obeyed - an integration ignoring the verdict, a key\n\
+                 used out of band, or an override. Investigate before trusting the next one."
+            );
+            std::process::exit(1);
+        }
+        ExecutionReconciliation::ApprovedButFailedOnChain { error } => {
+            println!(
+                "Approved, then failed on chain ({}). Not a security failure - Graphite verifies\n\
+                 intent and structure, not that a transaction will succeed - but a pattern of\n\
+                 these means the verified shape and the executable shape are drifting apart.",
+                error.as_deref().unwrap_or("no error reported")
+            );
+            Ok(())
+        }
+        ExecutionReconciliation::Unavailable { reason } => {
+            println!("Could not reconcile: {reason}");
+            println!(
+                "An unavailable check reports that it is unavailable; it never reports a pass."
+            );
+            Ok(())
+        }
+        ExecutionReconciliation::NoVerificationOnRecord => {
+            println!(
+                "Graphite has no verification on file for this content_hash - an execution it\n\
+                 never saw. That is not proof of wrongdoing, but it is not coverage either."
+            );
+            Ok(())
+        }
+        _ => Ok(()),
     }
 }
 
