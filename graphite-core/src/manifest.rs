@@ -453,107 +453,121 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 
     for p in &seed_paths {
         // include_str! requires a string literal; map path to literal explicitly
-        let res =
-            match *p {
-                "../protocols/system-program.json" => {
-                    registry.load_from_json(include_str!("../protocols/system-program.json"))
-                }
-                "../protocols/spl-token.json" => {
-                    registry.load_from_json(include_str!("../protocols/spl-token.json"))
-                }
-                "../protocols/token-2022.json" => {
-                    registry.load_from_json(include_str!("../protocols/token-2022.json"))
-                }
-                "../protocols/stake-program.json" => {
-                    registry.load_from_json(include_str!("../protocols/stake-program.json"))
-                }
-                "../protocols/raydium-amm-v4.json" => {
-                    registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
-                }
-                "../protocols/squads-v4.json" => {
-                    registry.load_from_json(include_str!("../protocols/squads-v4.json"))
-                }
-                "../protocols/jupiter-v6.json" => {
-                    registry.load_from_json(include_str!("../protocols/jupiter-v6.json"))
-                }
-                "../protocols/orca-whirlpools.json" => {
-                    registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"))
-                }
-                "../protocols/meteora-dlmm.json" => {
-                    registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"))
-                }
-                "../protocols/memo-program.json" => {
-                    registry.load_from_json(include_str!("../protocols/memo-program.json"))
-                }
-                "../protocols/legacy-memo-program.json" => {
-                    registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
-                }
-                "../protocols/spl-memo-program.json" => {
-                    registry.load_from_json(include_str!("../protocols/spl-memo-program.json"))
-                }
-                "../protocols/ata-program.json" => {
-                    registry.load_from_json(include_str!("../protocols/ata-program.json"))
-                }
-                "../protocols/compute-budget.json" => {
-                    registry.load_from_json(include_str!("../protocols/compute-budget.json"))
-                }
-                "../protocols/bpf-loader.json" => {
-                    registry.load_from_json(include_str!("../protocols/bpf-loader.json"))
-                }
-                "../protocols/bpf-loader-upgradeable.json" => registry
-                    .load_from_json(include_str!("../protocols/bpf-loader-upgradeable.json")),
-                "../protocols/pump-fun.json" => {
-                    registry.load_from_json(include_str!("../protocols/pump-fun.json"))
-                }
-                "../protocols/jupiter-dca.json" => {
-                    registry.load_from_json(include_str!("../protocols/jupiter-dca.json"))
-                }
-                "../protocols/wormhole-core.json" => {
-                    registry.load_from_json(include_str!("../protocols/wormhole-core.json"))
-                }
-                "../protocols/metaplex-token-metadata.json" => registry
-                    .load_from_json(include_str!("../protocols/metaplex-token-metadata.json")),
-                "../protocols/drift.json" => {
-                    registry.load_from_json(include_str!("../protocols/drift.json"))
-                }
-                "../protocols/kamino-lending.json" => {
-                    registry.load_from_json(include_str!("../protocols/kamino-lending.json"))
-                }
-                "../protocols/phoenix.json" => {
-                    registry.load_from_json(include_str!("../protocols/phoenix.json"))
-                }
-                "../protocols/openbook-v2.json" => {
-                    registry.load_from_json(include_str!("../protocols/openbook-v2.json"))
-                }
-                "../protocols/switchboard-v2.json" => {
-                    registry.load_from_json(include_str!("../protocols/switchboard-v2.json"))
-                }
-                "../protocols/jupiter-limit.json" => {
-                    registry.load_from_json(include_str!("../protocols/jupiter-limit.json"))
-                }
-                "../protocols/solend.json" => {
-                    registry.load_from_json(include_str!("../protocols/solend.json"))
-                }
-                "../protocols/marginfi-v2.json" => {
-                    registry.load_from_json(include_str!("../protocols/marginfi-v2.json"))
-                }
-                "../protocols/raydium-clmm.json" => {
-                    registry.load_from_json(include_str!("../protocols/raydium-clmm.json"))
-                }
-                "../protocols/raydium-cpmm.json" => {
-                    registry.load_from_json(include_str!("../protocols/raydium-cpmm.json"))
-                }
-                "../protocols/marinade.json" => {
-                    registry.load_from_json(include_str!("../protocols/marinade.json"))
-                }
-                "../protocols/spl-stake-pool.json" => {
-                    registry.load_from_json(include_str!("../protocols/spl-stake-pool.json"))
-                }
-                "../protocols/orca-tokenswap-v2.json" => {
-                    registry.load_from_json(include_str!("../protocols/orca-tokenswap-v2.json"))
-                }
-                _ => unreachable!(),
-            };
+        let res = match *p {
+            "../protocols/system-program.json" => {
+                registry.load_from_json(include_str!("../protocols/system-program.json"))
+            }
+            "../protocols/spl-token.json" => {
+                registry.load_from_json(include_str!("../protocols/spl-token.json"))
+            }
+            "../protocols/token-2022.json" => {
+                registry.load_from_json(include_str!("../protocols/token-2022.json"))
+            }
+            "../protocols/stake-program.json" => {
+                registry.load_from_json(include_str!("../protocols/stake-program.json"))
+            }
+            "../protocols/raydium-amm-v4.json" => {
+                registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
+            }
+            "../protocols/squads-v4.json" => {
+                registry.load_from_json(include_str!("../protocols/squads-v4.json"))
+            }
+            "../protocols/jupiter-v6.json" => {
+                registry.load_from_json(include_str!("../protocols/jupiter-v6.json"))
+            }
+            "../protocols/orca-whirlpools.json" => {
+                registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"))
+            }
+            "../protocols/meteora-dlmm.json" => {
+                registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"))
+            }
+            "../protocols/memo-program.json" => {
+                registry.load_from_json(include_str!("../protocols/memo-program.json"))
+            }
+            "../protocols/legacy-memo-program.json" => {
+                registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
+            }
+            "../protocols/spl-memo-program.json" => {
+                registry.load_from_json(include_str!("../protocols/spl-memo-program.json"))
+            }
+            "../protocols/ata-program.json" => {
+                registry.load_from_json(include_str!("../protocols/ata-program.json"))
+            }
+            "../protocols/compute-budget.json" => {
+                registry.load_from_json(include_str!("../protocols/compute-budget.json"))
+            }
+            "../protocols/bpf-loader.json" => {
+                registry.load_from_json(include_str!("../protocols/bpf-loader.json"))
+            }
+            "../protocols/bpf-loader-upgradeable.json" => {
+                registry.load_from_json(include_str!("../protocols/bpf-loader-upgradeable.json"))
+            }
+            "../protocols/pump-fun.json" => {
+                registry.load_from_json(include_str!("../protocols/pump-fun.json"))
+            }
+            "../protocols/jupiter-dca.json" => {
+                registry.load_from_json(include_str!("../protocols/jupiter-dca.json"))
+            }
+            "../protocols/wormhole-core.json" => {
+                registry.load_from_json(include_str!("../protocols/wormhole-core.json"))
+            }
+            "../protocols/metaplex-token-metadata.json" => {
+                registry.load_from_json(include_str!("../protocols/metaplex-token-metadata.json"))
+            }
+            "../protocols/drift.json" => {
+                registry.load_from_json(include_str!("../protocols/drift.json"))
+            }
+            "../protocols/kamino-lending.json" => {
+                registry.load_from_json(include_str!("../protocols/kamino-lending.json"))
+            }
+            "../protocols/phoenix.json" => {
+                registry.load_from_json(include_str!("../protocols/phoenix.json"))
+            }
+            "../protocols/openbook-v2.json" => {
+                registry.load_from_json(include_str!("../protocols/openbook-v2.json"))
+            }
+            "../protocols/switchboard-v2.json" => {
+                registry.load_from_json(include_str!("../protocols/switchboard-v2.json"))
+            }
+            "../protocols/jupiter-limit.json" => {
+                registry.load_from_json(include_str!("../protocols/jupiter-limit.json"))
+            }
+            "../protocols/solend.json" => {
+                registry.load_from_json(include_str!("../protocols/solend.json"))
+            }
+            "../protocols/marginfi-v2.json" => {
+                registry.load_from_json(include_str!("../protocols/marginfi-v2.json"))
+            }
+            "../protocols/raydium-clmm.json" => {
+                registry.load_from_json(include_str!("../protocols/raydium-clmm.json"))
+            }
+            "../protocols/raydium-cpmm.json" => {
+                registry.load_from_json(include_str!("../protocols/raydium-cpmm.json"))
+            }
+            "../protocols/marinade.json" => {
+                registry.load_from_json(include_str!("../protocols/marinade.json"))
+            }
+            "../protocols/spl-stake-pool.json" => {
+                registry.load_from_json(include_str!("../protocols/spl-stake-pool.json"))
+            }
+            "../protocols/orca-tokenswap-v2.json" => {
+                registry.load_from_json(include_str!("../protocols/orca-tokenswap-v2.json"))
+            }
+            // Not `unreachable!()`. The arms above and `seed_paths` are
+            // two hand-maintained lists of the same literals, and adding a
+            // manifest to one without the other would panic at startup
+            // inside `GraphiteCore::new()`. Fail closed with a diagnostic
+            // instead, exactly as a parse failure does below — an engine
+            // that cannot load its own trust anchors must refuse to run,
+            // and it should say which one is missing.
+            other => {
+                tracing::error!(
+                    path = %other,
+                    "seed manifest is listed in seed_paths but has no include_str! arm — refusing to start with an incomplete manifest set"
+                );
+                std::process::exit(1);
+            }
+        };
 
         if let Err(e) = res {
             tracing::error!(path = %p, error = %e, "Failed to load seed manifest");
