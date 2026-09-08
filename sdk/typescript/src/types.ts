@@ -231,6 +231,73 @@ export interface VerificationResult {
   simulation_divergence?: number | null;
   /** 8-layer pipeline results (L1-L8) */
   layers?: PipelineLayerResult[];
+  /**
+   * What this verdict is BOUND to, and what it did not observe.
+   *
+   * This is the field that makes Graphite's central promise checkable instead
+   * of assumed: the thing it approved is the thing that gets signed, and every
+   * security-relevant property of that thing was either independently verified
+   * or explicitly identified as unverified.
+   *
+   * `approved` alone does not tell you which half applies. A verdict that
+   * merely describes caller-supplied metadata and one bound to real signed
+   * bytes are otherwise the same shape — which is exactly how an integration
+   * can end up executing an instruction nothing examined.
+   *
+   * Optional for compatibility with servers older than 2026-09-08. Absent is
+   * NOT the same as `descriptive`: it means the server did not say, and a gate
+   * that requires artifact binding should treat it as unknown rather than
+   * assume either answer.
+   */
+  scope?: VerificationScope;
+}
+
+/** `scope.kind === "artifact_bound"`: the verdict is tied to concrete bytes. */
+export interface ArtifactBoundScope {
+  kind: "artifact_bound";
+  /**
+   * SHA-256 of the exact transaction bytes that were supplied. A caller can
+   * recompute this over what they are about to submit and refuse if it differs
+   * — a stronger binding than `content_hash`, which covers a projection of one
+   * instruction and cannot see the fee payer, the blockhash, the signer set, or
+   * any sibling instruction.
+   */
+  transaction_sha256: string;
+  transaction_bytes: number;
+  /** Whether a simulator actually executed those bytes. */
+  simulated: boolean;
+  /** Security-relevant properties still not independently observed. */
+  unobserved: string[];
+}
+
+/** `scope.kind === "descriptive"`: nothing here constrains what gets signed. */
+export interface DescriptiveScope {
+  kind: "descriptive";
+  unobserved: string[];
+}
+
+export type VerificationScope = ArtifactBoundScope | DescriptiveScope;
+
+/**
+ * True only when the verdict is tied to concrete transaction bytes.
+ *
+ * An execution gate that can actually move funds should require this rather
+ * than gating on `approved` alone. Returns false for an absent scope: an older
+ * server that did not say has not said yes.
+ */
+export function isArtifactBound(
+  result: Pick<VerificationResult, "scope">,
+): result is Pick<VerificationResult, "scope"> & { scope: ArtifactBoundScope } {
+  return result.scope?.kind === "artifact_bound";
+}
+
+/**
+ * Everything Graphite did not independently observe, in either mode.
+ * Empty when the server did not report a scope at all — which is itself
+ * unknown rather than nothing.
+ */
+export function unobserved(result: Pick<VerificationResult, "scope">): string[] {
+  return result.scope?.unobserved ?? [];
 }
 
 export interface PipelineLayerResult {

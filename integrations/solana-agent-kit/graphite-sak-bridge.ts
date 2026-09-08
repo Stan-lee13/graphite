@@ -109,6 +109,42 @@ export class RpcSimulator {
  *
  * Flow: Parse intent -> Construct tx -> RPC simulate -> Graphite verify -> AuditBind -> Execute
  */
+/**
+ * Surface what a verdict is actually bound to, and what it did not observe.
+ *
+ * Added 2026-09-08 after the Rust Core grew `VerificationResult.scope` while
+ * this integration kept gating on `approved` alone. The two verdict modes —
+ * describing caller-supplied metadata, and binding real signed bytes — are the
+ * same shape on the wire, so `approved` cannot distinguish them. Anything that
+ * can move funds should know which one it is holding.
+ *
+ * Reports rather than refuses, deliberately: neither bridge path hands the Core
+ * a serialized artifact yet, so enforcing artifact binding here would refuse
+ * everything. What protects these paths today is AuditBind against the live
+ * instruction. Making the gap visible is the honest first step, and what stops
+ * it being rediscovered later as a surprise.
+ */
+function reportVerificationScope(verification: VerificationResult, path: string): void {
+  const scope = (verification as { scope?: { kind?: string; unobserved?: string[] } }).scope;
+  if (!scope) {
+    console.warn(
+      `[Graphite] ${path}: this server reported no verification scope (pre-2026-09-08). ` +
+        "Whether the verdict was bound to a transaction artifact is unknown.",
+    );
+    return;
+  }
+  if (scope.kind !== "artifact_bound") {
+    console.warn(
+      `[Graphite] ${path}: the verdict is DESCRIPTIVE — Graphite was not given a transaction ` +
+        "artifact, so nothing in it constrains what is actually signed. AuditBind binds the " +
+        "live instruction; everything else in the transaction is unexamined.",
+    );
+  }
+  for (const u of scope.unobserved ?? []) {
+    console.warn(`[Graphite]   not observed: ${u}`);
+  }
+}
+
 export class VerifiedSakAgent {
   private sakAgent: SolanaAgentKit | null;
   private graphite: GraphiteClient;
@@ -280,6 +316,15 @@ export class VerifiedSakAgent {
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
     if (!verification.approved) { console.log("[Graphite] Transfer BLOCKED."); return { executed: false, verification }; }
+    // `approved` alone is not the gate. A verdict that merely described
+    // caller-supplied metadata and one bound to real signed bytes are the same
+    // shape on the wire, so `approved` cannot tell whether Graphite was ever
+    // shown a transaction — which is how an integration ends up executing an
+    // instruction nothing examined. Reported rather than enforced here: this
+    // path does not yet hand the Core a serialized artifact, so requiring
+    // artifact binding would refuse every transfer. AuditBind below binds the
+    // live instruction, which is the protection this path actually has.
+    reportVerificationScope(verification, "transfer");
 
     // Build the transaction FIRST, then bind what is actually in it.
     //
@@ -428,6 +473,7 @@ export class VerifiedSakAgent {
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
     if (!verification.approved) { console.log("[Graphite] Swap BLOCKED."); return { executed: false, verification }; }
+    reportVerificationScope(verification, "swap");
 
     if (payload) {
       // Bind the EXACT instruction that will be submitted (full data + accounts).

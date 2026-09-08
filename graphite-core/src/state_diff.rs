@@ -391,8 +391,29 @@ pub struct StateDiff {
     pub fee_lamports: u64,
     /// True when every account the transaction could write was snapshotted.
     /// Only then is the lamport-conservation identity meaningful.
+    ///
+    /// This is now MEASURED rather than declared. It used to be
+    /// `transaction_instructions.len() <= 1` — a caller-supplied field whose
+    /// contents nothing verifies — so a caller could switch off the
+    /// lamport-conservation check by declaring a second instruction that did
+    /// not exist. See `artifact_balance_writes`.
     #[serde(default)]
     pub covers_all_writable: bool,
+    /// How many accounts the SIMULATOR observed changing lamport balance across
+    /// the whole transaction, when an artifact was simulated.
+    ///
+    /// This is the number that makes coverage checkable. `simulateTransaction`
+    /// returns `preBalances`/`postBalances` over the transaction's entire
+    /// account list, so Graphite can count how many accounts the artifact
+    /// actually moved value on without parsing the transaction and without
+    /// believing anything the caller said about it. If the diff covers fewer
+    /// changed accounts than that, the description does not describe the
+    /// artifact — whatever the caller declared.
+    ///
+    /// `None` when no artifact was simulated, in which case there is nothing to
+    /// compare against and coverage falls back to what the caller described.
+    #[serde(default)]
+    pub artifact_balance_writes: Option<u32>,
 }
 
 impl StateDiff {
@@ -642,6 +663,44 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 "the diff declares a transaction fee of {claimed_fee} lamports, above the {MAX_PLAUSIBLE_FEE_LAMPORTS} a Solana fee can plausibly reach. The fee is credited against both lamport conservation and the fee payer's outflow, so an inflated one balances a fabricated diff and excuses a drain — only {MAX_PLAUSIBLE_FEE_LAMPORTS} was granted"
             ),
         ));
+    }
+
+    // ── Does this diff cover what the artifact actually did? ────────────────
+    //
+    // CRITICAL, found 2026-09-08 attacking the artifact boundary. Coverage was
+    // `transaction_instructions.len() <= 1`, and that field is caller-declared
+    // with no verification of its contents. Declaring one fictional extra
+    // instruction set `covers_all_writable = false`, which skipped lamport
+    // conservation, which was the only check binding the artifact's effects to
+    // the described account set.
+    //
+    // Measured end to end against live devnet: a request describing a 0.002 SOL
+    // transfer to Bob, carrying a signed artifact sending 0.9 SOL to Mallory,
+    // came back `approved: true` with `scope: artifact_bound` and L4 reporting
+    // "no undeclared effects". The attacker's whole contribution was a second
+    // instruction that did not exist.
+    //
+    // The simulator's balance arrays cover the transaction's entire account
+    // list, so the count of accounts it moved value on is available without
+    // parsing the artifact and without trusting the caller. If the diff
+    // accounts for fewer of them than the artifact changed, this verdict is
+    // about a different transaction.
+    if let Some(artifact_writes) = input.diff.artifact_balance_writes {
+        let covered = input
+            .diff
+            .deltas
+            .iter()
+            .filter(|d| d.lamport_delta() != 0)
+            .count();
+        if covered < artifact_writes as usize {
+            findings.push(StateDiffFinding::critical(
+                "ArtifactEffectsNotCovered",
+                None,
+                format!(
+                    "the simulated transaction moved lamports on {artifact_writes} account(s), but this verification examined only {covered} of them. The accounts it did not examine are not named anywhere in the request, so the verdict does not describe what these bytes do"
+                ),
+            ));
+        }
     }
 
     if input.diff.covers_all_writable {
@@ -1092,6 +1151,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 5,
             covers_all_writable: true,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1117,6 +1179,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 5,
             covers_all_writable: true,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -1147,6 +1212,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 5,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1164,6 +1232,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1188,6 +1259,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -1208,6 +1282,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1234,6 +1311,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1259,6 +1339,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1283,6 +1366,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1302,6 +1388,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1323,6 +1412,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1343,6 +1435,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         // "Update the metadata URI" promises no value movement at all.
@@ -1366,6 +1461,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -1388,6 +1486,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -1411,6 +1512,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 5,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1441,6 +1545,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -1463,6 +1570,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -1481,6 +1591,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(BOB, false)];
         let declared = ["credit destination".to_string()];
@@ -1520,6 +1633,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1549,6 +1665,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 5_000,
             covers_all_writable: true,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -1594,6 +1713,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["frobnicate the widget".to_string()]);
@@ -1621,6 +1743,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(BOB, true)];
         // `before: None` means owner_change() cannot fire — there is no prior
@@ -1649,6 +1774,9 @@ mod tests {
             provenance: DiffProvenance::RpcSimulated,
             fee_lamports: 0,
             covers_all_writable: false,
+            // No artifact was simulated in this fixture, so there is no
+            // measured effect count to compare coverage against.
+            artifact_balance_writes: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(

@@ -252,6 +252,57 @@ type VerificationResult struct {
 	SimulationDivergence *float64              `json:"simulation_divergence,omitempty"`
 	Summary              string                `json:"summary"`
 	Layers               []PipelineLayerResult `json:"layers,omitempty"`
+	// Scope is what this verdict is BOUND to, and what it did not observe.
+	//
+	// It makes Graphite's central promise checkable instead of assumed: the
+	// thing it approved is the thing that gets signed, and every
+	// security-relevant property of that thing was either independently
+	// verified or explicitly identified as unverified. Approved alone does not
+	// say which half applies.
+	//
+	// Nil for servers older than 2026-09-08. Nil is NOT "descriptive" — it
+	// means the server did not say, and a gate requiring artifact binding must
+	// treat it as unknown.
+	Scope *VerificationScope `json:"scope,omitempty"`
+}
+
+// VerificationScope is the artifact-binding half of a verdict.
+//
+// Kind is either "artifact_bound" or "descriptive". The artifact fields are
+// populated only for the former.
+type VerificationScope struct {
+	Kind string `json:"kind"`
+	// TransactionSHA256 is the digest of the exact bytes supplied, so a caller
+	// can recompute it over what it is about to submit and refuse if it
+	// differs. Stronger than ContentHash, which covers a projection of one
+	// instruction and cannot see the fee payer, blockhash, signer set, or any
+	// sibling instruction.
+	TransactionSHA256 string `json:"transaction_sha256,omitempty"`
+	TransactionBytes  int    `json:"transaction_bytes,omitempty"`
+	// Simulated reports whether a simulator actually executed those bytes.
+	Simulated bool `json:"simulated,omitempty"`
+	// Unobserved lists security-relevant properties that were not
+	// independently established.
+	Unobserved []string `json:"unobserved,omitempty"`
+}
+
+// IsArtifactBound reports whether the verdict is tied to concrete transaction
+// bytes rather than to a description of them.
+//
+// An execution gate that can move funds should require this rather than gating
+// on Approved alone. False for a nil scope: a server that did not say has not
+// said yes.
+func (r *VerificationResult) IsArtifactBound() bool {
+	return r != nil && r.Scope != nil && r.Scope.Kind == "artifact_bound"
+}
+
+// Unobserved returns everything Graphite did not independently observe. Empty
+// when the server reported no scope, which is unknown rather than nothing.
+func (r *VerificationResult) Unobserved() []string {
+	if r == nil || r.Scope == nil {
+		return nil
+	}
+	return r.Scope.Unobserved
 }
 
 // PipelineLayerResult tracks the status of each layer in the 8-layer pipeline.

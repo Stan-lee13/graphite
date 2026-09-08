@@ -30,18 +30,18 @@ func liveClient(t *testing.T) *Client {
 func transferInput(dest string) *VerificationInput {
 	return &VerificationInput{
 		ProposedIntent: ProposedIntent{
-			IntentType:        "transfer",
+			IntentType:         "transfer",
 			RawNaturalLanguage: "send SOL",
-			ConfidenceOfParse: 0.95,
+			ConfidenceOfParse:  0.95,
 		},
-		ProgramID:                 "11111111111111111111111111111111",
-		ProtocolVersion:           "1.0.0",
-		InstructionDiscriminator:  "02000000",
-		AccountAddresses:          []string{"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", dest},
-		WalletProfile:             "Gaming",
-		ComputeUnits:              150,
-		AccountWrites:             2,
-		CPIHops:                   0,
+		ProgramID:                "11111111111111111111111111111111",
+		ProtocolVersion:          "1.0.0",
+		InstructionDiscriminator: "02000000",
+		AccountAddresses:         []string{"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", dest},
+		WalletProfile:            "Gaming",
+		ComputeUnits:             150,
+		AccountWrites:            2,
+		CPIHops:                  0,
 	}
 }
 

@@ -181,6 +181,9 @@ fn an_implausible_fee_is_refused_wherever_the_diff_came_from() {
         // Exactly the shortfall, declared a fee.
         fee_lamports: drained,
         covers_all_writable: true,
+        // No artifact was simulated in this fixture, so there is no
+        // measured effect count to compare coverage against.
+        artifact_balance_writes: None,
     };
     let report = check(&diff);
     let codes: Vec<&str> = report.findings.iter().map(|f| f.code.as_str()).collect();
@@ -208,6 +211,9 @@ fn the_fee_ceiling_is_where_it_says_it_is() {
         provenance: DiffProvenance::RpcSimulated,
         fee_lamports: MAX_PLAUSIBLE_FEE_LAMPORTS,
         covers_all_writable: true,
+        // No artifact was simulated in this fixture, so there is no
+        // measured effect count to compare coverage against.
+        artifact_balance_writes: None,
     };
     let ok = check(&at_ceiling);
     assert!(
@@ -225,6 +231,9 @@ fn the_fee_ceiling_is_where_it_says_it_is() {
         provenance: DiffProvenance::RpcSimulated,
         fee_lamports: MAX_PLAUSIBLE_FEE_LAMPORTS + 1,
         covers_all_writable: true,
+        // No artifact was simulated in this fixture, so there is no
+        // measured effect count to compare coverage against.
+        artifact_balance_writes: None,
     };
     let bad = check(&over);
     assert!(

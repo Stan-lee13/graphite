@@ -116,6 +116,9 @@ fn diff(deltas: Vec<AccountDelta>) -> StateDiff {
         provenance: DiffProvenance::CallerSupplied,
         fee_lamports: 5_000,
         covers_all_writable: false,
+        // No artifact was simulated in this fixture, so there is no
+        // measured effect count to compare coverage against.
+        artifact_balance_writes: None,
     }
 }
 

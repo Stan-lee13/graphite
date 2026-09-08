@@ -159,19 +159,20 @@ pub struct VerificationInput {
 /// instruction's writable accounts, which is every account the transaction can
 /// change. That is what makes the lamport-conservation check meaningful.
 #[cfg(feature = "rpc")]
+#[allow(clippy::too_many_arguments)]
 fn build_rpc_state_diff(
     addresses: &[String],
     pre: &[Option<crate::rpc_client::AccountState>],
     post: &[Option<crate::rpc_client::AccountState>],
     fee_lamports: u64,
-    covers_all_writable: bool,
+    artifact_balance_writes: Option<u32>,
 ) -> StateDiff {
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
             a.as_ref()
                 .map(|s| AccountSnapshot::from_raw(key, s.lamports, &s.owner, &s.data))
         };
-    let deltas = addresses
+    let deltas: Vec<AccountDelta> = addresses
         .iter()
         .enumerate()
         .map(|(i, key)| AccountDelta {
@@ -180,6 +181,7 @@ fn build_rpc_state_diff(
             after: post.get(i).and_then(|a| snap(a, key)),
         })
         .collect();
+    let deltas_for_coverage = deltas.clone();
     StateDiff {
         deltas,
         provenance: DiffProvenance::RpcSimulated,
@@ -196,14 +198,35 @@ fn build_rpc_state_diff(
         // it would have rejected all legitimate traffic the moment an operator
         // set GRAPHITE_RPC_URL.
         fee_lamports,
-        // Only claim complete coverage when it is true. The address list is the
-        // PRIMARY instruction's writable accounts; a transaction with more
-        // instructions touches accounts this diff never fetched, so the
-        // identity must not be applied to it. Asserting coverage
-        // unconditionally made every multi-instruction transaction fail the
-        // same check for a second, independent reason.
-        covers_all_writable,
+        // Coverage is MEASURED, not declared.
+        //
+        // This used to be `transaction_instructions.len() <= 1`. That field is
+        // caller-supplied and nothing verifies its contents, so declaring one
+        // fictional extra instruction turned off the lamport-conservation check
+        // — the only thing binding the artifact's effects to the described
+        // accounts. A request describing a 0.002 SOL transfer while carrying an
+        // artifact sending 0.9 SOL elsewhere was approved that way against live
+        // devnet on 2026-09-08.
+        //
+        // The simulator counted how many accounts the artifact moved value on.
+        // The diff covers every one of them or it does not, and that is a fact
+        // about the measurement rather than about the request.
+        covers_all_writable: match artifact_balance_writes {
+            Some(n) => {
+                let covered = deltas_lamport_changed(&deltas_for_coverage);
+                covered >= n as usize
+            }
+            // No artifact was simulated: there is nothing measured to compare
+            // against, so fall back to the honest weak claim.
+            None => false,
+        },
+        artifact_balance_writes,
     }
+}
+
+/// How many of these deltas moved lamports.
+fn deltas_lamport_changed(deltas: &[AccountDelta]) -> usize {
+    deltas.iter().filter(|d| d.lamport_delta() != 0).count()
 }
 
 /// L1's layer report, stating how much of the account list Graphite actually
@@ -2983,13 +3006,43 @@ impl GraphiteCore {
                 // enough to get compute numbers back but not to trust the
                 // post-state it would imply, so the diff is only attempted on
                 // the real blob.
+                // Every account this request describes, across every
+                // instruction it declares — not just the primary one.
+                //
+                // Coverage is now measured against what the simulator observed
+                // (see `build_rpc_state_diff`), so a caller with a genuine
+                // multi-instruction transaction has to name the accounts its
+                // other instructions touch in order to be covered. That is the
+                // right incentive: describing the artifact accurately is what
+                // earns an approval, and a fictional instruction with no
+                // accounts adds no coverage while no longer disabling any
+                // check.
+                //
+                // `simulateTransaction` accepts at most 100 addresses; beyond
+                // that the request is refused outright and the pipeline falls
+                // back to a plain simulation with no diff, which is the
+                // fail-closed direction.
                 let diff_addresses: Vec<String> = if input.signed_transaction.is_some() {
-                    resolution
+                    let mut seen = std::collections::HashSet::new();
+                    let mut addrs: Vec<String> = Vec::new();
+                    for a in resolution
                         .resolved_accounts
                         .iter()
                         .filter(|a| a.is_writable)
-                        .map(|a| a.address.clone())
-                        .collect()
+                    {
+                        if seen.insert(a.address.clone()) {
+                            addrs.push(a.address.clone());
+                        }
+                    }
+                    for ix in &input.transaction_instructions {
+                        for a in &ix.account_addresses {
+                            if seen.insert(a.clone()) {
+                                addrs.push(a.clone());
+                            }
+                        }
+                    }
+                    addrs.truncate(100);
+                    addrs
                 } else {
                     Vec::new()
                 };
@@ -3143,17 +3196,18 @@ impl GraphiteCore {
                                 Err(crate::rpc_client::RpcError::Timeout(budget.total()))
                             }) {
                                 Ok(pre) => {
-                                    // The diff covers every writable account
-                                    // only when the primary instruction IS the
-                                    // whole transaction.
-                                    let single_instruction =
-                                        input.transaction_instructions.len() <= 1;
+                                    // Coverage comes from what the simulator
+                                    // measured, not from what the caller
+                                    // declared. `account_writes` is derived
+                                    // from the response's own balance arrays,
+                                    // which span the transaction's entire
+                                    // account list.
                                     observed_diff = Some(build_rpc_state_diff(
                                         &diff_addresses,
                                         &pre,
                                         &post,
                                         sim_res.fee.unwrap_or(0),
-                                        single_instruction,
+                                        sim_res.account_writes,
                                     ));
                                 }
                                 Err(e) => {
