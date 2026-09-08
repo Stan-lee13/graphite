@@ -40,7 +40,7 @@ The pipeline executes in order. Each layer is tracked in the verification result
 5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program. The intent vocabulary is exactly: `swap|trade|exchange`, `transfer|send`, `stake|delegate`, `close|close_account`, `create|create_account`, `approve|revoke` (anything else fails closed). The advisory labeler (v2, C21) emits only this vocabulary.
 6. **L6 Policy Verification** — Computes confidence (0.0–1.0 from weighted signals + tier ceilings) and applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Gaming 55%, Enterprise 99%) and trust tier requirements
 7. **L7 Risk Verification** — Pattern-matches against 11 known attack patterns (13 risk checks, hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack, FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, Impersonation (system-account impersonation — SolPhishHunter arXiv:2505.04094), MultiInstructionDrain (C29), and CpiTraceAnomaly (C29). Runs early for fail-fast but is reported at L7 per architecture spec. Every instruction in the transaction is assessed, not just the primary — see "Secondary Instruction Risk Assessment" below.
-8. **L8 Execution Verification** — Post-submission: confirm finalized on-chain result matches prediction. Live-validated against real mainnet RPC (C40) — reports honest execution status (Confirmed / Unknown / Unavailable). Production default-on wiring pending public deployment.
+8. **L8 Execution Verification** — Post-submission: `POST /verify/execution` (or `graphite execution`) confirms the signature on-chain and reconciles it against the verdict on the append-only trail. Outcomes: ApprovedAndExecuted, ApprovedButFailedOnChain, **BlockedButExecuted** (the gate was bypassed — the one worth paging on, and invisible to every layer inside a verification request), BlockedAndNotExecuted, NotFound, NoVerificationOnRecord, Unavailable. Caller-driven by design: Graphite does not watch the chain. Live-validated against mainnet.
 
 ### Key Properties
 ### CPI trace analysis
@@ -153,7 +153,7 @@ graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
 │   ├── protocols/          # 33 JSON protocol manifests (803 instructions)
-│   ├── tests/              # 1,014 tests (unit + adversarial + exploit + pinned real corpus)
+│   ├── tests/              # 1,241 tests (unit + adversarial + exploit + RPC trust boundary + pinned real corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)

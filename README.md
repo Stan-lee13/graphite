@@ -63,13 +63,12 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,004 tests — zero setup (1,014 total; 10 network-dependent tests ignored
+# Run 1,241 tests — zero setup (1,251 total; 10 network-dependent tests ignored
 # unless run explicitly with a live RPC)
 cargo test --release
 
-# Output:
-# running 1014 tests
-# test result: ok. 1004 passed; 0 failed; 10 ignored
+# Output (summed across 49 test binaries):
+# test result: ok. 1241 passed; 0 failed; 10 ignored
 
 # Run the benchmark (16 scored cases + 2 baseline comparisons, P16 compliant)
 cargo run --release --bin graphite -- benchmark
@@ -92,7 +91,7 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 | L7 | Risk Verification | Run Risk Engine — forbidden patterns, compositional risk | Forbidden pattern → block |
 | L8 | Execution Verification | Post-submission: confirm on-chain result matches prediction | Mismatch → audit trail flag |
 
-**Current status:** L1–L7 active. L3 live-validated against real Solana devnet RPC (C40). L8 live-validated against real mainnet RPC — reports honest execution status (Confirmed / Unknown / Unavailable). Both L3 and L8 production default-on wiring shipped; public deployment endpoint pending.
+**Current status:** L1–L7 run inside every `/verify` call. L3 and L4 are live against real Solana RPC when `GRAPHITE_RPC_URL` is set — L3 simulates and accumulates its own baseline, L4 builds a real pre/post account diff. L8 runs after submission, because that is when there is an execution to verify: call `POST /verify/execution` (or `graphite execution`) with the `content_hash` and the signature, and it reconciles the chain against the verdict Graphite recorded. The outcome that matters is `BlockedButExecuted` — a transaction Graphite refused that was submitted anyway, which no layer inside a verification request can detect. Live-validated against mainnet.
 
 ---
 
@@ -187,7 +186,7 @@ graphite/
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
 │   ├── protocols/                 ← 33 JSON protocol manifests (803 instructions)
-│   └── tests/                     ← 1,014 tests (unit + adversarial + exploit + live RPC)
+│   └── tests/                     ← 1,241 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -354,6 +353,37 @@ curl -X POST http://localhost:7331/verify \
 > jq '.wallet_profile = {"Custom": {"min_confidence": 0.40, "min_trust_tier": "OfficialManifest"}}' ../examples/verify-input.json | curl -X POST http://localhost:7331/verify -H "Content-Type: application/json" -d @- | jq .approved
 > ```
 
+### 3. After submission: reconcile what happened (L8)
+
+`/verify` answers "should this be signed?". It cannot answer "did my decision
+govern the wallet?", because that happens after the request is over. L8 is the
+call that closes the loop, and it is caller-driven by design — Graphite does not
+watch the chain, so someone has to report the signature.
+
+```bash
+curl -X POST http://localhost:7331/verify/execution   -H "Content-Type: application/json"   -d '{"signature":"<base58 signature>","content_hash":"<from the /verify response>"}' | jq .
+```
+
+```bash
+# Same reconciliation from the CLI. Exits 1 on a discrepancy, so it works as a
+# monitoring check.
+graphite execution --signature <base58 signature> --content-hash <hash>
+```
+
+The field to watch is `reconciliation`. `ApprovedAndExecuted` and
+`BlockedAndNotExecuted` are the gate being obeyed. `ApprovedButFailedOnChain` is
+not a security failure — Graphite verifies intent and structure, not that a
+transaction will succeed. **`BlockedButExecuted` is the one worth paging on:**
+Graphite refused the transaction and it landed anyway, so the gate was bypassed
+rather than obeyed — an integration ignoring the verdict, a key used out of
+band, or an override. It sets `discrepancy: true`, logs at ERROR, and goes on
+the append-only trail. Nothing inside a verification request can ever detect it,
+because it happens entirely outside one.
+
+Without an RPC endpoint, or with one that will not answer, the result is
+`Unavailable` with the endpoint redacted. An unavailable check reports that it
+is unavailable; it never reports a confirmation.
+
 ### Operator CLI
 
 `graphite verify` answers "what does the gate decide?" as JSON. These answer the questions an operator actually asks around it. All of them read the same durable semantic graph the server does (`GRAPHITE_DATA_DIR`, default `./graphite-data`), so the CLI and the server never disagree about a program's earned trust.
@@ -477,14 +507,14 @@ What we **do not** claim:
 
 - The benchmark is 18 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a statistical evaluation on unseen data. "100% precision / 100% recall on the scored benchmark cases" is the honest claim. Composition (C52): 5 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87 — pinned from `tests/real_onchain_exploits.rs` + `scripts/real_exploit_*.json`, reproducible offline) + 2 SYNTHETIC drainer cases, honestly labeled. Avg latency ~2.1ms with the real-data cases (release build); the earlier sub-ms figure predates them.
 - 2 exploit reconstructions use real program IDs but fabricated account structures. They are labeled "SYNTHETIC" per P16, not "real mainnet data." The other 5 exploit cases are REAL mainnet data (Wormhole $320M, CLINKSINK STMT drainer, SlowMist AAT drainer, fresh drainer chain, AAT mass drain).
-- L3 (Simulation) is active when an RPC client is attached and was verified against real Solana devnet transactions (Aug 7, 2026). L8 (Execution Verification) was live-validated against real mainnet RPC (C40) and reports honest execution status — Confirmed / Unknown / Unavailable. Production default-on wiring for both remains pending public deployment.
+- L3 (Simulation) and L4 (State) are active when an RPC client is attached, and were validated end to end against live devnet on 2026-09-07 — including a transaction whose primary instruction is an ordinary transfer and whose second instruction reassigns the payer's account, which L1, L2 and L5 all pass and only L4's observed post-state catches. L8 (Execution Verification) is reachable in production as `POST /verify/execution` and `graphite execution`, live-validated against mainnet. It is caller-driven by design: Graphite does not watch the chain, so someone must report the signature after submission. Until that call is made, L8 reports `Inconclusive` and says which endpoint completes it. The RPC endpoint is inside the trust boundary — see SECURITY.md for what a hostile one can and cannot do.
 - No LLM-based intent parsing in the verification path (P1: AI assists, never decides). Intent alignment is structural — the declared intent type is matched against the manifest's supported intents (L5, Check 9), and high-risk instruction classes with no declared intent fail closed (Check 10, C38).
 
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 1,004 Rust tests passing (1,014 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
-- 13 risk checks (11 risk patterns) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
+- 1,241 Rust tests passing (1,251 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
+- 13 risk checks (12 risk patterns, incl. `PluginBlock`) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
 - 33 protocol manifests / 803 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42 + Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi C46 + Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2 C56).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).

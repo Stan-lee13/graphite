@@ -3,7 +3,7 @@
 ## Phase 1 (COMPLETE — v0.1.0-alpha, frozen)
 
 - [x] Core verification engine (Rust)
-- [x] 8-layer pipeline (L1-L7 active, L3/L8 live-validated in Phase 2)
+- [x] 8-layer pipeline (L1-L7 inside every /verify; L8 post-submission via POST /verify/execution; L3/L4/L8 live-validated against real RPC)
 - [x] 33 protocol manifests (16 base + Tier-0: ATA, Compute Budget, BPF Loaders + Drift, Kamino, Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi + C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)
 - [x] Risk engine: 11 attack pattern detectors (13 risk checks)
 - [x] Confidence engine with 0.55 cap on unknown protocols (P6/P12)
@@ -69,7 +69,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 1,014 tests passing, 0 clippy warnings, fmt clean
+- [x] 1,241 tests passing, 0 clippy warnings, fmt clean
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 
@@ -109,7 +109,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] SAK integration executes real devnet transactions after Graphite approval — 5 finalized devnet txs, re-verified on-chain 2026-08-08
 - [x] Protocol Manifest Registry accepts signed community submissions — CLI operator path live-verified (signed → ACCEPTED at derived tier; unregistered → REJECTED)
 - [x] Plugin framework has 2+ real plugins
-- [x] L3 and L8 pipeline layers live-validated — L3 against real devnet RPC, L8 against real mainnet RPC (C40); production default-on wiring remains pending public deployment
+- [x] L3, L4 and L8 live-validated against real RPC (2026-09-07/08) — L3 grows its own baseline from live devnet observations, L4 caught an undeclared owner reassignment that L1/L2/L5 all passed, and L8 is reachable in production as POST /verify/execution + `graphite execution` with reconciliation against the append-only record
 - [x] TOCTOU prevention via AuditBind middleware
 - [x] Dashboard shows live verification state
 - [x] 1,000+ meaningful regression fixtures (2,181 corpus, C41)
