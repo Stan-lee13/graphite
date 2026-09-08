@@ -493,6 +493,134 @@ pub struct ExecutionAudit {
     pub reconciliation: ExecutionReconciliation,
 }
 
+/// What this verdict is actually BOUND to.
+///
+/// Graphite's product promise is one sentence: the thing it approved is the
+/// thing that gets signed and executed, and every security-relevant property of
+/// that thing was either independently verified or explicitly identified as
+/// unverified. Until 2026-09-08 a caller had no way to tell which half of that
+/// sentence applied to the verdict in their hands.
+///
+/// Both modes are legitimate and both are used. What was missing was the label.
+/// A `/verify` response describing caller-supplied metadata and a `/verify`
+/// response bound to a real signed blob were the same shape, so an integration
+/// could gate on `approved` without ever learning that Graphite had not seen a
+/// transaction at all — which is exactly how the SAK swap path ended up
+/// executing an instruction nothing had examined.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VerificationScope {
+    /// A signed transaction blob was supplied. `transaction_sha256` is the
+    /// digest of those exact bytes, so a caller can prove the artifact they
+    /// submit is the artifact Graphite was given — a stronger binding than
+    /// `content_hash`, which covers a projection of one instruction and cannot
+    /// see the fee payer, the blockhash, the signer set, or any other
+    /// instruction in the transaction.
+    ArtifactBound {
+        transaction_sha256: String,
+        transaction_bytes: usize,
+        /// Whether a simulator actually executed those bytes. False means the
+        /// blob was supplied and hashed but never run (no RPC, budget
+        /// exhausted, or the simulation errored), so the verdict still rests on
+        /// static analysis of the described instruction.
+        simulated: bool,
+        /// Security-relevant properties of the artifact that were still not
+        /// independently observed. Empty is a strong claim and is not made
+        /// lightly.
+        unobserved: Vec<String>,
+    },
+    /// No artifact was supplied. The verdict describes what the caller SAID the
+    /// transaction is. Nothing in it constrains what gets signed.
+    Descriptive {
+        /// What Graphite did not observe, stated so a consumer does not have to
+        /// infer it from an absence.
+        unobserved: Vec<String>,
+    },
+}
+
+impl VerificationScope {
+    /// True when the verdict is tied to concrete bytes rather than a
+    /// description of them.
+    pub fn is_artifact_bound(&self) -> bool {
+        matches!(self, VerificationScope::ArtifactBound { .. })
+    }
+    /// Everything Graphite did not independently observe, in either mode.
+    pub fn unobserved(&self) -> &[String] {
+        match self {
+            VerificationScope::ArtifactBound { unobserved, .. } => unobserved,
+            VerificationScope::Descriptive { unobserved } => unobserved,
+        }
+    }
+}
+
+/// Build the scope for one verification.
+///
+/// Every entry is a property an attacker could vary without Graphite noticing,
+/// written as what is missing rather than as a caveat about the check.
+fn verification_scope(
+    input: &VerificationInput,
+    simulated: bool,
+    diff_built: bool,
+) -> VerificationScope {
+    let metas_grounded = input.real_account_metas.len() == input.account_addresses.len()
+        && !input.account_addresses.is_empty();
+
+    match &input.signed_transaction {
+        Some(bytes) if !bytes.is_empty() => {
+            use sha2::{Digest, Sha256};
+            let mut unobserved: Vec<String> = Vec::new();
+            if !simulated {
+                unobserved.push(
+                    "the transaction was supplied but never executed by a simulator, so its real effects are unknown — this verdict is the static analysis of the described instruction"
+                        .to_string(),
+                );
+            } else if !diff_built {
+                unobserved.push(
+                    "the transaction was simulated but no pre/post state diff was built, so what it actually changes was not compared against the manifest"
+                        .to_string(),
+                );
+            }
+            if !metas_grounded {
+                unobserved.push(
+                    "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked"
+                        .to_string(),
+                );
+            }
+            // True of a simulated blob as well: Graphite reads the effects, not
+            // the wire format, so it never confirms which instruction inside the
+            // transaction is the one the rest of this verdict describes.
+            unobserved.push(
+                "Graphite does not parse the transaction's wire format, so it does not confirm that the described program/discriminator/accounts are the primary instruction of these bytes — only that these bytes simulate to the effects it checked"
+                    .to_string(),
+            );
+            VerificationScope::ArtifactBound {
+                transaction_sha256: hex::encode(Sha256::digest(bytes)),
+                transaction_bytes: bytes.len(),
+                simulated,
+                unobserved,
+            }
+        }
+        _ => {
+            let mut unobserved = vec![
+                "no signed transaction was supplied, so nothing here constrains what is actually signed"
+                    .to_string(),
+                "the transaction's other instructions — an approved instruction can be submitted alongside any number of unexamined ones"
+                    .to_string(),
+                "the fee payer, the recent blockhash, and the signer set".to_string(),
+                "the transaction's real effects: with no artifact there is nothing to simulate, so L3 and L4 have no measurement to work from"
+                    .to_string(),
+            ];
+            if !metas_grounded {
+                unobserved.push(
+                    "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked"
+                        .to_string(),
+                );
+            }
+            VerificationScope::Descriptive { unobserved }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerificationResult {
     pub approved: bool,
@@ -507,6 +635,10 @@ pub struct VerificationResult {
     /// fully reproducible and satisfies Constitution P2 (deterministic/reproducible).
     pub content_hash: String,
     pub transaction: BuiltTransaction,
+    /// What this verdict is bound to, and what it did not observe. See
+    /// `VerificationScope` — this is the field that makes Graphite's central
+    /// promise checkable by a consumer instead of assumed.
+    pub scope: VerificationScope,
     pub resolved_accounts: Vec<ResolvedAccount>,
     pub protocol_name: String,
     pub instruction_name: String,
@@ -3785,6 +3917,17 @@ impl GraphiteCore {
             audit_trail_id: audit_id,
             content_hash,
             transaction,
+            // What this verdict is bound to. `rpc_sim_ok` is the honest test for
+            // "a simulator actually executed these bytes": it is only true when a
+            // complete, plausible RPC result came back. `observed_diff` says
+            // whether the effects were then compared against the manifest.
+            scope: {
+                #[cfg(feature = "rpc")]
+                let simulated = rpc_sim_ok;
+                #[cfg(not(feature = "rpc"))]
+                let simulated = false;
+                verification_scope(input, simulated, observed_diff.is_some())
+            },
             resolved_accounts: resolution.resolved_accounts.clone(),
             protocol_name,
             instruction_name,

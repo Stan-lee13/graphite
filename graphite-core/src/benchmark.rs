@@ -109,6 +109,14 @@ pub fn run_benchmark() {
                 policy_verdict: "Rejected".to_string(),
                 audit_trail_id: "gr-error".to_string(),
                 content_hash: "error".to_string(),
+                // A verification that errored observed nothing at all, which is
+                // the strongest form of "descriptive".
+                scope: crate::verification::VerificationScope::Descriptive {
+                    unobserved: vec![
+                        "verification returned an error; nothing about this transaction was observed"
+                            .to_string(),
+                    ],
+                },
                 transaction: crate::transaction_builder::BuiltTransaction {
                     program_id: case.input.program_id.clone(),
                     protocol_version: case.input.protocol_version.clone(),

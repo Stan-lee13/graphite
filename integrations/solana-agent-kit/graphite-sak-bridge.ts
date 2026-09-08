@@ -347,12 +347,27 @@ export class VerifiedSakAgent {
    * isSigner/isWritable flags (previously missing from the payload schema,
    * which is exactly why the bridge could not safely do this before).
    *
-   * Without `payload` the swap check remains a reduced projection
-   * (programId + discriminator + wallet) and execution still goes through
-   * the opaque SAK `methods.swap()` path — that residual is unchanged and
-   * intentional (SAK's swap builder needs live routing data this bridge
-   * does not have). Set `GRAPHITE_SWAP_STRICT=1` to FAIL CLOSED instead of
-   * accepting that residual.
+   * **Without `payload`, this now REFUSES (2026-09-08).** The unbound mode was
+   * default-on with an opt-in `GRAPHITE_SWAP_STRICT=1` to disable it, which is
+   * the wrong polarity for a security gate: the safe path should not be the one
+   * you have to know to ask for.
+   *
+   * It was also worse than the "reduced projection" the comment here used to
+   * claim. `accountAddresses` fell back to `[this.walletPublicKey]`, so
+   * Graphite was asked to verify a Jupiter swap consisting of ONE account, the
+   * wallet — no destination token account, no vaults, no authority, no
+   * instruction data, no amounts, no route. AuditBind then "passed" by
+   * re-hashing the same three constants the bridge had just sent, and SAK's
+   * internal builder constructed and submitted an entirely different
+   * instruction. Nothing about the executed swap was ever observed by anything.
+   * That is not a residual window; it is a verdict about a transaction that
+   * does not exist, printed next to the execution of one that does.
+   *
+   * The escape hatch survives, inverted and named for what it does:
+   * `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1`. An operator who genuinely
+   * needs SAK's router and accepts that Graphite is not verifying the submitted
+   * instruction can set it, and the warning says exactly which properties went
+   * unobserved.
    *
    * Privilege grounding (P1 fix, 2026-09-05 audit, "signer/writable metadata
    * is not grounded in actual transaction AccountMeta data", CLOSED for the
@@ -380,11 +395,20 @@ export class VerifiedSakAgent {
     // pinned fixture sig 57TAjPZXt49F9rSVZNEu… slot 438012579, SUCCESS). The
     // legacy `route` discriminator (e517cb977ae3ad2a) is also live but legacy.
     const JUPITER_SWAP_DISCRIMINATOR = "bb64facc31c4af14";
-    const strict = process.env.GRAPHITE_SWAP_STRICT === "1";
-    if (strict && !payload) {
+    // Fail closed by default. `GRAPHITE_SWAP_STRICT=1` is still honoured for
+    // compatibility, but it is now redundant: strict IS the default.
+    const allowUnverified =
+      process.env.GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION === "1" &&
+      process.env.GRAPHITE_SWAP_STRICT !== "1";
+    if (!payload && !allowUnverified) {
       throw new Error(
-        "[Graphite] GRAPHITE_SWAP_STRICT=1 requires a built swap payload (programId/discriminator/accounts/instructionData) " +
-          "so AuditBind can bind the exact instruction — the opaque SAK swap path cannot be TOCTOU-bound. ABORTING."
+        "[Graphite] a swap requires a built payload (programId / discriminator / accounts with " +
+          "isSigner+isWritable / instructionData) so the instruction that is verified is the " +
+          "instruction that is submitted. Without it Graphite would be asked to verify a " +
+          "one-account projection while SAK's builder submits a different instruction entirely — " +
+          "no destination, no vaults, no amounts, nothing about the real swap observed. " +
+          "Build the route first and pass it, or set GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1 " +
+          "to execute swaps Graphite has not verified. ABORTING."
       );
     }
     const accountAddresses = payload?.accounts.map((a) => a.pubkey) ?? [this.walletPublicKey];
@@ -431,23 +455,30 @@ export class VerifiedSakAgent {
       return { executed: true, verification, signature };
     }
 
-    // No payload: reduced projection, unchanged residual (SAK's swap
-    // builder needs live routing data this bridge does not have access to
-    // ahead of time). GRAPHITE_SWAP_STRICT=1 (checked above) already
-    // refuses to reach this branch for strict operators.
-    AuditBind.verify({
-      transaction: { programId: JUPITER_V6_PROGRAM, instructionDiscriminator: JUPITER_SWAP_DISCRIMINATOR, accountAddresses },
-      contentHash: verification.content_hash ?? verification.audit_trail_id,
-    });
+    // Only reachable with GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1.
+    //
+    // The AuditBind call below is deliberately NOT made. It would re-hash the
+    // three constants this method just sent to Graphite and print "Hash
+    // verified", which is a check that cannot fail and therefore tells the
+    // operator nothing — the exact shape of the defect found at the transfer
+    // path on 2026-09-08. A check that cannot fail is worse than no check,
+    // because it reads like assurance in the log.
     console.warn(
-      "[Graphite] WARNING: swap AuditBind is minimal-projection (no payload bound); execution goes through SAK's internal " +
-        "builder, which is NOT guaranteed to submit the verified instruction. Supply a built payload or set " +
-        "GRAPHITE_SWAP_STRICT=1 to close the TOCTOU window."
+      [
+        "[Graphite] EXECUTING A SWAP GRAPHITE DID NOT VERIFY.",
+        "  GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1 is set.",
+        "  Verified: the wallet address, the Jupiter program id, and the swap discriminator.",
+        "  NOT observed: destination token account, vaults, authority, every other account,",
+        "  the instruction data, the amounts, the slippage, and the route.",
+        "  SAK's internal builder will construct and submit an instruction this verdict does",
+        "  not describe. AuditBind is intentionally not run here: binding a projection that",
+        "  cannot disagree with itself would print assurance without providing any.",
+      ].join(String.fromCharCode(10)),
     );
 
     if (!this.sakAgent) throw new Error("Swap requires SAK plugins. Use executeTransfer for raw web3.js mode.");
 
-    console.log("[Graphite] Swap approved + AuditBind verified — executing via SAK (residual TOCTOU window, see warning above)...");
+    console.log("[Graphite] Executing the swap through SAK's builder — unverified, see the warning above...");
     const result = await (this.sakAgent as any).methods.swap(
       params.input_token, params.output_token, params.amount, params.slippage_bps ?? 300,
     );

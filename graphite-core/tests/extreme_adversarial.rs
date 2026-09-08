@@ -110,6 +110,9 @@ fn fail_closed_result(input: &VerificationInput) -> graphite_core::VerificationR
         confidence: 0.0,
         breakdown: vec![],
         trust_tier: "Unknown".to_string(),
+        scope: graphite_core::verification::VerificationScope::Descriptive {
+            unobserved: vec!["test fixture; no transaction was supplied".to_string()],
+        },
         risk_verdict: graphite_core::verification::RiskVerdictSummary {
             status: "Blocked".to_string(),
             findings: vec![],

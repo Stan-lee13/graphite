@@ -274,6 +274,9 @@ mod tests {
             confidence: 0.7,
             breakdown: vec![],
             trust_tier: "OfficialManifest".to_string(),
+            scope: crate::verification::VerificationScope::Descriptive {
+                unobserved: vec!["test fixture; no transaction was supplied".to_string()],
+            },
             risk_verdict: RiskVerdictSummary {
                 status: if approved {
                     "Clear".into()
