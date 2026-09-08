@@ -165,6 +165,26 @@ now documented as such in the type and the schema, and asserted: 0.0 and 1.0
 produce bit-identical verdicts. An AI that is confidently wrong must not be worth
 more than one that is honestly unsure.
 
+## 4a. Attacking this campaign's own fixes (Mission 12)
+
+A bound that stops the value it was written for is not the same as a bound that
+holds. Each fix was attacked the way someone who has *read* it would attack it —
+by taking the largest value the new rule still permits, or by reaching the same
+code through a path the rule does not cover. `tests/evading_the_fixes.rs`.
+
+| Evasion | Result |
+|---|---|
+| Stop sending an impossible compute figure; send the largest **possible** one (exactly 1,400,000 CU) against an earned baseline | Fails — and not because of the ceiling. `record_simulation` runs *after* the integrity check and refuses to record a flagged observation, so the sample that would poison the baseline is exactly the sample the baseline rejects |
+| The same figure against a program with **no** baseline, where nothing is flagged because there is nothing to flag against | **Lands** — this is the bootstrap tradeoff already recorded under P14. What changed is the bound: the worst a first-mover can seed is 1,400,000, not `u64::MAX` |
+| Omit `Content-Length` and send the oversized body chunked, since the cap checks the declared length first | Fails — the streaming loop is what enforces the ceiling; the header check is only the fast path |
+| Route hostile text through the *parser's* complaint instead of the peer's own `error` object, by returning a 200 whose body is not JSON | Fails — the bound covers both |
+| A plugin names its own veto `"Drainer"` so the report reads as a core detection | Fails — plugin findings are namespaced by plugin name (`impersonator:Drainer`) and the pattern Graphite assigns stays `PluginBlock` |
+
+Two of these hold for a reason the fix did not supply — record-after-check, and
+the plugin namespacing — which is defence in depth working. Both were incidental
+before and are pinned now, because a guarantee nobody tests is one that can be
+refactored away by someone who does not know it is load-bearing.
+
 ## 5. What remains outside the guarantee
 
 Stated because a limitation nobody wrote down is one the next person
@@ -228,7 +248,7 @@ which is a design change rather than a patch.
 ## 6. Verification state at the end of the campaign
 
 ```
-graphite-core   cargo test --all-features        1,253 passed, 0 failed, 10 ignored
+graphite-core   cargo test --all-features        1,258 passed, 0 failed, 10 ignored
                 cargo clippy --all-targets -D warnings   0
                 cargo fmt --all --check          clean
                 feature matrix (5 combinations)  0 errors
@@ -269,6 +289,7 @@ false positive in 5.2, benign_primary_malicious_effect on L4's
 | `tests/ai_cannot_approve.rs` | The compile-time and end-to-end halves of the AI boundary |
 | `tests/alt_measured_not_declared.rs` | ALT reported from measurement, and warning rather than blocking |
 | `tests/campaign_invariants.rs` | The five rules below, each checked away from where it was found |
+| `tests/evading_the_fixes.rs` | Five attempts to get around this campaign's own fixes |
 
 ## 9. The invariants, for the next campaign
 

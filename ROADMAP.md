@@ -69,7 +69,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 1,253 tests passing, 0 clippy warnings, fmt clean
+- [x] 1,258 tests passing, 0 clippy warnings, fmt clean
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 
