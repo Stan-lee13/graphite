@@ -2231,11 +2231,12 @@ impl GraphiteCore {
         if input.uses_versioned_transaction {
             risk_warnings.push(if input.lookup_table_count > 0 {
                 format!(
-                    "versioned (v0) transaction using {} address lookup table(s) — accounts resolved via ALT are not independently verified by this pipeline",
+                    "caller declares a versioned (v0) transaction using {} address lookup table(s)",
                     input.lookup_table_count
                 )
             } else {
-                "versioned (v0) transaction using address lookup table(s) — accounts resolved via ALT are not independently verified by this pipeline".to_string()
+                "caller declares a versioned (v0) transaction using address lookup table(s)"
+                    .to_string()
             });
         }
 
@@ -2621,6 +2622,10 @@ impl GraphiteCore {
         // belongs in the layer report (P3).
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut diff_unavailable: Option<String> = None;
+        // What the SIMULATOR said about Address Lookup Tables, as opposed to
+        // what the caller declared. Filled in from `loadedAddresses` below.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut alt_observations: Vec<String> = Vec::new();
         #[cfg(feature = "rpc")]
         {
             if let Some(client) = &self.rpc_client {
@@ -2706,6 +2711,67 @@ impl GraphiteCore {
                             usage.cpi_hops = sim_res.cpi_hops.unwrap_or(0);
                             rpc_sim_ok = true;
                         }
+                        // ── ALT/v0, measured rather than declared ──────────
+                        //
+                        // `uses_versioned_transaction` and `lookup_table_count`
+                        // are the CALLER's assertions, and the pipeline
+                        // documented the gap that leaves as one it could not
+                        // close: "accounts resolved via ALT are not
+                        // independently verified by this pipeline". The
+                        // simulator answers it directly. `loadedAddresses`
+                        // lists exactly the accounts the runtime pulled in
+                        // through a lookup table — accounts that never appear
+                        // in the transaction's static keys, and so never appear
+                        // in the `account_addresses` every other layer reasons
+                        // over. Graphite was already reading the response that
+                        // carries them and discarding the field.
+                        //
+                        // Disclosed, never penalized (P12). ALT usage is normal
+                        // for legitimate complex routes, and
+                        // `uses_versioned_transaction` DEFAULTS to false, so
+                        // blocking on a contradiction would reject every
+                        // integration that simply never set the field. What
+                        // changes is that the disclosure is a measurement
+                        // instead of a restatement of the caller's claim.
+                        if let Some(loaded) = &sim_res.loaded_addresses {
+                            if !loaded.is_empty() {
+                                if !input.uses_versioned_transaction {
+                                    alt_observations.push(format!(
+                                        "the simulator resolved {} account(s) through address lookup tables, but the request declares uses_versioned_transaction=false — the declaration does not describe the transaction that was simulated",
+                                        loaded.len()
+                                    ));
+                                }
+                                let declared: std::collections::HashSet<&str> =
+                                    input.account_addresses.iter().map(|a| a.as_str()).collect();
+                                let mut hidden: Vec<&str> = loaded
+                                    .all()
+                                    .map(|a| a.as_str())
+                                    .filter(|a| !declared.contains(a))
+                                    .collect();
+                                if !hidden.is_empty() {
+                                    // Deterministic output (P2): the RPC's
+                                    // ordering is not something to inherit.
+                                    hidden.sort_unstable();
+                                    let shown = hidden.len().min(8);
+                                    alt_observations.push(format!(
+                                        "{} ALT-resolved account(s) are absent from the account list this verification examined [{}{}] — every layer here reasoned over the accounts the request supplied, and the executed transaction touches more than that",
+                                        hidden.len(),
+                                        hidden[..shown].join(", "),
+                                        if hidden.len() > shown { ", ..." } else { "" }
+                                    ));
+                                }
+                            } else if input.uses_versioned_transaction {
+                                // Empty settles nothing about legacy-vs-v0, but
+                                // it does settle the question that matters: no
+                                // account arrived through a lookup table, so
+                                // there is nothing unexamined.
+                                alt_observations.push(
+                                    "declared as a versioned (v0) transaction; the simulator resolved no accounts through lookup tables, so the account list examined here is complete"
+                                        .to_string(),
+                                );
+                            }
+                        }
+
                         // A simulation that errored describes a transaction
                         // that would not land; its post-state is not evidence
                         // about anything and must not be diffed.
@@ -2762,6 +2828,10 @@ impl GraphiteCore {
                 }
             }
         }
+
+        // The measured ALT picture, alongside the caller-declared one pushed
+        // earlier. Warnings, not blocks — see the reasoning at the site above.
+        risk_warnings.append(&mut alt_observations);
 
         // SECURITY (record-after-check): the integrity check MUST run against
         // the CURRENT trusted baseline BEFORE any new observation is folded

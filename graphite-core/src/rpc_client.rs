@@ -326,6 +326,29 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         }
     });
 
+    // Unreadable entries are dropped rather than silently stringified: an
+    // address Graphite cannot read is not an address it can compare against
+    // the caller's account list.
+    let str_list = |v: Option<&serde_json::Value>| -> Vec<String> {
+        v.and_then(|a| a.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let loaded_addresses = value.get("loadedAddresses").and_then(|la| {
+        if la.is_null() {
+            None
+        } else {
+            Some(LoadedAddresses {
+                writable: str_list(la.get("writable")),
+                readonly: str_list(la.get("readonly")),
+            })
+        }
+    });
+
     Ok(SimulationResult {
         logs,
         units_consumed,
@@ -334,6 +357,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         account_writes,
         cpi_hops,
         fee: value.get("fee").and_then(|v| v.as_u64()),
+        loaded_addresses,
     })
 }
 
@@ -378,6 +402,44 @@ pub struct SimulationResult {
     /// lamport-conservation arithmetic over that post-state must account for
     /// it. `None` when the RPC did not report a fee.
     pub fee: Option<u64>,
+    /// Addresses the runtime resolved through Address Lookup Tables, from the
+    /// response's `loadedAddresses`.
+    ///
+    /// This is the independent ALT signal. Until 2026-09-08 Graphite's only
+    /// knowledge of versioned-transaction and ALT usage was the caller's own
+    /// `uses_versioned_transaction` boolean, and the pipeline documented that
+    /// as a blind spot it could not close — "accounts resolved via ALT are not
+    /// independently verified by this pipeline". The simulator was reporting
+    /// the answer in the same response Graphite was already reading and
+    /// throwing it away.
+    ///
+    /// `None` when the field is absent. A NON-EMPTY value proves ALT usage. An
+    /// EMPTY one proves nothing on its own: a legacy transaction and a v0
+    /// transaction that references no lookup table are indistinguishable here,
+    /// and the code that consumes this must not read empty as "legacy".
+    pub loaded_addresses: Option<LoadedAddresses>,
+}
+
+/// The `loadedAddresses` half of a `simulateTransaction` response: the accounts
+/// a versioned transaction pulled in through Address Lookup Tables, which never
+/// appear in the transaction's own static account keys.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LoadedAddresses {
+    pub writable: Vec<String>,
+    pub readonly: Vec<String>,
+}
+
+impl LoadedAddresses {
+    pub fn is_empty(&self) -> bool {
+        self.writable.is_empty() && self.readonly.is_empty()
+    }
+    pub fn len(&self) -> usize {
+        self.writable.len() + self.readonly.len()
+    }
+    /// Every loaded address, writable first.
+    pub fn all(&self) -> impl Iterator<Item = &String> {
+        self.writable.iter().chain(self.readonly.iter())
+    }
 }
 
 /// Oracle price data
