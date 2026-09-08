@@ -2672,9 +2672,29 @@ impl GraphiteCore {
 
                 match sim_outcome {
                     Ok((sim_res, post)) => {
+                        // A figure above Solana's per-transaction ceiling did
+                        // not come from an execution, so nothing in this
+                        // response is a measurement — not the compute numbers,
+                        // and not the post-state that arrived with them. The
+                        // whole result is set aside rather than partly trusted.
+                        let implausible_units = sim_res.units_consumed
+                            > crate::simulation_integrity::MAX_TRANSACTION_COMPUTE_UNITS;
+                        if implausible_units {
+                            tracing::warn!(
+                                "simulation reported {} compute units, above Solana's per-transaction maximum of {} — discarding the result",
+                                sim_res.units_consumed,
+                                crate::simulation_integrity::MAX_TRANSACTION_COMPUTE_UNITS
+                            );
+                            diff_unavailable = Some(format!(
+                                "the RPC reported {} compute units, above Solana's per-transaction maximum of {} — the response is not a measurement of any execution",
+                                sim_res.units_consumed,
+                                crate::simulation_integrity::MAX_TRANSACTION_COMPUTE_UNITS
+                            ));
+                        }
                         // Only a COMPLETE RPC result may enter the accumulator:
                         // nonzero units AND both optional fields present.
-                        if sim_res.units_consumed > 0
+                        if !implausible_units
+                            && sim_res.units_consumed > 0
                             && sim_res.account_writes.is_some()
                             && sim_res.cpi_hops.is_some()
                         {
@@ -2696,7 +2716,7 @@ impl GraphiteCore {
                             post.len(),
                             sim_res.err
                         );
-                        if !post.is_empty() && sim_res.err.is_none() {
+                        if !implausible_units && !post.is_empty() && sim_res.err.is_none() {
                             match client.get_multiple_accounts(&diff_addresses).await {
                                 Ok(pre) => {
                                     // The diff covers every writable account

@@ -356,6 +356,30 @@ impl AccountDelta {
     }
 }
 
+/// The largest lamport figure this analysis will accept as a real Solana
+/// transaction fee.
+///
+/// `fee_lamports` is CREDIT. It is subtracted from what the conservation
+/// identity expects the deltas to sum to, and it exempts the fee payer's
+/// outflow from the unexplained-outflow check. Nothing Graphite measures bounds
+/// it: on the RPC path the number arrives in the same response as the balances
+/// it is reconciling, and on the caller path it is simply asserted. An
+/// unbounded fee therefore lets whoever supplies the diff balance any
+/// discrepancy and excuse any drain by calling it a fee — which defeats the
+/// check whose stated purpose is detecting a diff that is "incomplete or
+/// fabricated". Found 2026-09-08 while attacking the RPC trust boundary.
+///
+/// 0.1 SOL sits far above any real fee. The base fee is 5,000 lamports per
+/// signature — at most ~95,000 for a transaction packed with signatures — and a
+/// priority fee is the compute-unit limit, itself capped at 1,400,000, times
+/// the price in micro-lamports per CU, so even an extreme bid of 1 lamport/CU
+/// comes to 1,400,000 lamports. This ceiling is ~70x that.
+///
+/// TRADEOFF (P14): a transaction genuinely paying more than 0.1 SOL in fees is
+/// blocked here rather than analyzed. That is the fail-closed direction, and a
+/// fee that size deserves a human's attention on its own merits.
+pub const MAX_PLAUSIBLE_FEE_LAMPORTS: u64 = 100_000_000;
+
 /// A complete pre/post picture of a transaction's effect on account state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct StateDiff {
@@ -604,16 +628,31 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // Checked before anything is inferred FROM the diff, because a diff that
     // fails these is not evidence of anything.
 
+    // The fee is credit, so an implausible one is not a detail — it is the
+    // lever that makes both of the checks below satisfiable on demand. Clamp
+    // what is granted and say so; a diff that needs an impossible fee to
+    // balance is not evidence about anything.
+    let claimed_fee = input.diff.fee_lamports;
+    let fee_lamports = claimed_fee.min(MAX_PLAUSIBLE_FEE_LAMPORTS);
+    if claimed_fee > MAX_PLAUSIBLE_FEE_LAMPORTS {
+        findings.push(StateDiffFinding::critical(
+            "ImplausibleFee",
+            None,
+            format!(
+                "the diff declares a transaction fee of {claimed_fee} lamports, above the {MAX_PLAUSIBLE_FEE_LAMPORTS} a Solana fee can plausibly reach. The fee is credited against both lamport conservation and the fee payer's outflow, so an inflated one balances a fabricated diff and excuses a drain — only {MAX_PLAUSIBLE_FEE_LAMPORTS} was granted"
+            ),
+        ));
+    }
+
     if input.diff.covers_all_writable {
         let sum: i128 = input.diff.deltas.iter().map(|d| d.lamport_delta()).sum();
-        let expected = -i128::from(input.diff.fee_lamports);
+        let expected = -i128::from(fee_lamports);
         if sum != expected {
             findings.push(StateDiffFinding::critical(
                 "LamportsNotConserved",
                 None,
                 format!(
-                    "state diff claims to cover every writable account but lamport changes sum to {sum}, not {expected} (fee {}). Solana conserves lamports — the diff is incomplete or fabricated",
-                    input.diff.fee_lamports
+                    "state diff claims to cover every writable account but lamport changes sum to {sum}, not {expected} (fee {fee_lamports}). Solana conserves lamports — the diff is incomplete or fabricated"
                 ),
             ));
         }
@@ -782,7 +821,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         let lam = d.lamport_delta();
         if lam < 0 {
             let magnitude = -lam;
-            let fee = i128::from(input.diff.fee_lamports);
+            let fee = i128::from(fee_lamports);
             if !(is_fee_payer && magnitude <= fee) {
                 net_lamport_out += magnitude - if is_fee_payer { fee } else { 0 };
             }

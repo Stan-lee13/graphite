@@ -236,20 +236,27 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     // RPC-DERIVED rather than caller-supplied and the provenance rule is
     // unchanged. The invented names are still read first: a provider that does
     // supply them wins over the derivation.
+    //
+    // Every entry must parse as a u64. `as_u64()` yields `None` for a float, a
+    // string, or a negative, and comparing `None != None` is false — so a
+    // response reporting balances in a type Graphite cannot read would derive
+    // "nothing changed" and look like a complete, clean observation instead of
+    // an unusable one (found 2026-09-08 attacking the RPC trust boundary).
+    // Unreadable balances are absent balances.
+    let readable = |v: &serde_json::Value| -> Option<Vec<u64>> {
+        v.as_array()?.iter().map(|n| n.as_u64()).collect()
+    };
     let derived_account_writes = match (
-        value.get("preBalances").and_then(|v| v.as_array()),
-        value.get("postBalances").and_then(|v| v.as_array()),
+        value.get("preBalances").and_then(&readable),
+        value.get("postBalances").and_then(&readable),
     ) {
         // An account whose lamport balance moved was written. This undercounts
         // a write that changed only account DATA at identical lamports, so it
         // is a floor rather than an exact count — which is the safe direction
         // for a divergence baseline: it cannot inflate a spike into normality.
-        (Some(pre), Some(post)) if pre.len() == post.len() => Some(
-            pre.iter()
-                .zip(post.iter())
-                .filter(|(a, b)| a.as_u64() != b.as_u64())
-                .count() as u64,
-        ),
+        (Some(pre), Some(post)) if pre.len() == post.len() => {
+            Some(pre.iter().zip(post.iter()).filter(|(a, b)| a != b).count() as u64)
+        }
         _ => None,
     };
     // Total inner instructions across every top-level instruction: the real
@@ -259,12 +266,19 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     let derived_cpi_hops = value
         .get("innerInstructions")
         .and_then(|v| v.as_array())
-        .map(|groups| {
+        .and_then(|groups| {
+            // `filter_map` here would silently DROP a group whose shape
+            // Graphite cannot read, undercounting CPI hops — the direction that
+            // makes a deep call tree look shallow. One unreadable group makes
+            // the total unknown, and unknown fails the completeness gate.
             groups
                 .iter()
-                .filter_map(|g| g.get("instructions").and_then(|i| i.as_array()))
-                .map(|i| i.len() as u64)
-                .sum::<u64>()
+                .map(|g| {
+                    g.get("instructions")
+                        .and_then(|i| i.as_array())
+                        .map(|i| i.len() as u64)
+                })
+                .sum::<Option<u64>>()
         });
 
     let account_writes = as_u32(
@@ -384,6 +398,70 @@ pub struct OraclePrice {
     pub exponent: i32,
 }
 
+/// The largest response body Graphite will buffer from an RPC peer.
+///
+/// `Response::json()` reads to end-of-body with no limit, so before this cap the
+/// peer chose Graphite's memory footprint: anything answering on the RPC socket
+/// — a compromised provider, a hijacked DNS record, a proxy on a plaintext
+/// `http://` endpoint — could return a body larger than the container's 512MB
+/// and take the process down without ever being asked for anything. This is the
+/// same defect class already fixed on the audit trail (storage whose size the
+/// attacker picks), on a boundary that is cheaper to reach.
+///
+/// 32 MiB clears every response Graphite actually makes: a Solana account tops
+/// out at 10 MiB, which is ~13.4 MiB base64-encoded, and the fetches here are
+/// for an instruction's writable accounts rather than bulk program data.
+const MAX_RPC_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+
+/// The longest attacker-chosen text that may travel inside an `RpcError`.
+///
+/// A JSON-RPC error body is echoed into `RpcError::RequestFailed`, which reaches
+/// the L3 layer `reason` and the audit trail. Both its length and its content
+/// are the peer's to choose, so an unbounded echo is both storage the peer sizes
+/// and text the peer writes into a field a human reads before signing. Bounded
+/// the same way `AuditErrorRecord` bounds its fields, and for the same reason.
+const MAX_RPC_ERROR_CHARS: usize = 256;
+
+fn bound_rpc_text(value: &str) -> String {
+    if value.chars().count() <= MAX_RPC_ERROR_CHARS {
+        return value.to_string();
+    }
+    let kept: String = value.chars().take(MAX_RPC_ERROR_CHARS).collect();
+    // Say what was dropped: a silently shortened diagnostic reads as the whole
+    // one.
+    format!("{kept}… [truncated, {} chars total]", value.chars().count())
+}
+
+/// Read a response body with a hard ceiling, streaming so an oversized one is
+/// abandoned rather than allocated.
+///
+/// The declared `Content-Length` is checked first so an honest oversize costs
+/// nothing, and the chunk loop bounds a chunked or mis-declared body that the
+/// header did not.
+async fn read_body_capped(mut res: reqwest::Response) -> Result<Vec<u8>, RpcError> {
+    if let Some(declared) = res.content_length() {
+        if declared > MAX_RPC_RESPONSE_BYTES as u64 {
+            return Err(RpcError::InvalidResponse(format!(
+                "RPC response too large: {declared} bytes declared, limit is {MAX_RPC_RESPONSE_BYTES}"
+            )));
+        }
+    }
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(chunk) = res
+        .chunk()
+        .await
+        .map_err(|e| RpcError::InvalidResponse(redact_transport_error(&e)))?
+    {
+        if body.len().saturating_add(chunk.len()) > MAX_RPC_RESPONSE_BYTES {
+            return Err(RpcError::InvalidResponse(format!(
+                "RPC response too large: exceeded the {MAX_RPC_RESPONSE_BYTES}-byte limit"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 /// Configuration for RPC client
 #[derive(Debug, Clone)]
 pub struct RpcConfig {
@@ -475,12 +553,13 @@ impl SolanaRpcClient {
                             status
                         )));
                     }
-                    let json: serde_json::Value = res
-                        .json()
-                        .await
-                        .map_err(|e| RpcError::InvalidResponse(redact_transport_error(&e)))?;
-                    if json.get("error").is_some() {
-                        return Err(RpcError::RequestFailed(json.to_string()));
+                    let body = read_body_capped(res).await?;
+                    let json: serde_json::Value = serde_json::from_slice(&body)
+                        .map_err(|e| RpcError::InvalidResponse(bound_rpc_text(&e.to_string())))?;
+                    if let Some(err) = json.get("error") {
+                        // Bounded: this string reaches the L3 reason and the
+                        // audit trail, and the peer wrote it.
+                        return Err(RpcError::RequestFailed(bound_rpc_text(&err.to_string())));
                     }
                     return json
                         .get("result")

@@ -399,6 +399,24 @@ fn robust_signal_z(
 /// Updates all three tracked signals: compute units, account writes, and CPI hops.
 /// Uses Welford's online algorithm for numerically stable mean/variance updates,
 /// and appends to the bounded recent-sample windows for the C28 robust stats.
+/// Solana's hard per-transaction compute ceiling (`MAX_COMPUTE_UNIT_LIMIT`).
+///
+/// No execution can report more, so a larger figure did not come from one.
+///
+/// This matters because the baseline is DURABLE and governs every future
+/// verification of that program. Folding one impossible sample into the
+/// accumulator drags the mean and standard deviation up by orders of magnitude,
+/// after which no real compute spike can ever reach the z-score threshold
+/// again: a single response permanently disables L3 for that program.
+///
+/// `record_simulation` already restricted the accumulator to RPC-measured
+/// usage, on the reasoning that the caller must not be able to normalize their
+/// own divergence. That was the right rule aimed at the wrong party — it
+/// assumed the RPC was honest. Found 2026-09-08 attacking the RPC trust
+/// boundary. `seed_simulation_baseline` validates what an operator supplies;
+/// this is the equivalent gate on what the network supplies.
+pub const MAX_TRANSACTION_COMPUTE_UNITS: u64 = 1_400_000;
+
 pub fn update_baseline(
     baseline: &mut ComputeBaseline,
     new_compute_units: u64,
