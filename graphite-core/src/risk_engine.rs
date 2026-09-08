@@ -45,6 +45,18 @@ pub enum RiskPattern {
     /// program invoked in the chain, repeated revisits (compositional drain),
     /// or vanity-impersonated program inside the tree.
     CpiTraceAnomaly,
+    /// A registered plugin (P8) vetoed the transaction on L7.
+    ///
+    /// Not one of the Risk Engine's own checks — it exists so a plugin block is
+    /// NAMED as a plugin block. Until 2026-09-08 the pipeline reported every
+    /// plugin veto as `Drainer`, because that is the variant the code reached
+    /// for when it needed some `RiskPattern` to carry an outcome the enum had
+    /// no word for. An operator or a dashboard keying on `pattern` would read
+    /// "Drainer" and believe the drainer heuristic had fired on the
+    /// transaction, and that claim went onto the append-only trail where it
+    /// cannot be corrected. The plugin's own pattern is still reported
+    /// alongside, namespaced by plugin name.
+    PluginBlock,
 }
 
 /// Verdict from risk assessment.
@@ -865,6 +877,7 @@ impl RiskPattern {
             RiskPattern::Impersonation => "Impersonation",
             RiskPattern::MultiInstructionDrain => "MultiInstructionDrain",
             RiskPattern::CpiTraceAnomaly => "CpiTraceAnomaly",
+            RiskPattern::PluginBlock => "PluginBlock",
         }
     }
 }

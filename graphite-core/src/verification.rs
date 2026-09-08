@@ -2342,7 +2342,10 @@ impl GraphiteCore {
         let plugin_risk = self.plugins.risk_outcome(&ctx);
         let risk_verdict = if plugin_risk.blocked && matches!(risk_verdict, RiskVerdict::Passed) {
             RiskVerdict::Blocked {
-                pattern: RiskPattern::Drainer,
+                // Named for what it is. Reporting a plugin veto as `Drainer`
+                // put a specific accusation Graphite had not made onto the
+                // audit trail.
+                pattern: RiskPattern::PluginBlock,
                 reason: format!(
                     "plugin block: {}",
                     plugin_risk
