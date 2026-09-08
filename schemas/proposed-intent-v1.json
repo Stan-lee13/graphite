@@ -9,7 +9,7 @@
       "type": "number",
       "minimum": 0,
       "maximum": 1,
-      "description": "The AI Layer's own confidence in its parse — NOT a verification confidence score."
+      "description": "The AI Layer's own confidence in its parse. Accepted and recorded on the audit trail, and deliberately never read by any scoring path — an AI that is confidently wrong must not be worth more than one that is honestly unsure. NOT a verification confidence score, and not an input to one."
     },
     "extracted_parameters": {
       "type": "object",

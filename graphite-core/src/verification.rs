@@ -30,6 +30,20 @@ use serde::{Deserialize, Serialize};
 pub struct ProposedIntent {
     pub intent_type: String,
     pub raw_natural_language: String,
+    /// The AI layer's confidence in its OWN parse. Accepted, recorded, and
+    /// deliberately never read by any scoring path.
+    ///
+    /// It is the advisory layer's assessment of its own reliability, which is
+    /// the last thing that should move a verdict: an AI that is confidently
+    /// wrong would be worth more than one that is honestly unsure. Graphite
+    /// scores what it can check itself, and it cannot check this. The field
+    /// stays because callers legitimately want it on the audit trail — what the
+    /// parser believed at the time is useful when reconstructing why a
+    /// transaction was proposed — and because removing it is a breaking schema
+    /// change for no benefit (P13).
+    ///
+    /// `tests/campaign_invariants.rs` asserts that 0.0 and 1.0 produce
+    /// bit-identical verdicts and scores.
     pub confidence_of_parse: f64,
     #[serde(default)]
     pub extracted_parameters: Option<ExtractedParameters>,
