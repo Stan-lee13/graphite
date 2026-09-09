@@ -259,3 +259,160 @@ fn the_scope_survives_the_wire() {
         "the unobserved list must cross the wire: {scope}"
     );
 }
+
+// ── The described instruction must be IN the artifact ────────────────────────
+//
+// Found 2026-09-09 attacking the artifact semantic boundary, on live devnet.
+// Two real transactions, identical in every respect a checker was looking at:
+// same payer, same recipient, same program, same discriminator, same account
+// count, lamports conserved, account universe covered. Only the AMOUNT differed
+// — 0.002 SOL described, 0.9 SOL in the bytes.
+//
+//     approved: true
+//     scope:    artifact_bound
+//     L4:       "no undeclared effects"
+//
+// Graphite held both facts and never compared them. `content_hash` covers the
+// DESCRIPTION and was byte-identical across the two requests; `transaction_sha256`
+// covers the ARTIFACT and differed. Nothing joined them.
+//
+// The containment needs no parser. A Solana message stores instruction data as
+// raw, length-prefixed bytes, so an instruction that is in the transaction has
+// its data in the transaction's bytes, verbatim and contiguous. Presence is a
+// NECESSARY condition, and the attack above needed it to be false.
+
+/// A "transaction" carrying `data` somewhere inside it, with plausible
+/// surrounding bytes. The check is a substring search, so this is a faithful
+/// stand-in for a serialized message without needing one.
+fn artifact_containing(data: &[u8]) -> Vec<u8> {
+    let mut bytes = vec![0xABu8; 64];
+    bytes.extend_from_slice(data);
+    bytes.extend_from_slice(&[0xCD; 64]);
+    bytes
+}
+
+fn with_artifact(data: Vec<u8>, artifact: Vec<u8>) -> VerificationInput {
+    let mut i = input(Some(artifact));
+    i.instruction_data = Some(data);
+    i
+}
+
+fn l2_of(input: &VerificationInput) -> (bool, String) {
+    let r = GraphiteCore::new().verify(input).expect("verify ok");
+    let l2 = r
+        .layers
+        .iter()
+        .find(|l| l.layer.contains("L2"))
+        .expect("L2 present");
+    (
+        matches!(l2.status, graphite_core::verification::LayerStatus::Passed),
+        l2.reason.clone(),
+    )
+}
+
+/// THE case: a System transfer's 12 data bytes, where the artifact carries a
+/// different amount. Only four of the twelve bytes differ.
+#[test]
+fn an_artifact_that_does_not_contain_the_described_instruction_fails_l2() {
+    // 0x02 = System Transfer, then a u64 LE amount.
+    let mut described = vec![2u8, 0, 0, 0];
+    described.extend_from_slice(&2_000_000u64.to_le_bytes());
+    let mut executed = vec![2u8, 0, 0, 0];
+    executed.extend_from_slice(&900_000_000u64.to_le_bytes());
+
+    let (passed, reason) = l2_of(&with_artifact(described, artifact_containing(&executed)));
+    assert!(
+        !passed,
+        "the artifact sends 450x the described amount and L2 passed: {reason}"
+    );
+    assert!(
+        reason.contains("does not contain the instruction being verified"),
+        "L2 failed for some other reason, so this test would not notice the check being \
+         removed: {reason}"
+    );
+}
+
+/// Anti-vacuity. If the check rejected every artifact, the test above would
+/// pass while the layer was useless.
+#[test]
+fn an_artifact_that_does_contain_the_described_instruction_passes_l2() {
+    let mut data = vec![2u8, 0, 0, 0];
+    data.extend_from_slice(&2_000_000u64.to_le_bytes());
+    let (passed, reason) = l2_of(&with_artifact(data.clone(), artifact_containing(&data)));
+    assert!(
+        passed,
+        "an artifact that does contain the described instruction was rejected — the check is \
+         over-blocking: {reason}"
+    );
+}
+
+/// Every byte of the data matters, including the ones deep inside the amount.
+/// A check that only compared the discriminator would pass all of these.
+#[test]
+fn a_single_differing_byte_anywhere_in_the_instruction_data_is_caught() {
+    let mut described = vec![2u8, 0, 0, 0];
+    described.extend_from_slice(&2_000_000u64.to_le_bytes());
+
+    for flip in 0..described.len() {
+        let mut executed = described.clone();
+        executed[flip] ^= 0x01;
+        let (passed, _) = l2_of(&with_artifact(
+            described.clone(),
+            artifact_containing(&executed),
+        ));
+        assert!(
+            !passed,
+            "flipping byte {flip} of the instruction data went undetected — the check is \
+             comparing a prefix rather than the whole thing"
+        );
+    }
+}
+
+/// The check abstains rather than guessing when the data is too short to
+/// identify anything. Eight bytes is the Anchor discriminator length; below
+/// that a sequence can occur inside a pubkey or a blockhash by chance, and a
+/// check satisfiable by coincidence is worse than one that says nothing.
+#[test]
+fn instruction_data_too_short_to_identify_anything_does_not_trigger_the_check() {
+    let described = vec![2u8, 0, 0, 0]; // 4 bytes
+    let executed = vec![9u8, 9, 9, 9];
+    let (passed, reason) = l2_of(&with_artifact(described, artifact_containing(&executed)));
+    assert!(
+        passed,
+        "a 4-byte discriminator is too short to be identifying; the check must abstain rather \
+         than block on a coincidence-prone comparison: {reason}"
+    );
+}
+
+/// With no artifact there is nothing to look inside, so the check must not fire
+/// — a descriptive verdict is a legitimate mode, not a failure.
+#[test]
+fn a_descriptive_verification_is_unaffected_by_the_presence_check() {
+    let mut data = vec![2u8, 0, 0, 0];
+    data.extend_from_slice(&2_000_000u64.to_le_bytes());
+    let mut i = input(None);
+    i.instruction_data = Some(data);
+    let (passed, reason) = l2_of(&i);
+    assert!(
+        passed,
+        "no artifact was supplied and L2 blocked anyway: {reason}"
+    );
+}
+
+/// The residual is disclosed, not just commented. Presence is necessary, not
+/// sufficient: finding the bytes does not prove they belong to an instruction
+/// with the described program and accounts.
+#[test]
+fn the_limit_of_the_presence_check_is_reported_to_the_caller() {
+    let mut data = vec![2u8, 0, 0, 0];
+    data.extend_from_slice(&2_000_000u64.to_le_bytes());
+    let r = GraphiteCore::new()
+        .verify(&with_artifact(data.clone(), artifact_containing(&data)))
+        .expect("verify ok");
+    let joined = r.scope.unobserved().join(" | ");
+    assert!(
+        joined.contains("WHERE in the artifact"),
+        "an artifact-bound verdict must state that instruction-data presence does not establish \
+         which instruction the bytes belong to: {joined}"
+    );
+}

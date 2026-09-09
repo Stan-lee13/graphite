@@ -375,6 +375,50 @@ async fn within_budget_of<F: std::future::Future>(
     tokio::time::timeout(slice, call).await.map_err(|_| ())
 }
 
+/// The shortest instruction data this check will treat as identifying.
+///
+/// Anchor discriminators are 8 bytes; a System-Program instruction carries a
+/// 4-byte discriminator plus its arguments. Below 8 bytes a byte sequence is
+/// short enough to occur inside a pubkey or a blockhash by chance, and a check
+/// that can be satisfied by coincidence is worse than one that abstains.
+const MIN_IDENTIFYING_INSTRUCTION_DATA: usize = 8;
+
+/// Does the supplied artifact actually CONTAIN the instruction data Graphite is
+/// verifying?
+///
+/// Found 2026-09-09 attacking the artifact semantic boundary. Every other check
+/// held: same payer, same recipient, same program, same discriminator, same
+/// account count, lamports conserved, coverage complete. Only the AMOUNT
+/// differed — 0.002 SOL described, 0.9 SOL in the bytes — and the amount lives
+/// in the instruction data. Graphite returned `approved: true` with
+/// `scope: artifact_bound`.
+///
+/// It held both facts and never compared them: `content_hash` covers the
+/// DESCRIPTION and was byte-identical across the two requests, while
+/// `transaction_sha256` covers the ARTIFACT and differed.
+///
+/// This is not a transaction parser and does not pretend to be one. A Solana
+/// message serializes instruction data as raw, length-prefixed bytes, so an
+/// instruction that is in the transaction has its data in the transaction's
+/// bytes — verbatim, contiguously. Presence is therefore a NECESSARY condition,
+/// checkable with a substring search and no format knowledge at all.
+///
+/// What it does not establish: that the bytes found belong to an instruction
+/// with the described program and accounts, rather than appearing somewhere
+/// else in the message. Necessary, not sufficient — and stated as such in
+/// `scope.unobserved`. What it does establish is that the described instruction
+/// data is in there at all, which is exactly what the attack above needed to be
+/// false.
+///
+/// Unlike account keys, instruction data can never be supplied by an address
+/// lookup table, so this holds identically for legacy and v0 transactions.
+fn artifact_contains_instruction_data(artifact: &[u8], data: &[u8]) -> bool {
+    if data.is_empty() || data.len() > artifact.len() {
+        return false;
+    }
+    artifact.windows(data.len()).any(|w| w == data)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerificationBreakdownItem {
     pub kind: String,
@@ -629,6 +673,12 @@ fn verification_scope(
             // needs the artifact parsed, not measured.
             unobserved.push(
                 "the IDENTITY of the accounts inside the artifact: Graphite compares how many accounts the transaction references against how many this request names, not which ones, so naming an address the transaction does not contain can mask one it does"
+                    .to_string(),
+            );
+            // The instruction-presence check is a necessary condition, not a
+            // sufficient one, and the difference matters enough to state.
+            unobserved.push(
+                "WHERE in the artifact the described instruction data sits: Graphite confirms those exact bytes are present in the transaction, not that they belong to an instruction with the described program and accounts, and not that no other instruction sits alongside it"
                     .to_string(),
             );
             VerificationScope::ArtifactBound {
@@ -2407,6 +2457,37 @@ impl GraphiteCore {
 
         // L2: Instruction Verification
         let l2_result = self.verify_instruction(input, manifest, &resolution);
+
+        // ...and, when an artifact was supplied, whether the instruction being
+        // verified is actually IN it.
+        //
+        // L2 is the right layer for this: it is the one that confirms the
+        // instruction matches a known shape, and "matches a known shape" is
+        // worth nothing if the shape is not the one inside the bytes about to
+        // be signed. It is also already a hard gate (see the L2/L4/L5 gate
+        // below), which is the correct severity — a verdict about an
+        // instruction the transaction does not contain is not a weak verdict,
+        // it is a verdict about something else.
+        let l2_result = match (&input.signed_transaction, &input.instruction_data) {
+            (Some(artifact), Some(data))
+                if !artifact.is_empty() && data.len() >= MIN_IDENTIFYING_INSTRUCTION_DATA =>
+            {
+                if artifact_contains_instruction_data(artifact, data) {
+                    l2_result
+                } else {
+                    PipelineLayerResult::new(
+                        "L2_InstructionVerification",
+                        LayerStatus::Failed,
+                        format!(
+                            "the supplied transaction does not contain the instruction being verified: its {} bytes of instruction data appear nowhere in the {} bytes of the artifact. A Solana message stores instruction data verbatim, so an instruction that is in the transaction has its data in the transaction — this verdict would otherwise describe a different instruction from the one about to be signed",
+                            data.len(),
+                            artifact.len()
+                        ),
+                    )
+                }
+            }
+            _ => l2_result,
+        };
 
         let protocol_name = manifest
             .map(|m| m.protocol.name.clone())
