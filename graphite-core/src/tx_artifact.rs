@@ -130,11 +130,35 @@ pub struct ArtifactMessage {
     /// durable nonce replaces it with a value that does not expire.
     pub recent_blockhash: String,
     pub instructions: Vec<ArtifactInstruction>,
-    /// How many accounts this message pulls in through address lookup tables.
-    /// Non-zero means the static key list is not the whole account universe.
-    pub alt_account_count: usize,
-    /// How many lookup tables were referenced.
-    pub alt_table_count: usize,
+    /// The address-table lookups this message declares, with their indexes.
+    ///
+    /// These were originally only COUNTED. A count tells a caller the static
+    /// key list is incomplete; it cannot tell them which account arrived, which
+    /// is the same count-versus-identity gap that made every earlier aggregate
+    /// check defeatable. The table addresses and indexes are kept so
+    /// `resolve_lookups` can turn them into identities.
+    pub lookups: Vec<AddressTableLookup>,
+}
+
+/// One address-table lookup from a v0 message: which table, and which of its
+/// entries this transaction pulls in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressTableLookup {
+    /// The lookup table account's address.
+    pub table: String,
+    /// Indexes into the table's address array, resolved as writable.
+    pub writable_indexes: Vec<u8>,
+    /// Indexes into the table's address array, resolved as readonly.
+    pub readonly_indexes: Vec<u8>,
+}
+
+impl AddressTableLookup {
+    pub fn len(&self) -> usize {
+        self.writable_indexes.len() + self.readonly_indexes.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl ArtifactMessage {
@@ -144,7 +168,15 @@ impl ArtifactMessage {
     }
     /// Whether any part of the account universe lives outside the static keys.
     pub fn has_lookup_accounts(&self) -> bool {
-        self.alt_account_count > 0
+        self.lookups.iter().any(|l| !l.is_empty())
+    }
+    /// How many accounts arrive through lookup tables.
+    pub fn alt_account_count(&self) -> usize {
+        self.lookups.iter().map(|l| l.len()).sum()
+    }
+    /// How many tables are referenced.
+    pub fn alt_table_count(&self) -> usize {
+        self.lookups.len()
     }
 }
 
@@ -322,16 +354,22 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
     // v0 lookup tables. Their entries resolve at runtime, so this counts them
     // rather than naming them — the count is what tells a caller the static key
     // list is not the whole picture.
-    let (mut alt_account_count, mut alt_table_count) = (0usize, 0usize);
+    let mut lookups: Vec<AddressTableLookup> = Vec::new();
     if version == Some(0) {
-        alt_table_count = r.compact_u16("address table lookup count")?;
-        for _ in 0..alt_table_count {
-            let _table = r.take(32, "lookup table address")?;
-            let writable = r.compact_u16("writable index count")?;
-            let _ = r.take(writable, "writable indexes")?;
-            let readonly = r.compact_u16("readonly index count")?;
-            let _ = r.take(readonly, "readonly indexes")?;
-            alt_account_count += writable + readonly;
+        let table_count = r.compact_u16("address table lookup count")?;
+        for _ in 0..table_count {
+            let raw = r.take(32, "lookup table address")?;
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(raw);
+            let writable_len = r.compact_u16("writable index count")?;
+            let writable_indexes = r.take(writable_len, "writable indexes")?.to_vec();
+            let readonly_len = r.compact_u16("readonly index count")?;
+            let readonly_indexes = r.take(readonly_len, "readonly indexes")?.to_vec();
+            lookups.push(AddressTableLookup {
+                table: Pubkey::from_bytes(arr).to_base58(),
+                writable_indexes,
+                readonly_indexes,
+            });
         }
     }
 
@@ -362,8 +400,7 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
         writable,
         static_keys,
         instructions,
-        alt_account_count,
-        alt_table_count,
+        lookups,
     })
 }
 
@@ -444,4 +481,168 @@ pub fn correspond(
         undescribed_accounts,
         described_but_absent,
     }
+}
+
+// ── Address lookup tables: from counted to identified ───────────────────────
+
+/// Where a lookup table account's address array begins.
+///
+/// The `AddressLookupTable` account layout is a fixed-size meta block followed
+/// by a packed array of 32-byte addresses:
+///
+/// ```text
+///   0   discriminator                    u32
+///   4   deactivation_slot                u64
+///  12   last_extended_slot               u64
+///  20   last_extended_slot_start_index   u8
+///  21   authority                        Option<Pubkey>  (1 tag + 32)
+///  54   _padding                         u16
+///  56   addresses                        [Pubkey]
+/// ```
+pub const LOOKUP_TABLE_META_SIZE: usize = 56;
+
+/// A slot value meaning "not deactivating". Anything else means the table is on
+/// its way out, and a table that is being retired is not one to resolve
+/// security-relevant identities against.
+const NOT_DEACTIVATING: u64 = u64::MAX;
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum LookupResolveError {
+    #[error("lookup table {table} was not supplied")]
+    TableMissing { table: String },
+    #[error("lookup table {table} is {len} bytes, too short to hold the {LOOKUP_TABLE_META_SIZE}-byte header")]
+    TableTooShort { table: String, len: usize },
+    #[error("lookup table {table} has {trailing} bytes after its address array, so it is not a well-formed table")]
+    TableNotAligned { table: String, trailing: usize },
+    #[error("lookup table {table} is deactivating (deactivation_slot {slot})")]
+    TableDeactivating { table: String, slot: u64 },
+    #[error(
+        "lookup table {table} has {entries} addresses; this transaction asks for index {index}"
+    )]
+    IndexOutOfRange {
+        table: String,
+        index: u8,
+        entries: usize,
+    },
+}
+
+/// The addresses held by one lookup table account.
+///
+/// Refuses a table it cannot read completely rather than returning the prefix
+/// it managed to decode — a partial address list resolves some indexes and
+/// silently mis-resolves others, which is worse than resolving none.
+pub fn decode_lookup_table(table: &str, data: &[u8]) -> Result<Vec<String>, LookupResolveError> {
+    if data.len() < LOOKUP_TABLE_META_SIZE {
+        return Err(LookupResolveError::TableTooShort {
+            table: table.to_string(),
+            len: data.len(),
+        });
+    }
+    let deactivation_slot = u64::from_le_bytes(
+        data[4..12]
+            .try_into()
+            .expect("slice of exactly 8 bytes is an array"),
+    );
+    if deactivation_slot != NOT_DEACTIVATING {
+        return Err(LookupResolveError::TableDeactivating {
+            table: table.to_string(),
+            slot: deactivation_slot,
+        });
+    }
+    let body = &data[LOOKUP_TABLE_META_SIZE..];
+    if !body.len().is_multiple_of(32) {
+        return Err(LookupResolveError::TableNotAligned {
+            table: table.to_string(),
+            trailing: body.len() % 32,
+        });
+    }
+    Ok(body
+        .chunks_exact(32)
+        .map(|c| {
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(c);
+            Pubkey::from_bytes(arr).to_base58()
+        })
+        .collect())
+}
+
+/// Accounts a v0 message pulls in through lookup tables, resolved to addresses.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResolvedLookups {
+    /// Resolved writable addresses, in the order the runtime appends them.
+    pub writable: Vec<String>,
+    /// Resolved readonly addresses, in the order the runtime appends them.
+    pub readonly: Vec<String>,
+}
+
+impl ResolvedLookups {
+    pub fn all(&self) -> impl Iterator<Item = &String> {
+        self.writable.iter().chain(self.readonly.iter())
+    }
+    pub fn len(&self) -> usize {
+        self.writable.len() + self.readonly.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// Turn a message's lookups into actual addresses, given the tables' data.
+///
+/// `tables` maps a lookup table address to its raw account data, which the
+/// caller fetches. Every index must resolve, or the whole thing errors: this is
+/// the identity half of the account universe, and a partial answer here is the
+/// aggregate problem again in a new place. A caller that cannot resolve must
+/// report the accounts as unidentified rather than treat the resolvable subset
+/// as the whole.
+///
+/// Ordering follows the runtime's: all writable entries across all tables in
+/// message order, then all readonly. That is what makes the result comparable
+/// to `preBalances` and to the account indexes inside instructions.
+pub fn resolve_lookups(
+    message: &ArtifactMessage,
+    tables: &std::collections::HashMap<String, Vec<u8>>,
+) -> Result<ResolvedLookups, LookupResolveError> {
+    let mut out = ResolvedLookups::default();
+    let mut decoded: std::collections::HashMap<&str, Vec<String>> =
+        std::collections::HashMap::new();
+
+    for lookup in &message.lookups {
+        let data = tables
+            .get(&lookup.table)
+            .ok_or_else(|| LookupResolveError::TableMissing {
+                table: lookup.table.clone(),
+            })?;
+        let addresses = decode_lookup_table(&lookup.table, data)?;
+        decoded.insert(lookup.table.as_str(), addresses);
+    }
+
+    let pick = |lookup: &AddressTableLookup,
+                indexes: &[u8],
+                decoded: &std::collections::HashMap<&str, Vec<String>>|
+     -> Result<Vec<String>, LookupResolveError> {
+        let addresses = &decoded[lookup.table.as_str()];
+        indexes
+            .iter()
+            .map(|&i| {
+                addresses.get(i as usize).cloned().ok_or_else(|| {
+                    LookupResolveError::IndexOutOfRange {
+                        table: lookup.table.clone(),
+                        index: i,
+                        entries: addresses.len(),
+                    }
+                })
+            })
+            .collect()
+    };
+
+    for lookup in &message.lookups {
+        out.writable
+            .extend(pick(lookup, &lookup.writable_indexes, &decoded)?);
+    }
+    for lookup in &message.lookups {
+        out.readonly
+            .extend(pick(lookup, &lookup.readonly_indexes, &decoded)?);
+    }
+    Ok(out)
 }

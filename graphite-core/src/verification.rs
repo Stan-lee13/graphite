@@ -681,7 +681,7 @@ fn verification_scope(
                     if message.has_lookup_accounts() {
                         unobserved.push(format!(
                             "{} account(s) this transaction reaches through {} address lookup table(s): the message carries table indexes rather than addresses, and Graphite does not fetch the tables, so those accounts are counted and not identified",
-                            message.alt_account_count, message.alt_table_count
+                            message.alt_account_count(), message.alt_table_count()
                         ));
                     }
                     unobserved.push(
@@ -3343,6 +3343,118 @@ impl GraphiteCore {
                         // integration that simply never set the field. What
                         // changes is that the disclosure is a measurement
                         // instead of a restatement of the caller's claim.
+                        // ── ALT accounts, identified rather than counted ───
+                        //
+                        // `loadedAddresses` (below) is the SIMULATOR's account
+                        // of what it resolved, which is useful and is not
+                        // Graphite establishing anything: it is the same RPC
+                        // whose other claims the trust-boundary work spends its
+                        // time bounding. This block does the independent half —
+                        // take the table addresses and indexes out of the
+                        // message itself, fetch the tables, and resolve the
+                        // indexes to addresses Graphite derived.
+                        //
+                        // Fail-closed and honest about which: an unresolvable
+                        // table produces a stated absence, never a pass. A table
+                        // that is deactivating, malformed, or missing an index
+                        // is refused rather than partially decoded, because a
+                        // partial address list resolves some indexes and
+                        // silently MIS-resolves the rest — the aggregate problem
+                        // wearing a new hat.
+                        if let Some(artifact) = &input.signed_transaction {
+                            if let Ok(message) = crate::tx_artifact::parse_transaction(artifact) {
+                                if message.has_lookup_accounts() {
+                                    let table_addrs: Vec<String> =
+                                        message.lookups.iter().map(|l| l.table.clone()).collect();
+                                    let fetched = within_budget(
+                                        &budget,
+                                        client.get_multiple_accounts(&table_addrs),
+                                    )
+                                    .await
+                                    .unwrap_or_else(|()| {
+                                        Err(crate::rpc_client::RpcError::Timeout(budget.total()))
+                                    });
+                                    match fetched {
+                                        Ok(accounts) => {
+                                            let mut tables: std::collections::HashMap<
+                                                String,
+                                                Vec<u8>,
+                                            > = std::collections::HashMap::new();
+                                            for (addr, acc) in
+                                                table_addrs.iter().zip(accounts.iter())
+                                            {
+                                                if let Some(a) = acc {
+                                                    tables.insert(addr.clone(), a.data.clone());
+                                                }
+                                            }
+                                            match crate::tx_artifact::resolve_lookups(
+                                                &message, &tables,
+                                            ) {
+                                                Ok(resolved) => {
+                                                    let described: std::collections::HashSet<&str> =
+                                                        input
+                                                            .account_addresses
+                                                            .iter()
+                                                            .map(|a| a.as_str())
+                                                            .chain(
+                                                                input
+                                                                    .transaction_instructions
+                                                                    .iter()
+                                                                    .flat_map(|ix| {
+                                                                        ix.account_addresses.iter()
+                                                                    })
+                                                                    .map(|a| a.as_str()),
+                                                            )
+                                                            .collect();
+                                                    let mut undescribed: Vec<&str> = resolved
+                                                        .all()
+                                                        .map(|a| a.as_str())
+                                                        .filter(|a| !described.contains(a))
+                                                        .collect();
+                                                    // Deterministic output (P2).
+                                                    undescribed.sort_unstable();
+                                                    undescribed.dedup();
+                                                    if undescribed.is_empty() {
+                                                        alt_observations.push(format!(
+                                                            "{} account(s) arrive through {} address lookup table(s); Graphite resolved every one from the tables themselves and each is named in this request",
+                                                            resolved.len(),
+                                                            message.alt_table_count()
+                                                        ));
+                                                    } else {
+                                                        let shown = undescribed.len().min(8);
+                                                        alt_observations.push(format!(
+                                                            "{} account(s) arrive through address lookup tables and are NOT named anywhere in this request [{}{}] — Graphite resolved them from the tables, so these are identities rather than a count, and nothing here examined what the transaction does to them",
+                                                            undescribed.len(),
+                                                            undescribed[..shown].join(", "),
+                                                            if undescribed.len() > shown {
+                                                                ", …"
+                                                            } else {
+                                                                ""
+                                                            }
+                                                        ));
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    alt_observations.push(format!(
+                                                        "this transaction reaches {} account(s) through {} address lookup table(s) and Graphite could not resolve them ({e}) — their identities are unestablished, so no check here reasoned about which accounts they are",
+                                                        message.alt_account_count(),
+                                                        message.alt_table_count()
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            alt_observations.push(format!(
+                                                "this transaction reaches {} account(s) through {} address lookup table(s) and the tables could not be fetched ({e}) — their identities are unestablished",
+                                                message.alt_account_count(),
+                                                message.alt_table_count()
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         if let Some(loaded) = &sim_res.loaded_addresses {
                             if !loaded.is_empty() {
                                 if !input.uses_versioned_transaction {
