@@ -217,9 +217,10 @@ fn even_a_bound_artifact_states_the_limit_of_the_binding() {
     let scope = scope_of(&input(Some(vec![3u8; 16])));
     let joined = scope.unobserved().join(" | ");
     assert!(
-        joined.contains("does not parse the transaction's wire format"),
-        "an artifact-bound verdict must state that Graphite did not confirm the described \
-         instruction is the one inside the bytes: {joined}"
+        joined.contains("could not be parsed as a legacy or v0 Solana message"),
+        "when the artifact cannot be read the verdict must name that and say what it costs. \
+         These fixtures are synthetic blobs, so this is the FALLBACK branch; a real \
+         transaction takes the parsed branch - see tests/tx_artifact_real.rs: {joined}"
     );
 }
 
@@ -411,8 +412,8 @@ fn the_limit_of_the_presence_check_is_reported_to_the_caller() {
         .expect("verify ok");
     let joined = r.scope.unobserved().join(" | ");
     assert!(
-        joined.contains("WHERE in the artifact"),
-        "an artifact-bound verdict must state that instruction-data presence does not establish \
-         which instruction the bytes belong to: {joined}"
+        joined.contains("fell back to checking that the described instruction"),
+        "an unparseable artifact must state that the fallback proves the bytes are PRESENT, \
+         not that they belong to the described instruction: {joined}"
     );
 }

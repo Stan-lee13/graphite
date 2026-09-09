@@ -25,6 +25,7 @@ pub mod simulation_integrity;
 pub mod solana_types;
 pub mod state_diff;
 pub mod transaction_builder;
+pub mod tx_artifact;
 pub mod tx_pattern_analysis;
 pub mod unknown_protocol_mode;
 pub mod verification;

@@ -351,6 +351,13 @@ impl RpcBudget {
 /// relationship so the two cannot drift apart silently.
 pub const DEFAULT_RPC_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
 
+/// The most accounts `simulateTransaction` will return post-state for.
+///
+/// A protocol limit, not a Graphite one. What Graphite chooses is what to do at
+/// the boundary: refuse the diff and say so, rather than observe the first
+/// hundred and report as though that were the transaction.
+pub const MAX_SIMULATION_ACCOUNTS: usize = 100;
+
 /// Run one RPC call against the shared deadline.
 ///
 /// `Err(())` means the budget ran out — distinct from the call itself failing,
@@ -655,32 +662,50 @@ fn verification_scope(
                         .to_string(),
                 );
             }
-            // True of a simulated blob as well: Graphite reads the effects, not
-            // the wire format, so it never confirms which instruction inside the
-            // transaction is the one the rest of this verdict describes.
-            unobserved.push(
-                "Graphite does not parse the transaction's wire format, so it does not confirm that the described program/discriminator/accounts are the primary instruction of these bytes — only that these bytes simulate to the effects it checked"
-                    .to_string(),
-            );
-            // The precise residual left by the account-universe check, stated
-            // where a caller will see it rather than only in a test.
+            // What is left unobserved now depends on whether the message
+            // could be read, so say which.
             //
-            // Graphite compares HOW MANY accounts the artifact references
-            // against how many this request names. It cannot compare WHICH,
-            // because a simulation response carries balances in the
-            // transaction's key order and never the keys themselves. A request
-            // that names one extra address restores the count. Closing this
-            // needs the artifact parsed, not measured.
-            unobserved.push(
-                "the IDENTITY of the accounts inside the artifact: Graphite compares how many accounts the transaction references against how many this request names, not which ones, so naming an address the transaction does not contain can mask one it does"
-                    .to_string(),
-            );
-            // The instruction-presence check is a necessary condition, not a
-            // sufficient one, and the difference matters enough to state.
-            unobserved.push(
-                "WHERE in the artifact the described instruction data sits: Graphite confirms those exact bytes are present in the transaction, not that they belong to an instruction with the described program and accounts, and not that no other instruction sits alongside it"
-                    .to_string(),
-            );
+            // The blanket claim here used to be "Graphite does not parse the
+            // transaction's wire format". That was true when written and is
+            // false whenever `tx_artifact::parse_transaction` succeeds — and a
+            // disclosure that understates what was established is as misleading
+            // as one that overstates it. A reader who acts on a stale caveat
+            // rebuilds a control Graphite already has.
+            match crate::tx_artifact::parse_transaction(bytes) {
+                Ok(message) => {
+                    // Parsed. L2 has already established that exactly one
+                    // instruction under the described program carries the
+                    // described data, and that no OTHER instruction is present
+                    // undescribed — those are gates, not caveats, so they do
+                    // not belong here. What remains genuinely unestablished:
+                    if message.has_lookup_accounts() {
+                        unobserved.push(format!(
+                            "{} account(s) this transaction reaches through {} address lookup table(s): the message carries table indexes rather than addresses, and Graphite does not fetch the tables, so those accounts are counted and not identified",
+                            message.alt_account_count, message.alt_table_count
+                        ));
+                    }
+                    unobserved.push(
+                        "what the instructions DO beyond the effects the simulation surfaced: the message gives Graphite each instruction's program, accounts and raw data, and it decodes that data only for the protocols it has manifests for"
+                            .to_string(),
+                    );
+                    unobserved.push(
+                        "inner instructions: only top-level instructions appear in a message, so anything a program invokes by CPI is visible to Graphite through simulation effects rather than through the artifact"
+                            .to_string(),
+                    );
+                }
+                Err(e) => {
+                    // Not parsed. The older, weaker disclosures still apply
+                    // exactly as before, and the reason is named rather than
+                    // left as a silent downgrade.
+                    unobserved.push(format!(
+                        "the structure of this artifact: it could not be parsed as a legacy or v0 Solana message ({e}), so Graphite fell back to checking that the described instruction's bytes appear somewhere in it — which does not establish that they belong to an instruction with the described program and accounts, nor that no other instruction sits alongside"
+                    ));
+                    unobserved.push(
+                        "the IDENTITY of the accounts inside the artifact: with no parse, Graphite compares how many accounts the transaction references against how many this request names, not which ones, so naming an address the transaction does not contain can mask one it does"
+                            .to_string(),
+                    );
+                }
+            }
             VerificationScope::ArtifactBound {
                 transaction_sha256: hex::encode(Sha256::digest(bytes)),
                 transaction_bytes: bytes.len(),
@@ -2472,10 +2497,68 @@ impl GraphiteCore {
             (Some(artifact), Some(data))
                 if !artifact.is_empty() && data.len() >= MIN_IDENTIFYING_INSTRUCTION_DATA =>
             {
-                if artifact_contains_instruction_data(artifact, data) {
-                    l2_result
-                } else {
-                    PipelineLayerResult::new(
+                // Read the message when it can be read.
+                //
+                // The substring search below is the fallback, and it is a
+                // necessary condition rather than a sufficient one: it proves
+                // those bytes are SOMEWHERE in the transaction, not that they
+                // belong to the described instruction. Parsing answers the
+                // actual question — is there an instruction, under the
+                // described program, carrying exactly this data — and it also
+                // exposes the instructions the request never mentioned, which
+                // no amount of measuring the artifact could reveal.
+                //
+                // Fail-closed in the direction that matters: a parse failure
+                // falls back to the substring check rather than passing. An
+                // artifact Graphite cannot read is one it makes no structural
+                // claim about; it must never be one that gets a stronger
+                // verdict for being unreadable.
+                match crate::tx_artifact::parse_transaction(artifact) {
+                    Ok(message) => {
+                        let c = crate::tx_artifact::correspond(
+                            &message,
+                            &input.program_id,
+                            Some(data),
+                            &input.account_addresses,
+                        );
+                        match c.matched_instruction {
+                            None => PipelineLayerResult::new(
+                                "L2_InstructionVerification",
+                                LayerStatus::Failed,
+                                format!(
+                                    "the transaction contains no instruction matching what is being verified: none of its {} instruction(s) is a call to {} carrying the described {} bytes of data. This verdict would otherwise describe an instruction that is not in the bytes about to be signed",
+                                    message.instructions.len(),
+                                    input.program_id,
+                                    data.len()
+                                ),
+                            ),
+                            Some(idx) if !c.undescribed_instructions.is_empty() => {
+                                PipelineLayerResult::new(
+                                    "L2_InstructionVerification",
+                                    LayerStatus::Failed,
+                                    format!(
+                                        "the described instruction is instruction {idx} of {}, and the request does not describe the other {}: {}. A verdict about one instruction says nothing about the ones beside it, and they execute in the same transaction",
+                                        message.instructions.len(),
+                                        c.undescribed_instructions.len(),
+                                        c.undescribed_instructions
+                                            .iter()
+                                            .map(|(i, p)| format!("#{i} calling {p}"))
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    ),
+                                )
+                            }
+                            Some(_) => l2_result,
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "artifact could not be parsed ({e}); falling back to the                              instruction-data presence check"
+                        );
+                        if artifact_contains_instruction_data(artifact, data) {
+                            l2_result
+                        } else {
+                            PipelineLayerResult::new(
                         "L2_InstructionVerification",
                         LayerStatus::Failed,
                         format!(
@@ -2484,6 +2567,8 @@ impl GraphiteCore {
                             artifact.len()
                         ),
                     )
+                        }
+                    }
                 }
             }
             _ => l2_result,
@@ -3137,8 +3222,36 @@ impl GraphiteCore {
                             }
                         }
                     }
-                    addrs.truncate(100);
-                    addrs
+                    // Refuse rather than narrow.
+                    //
+                    // This was `addrs.truncate(100)`: past the RPC's limit
+                    // Graphite quietly inspected the first hundred accounts and
+                    // carried on, so L4 reported on a slice of the transaction
+                    // in the words of a complete diff. That is the exact
+                    // failure this codebase keeps finding in itself — partial
+                    // observation presented as the whole thing — and it is
+                    // worse here than elsewhere, because the coverage checks
+                    // downstream compare against what the simulator measured
+                    // for the WHOLE transaction.
+                    //
+                    // Returning an empty set drops the diff entirely, and the
+                    // caller is told why. A bounded refusal beats an answer
+                    // about the wrong ninety-nine per cent.
+                    if addrs.len() > MAX_SIMULATION_ACCOUNTS {
+                        tracing::warn!(
+                            "state diff skipped: {} accounts to observe exceeds the {}                              simulateTransaction accepts",
+                            addrs.len(),
+                            MAX_SIMULATION_ACCOUNTS
+                        );
+                        diff_unavailable = Some(format!(
+                            "this request describes {} accounts and simulateTransaction accepts at most {}, so no pre/post diff was built — Graphite will not report on a subset of a transaction as though it had seen all of it",
+                            addrs.len(),
+                            MAX_SIMULATION_ACCOUNTS
+                        ));
+                        Vec::new()
+                    } else {
+                        addrs
+                    }
                 } else {
                     Vec::new()
                 };
