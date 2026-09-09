@@ -245,3 +245,114 @@ test("transactionBinding covers additions, removals and reordering", () => {
     "an unchanged transaction must still verify",
   );
 });
+
+// ── The execution binding covers privilege flags, at full length ─────────────
+//
+// From an independent review, 2026-09-09. `content_hash` covers programId,
+// discriminator, accounts, data and CPI targets — matching the Rust core byte
+// for byte — and does NOT cover isSigner/isWritable. But
+// `buildInstructionFromPayload` uses those flags to build the instruction that
+// executes, and Graphite checks them via `real_account_metas`. A binding that
+// omitted them was checking less than the Core did.
+//
+// It was also 128 bits (a truncated digest). `content_hash` is 64, which is
+// right for a cross-language pinned identifier and wrong for the thing standing
+// between "Graphite approved this" and "the wallet signed this" — NIST SP
+// 800-107 §5.1 puts a λ-bit truncated digest at λ/2 collision strength. The
+// execution binding is now the full 256 bits.
+
+test("the execution binding is a full-length digest, not a truncated one", () => {
+  const ix = buildTransfer(VICTIM_DEST, 1_000_000);
+  const binding = AuditBind.transactionBinding([
+    {
+      programId: ix.programId.toBase58(),
+      data: ix.data,
+      accounts: ix.keys.map((k) => k.pubkey.toBase58()),
+      discriminator: TRANSFER_DISCRIMINATOR,
+      accountMetas: ix.keys.map((k) => ({ isSigner: k.isSigner, isWritable: k.isWritable })),
+    },
+  ]);
+  assert.equal(
+    binding.length,
+    64,
+    "the execution binding must be a full 256-bit SHA-256 (64 hex chars); a truncated digest " +
+      "halves collision resistance and this is the value that gates signing",
+  );
+  // content_hash stays 64 bits on purpose: it is the cross-language identifier
+  // pinned byte-for-byte against the Rust core, not the execution binding.
+  assert.equal(
+    AuditBind.computeHash({
+      programId: ix.programId.toBase58(),
+      instructionDiscriminator: TRANSFER_DISCRIMINATOR,
+      accountAddresses: ix.keys.map((k) => k.pubkey.toBase58()),
+      instructionData: Array.from(ix.data),
+    }).length,
+    16,
+    "content_hash must stay 16 hex chars or cross-language parity with the Rust core breaks",
+  );
+});
+
+test("flipping a writable bit changes the execution binding", () => {
+  const ix = buildTransfer(VICTIM_DEST, 1_000_000);
+  const project = (metas: { isSigner: boolean; isWritable: boolean }[]) => ({
+    programId: ix.programId.toBase58(),
+    data: ix.data,
+    accounts: ix.keys.map((k) => k.pubkey.toBase58()),
+    discriminator: TRANSFER_DISCRIMINATOR,
+    accountMetas: metas,
+  });
+  const honest = ix.keys.map((k) => ({ isSigner: k.isSigner, isWritable: k.isWritable }));
+  const escalated = honest.map((m, i) => (i === 1 ? { ...m, isWritable: !m.isWritable } : m));
+
+  const approved = AuditBind.transactionBinding([project(honest)]);
+  assert.notEqual(
+    AuditBind.transactionBinding([project(escalated)]),
+    approved,
+    "a read-only account becoming writable changes what the instruction can do and must " +
+      "change the binding",
+  );
+  assert.throws(
+    () => AuditBind.verifyTransactionUnchanged([project(escalated)], approved),
+    /instruction set changed after approval/,
+  );
+});
+
+test("flipping a signer bit changes the execution binding", () => {
+  const ix = buildTransfer(VICTIM_DEST, 1_000_000);
+  const project = (metas: { isSigner: boolean; isWritable: boolean }[]) => ({
+    programId: ix.programId.toBase58(),
+    data: ix.data,
+    accounts: ix.keys.map((k) => k.pubkey.toBase58()),
+    discriminator: TRANSFER_DISCRIMINATOR,
+    accountMetas: metas,
+  });
+  const honest = ix.keys.map((k) => ({ isSigner: k.isSigner, isWritable: k.isWritable }));
+  const forged = honest.map((m, i) => (i === 1 ? { ...m, isSigner: !m.isSigner } : m));
+  assert.notEqual(
+    AuditBind.transactionBinding([project(forged)]),
+    AuditBind.transactionBinding([project(honest)]),
+    "a non-signer becoming a signer must change the binding",
+  );
+});
+
+test("absent metas and all-false metas are different bindings", () => {
+  // Otherwise an integration that simply stopped supplying the flags would
+  // silently produce the same digest as one asserting every account is
+  // read-only and unsigned — a downgrade that looks like no change at all.
+  const ix = buildTransfer(VICTIM_DEST, 1_000_000);
+  const base = {
+    programId: ix.programId.toBase58(),
+    data: ix.data,
+    accounts: ix.keys.map((k) => k.pubkey.toBase58()),
+    discriminator: TRANSFER_DISCRIMINATOR,
+  };
+  const absent = AuditBind.transactionBinding([base]);
+  const allFalse = AuditBind.transactionBinding([
+    { ...base, accountMetas: ix.keys.map(() => ({ isSigner: false, isWritable: false })) },
+  ]);
+  assert.notEqual(
+    absent,
+    allFalse,
+    "dropping the privilege flags must not be indistinguishable from asserting they are all off",
+  );
+});

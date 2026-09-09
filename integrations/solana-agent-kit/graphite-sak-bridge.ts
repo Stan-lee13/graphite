@@ -346,6 +346,14 @@ export class VerifiedSakAgent {
       data: ix.data,
       accounts: ix.keys.map((k) => k.pubkey.toBase58()),
       discriminator: TRANSFER_DISCRIMINATOR,
+      // The privilege flags. Graphite checks these via `real_account_metas`,
+      // so a binding that omits them would be checking less than the Core did
+      // — flipping a verified read-only account to writable changes what the
+      // instruction can do and leaves the projection hash untouched.
+      accountMetas: ix.keys.map((k) => ({
+        isSigner: k.isSigner,
+        isWritable: k.isWritable,
+      })),
     });
 
     // 1. The verified instruction is still the one in the transaction.

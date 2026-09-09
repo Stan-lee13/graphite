@@ -114,16 +114,36 @@ export class AuditBind {
   }
 
   /**
-   * A deterministic binding over EVERY instruction in a transaction.
+   * A deterministic binding over EVERY instruction in a transaction, including
+   * each account's signer and writable bits.
    *
-   * `content_hash` covers the instruction Graphite verified. It cannot cover
-   * one that did not exist at verification time, so an attacker who leaves the
-   * approved instruction untouched and APPENDS a second one passes a
-   * per-instruction check unchanged — the same shape as the attack L4 exists to
-   * catch, moved to the signing boundary.
+   * This is the EXECUTION binding, and it is deliberately not `content_hash`.
+   * Two reasons, both of which matter:
    *
-   * Compare this before signing against the value taken at approval time. Any
-   * addition, removal or reordering changes it.
+   * **It is a full 256-bit digest.** `content_hash` is SHA-256 truncated to 16
+   * hex characters — 64 bits, which is roughly 32-bit collision resistance
+   * (NIST SP 800-107 §5.1: truncating a digest to λ bits reduces collision
+   * strength to λ/2). That is fine for an identifier that has to be pinned
+   * byte-for-byte across Rust, TypeScript and Go, which is what `content_hash`
+   * is for. It is not what should stand between "Graphite approved this" and
+   * "the wallet signed this", so this one is not truncated at all.
+   *
+   * **It covers isSigner and isWritable.** `content_hash` covers programId,
+   * discriminator, accounts, data and CPI targets — matching the Rust core byte
+   * for byte — and does NOT cover the per-account privilege flags.
+   * `buildInstructionFromPayload` uses those flags to construct the instruction
+   * that actually executes, and Graphite checks them via `real_account_metas`,
+   * so a binding that omits them is checking less than the Core did (found in an
+   * independent review, 2026-09-09). Flipping a verified read-only account to
+   * writable changes what the instruction can do and left `content_hash`
+   * untouched.
+   *
+   * Every field is length-prefixed so concatenation is unambiguous: without it,
+   * moving a byte from one field or instruction into the next would leave the
+   * digest unchanged.
+   *
+   * Take this at approval time and compare before signing. Any addition,
+   * removal, reordering, account substitution or privilege change alters it.
    */
   static transactionBinding(
     instructions: {
@@ -131,19 +151,43 @@ export class AuditBind {
       data: Uint8Array;
       accounts: string[];
       discriminator?: string;
+      /**
+       * Per-account privilege flags, in the same order as `accounts`. Supply
+       * them whenever they are available — an instruction bound without them is
+       * bound less tightly than Graphite verified it, and `verifyTransactionUnchanged`
+       * cannot notice a privilege change it was never shown.
+       */
+      accountMetas?: { isSigner: boolean; isWritable: boolean }[];
     }[],
   ): string {
     const hasher = crypto.createHash("sha256");
-    hasher.update(String(instructions.length), "utf8");
+    const field = (v: string) => {
+      hasher.update(String(v.length), "utf8");
+      hasher.update(v, "utf8");
+    };
+    field(`GRAPHITE-TX-BINDING-V1:${instructions.length}`);
     for (const ix of instructions) {
-      // Length-prefixed per instruction so that concatenation is unambiguous:
-      // without it, moving a byte from one instruction to the next would leave
-      // the digest unchanged.
-      const h = AuditBind.computeHash(AuditBind.projectionFromInstruction(ix));
-      hasher.update(String(h.length), "utf8");
-      hasher.update(h, "utf8");
+      field(AuditBind.computeHash(AuditBind.projectionFromInstruction(ix)));
+      // The privilege flags the projection hash cannot see. Encoded
+      // positionally against `accounts`, with an explicit marker when the
+      // caller did not supply them, so "no metas" and "all false" are different
+      // inputs rather than the same digest.
+      const metas = ix.accountMetas;
+      if (!metas) {
+        field("metas:absent");
+      } else {
+        field(
+          "metas:" +
+            ix.accounts
+              .map((a, i) => {
+                const m = metas[i];
+                return `${a}:${m?.isSigner ? "s" : "-"}${m?.isWritable ? "w" : "-"}`;
+              })
+              .join(","),
+        );
+      }
     }
-    return hasher.digest("hex").slice(0, 32);
+    return hasher.digest("hex");
   }
 
   /**
@@ -156,6 +200,7 @@ export class AuditBind {
       data: Uint8Array;
       accounts: string[];
       discriminator?: string;
+      accountMetas?: { isSigner: boolean; isWritable: boolean }[];
     }[],
     expectedBinding: string,
   ): void {
