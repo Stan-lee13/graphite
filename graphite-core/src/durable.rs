@@ -524,28 +524,45 @@ impl AuditLog {
     /// Append one record, flushing immediately so the line is durable before
     /// the HTTP response is sent. A write failure is logged, never fatal —
     /// verification must not fail because the audit disk is unavailable.
-    pub fn append(&self, record: &AuditRecord) {
-        self.append_line(record);
+    /// Append a verification record. Returns whether it is durably on disk.
+    ///
+    /// The return value used to be `()`. Failures were counted and otherwise
+    /// invisible, so a caller could not tell an approval that was recorded from
+    /// one that was not — and the verify handler, which is the caller that
+    /// matters, went on to answer with a clean approval either way (found in an
+    /// independent review of `main`, 2026-09-08).
+    ///
+    /// That is an integrity failure rather than an observability one. Graphite's
+    /// value depends on the append-only trail existing: "Graphite approved X"
+    /// and "there is no durable record that Graphite approved X" cannot both be
+    /// acceptable in a system whose L8 reconciliation, quarantine decisions and
+    /// incident response all read that trail.
+    #[must_use]
+    pub fn append(&self, record: &AuditRecord) -> bool {
+        self.append_line(record)
     }
 
     /// Append an error-path record (same durability contract).
-    pub fn append_error(&self, record: &AuditErrorRecord) {
-        self.append_line(&record.bounded());
+    pub fn append_error(&self, record: &AuditErrorRecord) -> bool {
+        self.append_line(&record.bounded())
     }
 
     /// Append a lifecycle event (P9). Same durability contract as `append`:
     /// flushed before the caller is answered, non-fatal on failure but
     /// counted, and subject to the same rotation.
-    pub fn append_lifecycle(&self, record: &LifecycleEventRecord) {
-        self.append_line(record);
+    pub fn append_lifecycle(&self, record: &LifecycleEventRecord) -> bool {
+        self.append_line(record)
     }
 
-    fn append_line<T: serde::Serialize>(&self, record: &T) {
+    /// Returns true when the line is written AND flushed.
+    fn append_line<T: serde::Serialize>(&self, record: &T) -> bool {
         let line = match serde_json::to_string(record) {
             Ok(l) => l,
             Err(e) => {
                 tracing::error!("audit serialization failed: {}", e);
-                return;
+                self.writes_failed
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                return false;
             }
         };
         let mut file = match self.file.lock() {
@@ -553,18 +570,20 @@ impl AuditLog {
             Err(poisoned) => poisoned.into_inner(),
         };
         if let Err(e) = writeln!(file, "{}", line).and_then(|_| file.flush()) {
-            // Non-fatal by design (a failing audit disk must not take down
-            // verification) — but counted, so /health and /metrics can expose
-            // it and an operator can alert instead of silently losing the
-            // trail.
+            // Counted AND reported. The comment here used to say a failing
+            // audit disk "must not take down verification", and that reasoning
+            // is right for the process — the server should stay up — but wrong
+            // for the individual answer. A verdict Graphite cannot record is a
+            // verdict it should not hand back as though it had.
             self.writes_failed.fetch_add(1, Ordering::Relaxed);
             tracing::error!("audit write failed: {}", e);
-            return;
+            return false;
         }
         self.writes_ok.fetch_add(1, Ordering::Relaxed);
         // Rotate AFTER a successful append, while still holding the lock, so
         // the size check and rename cannot interleave with another writer.
         self.rotate_if_needed(&mut file);
+        true
     }
 }
 
@@ -664,7 +683,7 @@ mod tests {
         // Rotate aggressively so a handful of records crosses the threshold.
         let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
         for i in 0..200 {
-            log.append(&rec(&format!("id-{i}")));
+            assert!(log.append(&rec(&format!("id-{i}"))));
         }
         let active = std::fs::metadata(audit_path(&dir)).unwrap().len();
         assert!(
@@ -687,7 +706,7 @@ mod tests {
         let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
         let total = 150;
         for i in 0..total {
-            log.append(&rec(&format!("id-{i}")));
+            assert!(log.append(&rec(&format!("id-{i}"))));
         }
         let mut seen = 0usize;
         let mut files = archives_in(&dir);
@@ -783,7 +802,7 @@ mod tests {
         let log = AuditLog::open_with_rotation(audit_path(&dir), 1, 0).unwrap();
         let writes = 60;
         for i in 0..writes {
-            log.append(&rec(&format!("id-{i}")));
+            assert!(log.append(&rec(&format!("id-{i}"))));
         }
 
         let mut files = archives_in(&dir);
@@ -809,7 +828,7 @@ mod tests {
         let dir = temp_dir("sort-order");
         let log = AuditLog::open_with_rotation(audit_path(&dir), 1, 0).unwrap();
         for i in 0..15 {
-            log.append(&rec(&format!("id-{i}")));
+            assert!(log.append(&rec(&format!("id-{i}"))));
         }
         let archives = archives_in(&dir); // archives_in() sorts lexically
         let mut by_mtime = archives.clone();
@@ -827,7 +846,7 @@ mod tests {
         let dir = temp_dir("prune");
         let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 2).unwrap();
         for i in 0..300 {
-            log.append(&rec(&format!("id-{i}")));
+            assert!(log.append(&rec(&format!("id-{i}"))));
         }
         let archives = archives_in(&dir);
         assert!(
@@ -845,7 +864,7 @@ mod tests {
         let dir = temp_dir("disabled");
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
         for i in 0..200 {
-            log.append(&rec(&format!("id-{i}")));
+            assert!(log.append(&rec(&format!("id-{i}"))));
         }
         assert!(
             archives_in(&dir).is_empty(),
@@ -862,7 +881,7 @@ mod tests {
         let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
         assert_eq!(log.health().writes_ok, 0);
         for i in 0..5 {
-            log.append(&rec(&format!("id-{i}")));
+            assert!(log.append(&rec(&format!("id-{i}"))));
         }
         let h = log.health();
         assert_eq!(h.writes_ok, 5);
@@ -925,7 +944,7 @@ mod tests {
         {
             let log = AuditLog::open(&path).unwrap();
             for i in 0..10 {
-                log.append(&AuditRecord {
+                assert!(log.append(&AuditRecord {
                     event_type: LifecycleEvent::Verification,
                     timestamp: format!("t{i}"),
                     audit_trail_id: format!("id{i}"),
@@ -948,7 +967,7 @@ mod tests {
                     },
                     l3_status: "inconclusive".into(),
                     l8_status: "inconclusive".into(),
-                });
+                }));
             }
         }
         // Append a torn final line (simulating a crash mid-write).
@@ -978,14 +997,14 @@ mod tests {
 
         // Error records are capped at tail too, and count toward total_errors.
         for i in 0..4 {
-            log.append_error(&AuditErrorRecord {
+            assert!(log.append_error(&AuditErrorRecord {
                 timestamp: format!("te{i}"),
                 program_id: format!("prg{i}"),
                 instruction_name: "transfer".into(),
                 error: "bad payload".into(),
                 error_type: "bad_input".into(),
                 status: 400,
-            });
+            }));
         }
         let (_, errs, _, err_total) = log.read_tail_filtered(2, |_| true);
         assert_eq!(err_total, 4, "all error records counted");

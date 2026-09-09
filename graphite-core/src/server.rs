@@ -495,8 +495,25 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
                 Some(log)
             }
             Err(e) => {
-                tracing_log(&format!("WARNING: audit log unavailable: {}", e));
-                None
+                // Hard failure, matching what `probe_data_dir_writable` above
+                // already promises: "Graphite refuses to start without a
+                // durable audit trail (Constitution P9)."
+                //
+                // This used to log a WARNING and continue with `audit = None`,
+                // after which the server accepted verifications and recorded
+                // none of them — the probe's stated guarantee contradicted a
+                // few hundred lines below it. The probe checks that the
+                // DIRECTORY is writable; opening the log can still fail for
+                // reasons it cannot see (the file exists and is not writable,
+                // a stale lock, a full disk).
+                return Err(format!(
+                    "audit log at {} could not be opened: {e}. Graphite refuses to start \
+                     without a durable audit trail (Constitution P9) — an approval nobody \
+                     recorded is an approval nobody can reconcile, quarantine against, or \
+                     investigate.",
+                    audit_path(&data_dir).display()
+                )
+                .into());
             }
         };
 
@@ -1120,14 +1137,14 @@ async fn verify_handler(
         Err(rejection) => {
             let message = rejection.body_text();
             if let Some(log) = &state.audit {
-                log.append_error(&AuditErrorRecord {
+                assert!(log.append_error(&AuditErrorRecord {
                     timestamp: crate::durable::now_utc_rfc3339(),
                     program_id: "<malformed>".to_string(),
                     instruction_name: "<unparseable>".to_string(),
                     error: message.clone(),
                     error_type: "JsonRejection".to_string(),
                     status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
-                });
+                }));
             }
             tracing_log(&format!("verify: 422 unparseable body — {}", message));
             return Err((
@@ -1176,7 +1193,16 @@ async fn verify_handler(
             ));
 
             // Durability: append to the audit log before responding (the line
-            // is flushed synchronously). Best-effort — never fails the request.
+            // is flushed synchronously).
+            //
+            // NOT best-effort. That comment used to say "never fails the
+            // request", and the write's return value was discarded, so a
+            // verdict that never reached the trail came back as a clean
+            // approval. Graphite's own L8 reconciliation, quarantine decisions
+            // and incident response all read that trail; an approval missing
+            // from it is one nobody can reconcile against, and the caller had
+            // no way to know.
+            let mut audit_recorded = true;
             if let Some(log) = &state.audit {
                 // GAP-2026-08-06-3: the audit trail records the REAL L3/L8 layer
                 // states (never the old phantom `passed: true`). Layers are the
@@ -1189,7 +1215,7 @@ async fn verify_handler(
                         .map(|l| l.status.as_str().to_string())
                         .unwrap_or_else(|| "unknown".to_string())
                 };
-                log.append(&AuditRecord {
+                audit_recorded = log.append(&AuditRecord {
                     // The synchronous construction -> simulation ->
                     // verification operation Graphite actually performs. Its
                     // construction and simulation evidence rides on this same
@@ -1213,6 +1239,31 @@ async fn verify_handler(
                     l3_status: layer_status("L3_SimulationVerification"),
                     l8_status: layer_status("L8_ExecutionVerification"),
                 });
+            }
+
+            // A verdict Graphite could not record is a verdict it must not hand
+            // back as though it had. Refusing here is loud, which is the point:
+            // a full or failing audit disk gets fixed instead of silently
+            // producing approvals with no trail behind them.
+            //
+            // 503 rather than 500 because the condition is operational and
+            // transient — the same treatment load shedding gets, and for the
+            // same reason: a refusal the caller can act on beats an answer they
+            // cannot rely on.
+            if !audit_recorded {
+                Metrics::inc(&state.metrics.verify_errors);
+                tracing_server_error(
+                    "audit write FAILED for a completed verification — refusing to return the                      verdict, because an approval with no durable record cannot be reconciled                      by L8, cannot be quarantined against, and cannot be investigated",
+                );
+                return Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(serde_json::json!({
+                        "error": "verification completed but could not be durably recorded",
+                        "error_type": "AuditWriteFailed",
+                        "hint": "Graphite refuses to return a verdict it cannot write to the append-only trail (Constitution P9). Check the data volume's writability and free space; graphite_audit_writes_failed_total at /metrics counts these.",
+                        "status": 503,
+                    })),
+                ));
             }
 
             let mut result = result;
@@ -1252,14 +1303,14 @@ async fn verify_handler(
             // The record mirrors AuditRecord but carries the error instead
             // of a verdict.
             if let Some(log) = &state.audit {
-                log.append_error(&AuditErrorRecord {
+                assert!(log.append_error(&AuditErrorRecord {
                     timestamp: crate::durable::now_utc_rfc3339(),
                     program_id: input.program_id.clone(),
                     instruction_name: input.instruction_discriminator.clone(),
                     error: http_error.message().to_string(),
                     error_type: error_type.clone(),
                     status: status.as_u16(),
-                });
+                }));
             }
 
             Err((
@@ -1529,7 +1580,7 @@ async fn execution_handler(
     // Graphite verified, and a discrepancy is the single most important thing
     // this system can record. It goes on the same append-only trail.
     if let Some(log) = audit {
-        log.append_lifecycle(&LifecycleEventRecord {
+        assert!(log.append_lifecycle(&LifecycleEventRecord {
             event_type: LifecycleEvent::Confirmation,
             timestamp: crate::durable::now_utc_rfc3339(),
             content_hash: result
@@ -1541,7 +1592,7 @@ async fn execution_handler(
             transaction_signature: Some(signature.clone()),
             reported_by: body.reported_by.clone(),
             detail: Some(format!("L8 reconciliation: {:?}", result.reconciliation)),
-        });
+        }));
     }
 
     if result.reconciliation.is_discrepancy() {
@@ -1658,7 +1709,7 @@ async fn quarantine_handler(
     // gate itself. Recording it on the same append-only trail is what makes
     // "why was this blocked in production last Tuesday" answerable.
     if let Some(log) = &state.audit {
-        log.append_lifecycle(&LifecycleEventRecord {
+        assert!(log.append_lifecycle(&LifecycleEventRecord {
             event_type: LifecycleEvent::OperatorAction,
             timestamp: crate::durable::now_utc_rfc3339(),
             content_hash: program_id.clone(),
@@ -1673,7 +1724,7 @@ async fn quarantine_handler(
                     body.reason.as_deref().unwrap_or("").trim()
                 )
             }),
-        });
+        }));
     }
 
     // Deliberately named `earned_trust_tier`, not `trust_tier`.
@@ -1773,7 +1824,7 @@ async fn lifecycle_event_handler(
         reported_by: body.reported_by,
         detail: body.detail,
     };
-    log.append_lifecycle(&record);
+    assert!(log.append_lifecycle(&record));
     Metrics::inc(&state.metrics.lifecycle_events);
 
     Ok(Json(serde_json::json!({
@@ -2585,7 +2636,7 @@ mod tests {
         // Append two audit records directly (verification happened over HTTP).
         let log = state.audit.as_ref().unwrap();
         let ts = crate::durable::now_utc_rfc3339();
-        log.append(&AuditRecord {
+        assert!(log.append(&AuditRecord {
             event_type: LifecycleEvent::Verification,
             timestamp: ts.clone(),
             audit_trail_id: "gr-a".to_string(),
@@ -2600,8 +2651,8 @@ mod tests {
             policy_verdict: "Approved".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
-        });
-        log.append(&AuditRecord {
+        }));
+        assert!(log.append(&AuditRecord {
             event_type: LifecycleEvent::Verification,
             timestamp: ts,
             audit_trail_id: "gr-b".to_string(),
@@ -2616,7 +2667,7 @@ mod tests {
             policy_verdict: "RejectedBelowThreshold".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
-        });
+        }));
         let app = build_app(state, vec![]);
         let (status, json) = get_json(&app, "/api/confidence-history").await;
         assert_eq!(status, axum::http::StatusCode::OK);
@@ -2630,7 +2681,7 @@ mod tests {
     async fn dashboard_policy_violations_lists_blocked_records() {
         let (state, dir) = test_state();
         let log = state.audit.as_ref().unwrap();
-        log.append(&AuditRecord {
+        assert!(log.append(&AuditRecord {
             event_type: LifecycleEvent::Verification,
             timestamp: crate::durable::now_utc_rfc3339(),
             audit_trail_id: "gr-blocked".to_string(),
@@ -2645,16 +2696,16 @@ mod tests {
             policy_verdict: "RejectedRiskEngineBlock".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
-        });
+        }));
         // Error-path probe (malformed request) must surface as a violation too.
-        log.append_error(&crate::durable::AuditErrorRecord {
+        assert!(log.append_error(&crate::durable::AuditErrorRecord {
             timestamp: crate::durable::now_utc_rfc3339(),
             program_id: "probe".to_string(),
             instruction_name: "n/a".to_string(),
             error: "missing proposed_intent".to_string(),
             error_type: "bad_input".to_string(),
             status: 400,
-        });
+        }));
         let app = build_app(state, vec![]);
         let (status, json) = get_json(&app, "/api/policy-violations").await;
         assert_eq!(status, axum::http::StatusCode::OK);
@@ -2680,7 +2731,7 @@ mod tests {
         let log = state.audit.as_ref().unwrap();
         // 3 verifications of the System program.
         for i in 0..3 {
-            log.append(&AuditRecord {
+            assert!(log.append(&AuditRecord {
                 event_type: LifecycleEvent::Verification,
                 timestamp: crate::durable::now_utc_rfc3339(),
                 audit_trail_id: format!("gr-top-{i}"),
@@ -2695,7 +2746,7 @@ mod tests {
                 policy_verdict: "Approved".to_string(),
                 l3_status: "inconclusive".to_string(),
                 l8_status: "inconclusive".to_string(),
-            });
+            }));
         }
         let app = build_app(state, vec![]);
         let (status, json) = get_json(&app, "/api/protocols/top").await;

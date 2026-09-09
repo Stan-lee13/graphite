@@ -132,11 +132,42 @@ fn parse_account_value(
     if value.is_null() {
         return Ok(None);
     }
-    let lamports = value.get("lamports").and_then(|v| v.as_u64()).unwrap_or(0);
+    // `lamports` and `owner` are MANDATORY and type-checked.
+    //
+    // They used to default to 0 and the System Program when unreadable, which
+    // fabricates account state — and fabricated state is at its most dangerous
+    // in exactly this parser, because L4 exists to reason about state changes.
+    //
+    // The false-positive direction is obvious (an unreadable pre-state balance
+    // of 0 makes any account look newly created). The dangerous direction is
+    // quieter: pre-state and post-state fail the SAME way, both become the same
+    // default, the delta is zero, and a real movement reads as "nothing
+    // changed". A hostile or broken provider returning `"lamports": "5"` for
+    // both sides hides the difference between them.
+    //
+    // This is the invariant the campaign already applies to the simulation
+    // parser — unreadable input is ABSENT, never zero — and it was missing
+    // here (found in an independent review of `main`, 2026-09-08).
+    //
+    // `executable`, `rentEpoch` and `data` keep their defaults: they are
+    // genuinely optional in some response shapes, and a wrong value for them
+    // cannot manufacture or conceal a state delta on its own.
+    let lamports = value
+        .get("lamports")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            RpcError::InvalidResponse(format!(
+                "account {pubkey}: `lamports` is missing or not an unsigned integer — refusing to                  substitute a default, because an invented balance is indistinguishable from a                  measured one once it reaches the state diff"
+            ))
+        })?;
     let owner = value
         .get("owner")
         .and_then(|v| v.as_str())
-        .unwrap_or("11111111111111111111111111111111")
+        .ok_or_else(|| {
+            RpcError::InvalidResponse(format!(
+                "account {pubkey}: `owner` is missing or not a string — refusing to substitute the                  System Program, because that turns an unreadable response into a specific claim                  about who controls the account"
+            ))
+        })?
         .to_string();
     let executable = value
         .get("executable")

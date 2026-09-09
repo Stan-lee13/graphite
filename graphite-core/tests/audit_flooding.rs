@@ -132,14 +132,14 @@ fn a_single_error_record_cannot_be_made_arbitrarily_large() {
 
     // A megabyte in every caller-influenced field, as if every upstream guard
     // had been bypassed.
-    log.append_error(&AuditErrorRecord {
+    assert!(log.append_error(&AuditErrorRecord {
         timestamp: "2026-09-06T00:00:00Z".to_string(),
         program_id: "A".repeat(1_000_000),
         instruction_name: "B".repeat(1_000_000),
         error: "C".repeat(1_000_000),
         error_type: "D".repeat(1_000_000),
         status: 400,
-    });
+    }));
 
     let written = std::fs::metadata(&path).expect("audit file").len();
     assert!(
@@ -171,14 +171,14 @@ fn an_ordinary_error_record_is_stored_verbatim() {
     let dir = temp_dir("audit-ok");
     let path = dir.join("audit.jsonl");
     let log = AuditLog::open(&path).expect("open audit log");
-    log.append_error(&AuditErrorRecord {
+    assert!(log.append_error(&AuditErrorRecord {
         timestamp: "2026-09-06T00:00:00Z".to_string(),
         program_id: SYSTEM.to_string(),
         instruction_name: "02000000".to_string(),
         error: "Invalid address: not-base58".to_string(),
         error_type: "AccountResolution".to_string(),
         status: 400,
-    });
+    }));
     let contents = std::fs::read_to_string(&path).unwrap();
     assert!(contents.contains(SYSTEM), "{contents}");
     assert!(

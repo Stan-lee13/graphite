@@ -755,3 +755,102 @@ async fn the_pipeline_really_does_consult_the_rpc() {
         "the pre-state was never fetched, so no diff was built. calls={calls:?}"
     );
 }
+
+// ── Fabricated account state (found in an independent review, 2026-09-08) ────
+//
+// `parse_account_value` defaulted `lamports` to 0 and `owner` to the System
+// Program when either was unreadable. That fabricates state, and this parser is
+// the worst place in the codebase to do it: L4 exists to reason about state
+// changes, and it cannot tell an invented balance from a measured one.
+//
+// The false-positive direction is easy to see — an unreadable pre-state balance
+// of 0 makes any account look newly created. The dangerous direction is quiet:
+// pre-state and post-state fail the SAME way, both collapse to the same
+// default, the delta comes out zero, and a real movement reads as "nothing
+// changed".
+
+#[tokio::test]
+async fn an_account_with_unreadable_lamports_is_refused_not_defaulted_to_zero() {
+    for bad in [
+        r#"{"lamports":"5","owner":"11111111111111111111111111111111","data":["","base64"]}"#,
+        r#"{"lamports":null,"owner":"11111111111111111111111111111111","data":["","base64"]}"#,
+        r#"{"lamports":-1,"owner":"11111111111111111111111111111111","data":["","base64"]}"#,
+        r#"{"owner":"11111111111111111111111111111111","data":["","base64"]}"#,
+    ] {
+        let body = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":{bad}}}}}"#
+        );
+        let mut m = HashMap::new();
+        m.insert("getAccountInfo", body);
+        let rpc = HostileRpc::start(m);
+        let client = SolanaRpcClient::new(RpcConfig {
+            endpoint: rpc.endpoint.clone(),
+            timeout: std::time::Duration::from_secs(5),
+            max_retries: 0,
+            ..Default::default()
+        });
+        let pk = graphite_core::solana_types::Pubkey::from_base58(FROM).unwrap();
+        let outcome = client.get_account(&pk).await;
+        assert!(
+            outcome.is_err(),
+            "an account whose lamports could not be read came back as a usable balance: {bad}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_account_with_an_unreadable_owner_is_not_reported_as_system_owned() {
+    for bad in [
+        r#"{"lamports":1000,"owner":12345,"data":["","base64"]}"#,
+        r#"{"lamports":1000,"owner":null,"data":["","base64"]}"#,
+        r#"{"lamports":1000,"data":["","base64"]}"#,
+    ] {
+        let body = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":{bad}}}}}"#
+        );
+        let mut m = HashMap::new();
+        m.insert("getAccountInfo", body);
+        let rpc = HostileRpc::start(m);
+        let client = SolanaRpcClient::new(RpcConfig {
+            endpoint: rpc.endpoint.clone(),
+            timeout: std::time::Duration::from_secs(5),
+            max_retries: 0,
+            ..Default::default()
+        });
+        let pk = graphite_core::solana_types::Pubkey::from_base58(FROM).unwrap();
+        match client.get_account(&pk).await {
+            Err(_) => {}
+            Ok(acc) => panic!(
+                "an unreadable owner became a specific claim about who controls the account: \
+                 owner={} from {bad}",
+                acc.owner
+            ),
+        }
+    }
+}
+
+/// Anti-vacuity: a well-formed account must still parse, or the two tests above
+/// are satisfied by a parser that refuses everything.
+#[tokio::test]
+async fn a_well_formed_account_still_parses() {
+    let body = format!(
+        r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":{}}}}}"#,
+        account_json(1_234_567, SYSTEM_PROGRAM)
+    );
+    let mut m = HashMap::new();
+    m.insert("getAccountInfo", body);
+    let rpc = HostileRpc::start(m);
+    let client = SolanaRpcClient::new(RpcConfig {
+        endpoint: rpc.endpoint.clone(),
+        timeout: std::time::Duration::from_secs(5),
+        max_retries: 0,
+        ..Default::default()
+    });
+    let pk = graphite_core::solana_types::Pubkey::from_base58(FROM).unwrap();
+    let acc = client
+        .get_account(&pk)
+        .await
+        .expect("a well-formed account must parse");
+    assert_eq!(acc.lamports, 1_234_567);
+    assert_eq!(acc.owner, SYSTEM_PROGRAM);
+}

@@ -15,11 +15,20 @@
 //	    return fmt.Errorf("graphite verification unavailable: %w", err)
 //	}
 //
-//	// Approved is the ONLY field to gate execution on. Everything else —
-//	// Confidence, PolicyVerdict, RiskVerdict — is evidence for audit and
-//	// explanation, not a decision.
+//	// Approved is the only field carrying a DECISION — Confidence,
+//	// PolicyVerdict and RiskVerdict are evidence for audit and explanation,
+//	// never a gate. But Approved alone does not say WHAT was verified, so an
+//	// integration that can move funds checks the scope as well.
 //	if !result.Approved {
 //	    return fmt.Errorf("blocked by Graphite: %s", result.Summary)
+//	}
+//	if !result.IsArtifactBound() {
+//	    // The verdict describes metadata you supplied; nothing in it
+//	    // constrains the transaction that gets signed. Either supply
+//	    // SignedTransaction so Graphite can bind the artifact, or bind the
+//	    // instruction yourself with AuditBind below. A nil scope means an
+//	    // older server did not say — unknown, not safe.
+//	    return fmt.Errorf("verdict is not artifact-bound; unobserved: %v", result.Unobserved())
 //	}
 //
 //	// Bind what was verified to what you are about to submit. Graphite

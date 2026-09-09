@@ -276,11 +276,25 @@ Graphite verifies **before** the transaction is signed. Two rules make that
 protection real; skipping either one produces an integration that looks correct
 and protects nothing.
 
-**1. `approved` is the only field you may gate on.** Everything else —
-`confidence`, `policy_verdict`, `risk_verdict`, `trust_tier` — is evidence for
-audit and explanation, not a decision. And a transport error, timeout, or
-non-200 means *verification did not happen*: that is a hard stop, never an
-implicit pass.
+**1. `approved` is necessary but not sufficient — check `scope` too.** `approved`
+is the only field that carries a *decision*; `confidence`, `policy_verdict`,
+`risk_verdict` and `trust_tier` are evidence for audit and explanation. But
+`approved` alone does not tell you WHAT was verified, and that is a separate
+question with a separate field:
+
+| `scope.kind` | What the verdict covers | Safe to execute on `approved` alone? |
+|---|---|---|
+| `artifact_bound` | The exact transaction bytes you supplied, subject to `scope.unobserved` | Yes, if you also submit those exact bytes |
+| `descriptive` | Only the metadata you described. Nothing constrains what is actually signed | **No** — bind the instruction yourself (see 2) |
+| *(absent)* | A server older than 2026-09-08 did not say | **No** — treat as unknown, not as either answer |
+
+Read `scope.unobserved` in both modes: it lists, in words, the security-relevant
+properties Graphite did *not* establish. It is never empty — a verdict claiming
+to have observed everything would be a strong assertion, and one Graphite does
+not make.
+
+And a transport error, timeout, or non-200 means *verification did not happen*:
+that is a hard stop, never an implicit pass.
 
 **2. Bind what was verified to what you submit.** Between approval and the
 chain, the instruction can still be mutated — a compromised RPC proxy, a

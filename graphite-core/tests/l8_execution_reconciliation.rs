@@ -67,7 +67,7 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 
 /// Write a verification record with the given verdict, as `/verify` would.
 fn record(log: &AuditLog, content_hash: &str, approved: bool) {
-    log.append(&AuditRecord {
+    assert!(log.append(&AuditRecord {
         event_type: LifecycleEvent::Verification,
         timestamp: "2026-09-07T00:00:00Z".to_string(),
         audit_trail_id: format!("gr-test-{content_hash}"),
@@ -82,7 +82,7 @@ fn record(log: &AuditLog, content_hash: &str, approved: bool) {
         policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),
         l3_status: "inconclusive".to_string(),
         l8_status: "inconclusive".to_string(),
-    });
+    }));
 }
 
 fn core_with(endpoint: String) -> GraphiteCore {

@@ -1,7 +1,7 @@
 {
   "$schema": "https://graphite.dev/schemas/verification-result-v1.json",
   "title": "Graphite VerificationResult",
-  "description": "Output of the Graphite verification pipeline. Field parity with graphite-core/src/verification.rs VerificationResult (19 fields) and the TypeScript/Go SDKs. Security note: `approved` is the ONLY field a consumer may gate execution on; all other fields are evidence for audit.",
+  "description": "Output of the Graphite verification pipeline. Field parity with graphite-core/src/verification.rs VerificationResult and the TypeScript/Go SDKs. SECURITY CONTRACT: `approved` is the only field carrying a DECISION \u2014 confidence, policy_verdict, risk_verdict and trust_tier are evidence for audit and explanation, never a gate. But `approved` alone is not sufficient to execute on, because it does not say WHAT was verified: read `scope` as well. scope.kind == 'artifact_bound' means the verdict covers the exact transaction bytes supplied, subject to scope.unobserved; 'descriptive' means it covers only caller-supplied metadata and nothing constrains what is actually signed; an ABSENT scope means a pre-2026-09-08 server did not say and must be treated as unknown rather than as either answer. An execution-capable integration MUST enforce the scope it requires. A transport error, timeout or non-200 means verification did not happen: a hard stop, never an implicit pass.",
   "type": "object",
   "required": [
     "approved",
