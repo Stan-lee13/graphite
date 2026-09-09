@@ -413,6 +413,107 @@ fn compare_instruction_accounts(
     InstructionAccounts::Match { unresolved }
 }
 
+/// Whether a caller-declared instruction describes this one in the artifact.
+///
+/// Program, then the discriminator as a prefix of the actual data, then the
+/// account list position by position — the same three things that identify the
+/// primary instruction, applied to a sibling.
+///
+/// An empty discriminator matches nothing. It is the shape of a declaration
+/// that names a program and says nothing about what is being called, and
+/// treating it as a match would let "describe your siblings" be satisfied by
+/// declaring the program alone.
+fn declaration_describes(
+    declared: &crate::tx_pattern_analysis::TransactionInstruction,
+    actual: &crate::tx_artifact::ArtifactInstruction,
+) -> bool {
+    if declared.instruction_discriminator.is_empty() || declared.program_id != actual.program_id {
+        return false;
+    }
+    if !hex::encode(&actual.data).starts_with(&declared.instruction_discriminator.to_lowercase()) {
+        return false;
+    }
+    matches!(
+        compare_instruction_accounts(&actual.accounts, &declared.account_addresses),
+        InstructionAccounts::Match { .. }
+    )
+}
+
+/// Which instructions of the artifact nobody described, and which declarations
+/// describe nothing in it.
+///
+/// Both directions, because both are ways for a request and its bytes to
+/// disagree. An instruction nobody described executes unexamined. A declaration
+/// matching nothing describes a transaction other than this one — and since
+/// declared accounts widen what the lookup-table disclosure treats as named, an
+/// unmatched declaration is also a way to pad that set until a real account
+/// stops being reported.
+///
+/// Matching is greedy and each declaration is spent once, so two identical
+/// siblings need two declarations. One declaration covering both would leave a
+/// real instruction unexamined while the count looked right.
+struct SiblingCoverage {
+    undescribed: Vec<(usize, String)>,
+    unmatched_declarations: usize,
+}
+
+impl SiblingCoverage {
+    fn complete(&self) -> bool {
+        self.undescribed.is_empty() && self.unmatched_declarations == 0
+    }
+
+    /// The disagreement, phrased for a caller who has to fix it.
+    fn detail(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.undescribed.is_empty() {
+            parts.push(format!(
+                "the request does not describe {} of them: {}",
+                self.undescribed.len(),
+                self.undescribed
+                    .iter()
+                    .map(|(i, p)| format!("#{i} calling {p}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        if self.unmatched_declarations > 0 {
+            parts.push(format!(
+                "{} declared instruction(s) match nothing in these bytes",
+                self.unmatched_declarations
+            ));
+        }
+        parts.join("; ")
+    }
+}
+
+fn sibling_coverage(
+    message: &crate::tx_artifact::ArtifactMessage,
+    primary: usize,
+    declared: &[crate::tx_pattern_analysis::TransactionInstruction],
+) -> SiblingCoverage {
+    let mut spent = vec![false; declared.len()];
+    let mut undescribed = Vec::new();
+
+    for (i, actual) in message.instructions.iter().enumerate() {
+        if i == primary {
+            continue;
+        }
+        match declared
+            .iter()
+            .enumerate()
+            .position(|(d, decl)| !spent[d] && declaration_describes(decl, actual))
+        {
+            Some(d) => spent[d] = true,
+            None => undescribed.push((i, actual.program_id.clone())),
+        }
+    }
+
+    SiblingCoverage {
+        undescribed,
+        unmatched_declarations: spent.iter().filter(|used| !**used).count(),
+    }
+}
+
 /// The wall-clock budget ONE verification may spend talking to an RPC.
 ///
 /// Found 2026-09-08 auditing the server as production infrastructure: the
@@ -2707,19 +2808,43 @@ impl GraphiteCore {
                                     data.len()
                                 ),
                             ),
-                            Some(idx) if !c.undescribed_instructions.is_empty() => {
+                            // Siblings are not automatically a failure — they
+                            // are a failure when nobody described them. Almost
+                            // every real Solana transaction carries more than
+                            // one instruction (a ComputeBudget limit and price
+                            // sit in front of most of them), so rejecting all of
+                            // them would make supplying the artifact the losing
+                            // move: send nothing, get a Descriptive verdict,
+                            // keep the approval. A control people route around
+                            // is not a control.
+                            //
+                            // `transaction_instructions` is what a caller
+                            // describes them with, and every entry is
+                            // risk-assessed as a secondary instruction, so
+                            // describing a sibling buys scrutiny rather than
+                            // silence. What changes is that the declaration is
+                            // checked against the bytes instead of being taken
+                            // on its word.
+                            Some(idx)
+                                if !sibling_coverage(
+                                    &message,
+                                    idx,
+                                    &input.transaction_instructions,
+                                )
+                                .complete() =>
+                            {
                                 PipelineLayerResult::new(
                                     "L2_InstructionVerification",
                                     LayerStatus::Failed,
                                     format!(
-                                        "the described instruction is instruction {idx} of {}, and the request does not describe the other {}: {}. A verdict about one instruction says nothing about the ones beside it, and they execute in the same transaction",
+                                        "the described instruction is instruction {idx} of {}, and {}. A verdict about one instruction says nothing about the ones beside it, and they execute in the same transaction",
                                         message.instructions.len(),
-                                        c.undescribed_instructions.len(),
-                                        c.undescribed_instructions
-                                            .iter()
-                                            .map(|(i, p)| format!("#{i} calling {p}"))
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
+                                        sibling_coverage(
+                                            &message,
+                                            idx,
+                                            &input.transaction_instructions
+                                        )
+                                        .detail()
                                     ),
                                 )
                             }
