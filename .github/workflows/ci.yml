@@ -122,7 +122,11 @@ jobs:
       - name: SDK typecheck + AuditBind cross-language parity
         working-directory: sdk/typescript
         run: |
-          npm ci || npm install
+          # `npm ci` alone: the previous `npm ci || npm install` fallback
+          # meant a lockfile problem silently downgraded the job to
+          # unpinned resolution, which is the failure mode the lockfile
+          # exists to prevent.
+          npm ci
           npm run check
           # Pins the TS content_hash to the SAME vectors the Rust core and the
           # Go SDK assert. If any of the three implementations drifts, the
@@ -138,9 +142,16 @@ jobs:
       - name: SAK integration typecheck + AuditBind cross-language tests
         working-directory: integrations/solana-agent-kit
         run: |
-          npm install
-          npx tsc --noEmit -p tsconfig.json
-          npx tsx --test auditbind.test.ts bound-instruction.test.ts
+          # `npm ci` for the lockfile, `npm run` for the binaries. `npx tsc`
+          # and `npx tsx` fetch whatever version resolves at job time, which
+          # puts an unpinned download inside the build of the thing that is
+          # supposed to be the trustworthy part of the stack.
+          npm ci
+          npm run typecheck
+          # `npm test` runs every *.test.ts in the directory. The previous
+          # invocation named two files, so a third test file could sit in the
+          # repository looking like a gate without ever running.
+          npm test
 
   go:
     name: Go SDK — fmt, vet, tests
@@ -184,7 +195,7 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - name: Install
-        run: npm install
+        run: npm ci
       - name: Typecheck
         run: npm run typecheck
       - name: Build
@@ -202,6 +213,6 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install test deps
-        run: pip install pytest
+        run: pip install -r requirements.txt
       - name: Tests
         run: pytest -q

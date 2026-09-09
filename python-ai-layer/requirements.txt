@@ -5,8 +5,10 @@
 #
 # These dependencies are for testing and optional enhanced parsing:
 
-# Testing
-pytest>=7.0.0
+# Testing. Pinned exactly: a floating lower bound resolves to whatever is
+# newest when CI runs, so the build of a security tool would depend on a
+# package version nobody in this repository chose.
+pytest==8.3.4
 
 # Optional: If you integrate LLM-based intent parsing (Constitution P1 still applies —
 # the AI layer only PARSES, the Rust Core makes all security decisions):
