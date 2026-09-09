@@ -227,15 +227,34 @@ fn even_a_bound_artifact_states_the_limit_of_the_binding() {
 /// Missing privilege metadata is a security-relevant absence and appears in
 /// both modes, because privilege escalation inside the account list is
 /// invisible without it.
+///
+/// The two modes now say different things and both are true. Without an
+/// artifact the flags can only have come from the caller, and none were
+/// supplied. With an unreadable artifact they could not be derived either, and
+/// naming BOTH routes matters: a reader who sees only "not supplied" will send
+/// them, and sending them is no longer the strongest thing available.
 #[test]
 fn ungrounded_signer_and_writable_flags_are_reported_as_unobserved() {
-    for signed in [None, Some(vec![4u8; 8])] {
-        let joined = scope_of(&input(signed)).unobserved().join(" | ");
-        assert!(
-            joined.contains("real_account_metas"),
-            "signer/writable flags were not supplied and the verdict did not say so: {joined}"
-        );
-    }
+    let without_artifact = scope_of(&input(None)).unobserved().join(" | ");
+    assert!(
+        without_artifact.contains("real_account_metas"),
+        "with no artifact, the verdict must say the flags were not supplied: {without_artifact}"
+    );
+
+    // These fixtures are synthetic blobs that do not parse, so the header could
+    // not answer either. `tests/privilege_from_artifact.rs` covers the case
+    // where it can.
+    let with_unreadable_artifact = scope_of(&input(Some(vec![4u8; 8])))
+        .unobserved()
+        .join(" | ");
+    assert!(
+        with_unreadable_artifact.contains("could not be derived from the artifact"),
+        "an unreadable artifact must say the flags could not be derived, not only that none were supplied: {with_unreadable_artifact}"
+    );
+    assert!(
+        with_unreadable_artifact.contains("not checked"),
+        "and must say what that costs: {with_unreadable_artifact}"
+    );
 }
 
 /// The scope must survive serialization: a consumer reads it over HTTP, not

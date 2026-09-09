@@ -1,0 +1,45 @@
+{
+  "_": "Wire-format legacy messages for the privilege-grounding tests. Written by the encoder that round-tripped three real mainnet transactions byte for byte; the keys are test keys because the property under test is a header flag, and pointing a privilege-escalation fixture at real accounts would mean naming somebody's wallet in an attack artifact.",
+  "instruction_data_hex": "bbbbbbbbbbbbbbbb00000000",
+  "accounts": {
+    "fee_payer": "3xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAs2",
+    "authority": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "readonly": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+    "source": "BUWwFGjPHUCoaPq9S8M7ouZQxX3ALoeTBufKurLnpvXb",
+    "destination": "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7",
+    "program": "TestPrivMismatch111111111111111111111111111"
+  },
+  "instruction_accounts": [
+    "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+    "BUWwFGjPHUCoaPq9S8M7ouZQxX3ALoeTBufKurLnpvXb",
+    "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7"
+  ],
+  "honest": {
+    "raw_base64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgECBivjRfKBiw12QJxNUJq8Rmq55cPa1Csp+ckLWjYJapnRZ1IFXCCz6dh0Zlbd9zhVUH+Hq22HUj5Mdqf6NglqmeuboWYnFukx+eA22Nd/vxafyKYGPPMxyEcmVMZc4+wVqoTAxKVJ5eH0N9JU+pifJsE2Z+IVEDjMGbW/VCOwlcOmAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIG0+3Yu6V/BrPCSn5p5i+tnLyBeEkzJkc2e1SckAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQUEAQQCAwy7u7u7u7u7uwAAAAA=",
+    "header": [
+      2,
+      1,
+      2
+    ],
+    "what_it_says": "authority signs and stays read-only; the read-only slot is read-only; source and destination are writable"
+  },
+  "readonly_slot_is_writable_in_artifact": {
+    "raw_base64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgEBBivjRfKBiw12QJxNUJq8Rmq55cPa1Csp+ckLWjYJapnRZ1IFXCCz6dh0Zlbd9zhVUH+Hq22HUj5Mdqf6NglqmeuboWYnFukx+eA22Nd/vxafyKYGPPMxyEcmVMZc4+wVqoTAxKVJ5eH0N9JU+pifJsE2Z+IVEDjMGbW/VCOwlcOmAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIG0+3Yu6V/BrPCSn5p5i+tnLyBeEkzJkc2e1SckAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQUEAQQCAwy7u7u7u7u7uwAAAAA=",
+    "header": [
+      2,
+      1,
+      1
+    ],
+    "what_it_says": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR, which the manifest declares read-only, arrives WRITABLE"
+  },
+  "required_signer_is_unsigned_in_artifact": {
+    "raw_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAMGK+NF8oGLDXZAnE1QmrxGarnlw9rUKyn5yQtaNglqmdGboWYnFukx+eA22Nd/vxafyKYGPPMxyEcmVMZc4+wVqoTAxKVJ5eH0N9JU+pifJsE2Z+IVEDjMGbW/VCOwlcOmZ1IFXCCz6dh0Zlbd9zhVUH+Hq22HUj5Mdqf6NglqmesCAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgbT7di7pX8Gs8JKfmnmL62cvIF4STMmRzZ7VJyQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBQQDBAECDLu7u7u7u7u7AAAAAA==",
+    "header": [
+      1,
+      0,
+      3
+    ],
+    "what_it_says": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU, which the manifest requires signed, is NOT a signer"
+  }
+}

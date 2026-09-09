@@ -556,13 +556,13 @@ pub fn decode_lookup_table(table: &str, data: &[u8]) -> Result<Vec<String>, Look
             trailing: body.len() % 32,
         });
     }
+    // The remainder `as_chunks` returns is empty by the check above, so every
+    // byte of the address array is accounted for.
     Ok(body
-        .chunks_exact(32)
-        .map(|c| {
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(c);
-            Pubkey::from_bytes(arr).to_base58()
-        })
+        .as_chunks::<32>()
+        .0
+        .iter()
+        .map(|c| Pubkey::from_bytes(*c).to_base58())
         .collect())
 }
 

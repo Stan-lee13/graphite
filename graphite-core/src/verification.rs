@@ -255,6 +255,7 @@ fn deltas_lamport_changed(deltas: &[AccountDelta]) -> usize {
 fn account_resolution_reason(
     resolution: &crate::account_resolution::AccountResolutionResult,
     manifest_found: bool,
+    privileges: PrivilegeSource,
 ) -> String {
     use crate::account_resolution::AccountIdentity;
     let total = resolution.resolved_accounts.len();
@@ -285,9 +286,131 @@ fn account_resolution_reason(
     };
 
     format!(
-        "Resolved {total} account(s), manifest {}; {coverage}",
-        if manifest_found { "found" } else { "not found" }
+        "Resolved {total} account(s), manifest {}; {coverage}; {}",
+        if manifest_found { "found" } else { "not found" },
+        privileges.describe()
     )
+}
+
+/// Where the signer/writable flags a verification compared against came from.
+///
+/// Worth naming rather than inferring, because the three cases carry different
+/// weight and the difference is invisible in the verdict: derived flags are
+/// established, supplied ones are asserted by the party being checked, and
+/// absent ones mean the comparison did not happen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrivilegeSource {
+    /// Read out of the artifact's header and key order.
+    Artifact,
+    /// Read out of the artifact, and the caller's supplied metas disagreed.
+    ArtifactContradictingCaller,
+    /// Supplied by the caller; no artifact could answer.
+    Caller,
+    /// Neither available: no privilege comparison was made.
+    Absent,
+}
+
+impl PrivilegeSource {
+    fn describe(self) -> &'static str {
+        match self {
+            PrivilegeSource::Artifact => "signer/writable flags were read from the transaction's own header",
+            PrivilegeSource::ArtifactContradictingCaller => "signer/writable flags were read from the transaction's own header, and they CONTRADICT the flags the caller supplied — the header was used, and the caller's description of these bytes is unreliable",
+            PrivilegeSource::Caller => "signer/writable flags came from the caller, not from the transaction, so privilege escalation is checked against the caller's own description",
+            PrivilegeSource::Absent => "per-account signer/writable flags were neither supplied nor derivable, so privilege escalation within the account list was not checked",
+        }
+    }
+}
+
+/// Signer and writable flags for the described accounts, read out of the
+/// artifact instead of taken from the caller.
+///
+/// `real_account_metas` is the CALLER'S account of the transaction's header,
+/// and the caller is the party proposing the transaction — so a privilege check
+/// that runs on it checks their honesty about the bytes rather than the bytes.
+/// It closed a real gap when nothing could read the wire format. Something can
+/// now, and Solana's privileges are entirely positional: three header counts
+/// plus the key order, both of them in the message. There is nothing left here
+/// to take on trust.
+///
+/// `None` when any described account is absent from the static key list. Such
+/// an account arrives through a lookup table, where its privilege lives in the
+/// table resolution rather than the header, and answering `false` for it would
+/// invent the fact this function exists to establish. All-or-nothing for the
+/// same reason `resolve_lookups` is: a partly-derived list is indistinguishable
+/// from a fully-derived one at the point of use.
+fn privileges_from_artifact(
+    message: &crate::tx_artifact::ArtifactMessage,
+    described: &[String],
+) -> Option<Vec<crate::account_resolution::RealAccountMeta>> {
+    if described.is_empty() {
+        return None;
+    }
+    described
+        .iter()
+        .map(|addr| {
+            message
+                .static_keys
+                .contains(addr)
+                .then(|| crate::account_resolution::RealAccountMeta {
+                    is_signer: message.signers.contains(addr),
+                    is_writable: message.writable.contains(addr),
+                })
+        })
+        .collect()
+}
+
+/// How the described account list compares to the matched instruction's own.
+///
+/// `correspond` already establishes that the transaction contains an
+/// instruction under the described program carrying the described data, and
+/// that nothing else is in there undescribed. It does not establish that the
+/// instruction's ACCOUNTS are the accounts this verdict is about — and every
+/// layer downstream reasons over the described list. Two instructions can carry
+/// identical program and data and act on entirely different accounts; that is
+/// what a transfer of the same amount to a different destination is.
+///
+/// Positional, not set-membership: Solana passes accounts to a program by
+/// position, so the same addresses in a different order are a different
+/// instruction. An address that is present somewhere in the message but not in
+/// this instruction is not a match either.
+enum InstructionAccounts {
+    /// Every position the artifact can speak for matches the description.
+    Match {
+        /// Positions whose account arrives through a lookup table, where the
+        /// message carries an index rather than an address. Not a mismatch and
+        /// not a match: unestablished, and named so it can be disclosed.
+        unresolved: usize,
+    },
+    /// The described list is not the instruction's list. Carries the first
+    /// disagreement, because one concrete position is more useful than a count.
+    Mismatch(String),
+}
+
+fn compare_instruction_accounts(
+    actual: &[Option<String>],
+    described: &[String],
+) -> InstructionAccounts {
+    if actual.len() != described.len() {
+        return InstructionAccounts::Mismatch(format!(
+            "it takes {} account(s) and this request describes {}",
+            actual.len(),
+            described.len()
+        ));
+    }
+    let mut unresolved = 0usize;
+    for (i, slot) in actual.iter().enumerate() {
+        match slot {
+            Some(addr) if addr != &described[i] => {
+                return InstructionAccounts::Mismatch(format!(
+                    "account {i} of the instruction is {addr} and this request describes {}",
+                    described[i]
+                ))
+            }
+            Some(_) => {}
+            None => unresolved += 1,
+        }
+    }
+    InstructionAccounts::Match { unresolved }
 }
 
 /// The wall-clock budget ONE verification may spend talking to an RPC.
@@ -656,11 +779,23 @@ fn verification_scope(
                         .to_string(),
                 );
             }
-            if !metas_grounded {
-                unobserved.push(
-                    "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked"
+            let derived_privileges = crate::tx_artifact::parse_transaction(bytes)
+                .ok()
+                .and_then(|m| privileges_from_artifact(&m, &input.account_addresses));
+            match (&derived_privileges, metas_grounded) {
+                // Established from the bytes. Nothing unobserved to declare —
+                // except for the accounts the header cannot speak for, which
+                // `privileges_from_artifact` refuses to guess at and which the
+                // ALT disclosure below already names.
+                (Some(_), _) => {}
+                (None, true) => unobserved.push(
+                    "whether the signer/writable flags supplied with this request match the transaction's own header: at least one described account is not among the static keys, so the flags could not be derived and the caller's were used"
                         .to_string(),
-                );
+                ),
+                (None, false) => unobserved.push(
+                    "per-account signer/writable flags: none were supplied and they could not be derived from the artifact, so privilege escalation within the account list is not checked"
+                        .to_string(),
+                ),
             }
             // What is left unobserved now depends on whether the message
             // could be read, so say which.
@@ -2390,6 +2525,46 @@ impl GraphiteCore {
             )));
         }
 
+        // Privileges come from the artifact whenever the artifact can answer.
+        //
+        // Two artifacts differing only in one header count — a manifest-readonly
+        // account moved into the writable section — used to reach identical
+        // verdicts, because the privilege comparison ran against the caller's
+        // `real_account_metas` and those said what the manifest wanted to hear.
+        // The escalation was in the bytes the whole time.
+        //
+        // When the derived flags disagree with the supplied ones, the derived
+        // ones win. This is not a tie to average: one of the two is the
+        // transaction that will execute.
+        let artifact_privileges = input
+            .signed_transaction
+            .as_ref()
+            .filter(|b| !b.is_empty())
+            .and_then(|b| crate::tx_artifact::parse_transaction(b).ok())
+            .and_then(|m| privileges_from_artifact(&m, &input.account_addresses));
+
+        // A caller whose metas contradict the header has misdescribed the bytes.
+        // That is worth saying even when the contradiction is in the harmless
+        // direction, because it says the description is unreliable — but it is
+        // the derived flags, not this observation, that do the blocking.
+        let caller_contradicted_artifact = match &artifact_privileges {
+            Some(derived) if input.real_account_metas.len() == derived.len() => {
+                *derived != input.real_account_metas
+            }
+            _ => false,
+        };
+        let effective_metas = artifact_privileges
+            .clone()
+            .unwrap_or_else(|| input.real_account_metas.clone());
+        let privilege_source = match (&artifact_privileges, effective_metas.len()) {
+            (Some(_), _) if caller_contradicted_artifact => {
+                PrivilegeSource::ArtifactContradictingCaller
+            }
+            (Some(_), _) => PrivilegeSource::Artifact,
+            (None, n) if n == input.account_addresses.len() && n > 0 => PrivilegeSource::Caller,
+            (None, _) => PrivilegeSource::Absent,
+        };
+
         // Step 1: Account Resolution
         // Fail-closed (P12): If the manifest is found but the instruction discriminator
         // is not in the manifest, BLOCK the transaction instead of returning an error.
@@ -2401,7 +2576,7 @@ impl GraphiteCore {
                 instruction_discriminator: input.instruction_discriminator.clone(),
                 account_addresses: input.account_addresses.clone(),
                 instruction_data: input.instruction_data.clone(),
-                real_account_metas: input.real_account_metas.clone(),
+                real_account_metas: effective_metas.clone(),
             },
             &self.registry,
         ) {
@@ -2548,7 +2723,39 @@ impl GraphiteCore {
                                     ),
                                 )
                             }
-                            Some(_) => l2_result,
+                            Some(idx) => match compare_instruction_accounts(
+                                &message.instructions[idx].accounts,
+                                &input.account_addresses,
+                            ) {
+                                InstructionAccounts::Mismatch(detail) => {
+                                    PipelineLayerResult::new(
+                                        "L2_InstructionVerification",
+                                        LayerStatus::Failed,
+                                        format!(
+                                            "instruction {idx} carries the described program and data, but {detail}. Every layer of this verdict reasons over the accounts the request supplied, and they are not the accounts this instruction acts on"
+                                        ),
+                                    )
+                                }
+                                // Unresolved positions are lookup-table indexes.
+                                // They are not a mismatch and they are not a
+                                // match either, so the layer passes and says how
+                                // many of its accounts it could not compare —
+                                // failing here would reject a transaction whose
+                                // only fault is being a v0 one, and staying
+                                // silent would report a positional check that
+                                // did not cover every position.
+                                InstructionAccounts::Match { unresolved: 0 } => l2_result,
+                                InstructionAccounts::Match { unresolved } => {
+                                    PipelineLayerResult::new(
+                                        "L2_InstructionVerification",
+                                        l2_result.status,
+                                        format!(
+                                            "{}; {unresolved} of its account(s) arrive through address lookup tables and carry an index rather than an address here, so those positions were not compared",
+                                            l2_result.reason
+                                        ),
+                                    )
+                                }
+                            },
                         }
                     }
                     Err(e) => {
@@ -2742,16 +2949,62 @@ impl GraphiteCore {
         // (P12) — but the caller-declared flag makes the pipeline's honest
         // blind spot (it cannot independently verify ALT-resolved accounts)
         // visible instead of silent.
-        if input.uses_versioned_transaction {
-            risk_warnings.push(if input.lookup_table_count > 0 {
-                format!(
-                    "caller declares a versioned (v0) transaction using {} address lookup table(s)",
-                    input.lookup_table_count
+        //
+        // The version and the table count are in the message, so "the caller
+        // declares" is the wrong sentence whenever the bytes are present: it
+        // reports the supplier's claim as though nothing better were available.
+        // Where they can be read they are read, and a declaration that
+        // contradicts them is itself reported — a request that misdescribes its
+        // own transaction has said something about its reliability.
+        let artifact_shape = input
+            .signed_transaction
+            .as_ref()
+            .filter(|b| !b.is_empty())
+            .and_then(|b| crate::tx_artifact::parse_transaction(b).ok())
+            .map(|m| {
+                (
+                    m.version == Some(0),
+                    m.alt_table_count(),
+                    m.alt_account_count(),
                 )
-            } else {
-                "caller declares a versioned (v0) transaction using address lookup table(s)"
-                    .to_string()
             });
+
+        match artifact_shape {
+            Some((is_v0, tables, accounts)) => {
+                if is_v0 && tables > 0 {
+                    risk_warnings.push(format!(
+                        "the transaction is a versioned (v0) message reaching {accounts} account(s) through {tables} address lookup table(s), read from the transaction itself"
+                    ));
+                }
+                if input.uses_versioned_transaction != is_v0 {
+                    risk_warnings.push(format!(
+                        "the request declares uses_versioned_transaction={} and the transaction is {} — the declaration does not describe these bytes",
+                        input.uses_versioned_transaction,
+                        if is_v0 { "a versioned (v0) message" } else { "a legacy message" }
+                    ));
+                }
+                if input.lookup_table_count as usize != tables {
+                    risk_warnings.push(format!(
+                        "the request declares {} address lookup table(s) and the transaction carries {tables}",
+                        input.lookup_table_count
+                    ));
+                }
+            }
+            // No readable artifact: the declaration is all there is, and saying
+            // whose claim it is stays accurate rather than becoming a caveat
+            // nobody reads.
+            None if input.uses_versioned_transaction => {
+                risk_warnings.push(if input.lookup_table_count > 0 {
+                    format!(
+                        "caller declares a versioned (v0) transaction using {} address lookup table(s); no readable transaction was supplied, so this is the caller's account of it",
+                        input.lookup_table_count
+                    )
+                } else {
+                    "caller declares a versioned (v0) transaction using address lookup table(s); no readable transaction was supplied, so this is the caller's account of it"
+                        .to_string()
+                });
+            }
+            None => {}
         }
 
         // Phase 2 (best-effort): if an RPC client is attached, fetch the first
@@ -4352,7 +4605,7 @@ impl GraphiteCore {
                 PipelineLayerResult::new(
                     "L1_AccountResolution",
                     LayerStatus::Passed,
-                    account_resolution_reason(&resolution, manifest_found),
+                    account_resolution_reason(&resolution, manifest_found, privilege_source),
                 ),
                 // L2: Instruction Verification — confirm discriminator + args match known shape
                 // ARCHITECTURE.md 3.12: "Confirm instruction discriminator + args match a known shape"
