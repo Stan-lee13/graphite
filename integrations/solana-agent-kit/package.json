@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test:auditbind": "tsx --test auditbind.test.ts",
     "postinstall": "node scripts/patch-rpc-websockets.cjs",
-    "test": "tsx --test *.test.ts"
+    "test": "tsx --test *.test.ts",
+    "emit:artifact-fixture": "tsx emit-artifact-fixture.ts"
   },
   "dependencies": {
     "solana-agent-kit": "^2.0.10",

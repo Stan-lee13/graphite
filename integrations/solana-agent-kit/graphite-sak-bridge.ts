@@ -55,6 +55,15 @@ export type { VerificationResult, VerificationInput, ProposedIntent, WalletProfi
 import { buildInstructionFromPayload, type BoundInstructionPayload } from "./bound-instruction.js";
 export { buildInstructionFromPayload, type BoundInstructionPayload };
 
+// Serializing the instructions the bridge already holds, so the Core verifies
+// the transaction rather than a description of it. See artifact.ts.
+import {
+  serializeUnsignedArtifact,
+  findPrimaryIndex,
+  declareSiblings,
+} from "./artifact.js";
+export { serializeUnsignedArtifact, findPrimaryIndex, declareSiblings };
+
 /**
  * RPC Simulation helper — calls simulateTransaction to get real resource usage.
  * The compute/writes/hops feed the Core's Simulation Integrity check (L3) and
@@ -248,6 +257,18 @@ export class VerifiedSakAgent {
     // a security-relevant mismatch. Omitted here means "not supplied" — the
     // Core never assumes a match.
     realAccountMetas?: { is_signer: boolean; is_writable: boolean }[];
+    /**
+     * The instructions to serialize into the artifact, when they are not the
+     * ones to simulate.
+     *
+     * `instructions` drives the RPC simulation, and the swap path deliberately
+     * does not simulate here — SAK has already done that, and a second
+     * simulation would add a round trip and a second authority on the same
+     * question. But the swap path DOES hold the exact instruction it will
+     * submit, and withholding it would leave the swap in Descriptive mode for
+     * no reason other than the two concerns sharing a field.
+     */
+    artifactInstructions?: TransactionInstruction[];
   }): Promise<VerificationResult> {
     let computeUnits = 0, accountWrites = 0, cpiHops = 0;
     if (params.instructions && params.instructions.length > 0) {
@@ -269,6 +290,57 @@ export class VerifiedSakAgent {
       battle_tested_tx_count: 0,
       simulation_match_count: (computeUnits > 0 || accountWrites > 0) ? 3 : 0,
     };
+    // The artifact. Without it every verification through this bridge is
+    // Descriptive — the Core reasons over what this request SAYS about the
+    // transaction — while the transaction itself sits in `params.instructions`,
+    // already built and already simulated. With it the Core reads the header
+    // for signer/writable flags, checks the instruction's account list position
+    // by position, sees every other instruction in the transaction, and can
+    // resolve lookup tables.
+    //
+    // Best-effort by construction: a failure to serialize or to reach the RPC
+    // for a blockhash must not stop a verification that would otherwise happen,
+    // and the Core reports which mode it used, so a caller is never told a
+    // Descriptive verdict is artifact-bound.
+    const artifactInstructions =
+      params.artifactInstructions ?? params.instructions;
+    let signed_transaction: number[] | undefined;
+    let transaction_instructions: ReturnType<typeof declareSiblings> | undefined;
+    if (artifactInstructions && artifactInstructions.length > 0) {
+      try {
+        const { blockhash } = await this.connection.getLatestBlockhash();
+        signed_transaction = serializeUnsignedArtifact({
+          instructions: artifactInstructions,
+          feePayer: this.walletKeypair.publicKey,
+          recentBlockhash: blockhash,
+        });
+        const primary = findPrimaryIndex(artifactInstructions, {
+          programId: params.programId,
+          instructionDiscriminator: params.instructionDiscriminator,
+          accountAddresses: params.accountAddresses,
+        });
+        // -1 means the described instruction is not among the ones about to be
+        // built, which is a real disagreement rather than a reason to withhold
+        // the bytes. Declaring every instruction as a sibling lets the Core say
+        // so instead of this bridge deciding quietly.
+        transaction_instructions = declareSiblings(artifactInstructions, primary);
+        console.log(
+          `[Graphite] Artifact: ${signed_transaction.length} bytes, ` +
+            `${artifactInstructions.length} instruction(s), ` +
+            `${transaction_instructions.length} declared as siblings` +
+            (primary < 0 ? " (the described instruction is not among them)" : ""),
+        );
+      } catch (e) {
+        console.warn(
+          "[Graphite] Could not build the transaction artifact; verification " +
+            "will be descriptive rather than artifact-bound:",
+          e instanceof Error ? e.message : String(e),
+        );
+        signed_transaction = undefined;
+        transaction_instructions = undefined;
+      }
+    }
+
     const input: VerificationInput = {
       proposed_intent: params.proposedIntent, program_id: params.programId,
       instruction_discriminator: params.instructionDiscriminator, account_addresses: params.accountAddresses,
@@ -276,6 +348,7 @@ export class VerifiedSakAgent {
       instruction_data: params.instructionData, compute_units: computeUnits,
       account_writes: accountWrites, cpi_hops: cpiHops,
       behavior_evidence, real_account_metas: params.realAccountMetas,
+      signed_transaction, transaction_instructions,
     } as any;
     return this.graphite.verify(input);
   }
@@ -477,6 +550,12 @@ export class VerifiedSakAgent {
       accountAddresses, proposedIntent,
       instructionData: payload?.instructionData,
       realAccountMetas,
+      // The same construction `buildInstructionFromPayload` performs below to
+      // submit, so the bytes verified and the bytes submitted come from one
+      // source. Without a payload there is nothing to serialize and the
+      // verification stays descriptive — which the abort above already treats
+      // as the unverified case.
+      artifactInstructions: payload ? [buildInstructionFromPayload(payload)] : undefined,
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);

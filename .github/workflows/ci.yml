@@ -152,6 +152,15 @@ jobs:
           # invocation named two files, so a third test file could sit in the
           # repository looking like a gate without ever running.
           npm test
+          # The bridge and the Rust Core are two implementations of one
+          # agreement: the bridge serializes a transaction and describes its
+          # instructions, the Core reads both and decides whether they agree.
+          # `sak_bridge_artifact.json` is the TypeScript side's real output and
+          # the Rust suite asserts against it, so it has to be regenerated from
+          # the code rather than kept in step by hand. Any drift shows up as a
+          # diff here instead of as a blocked transaction in production.
+          npm run emit:artifact-fixture
+          git diff --exit-code -- ../../graphite-core/fixtures/artifacts/sak_bridge_artifact.json
 
   go:
     name: Go SDK — fmt, vet, tests
