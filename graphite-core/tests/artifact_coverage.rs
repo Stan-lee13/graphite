@@ -438,6 +438,65 @@ async fn the_number_of_unaccounted_accounts_is_reported_accurately() {
     }
 }
 
+/// The same question asked of a READABLE transaction, where identity is
+/// available and a count is not the best answer available.
+///
+/// The counts agree here on purpose: the simulation reports three accounts and
+/// the request describes three (the payer, Bob, and the System Program itself).
+/// A count-based check passes. The message's static key list contains a fourth
+/// account the request names nowhere, and the check has to see it — otherwise
+/// "the numbers match" is doing the work that "these are the same accounts"
+/// should be doing.
+#[tokio::test]
+async fn a_readable_artifact_names_the_account_the_request_left_out() {
+    let f: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/artifacts/undescribed_account.json"
+    ))
+    .expect("fixture must parse");
+    let bytes: Vec<u8> = f["blob"]
+        .as_array()
+        .expect("blob")
+        .iter()
+        .map(|n| n.as_u64().expect("byte") as u8)
+        .collect();
+    let undescribed = f["accounts"]["undescribed"].as_str().expect("address");
+
+    // Two changed accounts => three balance entries => a count that agrees with
+    // the three the request describes.
+    let endpoint = cluster(2);
+    let mut input = request(0);
+    input.signed_transaction = Some(bytes);
+    let r = core_at(&endpoint)
+        .verify_async(&input)
+        .await
+        .expect("verification must run");
+    let layer = r
+        .layers
+        .iter()
+        .find(|l| l.layer.contains("State"))
+        .expect("L4 present")
+        .clone();
+    println!("{:?} — {}", layer.status, layer.reason);
+
+    assert!(
+        matches!(layer.status, LayerStatus::Failed),
+        "the transaction reaches an account the request never named and the counts agree,          so only identity can catch it: {:?} {}",
+        layer.status,
+        layer.reason
+    );
+    assert!(
+        layer.reason.contains("ArtifactAccountsNotDescribed"),
+        "blocked by something else, which an attacker can engineer around: {}",
+        layer.reason
+    );
+    assert!(
+        layer.reason.contains(undescribed),
+        "the finding must NAME the account, not count it: {}",
+        layer.reason
+    );
+    assert!(!r.approved);
+}
+
 /// A limitation of the check above, demonstrated rather than described.
 ///
 /// The account-universe comparison is a COUNT. An attacker who needs to hide
@@ -460,6 +519,10 @@ async fn the_number_of_unaccounted_accounts_is_reported_accurately() {
 /// than an omission.
 #[tokio::test]
 async fn padding_the_described_universe_defeats_the_count_and_that_is_a_known_limit() {
+    // Still true, and now ONLY for an artifact that cannot be parsed — which is
+    // what this fixture's four filler bytes are. When the message can be read,
+    // `a_readable_artifact_names_the_account_the_request_left_out` above shows
+    // the identity check catching exactly this with the counts in agreement.
     let endpoint = cluster_silent(1);
     // One declared instruction contributes its program id to the described
     // universe, restoring the count the hidden account broke.

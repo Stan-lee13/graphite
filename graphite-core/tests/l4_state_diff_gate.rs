@@ -120,6 +120,7 @@ fn diff(deltas: Vec<AccountDelta>) -> StateDiff {
         // measured effect count to compare coverage against.
         artifact_balance_writes: None,
         artifact_account_universe: None,
+        artifact_accounts_undescribed: None,
     }
 }
 

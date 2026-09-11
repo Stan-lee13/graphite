@@ -430,8 +430,30 @@ pub struct StateDiff {
     /// transaction to be touched by it.
     ///
     /// `None` when no artifact was simulated.
+    ///
+    /// Superseded by `artifact_accounts_undescribed` wherever the message could
+    /// be read: two numbers cannot say WHICH account went unmentioned, and a
+    /// request that names one address the transaction does not contain restores
+    /// the count while hiding one it does. Kept for the case where the bytes
+    /// did not parse and a count is genuinely all there is.
     #[serde(default)]
     pub artifact_account_universe: Option<(usize, usize)>,
+    /// Accounts the transaction references that the request names nowhere, BY
+    /// ADDRESS, read out of the message's own static key list.
+    ///
+    /// `Some(vec![])` and `None` are different answers and the distinction is
+    /// the point: the first says Graphite read the message and every account in
+    /// it is accounted for, the second says it could not read the message.
+    /// Collapsing them would turn "could not check" into "checked and clean",
+    /// which is the shape of every fail-open this codebase exists to avoid.
+    ///
+    /// Static keys only. Accounts arriving through a lookup table are named in
+    /// the lookup-table disclosure instead, because identifying them requires
+    /// fetching the tables — Graphite does that, but the answer belongs where
+    /// the reader can see it depended on an extra fetch that may not have
+    /// happened.
+    #[serde(default)]
+    pub artifact_accounts_undescribed: Option<Vec<String>>,
 }
 
 impl StateDiff {
@@ -716,16 +738,42 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // know which one fired: "value moved somewhere you did not look" is a
     // different problem from "this transaction involves accounts you never
     // mentioned".
-    if let Some((artifact_accounts, described_accounts)) = input.diff.artifact_account_universe {
-        if artifact_accounts > described_accounts {
+    match &input.diff.artifact_accounts_undescribed {
+        // The message was read. Name them.
+        Some(undescribed) if !undescribed.is_empty() => {
+            let shown = undescribed.len().min(8);
             findings.push(StateDiffFinding::critical(
                 "ArtifactAccountsNotDescribed",
                 None,
                 format!(
-                    "the simulated transaction references {artifact_accounts} account(s); this request describes {described_accounts}. The {} unaccounted account(s) are named nowhere in it, so nothing here examined what the transaction does to them — and a state change that moves no lamports (an owner reassignment, a delegate grant, a freeze) leaves no trace a balance diff can see",
-                    artifact_accounts - described_accounts
+                    "the transaction references {} account(s) this request names nowhere [{}{}] — nothing here examined what it does to them, and a state change that moves no lamports (an owner reassignment, a delegate grant, a freeze) leaves no trace a balance diff can see",
+                    undescribed.len(),
+                    undescribed[..shown].join(", "),
+                    if undescribed.len() > shown { ", …" } else { "" }
                 ),
             ));
+        }
+        // The message was read and every account in it is accounted for.
+        Some(_) => {}
+        // The message could not be read, so a count is all there is. It cannot
+        // say which account is missing, and padding the description with an
+        // address the transaction does not contain defeats it — which is why
+        // this branch exists only for artifacts that failed to parse.
+        None => {
+            if let Some((artifact_accounts, described_accounts)) =
+                input.diff.artifact_account_universe
+            {
+                if artifact_accounts > described_accounts {
+                    findings.push(StateDiffFinding::critical(
+                        "ArtifactAccountsNotDescribed",
+                        None,
+                        format!(
+                            "the simulated transaction references {artifact_accounts} account(s); this request describes {described_accounts}. The {} unaccounted account(s) are named nowhere in it, so nothing here examined what the transaction does to them — and this transaction could not be parsed, so they are a count and not a list",
+                            artifact_accounts - described_accounts
+                        ),
+                    ));
+                }
+            }
         }
     }
 
@@ -1199,6 +1247,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1228,6 +1277,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -1262,6 +1312,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1283,6 +1334,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1311,6 +1363,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -1335,6 +1388,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1365,6 +1419,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1394,6 +1449,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1422,6 +1478,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1445,6 +1502,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1470,6 +1528,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -1494,6 +1553,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         // "Update the metadata URI" promises no value movement at all.
@@ -1521,6 +1581,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -1547,6 +1608,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -1574,6 +1636,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1608,6 +1671,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -1634,6 +1698,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -1656,6 +1721,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(BOB, false)];
         let declared = ["credit destination".to_string()];
@@ -1699,6 +1765,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1732,6 +1799,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -1781,6 +1849,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["frobnicate the widget".to_string()]);
@@ -1812,6 +1881,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(BOB, true)];
         // `before: None` means owner_change() cannot fire — there is no prior
@@ -1844,6 +1914,7 @@ mod tests {
             // measured effect count to compare coverage against.
             artifact_balance_writes: None,
             artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(

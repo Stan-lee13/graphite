@@ -167,6 +167,7 @@ fn build_rpc_state_diff(
     fee_lamports: u64,
     artifact_balance_writes: Option<u32>,
     artifact_account_universe: Option<(usize, usize)>,
+    artifact_accounts_undescribed: Option<Vec<String>>,
 ) -> StateDiff {
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
@@ -223,6 +224,7 @@ fn build_rpc_state_diff(
         },
         artifact_balance_writes,
         artifact_account_universe,
+        artifact_accounts_undescribed,
     }
 }
 
@@ -3934,6 +3936,36 @@ impl GraphiteCore {
                                     let universe = sim_res
                                         .artifact_account_count
                                         .map(|n| (n, described.len()));
+                                    // The identities, where the message can be
+                                    // read. A count told an operator that some
+                                    // account went unmentioned; this tells them
+                                    // which, and it is derived from the bytes
+                                    // rather than from the simulator's tally of
+                                    // them.
+                                    //
+                                    // Nothing outside `described` is treated as
+                                    // named, and `described` can no longer be
+                                    // padded: L2 requires the primary's account
+                                    // list to be the instruction's own, position
+                                    // by position, and every declared sibling to
+                                    // match an instruction that is really there.
+                                    let undescribed = input
+                                        .signed_transaction
+                                        .as_ref()
+                                        .filter(|b| !b.is_empty())
+                                        .and_then(|b| crate::tx_artifact::parse_transaction(b).ok())
+                                        .map(|m| {
+                                            let mut out: Vec<String> = m
+                                                .static_keys
+                                                .iter()
+                                                .filter(|k| !described.contains(k.as_str()))
+                                                .cloned()
+                                                .collect();
+                                            // Deterministic output (P2).
+                                            out.sort_unstable();
+                                            out.dedup();
+                                            out
+                                        });
                                     observed_diff = Some(build_rpc_state_diff(
                                         &diff_addresses,
                                         &pre,
@@ -3941,6 +3973,7 @@ impl GraphiteCore {
                                         sim_res.fee.unwrap_or(0),
                                         sim_res.account_writes,
                                         universe,
+                                        undescribed,
                                     ));
                                 }
                                 Err(e) => {
