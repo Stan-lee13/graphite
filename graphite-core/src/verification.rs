@@ -2980,8 +2980,23 @@ impl GraphiteCore {
                                     ),
                                 )
                             }
+                            // Positions sourced from a lookup table are resolved
+                            // here when the tables came back, so the comparison
+                            // covers every position rather than only the static
+                            // ones — the ALT-sourced accounts being exactly the
+                            // ones a v0 transaction reaches without naming them.
+                            // Falling back to the partially-resolved list when
+                            // the tables did not come back is deliberate: it
+                            // compares what it can and reports the rest as
+                            // uncompared, which is what `unresolved` is for.
                             Some(idx) => match compare_instruction_accounts(
-                                &message.instructions[idx].accounts,
+                                &crate::tx_artifact::resolve_instruction_accounts(
+                                    &message,
+                                    &message.instructions[idx],
+                                    resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
+                                )
+                                .map(|r| r.into_iter().map(Some).collect::<Vec<_>>())
+                                .unwrap_or_else(|| message.instructions[idx].accounts.clone()),
                                 &input.account_addresses,
                             ) {
                                 InstructionAccounts::Mismatch(detail) => {

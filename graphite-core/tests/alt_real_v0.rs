@@ -437,3 +437,174 @@ fn a_table_missing_from_the_fetch_refuses_by_name() {
         ),
     }
 }
+
+// -- The chain from an index to a described position ------------------------
+
+/// Every instruction account index resolves against the runtime's own numbering.
+///
+/// Solana numbers a v0 transaction's accounts as static keys, then ALT
+/// writables in message order, then ALT readonlies. An instruction index points
+/// into THAT list. Until this landed, an index past the static keys resolved to
+/// `None` and the positional comparison skipped it — so for exactly the accounts
+/// a v0 transaction reaches without naming them, the chain
+/// `index -> address -> described position` was never closed.
+#[test]
+fn instruction_indexes_resolve_against_the_runtimes_own_numbering() {
+    let f = fixture();
+    let tables = tables(&f);
+    let mut alt_sourced = 0usize;
+
+    for tx in transactions(&f) {
+        let m = parse_transaction(&b64(&tx["raw_base64"])).expect("must parse");
+        let resolved = resolve_lookups(&m, &tables).expect("must resolve");
+        let all = graphite_core::tx_artifact::runtime_account_list(&m, Some(&resolved))
+            .expect("a fully resolved message must produce a complete account list");
+
+        assert_eq!(
+            all.len(),
+            m.static_keys.len() + resolved.len(),
+            "{}: the runtime list is the static keys plus every resolved account",
+            tx["name"]
+        );
+        assert_eq!(&all[..m.static_keys.len()], &m.static_keys[..]);
+        assert_eq!(
+            &all[m.static_keys.len()..m.static_keys.len() + resolved.writable.len()],
+            &resolved.writable[..],
+            "writables come before readonlies, as the runtime numbers them"
+        );
+
+        for ix in &m.instructions {
+            let addrs =
+                graphite_core::tx_artifact::resolve_instruction_accounts(&m, ix, Some(&resolved))
+                    .expect("every index must resolve");
+            assert_eq!(addrs.len(), ix.account_indexes.len());
+            for (pos, (&index, addr)) in ix.account_indexes.iter().zip(&addrs).enumerate() {
+                assert_eq!(
+                    addr, &all[index as usize],
+                    "{}: instruction position {pos} (index {index}) resolved wrongly",
+                    tx["name"]
+                );
+                if (index as usize) >= m.static_keys.len() {
+                    alt_sourced += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        alt_sourced > 0,
+        "no instruction position came from a lookup table, so this proves nothing"
+    );
+    println!("{alt_sourced} instruction account positions resolved through lookup tables");
+}
+
+/// Without the tables, nothing is resolved rather than something being guessed.
+///
+/// A partial list renumbers every position after the gap, so an index would
+/// name a real account that is the wrong one — worse than naming nothing,
+/// because it looks like an answer.
+#[test]
+fn an_unresolved_message_yields_no_account_list_rather_than_a_short_one() {
+    let f = fixture();
+    let tx = &transactions(&f)[0];
+    let m = parse_transaction(&b64(&tx["raw_base64"])).expect("must parse");
+    assert!(
+        graphite_core::tx_artifact::runtime_account_list(&m, None).is_none(),
+        "a v0 message with no resolution must not fall back to its static keys"
+    );
+    for ix in &m.instructions {
+        assert!(graphite_core::tx_artifact::resolve_instruction_accounts(&m, ix, None).is_none());
+    }
+
+    // A legacy message has no lookups, so its static keys ARE the whole list.
+    let legacy: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/artifacts/devnet_transactions.json"
+    ))
+    .expect("fixtures must parse");
+    let bytes: Vec<u8> = legacy["benign_transfer"]["blob"]
+        .as_array()
+        .expect("blob")
+        .iter()
+        .map(|n| n.as_u64().expect("byte") as u8)
+        .collect();
+    let lm = parse_transaction(&bytes).expect("must parse");
+    assert_eq!(
+        graphite_core::tx_artifact::runtime_account_list(&lm, None),
+        Some(lm.static_keys.clone()),
+    );
+}
+
+/// A resolution of the wrong size is refused rather than indexed into.
+#[test]
+fn a_resolution_that_does_not_describe_this_message_is_refused() {
+    use graphite_core::tx_artifact::ResolvedLookups;
+    let f = fixture();
+    let m = parse_transaction(&b64(&transactions(&f)[0]["raw_base64"])).expect("must parse");
+    let wrong = ResolvedLookups {
+        writable: vec!["11111111111111111111111111111111".to_string()],
+        readonly: vec![],
+    };
+    assert_ne!(wrong.len(), m.alt_account_count());
+    assert!(graphite_core::tx_artifact::runtime_account_list(&m, Some(&wrong)).is_none());
+}
+
+/// Why a table's contents cannot change the meaning of an index that already
+/// resolved — the question a message digest alone does not answer.
+///
+/// The digest binds the table ADDRESS and the INDEX, not the address the index
+/// resolves to. So the obvious worry is a table mutated between approval and
+/// execution: same signed message, different accounts. Solana's own rules close
+/// it, and the argument is worth encoding rather than asserting:
+///
+///   - `ExtendLookupTable` APPENDS. There is no instruction in the Address
+///     Lookup Table program that replaces an address at an index, so an index
+///     that resolves today resolves to the same address after any extension.
+///   - Closing a table requires deactivation first, and the runtime rejects a
+///     transaction referencing a deactivated table — it fails rather than
+///     resolving differently. Graphite is stricter still: it refuses to resolve
+///     a table that is merely deactivating.
+///   - A table's address is a PDA over (authority, recent_slot), and a slot
+///     cannot be reused, so a closed table cannot be recreated at the same
+///     address holding different addresses.
+///
+/// This encodes the load-bearing clause: extending a real mainnet table leaves
+/// every existing index resolving exactly as before.
+#[test]
+fn extending_a_table_cannot_change_an_index_that_already_resolved() {
+    let f = fixture();
+    let tables = tables(&f);
+    let tx = &transactions(&f)[0];
+    let m = parse_transaction(&b64(&tx["raw_base64"])).expect("must parse");
+    let before = resolve_lookups(&m, &tables).expect("must resolve");
+
+    // Append 32 addresses to every table, exactly as ExtendLookupTable would.
+    let mut extended: HashMap<String, Vec<u8>> = HashMap::new();
+    for (addr, data) in &tables {
+        let mut grown = data.clone();
+        for i in 0u8..32 {
+            grown.extend_from_slice(&[i; 32]);
+        }
+        extended.insert(addr.clone(), grown);
+    }
+    let after = resolve_lookups(&m, &extended).expect("an extended table still resolves");
+
+    assert_eq!(
+        before.writable, after.writable,
+        "appending cannot move an address that was already at an index"
+    );
+    assert_eq!(before.readonly, after.readonly);
+
+    // The contrapositive, which the ALT program does NOT permit and which is
+    // therefore the hypothetical the invariant rules out: a table whose
+    // existing entries were REPLACED resolves differently.
+    let mut replaced = HashMap::new();
+    for (addr, data) in &tables {
+        let mut swapped = data.clone();
+        swapped[graphite_core::tx_artifact::LOOKUP_TABLE_META_SIZE..].reverse();
+        replaced.insert(addr.clone(), swapped);
+    }
+    let reversed = resolve_lookups(&m, &replaced).expect("still well-formed");
+    assert_ne!(
+        before.writable, reversed.writable,
+        "replacing entries changes what an index means, which is why the ALT program has no instruction that does it"
+    );
+}

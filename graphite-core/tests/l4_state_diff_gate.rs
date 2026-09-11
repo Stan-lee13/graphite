@@ -92,6 +92,7 @@ fn lamports(pubkey: &str, n: u64) -> AccountSnapshot {
         data_len: 0,
         token: None,
         mint: None,
+        extensions: Vec::new(),
     }
 }
 

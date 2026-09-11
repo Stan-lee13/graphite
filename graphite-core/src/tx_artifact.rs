@@ -92,6 +92,15 @@ pub struct ArtifactInstruction {
     /// lookup-table region resolves to `None`, since this module does not fetch
     /// tables — see `ArtifactMessage::alt_account_count`.
     pub accounts: Vec<Option<String>>,
+    /// The raw indexes, kept so a caller holding resolved lookup tables can
+    /// finish the job this module cannot.
+    ///
+    /// Without these the `None` positions above are a dead end: knowing THAT an
+    /// account came from a table does not say which, and the index is the only
+    /// thing that does. Positional comparison of a v0 instruction's accounts
+    /// was skipping exactly those positions — the accounts a v0 transaction can
+    /// reach without naming them.
+    pub account_indexes: Vec<u8>,
     pub data: Vec<u8>,
 }
 
@@ -369,6 +378,7 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
                 .iter()
                 .map(|&i| static_keys.get(i as usize).cloned())
                 .collect(),
+            account_indexes,
             data,
         });
     }
@@ -586,6 +596,54 @@ pub fn decode_lookup_table(table: &str, data: &[u8]) -> Result<Vec<String>, Look
         .iter()
         .map(|c| Pubkey::from_bytes(*c).to_base58())
         .collect())
+}
+
+/// Every account this transaction reaches, in the order the runtime indexes them.
+///
+/// Solana numbers a v0 transaction's accounts as: the static keys, then every
+/// writable account resolved from lookup tables in message order, then every
+/// readonly one. An instruction's account index points into THAT list, so it is
+/// the only thing an index can be interpreted against.
+///
+/// Returns `None` when the lookups could not be resolved, because a partial
+/// list would renumber every position after the gap — an index would then name
+/// a real account that is the wrong one, which is worse than naming nothing.
+pub fn runtime_account_list(
+    message: &ArtifactMessage,
+    lookups: Option<&ResolvedLookups>,
+) -> Option<Vec<String>> {
+    if !message.has_lookup_accounts() {
+        return Some(message.static_keys.clone());
+    }
+    let resolved = lookups?;
+    if resolved.len() != message.alt_account_count() {
+        // The resolution does not describe this message. Refuse rather than
+        // index into a list of the wrong length.
+        return None;
+    }
+    let mut all = message.static_keys.clone();
+    all.extend(resolved.writable.iter().cloned());
+    all.extend(resolved.readonly.iter().cloned());
+    Some(all)
+}
+
+/// One instruction's accounts, with lookup-table indexes turned into addresses.
+///
+/// This is the last link of the chain an index has to travel: index → the
+/// combined static-and-resolved address space → an address → the position a
+/// verdict describes. Every earlier link was established; this one was skipped
+/// for exactly the accounts that are hardest to see.
+pub fn resolve_instruction_accounts(
+    message: &ArtifactMessage,
+    instruction: &ArtifactInstruction,
+    lookups: Option<&ResolvedLookups>,
+) -> Option<Vec<String>> {
+    let all = runtime_account_list(message, lookups)?;
+    instruction
+        .account_indexes
+        .iter()
+        .map(|&i| all.get(i as usize).cloned())
+        .collect()
 }
 
 /// Accounts a v0 message pulls in through lookup tables, resolved to addresses.

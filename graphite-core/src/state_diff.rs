@@ -130,6 +130,13 @@ pub struct AccountSnapshot {
     /// Present when the account decodes as an SPL mint.
     #[serde(default)]
     pub mint: Option<MintView>,
+    /// Token-2022 extensions attached to this account.
+    ///
+    /// Detected, named and classified — never modelled. An empty list means no
+    /// extension was found, which is not the same as a claim that the account
+    /// is simple.
+    #[serde(default)]
+    pub extensions: Vec<DetectedExtension>,
 }
 
 impl AccountSnapshot {
@@ -153,6 +160,13 @@ impl AccountSnapshot {
             data_len: data.len(),
             token,
             mint,
+            extensions: if owner == SPL_TOKEN_2022_PROGRAM {
+                detect_token2022_extensions(data)
+            } else {
+                // Classic SPL Token has no extension region. Looking for one
+                // would read whatever follows a 165-byte account as TLV.
+                Vec::new()
+            },
         }
     }
 }
@@ -214,6 +228,132 @@ pub fn decode_token_account(data: &[u8]) -> Option<TokenAccountView> {
         return None;
     }
     Some(view)
+}
+
+// -- Token-2022 extensions: detected and classified, not modelled -----------
+
+/// What an extension can do to the meaning of a transfer.
+///
+/// Graphite decodes the BASE token layout — mint, owner, amount, delegate,
+/// state, close authority — which Token and Token-2022 share. Token-2022 is an
+/// extension system, and an extension can change what a transfer does without
+/// changing any of those fields. Reading the bytes is not understanding the
+/// behaviour, and the gap between the two is exactly the kind of thing this
+/// codebase exists to refuse to paper over.
+///
+/// So extensions are DETECTED and CLASSIFIED rather than modelled. Nothing here
+/// claims to know what a transfer hook will do; it claims that one is attached,
+/// which is a fact, and that Graphite cannot say what it does, which is also a
+/// fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExtensionImpact {
+    /// Can change where value goes, how much arrives, or whether the transfer
+    /// is permitted — while the base fields look ordinary.
+    AltersTransferSemantics,
+    /// Can change who controls the account or mint.
+    AltersAuthority,
+    /// Carries data or restrictions that do not by themselves redirect value.
+    Informational,
+    /// A discriminant this build does not recognise. Treated as unmodelled,
+    /// because an extension nobody here has heard of is not evidence of safety.
+    Unknown,
+}
+
+/// One extension found on an account, by its TLV discriminant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetectedExtension {
+    pub discriminant: u16,
+    pub name: String,
+    pub impact: ExtensionImpact,
+}
+
+/// Where the Token-2022 extension TLV region begins: after the base account
+/// layout and the one-byte account type. Mints are padded to the same length
+/// precisely so the two cannot be confused.
+const T22_TLV_START: usize = TOKEN_ACCOUNT_LEN + 1;
+
+/// The `ExtensionType` discriminants from spl-token-2022.
+///
+/// A discriminant that is not listed is reported by NUMBER and classified
+/// `Unknown` rather than ignored — the set grows, and a build that silently
+/// skipped what it did not recognise would get quieter as Token-2022 got richer.
+fn extension_name(discriminant: u16) -> Option<(&'static str, ExtensionImpact)> {
+    use ExtensionImpact::*;
+    Some(match discriminant {
+        1 => ("TransferFeeConfig", AltersTransferSemantics),
+        2 => ("TransferFeeAmount", AltersTransferSemantics),
+        3 => ("MintCloseAuthority", AltersAuthority),
+        4 => ("ConfidentialTransferMint", AltersTransferSemantics),
+        5 => ("ConfidentialTransferAccount", AltersTransferSemantics),
+        6 => ("DefaultAccountState", AltersTransferSemantics),
+        7 => ("ImmutableOwner", Informational),
+        8 => ("MemoTransfer", Informational),
+        9 => ("NonTransferable", AltersTransferSemantics),
+        10 => ("InterestBearingConfig", Informational),
+        11 => ("CpiGuard", Informational),
+        12 => ("PermanentDelegate", AltersAuthority),
+        13 => ("NonTransferableAccount", AltersTransferSemantics),
+        14 => ("TransferHook", AltersTransferSemantics),
+        15 => ("TransferHookAccount", AltersTransferSemantics),
+        16 => ("ConfidentialTransferFeeConfig", AltersTransferSemantics),
+        17 => ("ConfidentialTransferFeeAmount", AltersTransferSemantics),
+        18 => ("MetadataPointer", Informational),
+        19 => ("TokenMetadata", Informational),
+        20 => ("GroupPointer", Informational),
+        21 => ("TokenGroup", Informational),
+        22 => ("GroupMemberPointer", Informational),
+        23 => ("TokenGroupMember", Informational),
+        _ => return None,
+    })
+}
+
+/// Every Token-2022 extension attached to this account.
+///
+/// Empty for classic SPL Token accounts, for Token-2022 accounts with no
+/// extensions, and for data too short to carry the TLV region — none of which
+/// is a claim that the account is simple, only that no extension was found.
+///
+/// Walks the TLV with bounds checks and stops at the first malformed entry.
+/// Stopping rather than guessing matters: a length that runs past the buffer
+/// means the rest of the region cannot be read, and inventing entries from
+/// whatever follows would be worse than reporting what was read.
+pub fn detect_token2022_extensions(data: &[u8]) -> Vec<DetectedExtension> {
+    let mut found = Vec::new();
+    if data.len() <= T22_TLV_START {
+        return found;
+    }
+    // Only an account or a mint carries extensions; anything else is not a
+    // layout this function understands.
+    match data.get(T22_TYPE_OFFSET) {
+        Some(&T22_TYPE_ACCOUNT) | Some(&T22_TYPE_MINT) => {}
+        _ => return found,
+    }
+    let mut offset = T22_TLV_START;
+    while offset + 4 <= data.len() {
+        let discriminant = u16::from_le_bytes([data[offset], data[offset + 1]]);
+        let length = u16::from_le_bytes([data[offset + 2], data[offset + 3]]) as usize;
+        // Discriminant 0 is Uninitialized: the end of the meaningful region.
+        if discriminant == 0 {
+            break;
+        }
+        if offset + 4 + length > data.len() {
+            break;
+        }
+        let (name, impact) = match extension_name(discriminant) {
+            Some((n, i)) => (n.to_string(), i),
+            None => (
+                format!("extension type {discriminant} (not named by this build)"),
+                ExtensionImpact::Unknown,
+            ),
+        };
+        found.push(DetectedExtension {
+            discriminant,
+            name,
+            impact,
+        });
+        offset += 4 + length;
+    }
+    found
 }
 
 /// Decode the 82-byte SPL mint layout. Returns `None` when the data is not a
@@ -738,6 +878,77 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // know which one fired: "value moved somewhere you did not look" is a
     // different problem from "this transaction involves accounts you never
     // mentioned".
+    // -- Token-2022 extensions, named where they were found ----------------
+    //
+    // Graphite decodes the base layout that Token and Token-2022 share. An
+    // extension can change what a transfer DOES without changing any base
+    // field: a fee can take a cut, a hook can run arbitrary code, a permanent
+    // delegate can move the balance, a non-transferable flag can forbid the
+    // whole thing. A verdict that says "the balances moved as described" while
+    // one of those is attached is describing arithmetic, not behaviour.
+    //
+    // RECORDED TRADEOFF (P14). An extension that can alter transfer semantics
+    // BLOCKS, and so does one this build does not recognise. That is
+    // deliberately conservative and it has a real cost: every token account of
+    // a fee-bearing mint carries `TransferFeeAmount`, so ordinary transfers of
+    // those tokens are refused rather than approved-with-a-note. The
+    // alternative is approving a transfer whose arriving amount Graphite cannot
+    // compute, which is the thing this whole codebase exists not to do. The
+    // finding names the extension so an operator can decide, and modelling a
+    // given extension properly is how it stops blocking — not lowering this.
+    for delta in input.diff.deltas.iter() {
+        let extensions = delta
+            .after
+            .as_ref()
+            .or(delta.before.as_ref())
+            .map(|snap| snap.extensions.clone())
+            .unwrap_or_default();
+        if extensions.is_empty() {
+            continue;
+        }
+        let unmodelled: Vec<&DetectedExtension> = extensions
+            .iter()
+            .filter(|e| {
+                // AltersAuthority blocks too. A PermanentDelegate can move the
+                // balance without the owner, so "the balances moved as
+                // described" says nothing about who can move them next — the
+                // same reasoning as a semantics-altering extension, arriving
+                // one step later.
+                matches!(
+                    e.impact,
+                    ExtensionImpact::AltersTransferSemantics
+                        | ExtensionImpact::AltersAuthority
+                        | ExtensionImpact::Unknown
+                )
+            })
+            .collect();
+        let names = |list: &[&DetectedExtension]| {
+            list.iter()
+                .map(|e| e.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        if !unmodelled.is_empty() {
+            findings.push(StateDiffFinding::critical(
+                "Token2022ExtensionNotModelled",
+                Some(delta.pubkey.as_str()),
+                format!(
+                    "this account carries Token-2022 extension(s) Graphite does not model [{}] — each can change what a transfer does without changing any field Graphite reads, so the effects observed here are arithmetic rather than behaviour and cannot be presented as verified",
+                    names(&unmodelled)
+                ),
+            ));
+        } else {
+            findings.push(StateDiffFinding::warning(
+                "Token2022ExtensionPresent",
+                Some(delta.pubkey.as_str()),
+                format!(
+                    "this account carries Token-2022 extension(s) [{}]; none of them redirects value, and none of them is modelled here",
+                    names(&extensions.iter().collect::<Vec<_>>())
+                ),
+            ));
+        }
+    }
+
     match &input.diff.artifact_accounts_undescribed {
         // The message was read. Name them.
         Some(undescribed) if !undescribed.is_empty() => {
@@ -1071,6 +1282,7 @@ mod tests {
             data_len: 0,
             token: None,
             mint: None,
+            extensions: Vec::new(),
         }
     }
 
@@ -1872,6 +2084,7 @@ mod tests {
                     data_len: 165,
                     token: None,
                     mint: None,
+                    extensions: Vec::new(),
                 }),
             }],
             provenance: DiffProvenance::RpcSimulated,
