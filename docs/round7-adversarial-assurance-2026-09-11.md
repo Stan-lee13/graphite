@@ -235,7 +235,7 @@ ALT / v0:                       PASS
 SAK Execution Boundary:         PASS
 Semantic Coverage:              CONDITIONAL
 Parser / Wire Safety:           PASS
-CI Certification:               CERTIFIED for 76d0ade; this round's commit pending push
+CI Certification:               CERTIFIED — 1830e7b and 76d0ade both completed success
 
 P0: none
 P1: R7-01 (fixed)
