@@ -540,6 +540,7 @@ mod tests {
         ));
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn benchmark_seeded_corpus_replays_clean_and_promotes() {
         let core = GraphiteCore::new();
@@ -566,6 +567,7 @@ mod tests {
         assert_eq!(decide_promotion(&run), PromotionDecision::Promote);
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn regression_detected_blocks_promotion() {
         let core = GraphiteCore::new();
@@ -605,6 +607,7 @@ mod tests {
         ));
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn deprecated_fixtures_excluded_from_denominator() {
         let core = GraphiteCore::new();

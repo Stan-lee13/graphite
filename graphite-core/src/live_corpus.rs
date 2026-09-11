@@ -769,6 +769,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     /// Full pipeline over a REAL mainnet transaction: structure invariants
     /// must hold (finite confidence in [0,1], 16-char content hash, and an
     /// approved result implies a Clear risk verdict).

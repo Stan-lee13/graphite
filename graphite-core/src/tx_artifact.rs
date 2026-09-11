@@ -51,6 +51,8 @@ pub enum ArtifactParseError {
     Truncated { offset: usize, what: &'static str },
     #[error("compact-u16 at byte {offset} is not minimally encoded")]
     NonCanonicalLength { offset: usize },
+    #[error("compact-u16 at byte {offset} decodes to {value}, past the u16 this field is")]
+    LengthNotU16 { offset: usize, value: usize },
     #[error("declared {declared} {what} but only {available} bytes remain")]
     LengthExceedsInput {
         what: &'static str,
@@ -227,6 +229,20 @@ impl<'a> Reader<'a> {
     /// for zero, say — is a second spelling of the same number, and two
     /// spellings of the same transaction are exactly what a binding is
     /// supposed to prevent. Solana's own decoder rejects these; so does this.
+    /// A compact-u16, and a u16 is what it has to be.
+    ///
+    /// Three groups of seven bits hold values up to 2,097,151, so the encoding
+    /// can express numbers the field cannot mean. Solana calls this type
+    /// ShortU16 and it is a u16; every length in a message — signature count,
+    /// key count, instruction count, per-instruction account and data lengths,
+    /// lookup counts and index-vector lengths — is one of these.
+    ///
+    /// Rejecting the out-of-range values matters even though `take` would
+    /// eventually run out of bytes. A parser that accepts 2,097,151 as a
+    /// declared length reasons about that structure first — allocating,
+    /// iterating, and multiplying against it — before discovering the input was
+    /// 200 bytes. Bounding at the format's own limit removes the amplification
+    /// and keeps the parser's idea of the format equal to the format.
     fn compact_u16(&mut self, what: &'static str) -> Result<usize, ArtifactParseError> {
         let start = self.pos;
         let mut value: usize = 0;
@@ -239,6 +255,12 @@ impl<'a> Reader<'a> {
                 // group, and the whole value must not fit in fewer groups.
                 if group > 0 && bits == 0 {
                     return Err(ArtifactParseError::NonCanonicalLength { offset: start });
+                }
+                if value > u16::MAX as usize {
+                    return Err(ArtifactParseError::LengthNotU16 {
+                        offset: start,
+                        value,
+                    });
                 }
                 return Ok(value);
             }

@@ -1259,6 +1259,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     /// The REAL exploit cases must be blocked by the Phase 2 transaction-level
     /// detectors, not merely by the unknown-program ceiling: the STMT case's
     /// mass-sweep slice must produce a MultiInstructionDrain finding, and the

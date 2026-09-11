@@ -3810,8 +3810,18 @@ impl GraphiteCore {
                                 crate::simulation_integrity::MAX_TRANSACTION_COMPUTE_UNITS
                             ));
                         }
+                        // A provider that volunteered a number under a name
+                        // Solana does not define, and how it compared to what
+                        // Graphite derived from the same response. Reported
+                        // rather than adopted — and reported even when it
+                        // agrees is not worth it, so `provider_anomalies` is
+                        // empty unless something actually disagreed or could
+                        // not be checked.
+                        for anomaly in &sim_res.provider_anomalies {
+                            alt_observations.push(anomaly.clone());
+                        }
                         // Only a COMPLETE RPC result may enter the accumulator:
-                        // nonzero units AND both optional fields present.
+                        // nonzero units AND both derived fields present.
                         if !implausible_units
                             && sim_res.units_consumed > 0
                             && sim_res.account_writes.is_some()
@@ -5229,6 +5239,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     /// P16 finding: the previous 64-account DoS cap rejected legitimate modern
     /// transactions — a real Jupiter V6 route on mainnet carries 72 accounts
     /// (one per route step). The cap now matches Solana's protocol limit (256),
@@ -5333,6 +5344,67 @@ mod tests {
         );
     }
 
+    /// The embeddable build refuses rather than approves.
+    ///
+    /// With no features, `verify()` is a stub: there is no async runtime to
+    /// block on, so it cannot run the pipeline. What matters is WHICH way it
+    /// fails. Returning `Ok` with a default result, or an `approved: true` of
+    /// any kind, would make the minimal library build a silent bypass — the one
+    /// configuration where the entry point does nothing is the one where an
+    /// integrator is least likely to notice.
+    ///
+    /// This is the only behavioural assertion that can be made in this
+    /// configuration, and until 2026-09-11 CI only `cargo check`ed it — the
+    /// tests were never run here at all (review finding #8).
+    #[cfg(not(any(feature = "rpc", feature = "server", feature = "cli")))]
+    #[test]
+    fn verify_fails_closed_without_an_async_runtime() {
+        let core = GraphiteCore::new();
+        let input = VerificationInput {
+            proposed_intent: ProposedIntent {
+                intent_type: "transfer".to_string(),
+                raw_natural_language: "send SOL".to_string(),
+                confidence_of_parse: 0.99,
+                extracted_parameters: None,
+            },
+            program_id: "11111111111111111111111111111111".to_string(),
+            protocol_version: "1.0".to_string(),
+            instruction_discriminator: "02000000".to_string(),
+            account_addresses: vec![
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string(),
+            ],
+            instruction_data: None,
+            cpi_targets: vec![],
+            wallet_profile: crate::policy_engine::WalletProfile::Gaming,
+            behavior_evidence: Default::default(),
+            compute_units: 150,
+            account_writes: 2,
+            cpi_hops: 0,
+            signed_transaction: None,
+            transaction_instructions: vec![],
+            cpi_trace: None,
+            uses_versioned_transaction: false,
+            lookup_table_count: 0,
+            real_account_metas: vec![],
+            state_diff: None,
+        };
+        match core.verify(&input) {
+            Err(VerificationError::InvalidInput(reason)) => {
+                assert!(
+                    reason.contains("async runtime not compiled in"),
+                    "the refusal must name its cause so an integrator can act on it: {reason}"
+                );
+            }
+            Err(other) => panic!("refused for an unexpected reason: {other}"),
+            Ok(r) => panic!(
+                "the featureless build produced a verdict (approved={}) instead of refusing",
+                r.approved
+            ),
+        }
+    }
+
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_verify_system_transfer() {
         let core = GraphiteCore::new();
@@ -5352,6 +5424,7 @@ mod tests {
         assert_eq!(result.risk_verdict.status, "Clear");
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_verify_unknown_protocol_capped() {
         let core = GraphiteCore::new();
@@ -5366,6 +5439,7 @@ mod tests {
         assert!(result.confidence <= 0.55);
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_verify_with_blocked_risk() {
         let core = GraphiteCore::new();
@@ -5409,6 +5483,7 @@ mod tests {
         assert!(result.confidence < 1.0);
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_verify_generates_audit_id() {
         let core = GraphiteCore::new();
@@ -5424,6 +5499,7 @@ mod tests {
         assert!(result.audit_trail_id.starts_with("gr-"));
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_signed_transaction_flows_to_simulation_input() {
         // Phase 1.5: a caller-supplied signed transaction blob is the preferred
@@ -5473,6 +5549,7 @@ mod tests {
         assert_eq!(result.content_hash, "afb61d8865b4cb68");
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_verify_summary_generated() {
         let core = GraphiteCore::new();
@@ -5489,6 +5566,7 @@ mod tests {
         assert!(result.summary.contains("protocol=System Program"));
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_ceiling_shown_in_breakdown_when_triggered() {
         // P3 compliance: when the confidence ceiling is triggered (raw score
@@ -5557,6 +5635,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_ceiling_shown_in_breakdown_for_unknown_protocol() {
         // P3 compliance: for an unknown protocol (no manifest), the trust tier
@@ -5631,6 +5710,7 @@ mod tests {
         // the ceiling is still enforced, just not triggered.
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_caller_evidence_cannot_raise_tier_above_manifest_declared() {
         // G4 regression: fabricated request-body evidence (has_signed_manifest,
@@ -5710,6 +5790,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_manifest_version_reported_in_result() {
         // G7: the verification result must report WHICH manifest version was
@@ -5777,6 +5858,7 @@ mod tests {
         ));
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn test_unexpected_cpi_warning_surfaced_in_l7_and_summary() {
         // P3 explainability: an out-of-manifest CPI on a known protocol used to

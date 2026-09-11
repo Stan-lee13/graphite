@@ -263,10 +263,16 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     // "clean". The layer was live and structurally unable to reach its own
     // positive result.
     //
-    // Both are derived instead, from data the RPC does send, so they stay
-    // RPC-DERIVED rather than caller-supplied and the provenance rule is
-    // unchanged. The invented names are still read first: a provider that does
-    // supply them wins over the derivation.
+    // Both are derived instead, from data the RPC does send.
+    //
+    // The derivation is the evidence, and it is the ONLY thing that becomes
+    // evidence. An earlier version read the invented names first and let a
+    // provider that supplied them win over the derivation, which has the
+    // provenance rule backwards: a value under a name no Solana RPC produces is
+    // a value a provider chose, and this layer exists to bound what a provider
+    // can assert. A provider field is read now only to compare against what
+    // Graphite worked out, and a disagreement is reported as an anomaly rather
+    // than adopted.
     //
     // Every entry must parse as a u64. `as_u64()` yields `None` for a float, a
     // string, or a negative, and comparing `None != None` is false — so a
@@ -312,25 +318,49 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
                 .sum::<Option<u64>>()
         });
 
-    let account_writes = as_u32(
-        nested("accountWrites")
-            .or_else(|| {
-                value
-                    .get("meta")
-                    .and_then(|m| m.get("numAccountWrites"))
-                    .and_then(|v| v.as_u64())
-            })
-            .or(derived_account_writes),
+    let account_writes = as_u32(derived_account_writes);
+    let cpi_hops = as_u32(derived_cpi_hops);
+
+    // Non-canonical fields, compared and reported — never adopted.
+    //
+    // Silence is the wrong response to a provider volunteering a number under a
+    // name the protocol does not define. It is not evidence, and it is not
+    // nothing either: a provider whose `accountWrites` disagrees with the
+    // balances it sent in the same response has contradicted itself, and that
+    // is worth putting in front of an operator.
+    let mut provider_anomalies: Vec<String> = Vec::new();
+    let mut compare = |name: &str, provider: Option<u64>, derived: Option<u64>| {
+        if let Some(claimed) = provider {
+            match derived {
+                Some(d) if d != claimed => provider_anomalies.push(format!(
+                    "the RPC reported a non-standard `{name}` of {claimed}; Graphite derived {d} from the response's own canonical fields and used its own"
+                )),
+                Some(_) => {}
+                None => provider_anomalies.push(format!(
+                    "the RPC reported a non-standard `{name}` of {claimed}; Graphite could not derive it from the response's canonical fields and did not adopt the reported value"
+                )),
+            }
+        }
+    };
+    compare(
+        "accountWrites",
+        nested("accountWrites").or_else(|| {
+            value
+                .get("meta")
+                .and_then(|m| m.get("numAccountWrites"))
+                .and_then(|v| v.as_u64())
+        }),
+        derived_account_writes,
     );
-    let cpi_hops = as_u32(
-        nested("cpiHops")
-            .or_else(|| {
-                value
-                    .get("meta")
-                    .and_then(|m| m.get("cpi_hops"))
-                    .and_then(|v| v.as_u64())
-            })
-            .or(derived_cpi_hops),
+    compare(
+        "cpiHops",
+        nested("cpiHops").or_else(|| {
+            value
+                .get("meta")
+                .and_then(|m| m.get("cpi_hops"))
+                .and_then(|v| v.as_u64())
+        }),
+        derived_cpi_hops,
     );
 
     let return_data = value
@@ -394,6 +424,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         err,
         account_writes,
         cpi_hops,
+        provider_anomalies,
         fee: value.get("fee").and_then(|v| v.as_u64()),
         loaded_addresses,
         artifact_account_count,
@@ -431,10 +462,25 @@ pub struct SimulationResult {
     pub units_consumed: u64,
     pub return_data: Option<Vec<u8>>,
     pub err: Option<String>,
-    /// Optional number of account writes observed in simulation (if RPC reports it)
+    /// Accounts whose lamport balance moved between `preBalances` and
+    /// `postBalances`, derived by Graphite from the response's canonical
+    /// fields.
+    ///
+    /// Never taken from a provider-supplied field: no Solana RPC defines one,
+    /// so a value under such a name is a value the provider chose. See
+    /// `provider_anomalies`.
     pub account_writes: Option<u32>,
-    /// Optional CPI hop count observed in simulation (if RPC reports it)
+    /// Inner instructions summed across every top-level instruction, derived by
+    /// Graphite from `innerInstructions`. Same provenance rule as
+    /// `account_writes`.
     pub cpi_hops: Option<u32>,
+    /// Non-standard fields the response carried, and how they compared to what
+    /// Graphite derived.
+    ///
+    /// Reported, never adopted. Empty for every response from an RPC that sends
+    /// only what Solana defines.
+    #[serde(default)]
+    pub provider_anomalies: Vec<String>,
     /// Transaction fee in lamports, as the simulator charged it.
     ///
     /// The simulated post-state has this deducted from the fee payer, so any

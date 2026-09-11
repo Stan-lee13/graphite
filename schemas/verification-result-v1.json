@@ -312,43 +312,75 @@
       }
     },
     "scope": {
+      "description": "What this verdict is BOUND to, and what it did not observe. This is the field that makes Graphite's central promise checkable rather than assumed: the thing it approved is the thing that gets signed and executed, and every security-relevant property of that thing was either independently verified or explicitly identified as unverified. `approved` alone does not say which half applies \u2014 a verdict describing caller-supplied metadata and one bound to real signed bytes are otherwise the same shape. An execution gate that can move funds should require kind == 'artifact_bound' rather than gating on `approved` alone. ABSENT is not the same as 'descriptive': it means a pre-2026-09-08 server did not say, and must be treated as unknown. ENFORCED SHAPE: the two kinds are separate schemas, not one object with optional fields. A payload claiming kind == 'artifact_bound' without transaction_sha256, transaction_bytes and simulated is INVALID \u2014 previously it validated, because those fields were described as 'artifact_bound only' in prose and required nowhere, so the one field a consumer is told to gate execution on could be asserted without the evidence that gives it meaning (found by review 2026-09-11).",
       "type": "object",
-      "description": "What this verdict is BOUND to, and what it did not observe. This is the field that makes Graphite's central promise checkable rather than assumed: the thing it approved is the thing that gets signed and executed, and every security-relevant property of that thing was either independently verified or explicitly identified as unverified. `approved` alone does not say which half applies \u2014 a verdict describing caller-supplied metadata and one bound to real signed bytes are otherwise the same shape. An execution gate that can move funds should require kind == 'artifact_bound' rather than gating on `approved` alone. ABSENT is not the same as 'descriptive': it means a pre-2026-09-08 server did not say, and must be treated as unknown.",
-      "required": [
-        "kind",
-        "unobserved"
-      ],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "enum": [
-            "artifact_bound",
-            "descriptive"
-          ]
-        },
-        "transaction_sha256": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$",
-          "description": "artifact_bound only. SHA-256 of the exact transaction bytes supplied, so a caller can recompute it over what it is about to submit and refuse if it differs. A stronger binding than content_hash, which covers a projection of one instruction and cannot see the fee payer, the blockhash, the signer set, or any sibling instruction."
-        },
-        "transaction_bytes": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "artifact_bound only. Length of the supplied artifact."
-        },
-        "simulated": {
-          "type": "boolean",
-          "description": "artifact_bound only. Whether a simulator actually executed those bytes. False means the artifact was hashed but never run, so the verdict still rests on static analysis of the described instruction."
-        },
-        "unobserved": {
-          "type": "array",
-          "items": {
-            "type": "string"
+      "oneOf": [
+        {
+          "title": "artifact_bound",
+          "description": "Bound to exact transaction bytes. Every field here is intrinsic to that binding and is therefore required: a binding without the digest of what was bound is not a binding.",
+          "type": "object",
+          "required": [
+            "kind",
+            "transaction_sha256",
+            "transaction_bytes",
+            "simulated",
+            "unobserved"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "artifact_bound"
+            },
+            "transaction_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "artifact_bound only. SHA-256 of the exact transaction bytes supplied, so a caller can recompute it over what it is about to submit and refuse if it differs. A stronger binding than content_hash, which covers a projection of one instruction and cannot see the fee payer, the blockhash, the signer set, or any sibling instruction."
+            },
+            "transaction_bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "artifact_bound only. Length of the supplied artifact."
+            },
+            "simulated": {
+              "type": "boolean",
+              "description": "artifact_bound only. Whether a simulator actually executed those bytes. False means the artifact was hashed but never run, so the verdict still rests on static analysis of the described instruction."
+            },
+            "unobserved": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "Security-relevant properties Graphite did not independently establish, stated as what is missing rather than as caveats about the checks. Never empty: claiming to have observed everything is a strong assertion that must be argued for, not fall out of an empty list."
+            }
           },
-          "minItems": 1,
-          "description": "Security-relevant properties Graphite did not independently establish, stated as what is missing rather than as caveats about the checks. Never empty: claiming to have observed everything is a strong assertion that must be argued for, not fall out of an empty list."
+          "additionalProperties": false
+        },
+        {
+          "title": "descriptive",
+          "description": "No transaction bytes were supplied, so there is nothing to bind to and the artifact fields must NOT appear. Their presence alongside kind == descriptive would suggest a binding that does not exist.",
+          "type": "object",
+          "required": [
+            "kind",
+            "unobserved"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "descriptive"
+            },
+            "unobserved": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "Security-relevant properties Graphite did not independently establish, stated as what is missing rather than as caveats about the checks. Never empty: claiming to have observed everything is a strong assertion that must be argued for, not fall out of an empty list."
+            }
+          },
+          "additionalProperties": false
         }
-      }
+      ]
     }
   }
 }

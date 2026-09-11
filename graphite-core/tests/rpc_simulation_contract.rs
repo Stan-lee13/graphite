@@ -112,14 +112,58 @@ fn mismatched_balance_arrays_do_not_produce_a_write_count() {
     assert_eq!(parse_sim(&v2).unwrap().account_writes, None);
 }
 
+/// A deliberate reversal, recorded rather than quietly swapped.
+///
+/// This test used to be `a_provider_that_does_send_the_fields_WINS_over_the
+/// _derivation`, and it passed, because that is what the code did. The rule was
+/// backwards: `accountWrites` and `cpiHops` are names no Solana RPC produces,
+/// so a value under one of them is a value the provider chose — and both feed
+/// the simulation-integrity baseline, which is what Graphite treats as normal.
+/// A provider that can set them can move the baseline.
+///
+/// Reversed 2026-09-11 after review. Derivation from the canonical fields is
+/// the evidence; a provider field is compared against it and reported.
 #[test]
-fn a_provider_that_does_send_the_fields_wins_over_the_derivation() {
+fn a_provider_that_does_send_the_fields_does_not_win_over_the_derivation() {
     let mut v = real_devnet_response();
     v["accountWrites"] = serde_json::json!(7);
     v["cpiHops"] = serde_json::json!(9);
+    let derived = parse_sim(&real_devnet_response()).unwrap();
     let r = parse_sim(&v).unwrap();
-    assert_eq!(r.account_writes, Some(7));
-    assert_eq!(r.cpi_hops, Some(9));
+
+    assert_eq!(
+        r.account_writes, derived.account_writes,
+        "the provider's number must not displace what Graphite read from the balances"
+    );
+    assert_eq!(r.cpi_hops, derived.cpi_hops);
+    assert_ne!(
+        r.account_writes,
+        Some(7),
+        "7 is the provider's claim, not an observation"
+    );
+
+    // Ignored is not the same as unnoticed: a provider contradicting the
+    // canonical fields it sent in the same response has said something about
+    // itself, and an operator should see it.
+    let text = r.provider_anomalies.join(" | ");
+    assert!(
+        text.contains("`accountWrites` of 7") && text.contains("`cpiHops` of 9"),
+        "both invented fields must be reported: {text}"
+    );
+}
+
+/// A response carrying only what Solana defines reports no anomaly.
+///
+/// Anti-vacuity for the test above: if every response produced anomalies, that
+/// assertion would pass without the comparison meaning anything.
+#[test]
+fn a_response_with_only_canonical_fields_reports_no_anomaly() {
+    let r = parse_sim(&real_devnet_response()).unwrap();
+    assert!(
+        r.provider_anomalies.is_empty(),
+        "an ordinary Solana response is not an anomaly: {:?}",
+        r.provider_anomalies
+    );
 }
 
 #[test]

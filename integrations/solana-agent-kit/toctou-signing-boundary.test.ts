@@ -356,3 +356,70 @@ test("absent metas and all-false metas are different bindings", () => {
     "dropping the privilege flags must not be indistinguishable from asserting they are all off",
   );
 });
+
+/**
+ * Partial privilege metadata is refused, not padded.
+ *
+ * `metas[i]` on a missing entry is `undefined`, and `undefined?.isSigner` is
+ * falsy — so three accounts with two metas hashed the third as `--`, a digest
+ * identical to one where the caller explicitly said that account is neither a
+ * signer nor writable. Two different facts, one digest, at the boundary
+ * immediately before signing (found by review 2026-09-11).
+ */
+test("a short accountMetas array is refused rather than silently padded", () => {
+  const three = {
+    programId: "11111111111111111111111111111111",
+    data: Uint8Array.from([2, 0, 0, 0]),
+    discriminator: "02000000",
+    accounts: [
+      "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+      "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+      "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7",
+    ],
+  };
+
+  assert.throws(
+    () =>
+      AuditBind.transactionBinding([
+        {
+          ...three,
+          accountMetas: [
+            { isSigner: true, isWritable: true },
+            { isSigner: false, isWritable: true },
+          ],
+        },
+      ]),
+    /accountMetas has 2 entries for 3 accounts/,
+    "two metas for three accounts must be refused",
+  );
+
+  // The complete form still works, so the refusal is about the length and not
+  // about metas in general.
+  const complete = AuditBind.transactionBinding([
+    {
+      ...three,
+      accountMetas: [
+        { isSigner: true, isWritable: true },
+        { isSigner: false, isWritable: true },
+        { isSigner: false, isWritable: false },
+      ],
+    },
+  ]);
+  assert.equal(complete.length, 64);
+
+  // And the absent form remains a DIFFERENT binding from all-false, which is
+  // the distinction the padding bug was quietly undoing.
+  const absent = AuditBind.transactionBinding([three]);
+  const allFalse = AuditBind.transactionBinding([
+    {
+      ...three,
+      accountMetas: [
+        { isSigner: false, isWritable: false },
+        { isSigner: false, isWritable: false },
+        { isSigner: false, isWritable: false },
+      ],
+    },
+  ]);
+  assert.notEqual(absent, allFalse);
+  assert.notEqual(complete, allFalse);
+});

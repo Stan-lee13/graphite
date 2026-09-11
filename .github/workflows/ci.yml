@@ -41,7 +41,27 @@ jobs:
       - name: Clippy (all targets, all features — includes the rpc feature)
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Tests
+        # `default = ["server", "cli"]` and `server` pulls `rpc`, so this IS the
+        # all-features run for this crate; a separate `--all-features` job would
+        # compile the same thing twice.
         run: cargo test --release
+      # The two configurations below were COMPILED above and never run. That is
+      # not the same gate: `cargo check --no-default-features` passed for months
+      # while `cargo test --no-default-features` had 28 failures (review finding
+      # #8, 2026-09-11).
+      - name: Tests — embeddable core, no features
+        if: always()
+        # `--lib` deliberately. Without a feature there is no async runtime, so
+        # `verify()` is a fail-closed stub and the behavioural suite is
+        # inapplicable by construction; running it here would gate on tests that
+        # cannot pass rather than on anything true. What this DOES gate is the
+        # pure deterministic core — the parser, the state diff, the risk engine,
+        # manifest handling, content_hash — plus one assertion that the stub
+        # refuses instead of approving.
+        run: cargo test --release --no-default-features --lib
+      - name: Tests — cli feature only, no server or rpc
+        if: always()
+        run: cargo test --release --no-default-features --features cli
 
   supply-chain:
     name: Dependency CVE audit

@@ -727,6 +727,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn valid_registered_reviewer_signature_earns_official_manifest() {
         let mut engine = ManifestRegistryEngine::new();
@@ -904,6 +905,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn g5_attestations_count_only_distinct_registered_reviewers() {
         let mut engine = ManifestRegistryEngine::new();
@@ -1074,6 +1076,7 @@ mod tests {
         assert_eq!(store.get_all_versions(SYSTEM).len(), 1);
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn p10_gate_allows_promotion_when_engine_replay_passes() {
         let mut engine = ManifestRegistryEngine::new();
@@ -1128,6 +1131,7 @@ mod tests {
         assert!(matches!(err, RegistryError::RegressionGateBlocked(_)));
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn self_asserted_trust_tier_in_manifest_is_ignored_p7() {
         let mut engine = ManifestRegistryEngine::new();
@@ -1220,6 +1224,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn the_gate_replays_the_candidate_manifest_not_the_core_it_was_handed() {
         // Two things at once, because they are the same mechanism:
@@ -1282,6 +1287,7 @@ mod tests {
         assert!(matches!(decision, RegistryDecision::Accepted { .. }));
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn a_first_submission_whose_replay_fails_is_blocked() {
         // The gate has to be able to say no on a first submission too, or
@@ -1338,6 +1344,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn an_accepted_upgrade_replaces_the_manifest_that_reaches_verification() {
         // Found live 2026-09-05: submitting v2.0.0 printed ACCEPTED, recorded
@@ -1400,6 +1407,7 @@ mod tests {
         assert!(core.with_candidate_manifest(&m).is_err());
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn version_lineage_is_append_only_and_linked() {
         let mut engine = ManifestRegistryEngine::new();
@@ -1457,6 +1465,7 @@ mod tests {
         assert_eq!(restored.reviewers(), engine.reviewers());
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn deterministic_same_submission_same_decision() {
         let mut engine = ManifestRegistryEngine::new();
@@ -1487,6 +1496,7 @@ mod tests {
         assert_eq!(d1, d2, "same submission ⇒ same decision (P2)");
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     /// C53: an accepted submission must persist its full manifest so the
     /// verification core can merge it into the runtime registry (Finding 3 —
     /// the registry was previously only a dashboard, never wired into
@@ -1536,6 +1546,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     /// C53 end-to-end: a community-accepted manifest merges into a fresh
     /// GraphiteCore's runtime registry (seed-wins: the seed manifest for the
     /// same program is NOT overridden), and verification resolves the

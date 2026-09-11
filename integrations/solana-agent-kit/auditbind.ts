@@ -176,12 +176,34 @@ export class AuditBind {
       if (!metas) {
         field("metas:absent");
       } else {
+        // A short array is refused rather than padded.
+        //
+        // `metas[i]` on a missing entry is `undefined`, and `undefined?.isSigner`
+        // is falsy — so three accounts with two metas hashed the third as
+        // `--`, a digest identical to one where the caller explicitly said the
+        // third account is neither a signer nor writable. Two different facts,
+        // one digest, at the execution boundary. The absent-versus-all-false
+        // distinction this function is careful about was undone one element at
+        // a time (found by review 2026-09-11).
+        //
+        // Throwing is the point. This runs immediately before signing, and a
+        // caller who supplied a partial array does not know which accounts went
+        // unbound; there is no safe value to continue with.
+        if (metas.length !== ix.accounts.length) {
+          throw new Error(
+            `[AuditBind] accountMetas has ${metas.length} entries for ${ix.accounts.length} ` +
+              `accounts on program ${ix.programId}. Partial privilege metadata would hash ` +
+              `identically to metadata that explicitly said "not a signer, not writable" for ` +
+              `the accounts it omits. Supply one entry per account, or omit accountMetas ` +
+              `entirely to bind without privileges.`,
+          );
+        }
         field(
           "metas:" +
             ix.accounts
               .map((a, i) => {
                 const m = metas[i];
-                return `${a}:${m?.isSigner ? "s" : "-"}${m?.isWritable ? "w" : "-"}`;
+                return `${a}:${m.isSigner ? "s" : "-"}${m.isWritable ? "w" : "-"}`;
               })
               .join(","),
         );
