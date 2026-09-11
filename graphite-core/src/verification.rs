@@ -304,6 +304,10 @@ fn account_resolution_reason(
 pub enum PrivilegeSource {
     /// Read out of the artifact's header and key order.
     Artifact,
+    /// Read out of the artifact, with at least one account's privilege coming
+    /// from a lookup table Graphite fetched and decoded rather than from the
+    /// header — so this one depended on an RPC round trip succeeding.
+    ArtifactWithLookupTables,
     /// Read out of the artifact, and the caller's supplied metas disagreed.
     ArtifactContradictingCaller,
     /// Supplied by the caller; no artifact could answer.
@@ -316,6 +320,7 @@ impl PrivilegeSource {
     fn describe(self) -> &'static str {
         match self {
             PrivilegeSource::Artifact => "signer/writable flags were read from the transaction's own header",
+            PrivilegeSource::ArtifactWithLookupTables => "signer/writable flags were read from the transaction itself — the header for its static accounts, and the address lookup tables Graphite fetched and decoded for the accounts that arrive through one",
             PrivilegeSource::ArtifactContradictingCaller => "signer/writable flags were read from the transaction's own header, and they CONTRADICT the flags the caller supplied — the header was used, and the caller's description of these bytes is unreliable",
             PrivilegeSource::Caller => "signer/writable flags came from the caller, not from the transaction, so privilege escalation is checked against the caller's own description",
             PrivilegeSource::Absent => "per-account signer/writable flags were neither supplied nor derivable, so privilege escalation within the account list was not checked",
@@ -334,29 +339,53 @@ impl PrivilegeSource {
 /// plus the key order, both of them in the message. There is nothing left here
 /// to take on trust.
 ///
-/// `None` when any described account is absent from the static key list. Such
-/// an account arrives through a lookup table, where its privilege lives in the
-/// table resolution rather than the header, and answering `false` for it would
-/// invent the fact this function exists to establish. All-or-nothing for the
-/// same reason `resolve_lookups` is: a partly-derived list is indistinguishable
-/// from a fully-derived one at the point of use.
+/// An account arriving through a lookup table has its privilege in the table
+/// resolution rather than in the header, so `lookups` — the tables Graphite
+/// fetched and decoded itself — answers for those.
+///
+/// A lookup table cannot supply a SIGNER. Solana requires every signature to be
+/// over a static key, so an account appearing only through a table is never
+/// one, and that is evidence rather than an absence of it: a manifest slot that
+/// must be signed, filled by an account arriving through a table, describes a
+/// transaction that cannot do what the manifest says it does.
+///
+/// `None` when any described account cannot be placed — neither in the static
+/// keys nor in a resolved table. All-or-nothing for the same reason
+/// `resolve_lookups` is: a partly-derived list is indistinguishable from a
+/// fully-derived one at the point of use, and the missing entries are exactly
+/// the ones an attacker would choose.
 fn privileges_from_artifact(
     message: &crate::tx_artifact::ArtifactMessage,
     described: &[String],
+    lookups: Option<&crate::tx_artifact::ResolvedLookups>,
 ) -> Option<Vec<crate::account_resolution::RealAccountMeta>> {
+    use crate::account_resolution::RealAccountMeta;
     if described.is_empty() {
         return None;
     }
     described
         .iter()
         .map(|addr| {
-            message
-                .static_keys
-                .contains(addr)
-                .then(|| crate::account_resolution::RealAccountMeta {
+            if message.static_keys.contains(addr) {
+                return Some(RealAccountMeta {
                     is_signer: message.signers.contains(addr),
                     is_writable: message.writable.contains(addr),
+                });
+            }
+            let resolved = lookups?;
+            if resolved.writable.contains(addr) {
+                Some(RealAccountMeta {
+                    is_signer: false,
+                    is_writable: true,
                 })
+            } else if resolved.readonly.contains(addr) {
+                Some(RealAccountMeta {
+                    is_signer: false,
+                    is_writable: false,
+                })
+            } else {
+                None
+            }
         })
         .collect()
 }
@@ -859,14 +888,19 @@ impl VerificationScope {
 ///
 /// Every entry is a property an attacker could vary without Graphite noticing,
 /// written as what is missing rather than as a caveat about the check.
+/// `privileges` and `lookups` are what the pipeline ACTUALLY did, passed in
+/// rather than re-derived here. They used to be recomputed inside this
+/// function, which meant the scope could disagree with the verdict it
+/// describes — and a disclosure that contradicts the result is worse than none,
+/// because a reader trusts it. `lookups` carries how many accounts the tables
+/// resolved to, why resolution failed, or `None` for a transaction using none.
 fn verification_scope(
     input: &VerificationInput,
     simulated: bool,
     diff_built: bool,
+    privileges: PrivilegeSource,
+    lookups: Option<Result<usize, String>>,
 ) -> VerificationScope {
-    let metas_grounded = input.real_account_metas.len() == input.account_addresses.len()
-        && !input.account_addresses.is_empty();
-
     match &input.signed_transaction {
         Some(bytes) if !bytes.is_empty() => {
             use sha2::{Digest, Sha256};
@@ -882,20 +916,20 @@ fn verification_scope(
                         .to_string(),
                 );
             }
-            let derived_privileges = crate::tx_artifact::parse_transaction(bytes)
-                .ok()
-                .and_then(|m| privileges_from_artifact(&m, &input.account_addresses));
-            match (&derived_privileges, metas_grounded) {
-                // Established from the bytes. Nothing unobserved to declare —
-                // except for the accounts the header cannot speak for, which
-                // `privileges_from_artifact` refuses to guess at and which the
-                // ALT disclosure below already names.
-                (Some(_), _) => {}
-                (None, true) => unobserved.push(
-                    "whether the signer/writable flags supplied with this request match the transaction's own header: at least one described account is not among the static keys, so the flags could not be derived and the caller's were used"
+            // What the pipeline actually did, rather than this function's
+            // second guess at it. The two used to be computed independently and
+            // could disagree — and a scope that disagrees with the verdict it
+            // describes is worse than no scope.
+            match privileges {
+                // Established from the bytes. Nothing unobserved to declare.
+                PrivilegeSource::Artifact
+                | PrivilegeSource::ArtifactWithLookupTables
+                | PrivilegeSource::ArtifactContradictingCaller => {}
+                PrivilegeSource::Caller => unobserved.push(
+                    "whether the signer/writable flags supplied with this request match the transaction's own: at least one described account could not be placed in the static keys or in a resolved lookup table, so the flags could not be derived and the caller's were used"
                         .to_string(),
                 ),
-                (None, false) => unobserved.push(
+                PrivilegeSource::Absent => unobserved.push(
                     "per-account signer/writable flags: none were supplied and they could not be derived from the artifact, so privilege escalation within the account list is not checked"
                         .to_string(),
                 ),
@@ -916,11 +950,24 @@ fn verification_scope(
                     // described data, and that no OTHER instruction is present
                     // undescribed — those are gates, not caveats, so they do
                     // not belong here. What remains genuinely unestablished:
+                    // The blanket "Graphite does not fetch the tables" claim
+                    // here was true when written and false since the resolver
+                    // landed. Only the cases where resolution did NOT happen
+                    // belong in a list of what went unobserved.
                     if message.has_lookup_accounts() {
-                        unobserved.push(format!(
-                            "{} account(s) this transaction reaches through {} address lookup table(s): the message carries table indexes rather than addresses, and Graphite does not fetch the tables, so those accounts are counted and not identified",
-                            message.alt_account_count(), message.alt_table_count()
-                        ));
+                        match &lookups {
+                            Some(Ok(_)) => {}
+                            Some(Err(why)) => unobserved.push(format!(
+                                "the identity of {} account(s) this transaction reaches through {} address lookup table(s): the tables could not be resolved ({why}), so those accounts are counted and not identified",
+                                message.alt_account_count(),
+                                message.alt_table_count()
+                            )),
+                            None => unobserved.push(format!(
+                                "the identity of {} account(s) this transaction reaches through {} address lookup table(s): the message carries table indexes rather than addresses and no table was fetched, so those accounts are counted and not identified",
+                                message.alt_account_count(),
+                                message.alt_table_count()
+                            )),
+                        }
                     }
                     unobserved.push(
                         "what the instructions DO beyond the effects the simulation surfaced: the message gives Graphite each instruction's program, accounts and raw data, and it decodes that data only for the protocols it has manifests for"
@@ -961,7 +1008,9 @@ fn verification_scope(
                 "the transaction's real effects: with no artifact there is nothing to simulate, so L3 and L4 have no measurement to work from"
                     .to_string(),
             ];
-            if !metas_grounded {
+            let metas_supplied = input.real_account_metas.len() == input.account_addresses.len()
+                && !input.account_addresses.is_empty();
+            if !metas_supplied {
                 unobserved.push(
                     "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked"
                         .to_string(),
@@ -2628,6 +2677,69 @@ impl GraphiteCore {
             )));
         }
 
+        // ONE deadline for every RPC call this verification makes, started
+        // before the first of them. A budget that does not cover every call
+        // bounds nothing — measured 2026-09-08 at 242 SECONDS for a single
+        // verification against a stalled endpoint, spent entirely in a
+        // decorative account fetch, while the budget installed further down
+        // went untouched.
+        #[cfg(feature = "rpc")]
+        let budget = RpcBudget::new(self.rpc_budget);
+
+        // Lookup tables, resolved BEFORE anything reasons about the accounts.
+        //
+        // This used to run inside the simulation block, which is late enough to
+        // be useless for the question that matters most about an ALT-resolved
+        // account: whether it arrives writable. Account resolution has already
+        // happened by then, so the privilege comparison for such an account
+        // fell back to the caller's `real_account_metas` — the one party a
+        // privilege check exists to constrain.
+        //
+        // Fail-closed: a table that is missing, deactivating, malformed, or
+        // short an index resolves NOTHING. A partial address list resolves some
+        // indexes and silently mis-attributes the rest, one position off, which
+        // is worse than an absence because it looks like an answer.
+        #[cfg(feature = "rpc")]
+        let resolved_lookups: Option<Result<crate::tx_artifact::ResolvedLookups, String>> =
+            match (&self.rpc_client, input.signed_transaction.as_ref()) {
+                (Some(client), Some(artifact)) if !artifact.is_empty() => {
+                    match crate::tx_artifact::parse_transaction(artifact) {
+                        Ok(message) if message.has_lookup_accounts() => {
+                            let table_addrs: Vec<String> =
+                                message.lookups.iter().map(|l| l.table.clone()).collect();
+                            let fetched =
+                                within_budget(&budget, client.get_multiple_accounts(&table_addrs))
+                                    .await
+                                    .unwrap_or_else(|()| {
+                                        Err(crate::rpc_client::RpcError::Timeout(budget.total()))
+                                    });
+                            match fetched {
+                                Ok(accounts) => {
+                                    let mut tables: std::collections::HashMap<String, Vec<u8>> =
+                                        std::collections::HashMap::new();
+                                    for (addr, acc) in table_addrs.iter().zip(accounts.iter()) {
+                                        if let Some(a) = acc {
+                                            tables.insert(addr.clone(), a.data.clone());
+                                        }
+                                    }
+                                    Some(
+                                        crate::tx_artifact::resolve_lookups(&message, &tables)
+                                            .map_err(|e| e.to_string()),
+                                    )
+                                }
+                                Err(e) => Some(Err(e.to_string())),
+                            }
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+        // No RPC compiled in means no tables to resolve them from. The accounts
+        // stay unidentified and every disclosure below says so.
+        #[cfg(not(feature = "rpc"))]
+        let resolved_lookups: Option<Result<crate::tx_artifact::ResolvedLookups, String>> = None;
+
         // Privileges come from the artifact whenever the artifact can answer.
         //
         // Two artifacts differing only in one header count — a manifest-readonly
@@ -2639,12 +2751,29 @@ impl GraphiteCore {
         // When the derived flags disagree with the supplied ones, the derived
         // ones win. This is not a tie to average: one of the two is the
         // transaction that will execute.
-        let artifact_privileges = input
+        let artifact_message = input
             .signed_transaction
             .as_ref()
             .filter(|b| !b.is_empty())
-            .and_then(|b| crate::tx_artifact::parse_transaction(b).ok())
-            .and_then(|m| privileges_from_artifact(&m, &input.account_addresses));
+            .and_then(|b| crate::tx_artifact::parse_transaction(b).ok());
+        let artifact_privileges = artifact_message.as_ref().and_then(|m| {
+            privileges_from_artifact(
+                m,
+                &input.account_addresses,
+                resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
+            )
+        });
+        // Whether a lookup table had to be fetched to answer for any of these
+        // accounts. Worth stating separately: a privilege read out of the
+        // header is established from the bytes alone, while one read out of a
+        // table depended on an RPC round trip going through, and a reader
+        // deciding how much the check is worth needs to know which.
+        let privileges_needed_tables = artifact_message.as_ref().is_some_and(|m| {
+            input
+                .account_addresses
+                .iter()
+                .any(|a| !m.static_keys.contains(a))
+        }) && artifact_privileges.is_some();
 
         // A caller whose metas contradict the header has misdescribed the bytes.
         // That is worth saying even when the contradiction is in the harmless
@@ -2663,6 +2792,7 @@ impl GraphiteCore {
             (Some(_), _) if caller_contradicted_artifact => {
                 PrivilegeSource::ArtifactContradictingCaller
             }
+            (Some(_), _) if privileges_needed_tables => PrivilegeSource::ArtifactWithLookupTables,
             (Some(_), _) => PrivilegeSource::Artifact,
             (None, n) if n == input.account_addresses.len() && n > 0 => PrivilegeSource::Caller,
             (None, _) => PrivilegeSource::Absent,
@@ -3144,15 +3274,6 @@ impl GraphiteCore {
         // `unused_mut` would fire, so silence it there.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut l3_rpc_account_info: Option<String> = None;
-        // ONE deadline for every RPC call this verification makes, started
-        // before the first of them. Declared here rather than inside the
-        // simulation block because this decorative fetch is also an RPC call,
-        // and a budget that does not cover every call bounds nothing —
-        // measured 2026-09-08 at 242 SECONDS for a single verification against
-        // a stalled endpoint, spent entirely in this fetch, while the budget
-        // installed further down went untouched.
-        #[cfg(feature = "rpc")]
-        let budget = RpcBudget::new(self.rpc_budget);
         #[cfg(feature = "rpc")]
         {
             if let Some(client) = &self.rpc_client {
@@ -3726,106 +3847,69 @@ impl GraphiteCore {
                         // ── ALT accounts, identified rather than counted ───
                         //
                         // `loadedAddresses` (below) is the SIMULATOR's account
-                        // of what it resolved, which is useful and is not
-                        // Graphite establishing anything: it is the same RPC
+                        // of what it resolved. Useful, and not Graphite
+                        // establishing anything: it comes from the same RPC
                         // whose other claims the trust-boundary work spends its
-                        // time bounding. This block does the independent half —
-                        // take the table addresses and indexes out of the
-                        // message itself, fetch the tables, and resolve the
-                        // indexes to addresses Graphite derived.
-                        //
-                        // Fail-closed and honest about which: an unresolvable
-                        // table produces a stated absence, never a pass. A table
-                        // that is deactivating, malformed, or missing an index
-                        // is refused rather than partially decoded, because a
-                        // partial address list resolves some indexes and
-                        // silently MIS-resolves the rest — the aggregate problem
-                        // wearing a new hat.
+                        // time bounding. The independent half already ran —
+                        // before account resolution, because whether an
+                        // ALT-resolved account arrives writable has to be known
+                        // before anything reasons about that account, not after.
                         if let Some(artifact) = &input.signed_transaction {
                             if let Ok(message) = crate::tx_artifact::parse_transaction(artifact) {
                                 if message.has_lookup_accounts() {
-                                    let table_addrs: Vec<String> =
-                                        message.lookups.iter().map(|l| l.table.clone()).collect();
-                                    let fetched = within_budget(
-                                        &budget,
-                                        client.get_multiple_accounts(&table_addrs),
-                                    )
-                                    .await
-                                    .unwrap_or_else(|()| {
-                                        Err(crate::rpc_client::RpcError::Timeout(budget.total()))
-                                    });
-                                    match fetched {
-                                        Ok(accounts) => {
-                                            let mut tables: std::collections::HashMap<
-                                                String,
-                                                Vec<u8>,
-                                            > = std::collections::HashMap::new();
-                                            for (addr, acc) in
-                                                table_addrs.iter().zip(accounts.iter())
-                                            {
-                                                if let Some(a) = acc {
-                                                    tables.insert(addr.clone(), a.data.clone());
-                                                }
-                                            }
-                                            match crate::tx_artifact::resolve_lookups(
-                                                &message, &tables,
-                                            ) {
-                                                Ok(resolved) => {
-                                                    let described: std::collections::HashSet<&str> =
-                                                        input
-                                                            .account_addresses
-                                                            .iter()
-                                                            .map(|a| a.as_str())
-                                                            .chain(
-                                                                input
-                                                                    .transaction_instructions
-                                                                    .iter()
-                                                                    .flat_map(|ix| {
-                                                                        ix.account_addresses.iter()
-                                                                    })
-                                                                    .map(|a| a.as_str()),
-                                                            )
-                                                            .collect();
-                                                    let mut undescribed: Vec<&str> = resolved
-                                                        .all()
-                                                        .map(|a| a.as_str())
-                                                        .filter(|a| !described.contains(a))
-                                                        .collect();
-                                                    // Deterministic output (P2).
-                                                    undescribed.sort_unstable();
-                                                    undescribed.dedup();
-                                                    if undescribed.is_empty() {
-                                                        alt_observations.push(format!(
-                                                            "{} account(s) arrive through {} address lookup table(s); Graphite resolved every one from the tables themselves and each is named in this request",
-                                                            resolved.len(),
-                                                            message.alt_table_count()
-                                                        ));
-                                                    } else {
-                                                        let shown = undescribed.len().min(8);
-                                                        alt_observations.push(format!(
-                                                            "{} account(s) arrive through address lookup tables and are NOT named anywhere in this request [{}{}] — Graphite resolved them from the tables, so these are identities rather than a count, and nothing here examined what the transaction does to them",
-                                                            undescribed.len(),
-                                                            undescribed[..shown].join(", "),
-                                                            if undescribed.len() > shown {
-                                                                ", …"
-                                                            } else {
-                                                                ""
-                                                            }
-                                                        ));
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    alt_observations.push(format!(
-                                                        "this transaction reaches {} account(s) through {} address lookup table(s) and Graphite could not resolve them ({e}) — their identities are unestablished, so no check here reasoned about which accounts they are",
-                                                        message.alt_account_count(),
-                                                        message.alt_table_count()
-                                                    ));
-                                                }
+                                    match &resolved_lookups {
+                                        Some(Ok(resolved)) => {
+                                            // Declared accounts widen what
+                                            // counts as named, and they can no
+                                            // longer be padded: every
+                                            // declaration has to match an
+                                            // instruction that is really there.
+                                            let described: std::collections::HashSet<&str> = input
+                                                .account_addresses
+                                                .iter()
+                                                .map(|a| a.as_str())
+                                                .chain(
+                                                    input
+                                                        .transaction_instructions
+                                                        .iter()
+                                                        .flat_map(|ix| ix.account_addresses.iter())
+                                                        .map(|a| a.as_str()),
+                                                )
+                                                .collect();
+                                            let mut undescribed: Vec<&str> = resolved
+                                                .all()
+                                                .map(|a| a.as_str())
+                                                .filter(|a| !described.contains(a))
+                                                .collect();
+                                            // Deterministic output (P2).
+                                            undescribed.sort_unstable();
+                                            undescribed.dedup();
+                                            if undescribed.is_empty() {
+                                                alt_observations.push(format!(
+                                                    "{} account(s) arrive through {} address lookup table(s); Graphite resolved every one from the tables themselves and each is named in this request",
+                                                    resolved.len(),
+                                                    message.alt_table_count()
+                                                ));
+                                            } else {
+                                                let shown = undescribed.len().min(8);
+                                                alt_observations.push(format!(
+                                                    "{} account(s) arrive through address lookup tables and are NOT named anywhere in this request [{}{}] — Graphite resolved them from the tables, so these are identities rather than a count, and nothing here examined what the transaction does to them",
+                                                    undescribed.len(),
+                                                    undescribed[..shown].join(", "),
+                                                    if undescribed.len() > shown { ", …" } else { "" }
+                                                ));
                                             }
                                         }
-                                        Err(e) => {
+                                        Some(Err(why)) => {
                                             alt_observations.push(format!(
-                                                "this transaction reaches {} account(s) through {} address lookup table(s) and the tables could not be fetched ({e}) — their identities are unestablished",
+                                                "this transaction reaches {} account(s) through {} address lookup table(s) and Graphite could not resolve them ({why}) — their identities are unestablished, so no check here reasoned about which accounts they are, and their signer/writable flags could not be read from the tables either",
+                                                message.alt_account_count(),
+                                                message.alt_table_count()
+                                            ));
+                                        }
+                                        None => {
+                                            alt_observations.push(format!(
+                                                "this transaction reaches {} account(s) through {} address lookup table(s) and no attempt was made to resolve them",
                                                 message.alt_account_count(),
                                                 message.alt_table_count()
                                             ));
@@ -4746,7 +4830,15 @@ impl GraphiteCore {
                 let simulated = rpc_sim_ok;
                 #[cfg(not(feature = "rpc"))]
                 let simulated = false;
-                verification_scope(input, simulated, observed_diff.is_some())
+                verification_scope(
+                    input,
+                    simulated,
+                    observed_diff.is_some(),
+                    privilege_source,
+                    resolved_lookups
+                        .as_ref()
+                        .map(|r| r.as_ref().map(|l| l.len()).map_err(|e| e.clone())),
+                )
             },
             resolved_accounts: resolution.resolved_accounts.clone(),
             protocol_name,

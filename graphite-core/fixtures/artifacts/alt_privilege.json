@@ -1,0 +1,20 @@
+{
+  "_": "A v0 transaction whose instruction reaches an account ONLY through an address lookup table, with the table account that resolves it. The two artifacts differ in exactly one thing: whether the index sits in the table's writable list or its readonly list. Same table, same index, same account, same counts \u2014 only the privilege moves.",
+  "accounts": {
+    "payer": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+    "program": "TestA1tPrivi1ege111111111111111111111111111",
+    "table": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+    "target": "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7"
+  },
+  "table_index": 5,
+  "instruction_data_hex": "cccccccccccccccc",
+  "table_account_base64": "AQAAAP//////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADz9RXV/yeRof7Wga7bg0MYQZcI1kNvNj0UBdpNgs0uATFzeMKYNpg2ZGhgXqPW2B1Bds9Gsrn2fkBKux+chzRtcbyKJMsMTbXiE+jC8a3MNkGcY6ikEI67SzH5n8EdFpdv9EbSTQ5bjjJVR8aWvVHorXPUS1dNT5neu+UWhCM/pn4Oo6eg5EJjnIm+mgxzfGZurvc6wD4j6d+yrrFticH4hMDEpUnl4fQ30lT6mJ8mwTZn4hUQOMwZtb9UI7CVw6bqj28o20VJFb9bANfHwNNhnVMaRNFBFdoQd9UWAi3KduJ1HpnW2L5Ck5Kf486NU9Xc3SnfrmX9wNbrGrTnzCb2dmCiwY5r72FtzT49YVgKH5VguqZHkT/MWjVLriO6ygMOZru+GoeysU5u+G/nZzpFFr5OHSMTdC1qX2D38s7wEQ9br3iCeIdAack8GVtLa1lzBR0POvgqfNPYaXhzjhBl27WBbo6sR1cawTi7Gma6HkFzpvg81KWZ7UU64F53BmsnHPfrrTno1SXTKT8iYK4c1QQ1+9OQuPtCURkY8wGa7ggxwkH5Pw3CvIjQhKPtFJUg7E94dr16ejubYmd2GM4gA9q/StJkFa37PnDs2keXmdsR52/BrylgUZ6HlOolPzpYvBpJVHqh5cWN1olAohLx15vKKg+GXMlpmXOI8JapSg==",
+  "target_arrives_writable": {
+    "raw_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAmdSBVwgs+nYdGZW3fc4VVB/h6tth1I+THan+jYJapnrBtPt03nWBqJ52BGt9udGptoFS2HHhqzL2I58G9gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAgACCMzMzMzMzMzMAQICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAQUA",
+    "what_it_says": "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7 is resolved into the WRITABLE half of the lookup"
+  },
+  "target_arrives_readonly": {
+    "raw_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQABAmdSBVwgs+nYdGZW3fc4VVB/h6tth1I+THan+jYJapnrBtPt03nWBqJ52BGt9udGptoFS2HHhqzL2I58G9gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAgACCMzMzMzMzMzMAQICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAAEF",
+    "what_it_says": "9wDJULnQ6to8Z8kYqxJy9hrrwX8G4WmNy8G6pqm5m6X7 is resolved into the readonly half of the lookup"
+  }
+}
