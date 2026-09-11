@@ -180,7 +180,8 @@ jobs:
           # the code rather than kept in step by hand. Any drift shows up as a
           # diff here instead of as a blocked transaction in production.
           npm run emit:artifact-fixture
-          git diff --exit-code -- ../../graphite-core/fixtures/artifacts/sak_bridge_artifact.json
+          npm run emit:corpus
+          git diff --exit-code --             ../../graphite-core/fixtures/artifacts/sak_bridge_artifact.json             ../../graphite-core/fixtures/artifacts/sak_bridge_corpus.json
 
   go:
     name: Go SDK — fmt, vet, tests

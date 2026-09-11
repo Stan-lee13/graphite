@@ -92,7 +92,7 @@ fn lamports(pubkey: &str, n: u64) -> AccountSnapshot {
         data_len: 0,
         token: None,
         mint: None,
-        extensions: Vec::new(),
+        extensions: Default::default(),
     }
 }
 
@@ -345,5 +345,134 @@ fn a_diff_never_turns_a_transaction_that_would_be_blocked_into_an_approval() {
         !with.approved,
         "a clean state diff must never rescue an otherwise-rejected transaction: {}",
         with.summary
+    );
+}
+
+// -- Token-2022 extensions reach the gate -----------------------------------
+//
+// `token2022_extensions.rs` proves the scanner reads and classifies. These
+// prove the classification is WIRED IN: an extension that alters transfer
+// semantics fails L4 and blocks, an unreadable region fails L4 and blocks, and
+// an informational extension does neither. Through `verify`, against the same
+// approved baseline as everything above.
+
+const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
+
+/// A Token-2022 account: the base layout, the type byte, then TLV entries.
+fn t22_account(amount: u64, tlv: &[u8]) -> Vec<u8> {
+    let mut d = token_account(amount, None);
+    d.push(2); // account type: Account
+    d.extend_from_slice(tlv);
+    d
+}
+
+fn t22_delta(amount_before: u64, amount_after: u64, tlv: &[u8]) -> AccountDelta {
+    AccountDelta {
+        pubkey: RECIPIENT.to_string(),
+        before: Some(AccountSnapshot::from_raw(
+            RECIPIENT,
+            2_039_280,
+            TOKEN_2022_PROGRAM,
+            &t22_account(amount_before, tlv),
+        )),
+        after: Some(AccountSnapshot::from_raw(
+            RECIPIENT,
+            2_039_280,
+            TOKEN_2022_PROGRAM,
+            &t22_account(amount_after, tlv),
+        )),
+    }
+}
+
+#[test]
+fn a_transfer_hook_on_a_touched_account_fails_l4_and_blocks() {
+    // TransferHook (14), 32 bytes of program id. The balance moved exactly as a
+    // transfer would; the hook is what the base layout cannot see.
+    let mut tlv = vec![14u8, 0, 32, 0];
+    tlv.extend_from_slice(&[0xAB; 32]);
+    let result = core()
+        .verify(&transfer(Some(diff(vec![t22_delta(1_000, 2_000, &tlv)]))))
+        .unwrap();
+    let (status, reason) = l4(&result);
+    assert_eq!(status, LayerStatus::Failed, "L4 reason: {reason}");
+    assert!(
+        reason.contains("Token2022ExtensionNotModelled") && reason.contains("TransferHook"),
+        "the layer must name the extension (P3): {reason}"
+    );
+    assert!(
+        !result.approved,
+        "{} / {}",
+        result.policy_verdict, result.summary
+    );
+}
+
+#[test]
+fn a_permanent_delegate_fails_l4_and_blocks() {
+    let mut tlv = vec![12u8, 0, 32, 0];
+    tlv.extend_from_slice(&[0xCD; 32]);
+    let result = core()
+        .verify(&transfer(Some(diff(vec![t22_delta(1_000, 2_000, &tlv)]))))
+        .unwrap();
+    let (status, reason) = l4(&result);
+    assert_eq!(status, LayerStatus::Failed, "{reason}");
+    assert!(reason.contains("PermanentDelegate"), "{reason}");
+    assert!(!result.approved);
+}
+
+#[test]
+fn an_unrecognised_extension_fails_l4_and_blocks() {
+    // Discriminant 4242 does not exist. An extension nobody here has heard of
+    // is not evidence of safety.
+    let tlv = vec![0x92u8, 0x10, 4, 0, 0, 0, 0, 0];
+    let result = core()
+        .verify(&transfer(Some(diff(vec![t22_delta(1_000, 2_000, &tlv)]))))
+        .unwrap();
+    let (status, reason) = l4(&result);
+    assert_eq!(status, LayerStatus::Failed, "{reason}");
+    assert!(reason.contains("4242"), "{reason}");
+    assert!(!result.approved);
+}
+
+/// R7-01 at the gate: an unreadable extension region blocks.
+///
+/// The scanner-level test proves the region is REPORTED unreadable. This
+/// proves that report reaches the verdict — that a corrupt length byte in front
+/// of a hook is refused rather than read as an account with nothing attached.
+#[test]
+fn an_unreadable_extension_region_fails_l4_and_blocks() {
+    // TransferHook (14) declaring 60,000 bytes that are not there.
+    let tlv = vec![14u8, 0, 0x60, 0xEA];
+    let result = core()
+        .verify(&transfer(Some(diff(vec![t22_delta(1_000, 2_000, &tlv)]))))
+        .unwrap();
+    let (status, reason) = l4(&result);
+    assert_eq!(status, LayerStatus::Failed, "L4 reason: {reason}");
+    assert!(
+        reason.contains("Token2022ExtensionRegionUnreadable"),
+        "an unreadable region must be named as such, not treated as empty: {reason}"
+    );
+    assert!(!result.approved);
+}
+
+/// The control: an informational extension is reported and does NOT block.
+///
+/// `ImmutableOwner` is on essentially every Token-2022 associated token
+/// account. If this blocked, the three tests above would be proving only that
+/// Token-2022 blocks, and operators would learn to ignore the finding.
+#[test]
+fn an_informational_extension_is_reported_without_blocking() {
+    let tlv = vec![7u8, 0, 0, 0]; // ImmutableOwner, zero-length
+    let result = core()
+        .verify(&transfer(Some(diff(vec![t22_delta(1_000, 2_000, &tlv)]))))
+        .unwrap();
+    let (status, reason) = l4(&result);
+    assert_ne!(
+        status,
+        LayerStatus::Failed,
+        "ImmutableOwner redirects nothing and must not fail the layer: {reason}"
+    );
+    assert!(
+        reason.contains("ImmutableOwner"),
+        "but it must still be named, so the operator knows it was seen: {reason}"
     );
 }

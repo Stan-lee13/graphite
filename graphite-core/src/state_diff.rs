@@ -130,13 +130,14 @@ pub struct AccountSnapshot {
     /// Present when the account decodes as an SPL mint.
     #[serde(default)]
     pub mint: Option<MintView>,
-    /// Token-2022 extensions attached to this account.
+    /// Token-2022 extensions attached to this account, or why they could not
+    /// be read.
     ///
-    /// Detected, named and classified — never modelled. An empty list means no
+    /// Detected, named and classified — never modelled. A clean scan means no
     /// extension was found, which is not the same as a claim that the account
-    /// is simple.
+    /// is simple; a malformed scan means the account cannot be reasoned about.
     #[serde(default)]
-    pub extensions: Vec<DetectedExtension>,
+    pub extensions: ExtensionScan,
 }
 
 impl AccountSnapshot {
@@ -165,7 +166,7 @@ impl AccountSnapshot {
             } else {
                 // Classic SPL Token has no extension region. Looking for one
                 // would read whatever follows a 165-byte account as TLV.
-                Vec::new()
+                ExtensionScan::default()
             },
         }
     }
@@ -307,29 +308,71 @@ fn extension_name(discriminant: u16) -> Option<(&'static str, ExtensionImpact)> 
     })
 }
 
-/// Every Token-2022 extension attached to this account.
+/// The outcome of reading an account's extension region.
 ///
-/// Empty for classic SPL Token accounts, for Token-2022 accounts with no
-/// extensions, and for data too short to carry the TLV region — none of which
-/// is a claim that the account is simple, only that no extension was found.
-///
-/// Walks the TLV with bounds checks and stops at the first malformed entry.
-/// Stopping rather than guessing matters: a length that runs past the buffer
-/// means the rest of the region cannot be read, and inventing entries from
-/// whatever follows would be worse than reporting what was read.
-pub fn detect_token2022_extensions(data: &[u8]) -> Vec<DetectedExtension> {
-    let mut found = Vec::new();
-    if data.len() <= T22_TLV_START {
-        return found;
+/// Three answers, and the difference between the last two is the whole point:
+/// "no extensions were found" is a statement about the account; "the region
+/// could not be read" is a statement about Graphite. An earlier version
+/// collapsed both into an empty list, so a Token-2022 account whose first TLV
+/// entry had a corrupt length looked exactly like an account with no
+/// extensions at all — and a transfer hook behind a bad length byte would have
+/// produced no finding (Round 7, R7-01).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExtensionScan {
+    /// Every extension that was read cleanly, in order.
+    pub found: Vec<DetectedExtension>,
+    /// Why the walk stopped early, when it did. `Some` means the list above is
+    /// incomplete and the account cannot be reasoned about.
+    pub malformed: Option<String>,
+}
+
+impl ExtensionScan {
+    /// True only when the region was read to its end and nothing was found.
+    /// The distinction from "could not read" is what this type exists for.
+    pub fn is_clean(&self) -> bool {
+        self.found.is_empty() && self.malformed.is_none()
     }
-    // Only an account or a mint carries extensions; anything else is not a
-    // layout this function understands.
+}
+
+/// Every Token-2022 extension attached to this account, or why they could not
+/// be read.
+///
+/// `is_clean()` for classic SPL Token accounts, for Token-2022 accounts with no
+/// extensions, and for data too short to carry a TLV region — none of which is
+/// a claim that the account is simple, only that no extension was found.
+///
+/// Walks the TLV with bounds checks and STOPS at the first malformed entry,
+/// recording why. Stopping rather than guessing matters: a length that runs
+/// past the buffer means the rest of the region cannot be read, and inventing
+/// entries from whatever follows would be worse than reporting what was read.
+/// Recording why matters more: without it, a stopped walk is an empty list.
+pub fn detect_token2022_extensions(data: &[u8]) -> ExtensionScan {
+    let mut scan = ExtensionScan::default();
+    if data.len() <= T22_TLV_START {
+        return scan;
+    }
+    // Only an account or a mint carries extensions. Any other type byte on
+    // data long enough to have one is a layout this function does not
+    // understand, and it says so rather than reading nothing.
     match data.get(T22_TYPE_OFFSET) {
         Some(&T22_TYPE_ACCOUNT) | Some(&T22_TYPE_MINT) => {}
-        _ => return found,
+        Some(other) => {
+            scan.malformed = Some(format!(
+                "account type byte {other} is neither Account nor Mint, so the extension region cannot be interpreted"
+            ));
+            return scan;
+        }
+        None => return scan,
     }
     let mut offset = T22_TLV_START;
-    while offset + 4 <= data.len() {
+    while offset < data.len() {
+        if offset + 4 > data.len() {
+            scan.malformed = Some(format!(
+                "{} trailing byte(s) at offset {offset} are too short to be a TLV header",
+                data.len() - offset
+            ));
+            return scan;
+        }
         let discriminant = u16::from_le_bytes([data[offset], data[offset + 1]]);
         let length = u16::from_le_bytes([data[offset + 2], data[offset + 3]]) as usize;
         // Discriminant 0 is Uninitialized: the end of the meaningful region.
@@ -337,7 +380,11 @@ pub fn detect_token2022_extensions(data: &[u8]) -> Vec<DetectedExtension> {
             break;
         }
         if offset + 4 + length > data.len() {
-            break;
+            scan.malformed = Some(format!(
+                "extension type {discriminant} at offset {offset} declares {length} bytes but only {} remain",
+                data.len() - offset - 4
+            ));
+            return scan;
         }
         let (name, impact) = match extension_name(discriminant) {
             Some((n, i)) => (n.to_string(), i),
@@ -346,14 +393,14 @@ pub fn detect_token2022_extensions(data: &[u8]) -> Vec<DetectedExtension> {
                 ExtensionImpact::Unknown,
             ),
         };
-        found.push(DetectedExtension {
+        scan.found.push(DetectedExtension {
             discriminant,
             name,
             impact,
         });
         offset += 4 + length;
     }
-    found
+    scan
 }
 
 /// Decode the 82-byte SPL mint layout. Returns `None` when the data is not a
@@ -897,12 +944,27 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // finding names the extension so an operator can decide, and modelling a
     // given extension properly is how it stops blocking — not lowering this.
     for delta in input.diff.deltas.iter() {
-        let extensions = delta
+        let scan = delta
             .after
             .as_ref()
             .or(delta.before.as_ref())
             .map(|snap| snap.extensions.clone())
             .unwrap_or_default();
+        // A region that could not be read is not a region with nothing in it.
+        // Checked FIRST, so a corrupt length byte in front of a transfer hook
+        // cannot turn the hook into silence.
+        if let Some(why) = &scan.malformed {
+            findings.push(StateDiffFinding::critical(
+                "Token2022ExtensionRegionUnreadable",
+                Some(delta.pubkey.as_str()),
+                format!(
+                    "the extension region of this Token-2022 account could not be read ({why}); {} extension(s) were read before the walk stopped and whatever follows is unknown — an account Graphite cannot read is not an account it can approve",
+                    scan.found.len()
+                ),
+            ));
+            continue;
+        }
+        let extensions = scan.found;
         if extensions.is_empty() {
             continue;
         }
@@ -1282,7 +1344,7 @@ mod tests {
             data_len: 0,
             token: None,
             mint: None,
-            extensions: Vec::new(),
+            extensions: Default::default(),
         }
     }
 
@@ -2084,7 +2146,7 @@ mod tests {
                     data_len: 165,
                     token: None,
                     mint: None,
-                    extensions: Vec::new(),
+                    extensions: Default::default(),
                 }),
             }],
             provenance: DiffProvenance::RpcSimulated,

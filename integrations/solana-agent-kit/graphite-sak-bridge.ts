@@ -77,6 +77,34 @@ export {
 };
 
 /**
+ * What an execute call actually did, in a form a caller can gate on.
+ *
+ * `executed` alone was ambiguous: it was true for bytes the artifact-bound gate
+ * signed AND for the explicit unverified swap opt-out. A caller reading the
+ * result could not tell a verified execution from one Graphite never saw.
+ * `verifiedExecution` is true only when `signApproved` signed the exact bytes
+ * Graphite hashed; it is false for a block, and false for the opt-out.
+ */
+export interface ExecutionOutcome {
+  executed: boolean;
+  /** True only when the artifact-bound gate signed the submitted bytes. */
+  verifiedExecution: boolean;
+  verification: VerificationResult;
+  signature?: string;
+  /** Present on the opt-out path, naming what was not verified. */
+  unverifiedReason?: string;
+}
+
+/**
+ * The exact value the swap opt-out requires.
+ *
+ * Not "1", "true" or "yes". A bare `=1` is what gets copied from a README,
+ * inherited from a shell profile, or left in a `.env` after a test; a phrase
+ * that says what it does is not set by accident.
+ */
+export const UNVERIFIED_SWAP_OPT_IN = "I_ACCEPT_UNVERIFIED_SWAP_EXECUTION";
+
+/**
  * RPC Simulation helper — calls simulateTransaction to get real resource usage.
  * The compute/writes/hops feed the Core's Simulation Integrity check (L3) and
  * the audit trail. NOTE: in Phase 1 they do NOT boost the confidence score (the
@@ -324,7 +352,7 @@ export class VerifiedSakAgent {
     // and the Core reports which mode it used, so a caller is never told a
     // Descriptive verdict is artifact-bound.
     const artifactInstructions =
-      params.bound?.tx.instructions ??
+      params.bound?.instructions() ??
       params.artifactInstructions ??
       params.instructions;
     let signed_transaction: number[] | undefined;
@@ -421,7 +449,7 @@ export class VerifiedSakAgent {
     const signature = await this.connection.sendRawTransaction(raw);
     await this.connection.confirmTransaction({
       signature,
-      blockhash: bound.tx.recentBlockhash!,
+      blockhash: bound.recentBlockhash,
       lastValidBlockHeight: bound.lastValidBlockHeight,
     });
     return signature;
@@ -429,7 +457,7 @@ export class VerifiedSakAgent {
 
   async executeTransfer(
     naturalLanguage: string
-  ): Promise<{ executed: boolean; verification: VerificationResult; signature?: string }> {
+  ): Promise<ExecutionOutcome> {
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
 
@@ -476,7 +504,7 @@ export class VerifiedSakAgent {
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
-    if (!verification.approved) { console.log("[Graphite] Transfer BLOCKED."); return { executed: false, verification }; }
+    if (!verification.approved) { console.log("[Graphite] Transfer BLOCKED."); return { executed: false, verifiedExecution: false, verification }; }
     // `approved` alone is not the gate. A verdict that merely described
     // caller-supplied metadata and one bound to real signed bytes are the same
     // shape on the wire, so `approved` cannot tell whether Graphite was ever
@@ -501,7 +529,9 @@ export class VerifiedSakAgent {
     // signing. The discriminator is passed explicitly
     // because System Transfer's is 4 bytes and the Anchor default would read 8,
     // picking up half the lamport amount and never matching Graphite's hash.
-    const tx = bound.tx;
+    // Copies, not the bound transaction's own objects: AuditBind projects
+    // from these, and nothing it does to them can reach what gets signed.
+    const tx = { instructions: bound.instructions() };
     const project = (ix: TransactionInstruction) => ({
       programId: ix.programId.toBase58(),
       data: ix.data,
@@ -542,7 +572,7 @@ export class VerifiedSakAgent {
     //    digest Graphite computed over the exact bytes.
     const signature = await this.signSubmitAndConfirm(bound, verification, "transfer");
     console.log(`[Solana] Confirmed: ${signature}`);
-    return { executed: true, verification, signature };
+    return { executed: true, verifiedExecution: true, verification, signature };
   }
 
   /**
@@ -582,7 +612,8 @@ export class VerifiedSakAgent {
    * does not exist, printed next to the execution of one that does.
    *
    * The escape hatch survives, inverted and named for what it does:
-   * `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1`. An operator who genuinely
+   * `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION` set to the exact opt-in phrase
+   * `UNVERIFIED_SWAP_OPT_IN`. An operator who genuinely
    * needs SAK's router and accepts that Graphite is not verifying the submitted
    * instruction can set it, and the warning says exactly which properties went
    * unobserved.
@@ -600,7 +631,7 @@ export class VerifiedSakAgent {
   async executeSwap(
     naturalLanguage: string,
     payload?: BoundInstructionPayload,
-  ): Promise<{ executed: boolean; verification: VerificationResult; signature?: string }> {
+  ): Promise<ExecutionOutcome> {
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
 
@@ -616,7 +647,7 @@ export class VerifiedSakAgent {
     // Fail closed by default. `GRAPHITE_SWAP_STRICT=1` is still honoured for
     // compatibility, but it is now redundant: strict IS the default.
     const allowUnverified =
-      process.env.GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION === "1" &&
+      process.env.GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION === UNVERIFIED_SWAP_OPT_IN &&
       process.env.GRAPHITE_SWAP_STRICT !== "1";
     if (!payload && !allowUnverified) {
       throw new Error(
@@ -625,7 +656,7 @@ export class VerifiedSakAgent {
           "instruction that is submitted. Without it Graphite would be asked to verify a " +
           "one-account projection while SAK's builder submits a different instruction entirely — " +
           "no destination, no vaults, no amounts, nothing about the real swap observed. " +
-          "Build the route first and pass it, or set GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1 " +
+          "Build the route first and pass it, or set GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION={UNVERIFIED_SWAP_OPT_IN} " +
           "to execute swaps Graphite has not verified. ABORTING."
       );
     }
@@ -663,7 +694,7 @@ export class VerifiedSakAgent {
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
-    if (!verification.approved) { console.log("[Graphite] Swap BLOCKED."); return { executed: false, verification }; }
+    if (!verification.approved) { console.log("[Graphite] Swap BLOCKED."); return { executed: false, verifiedExecution: false, verification }; }
     reportVerificationScope(verification, "swap");
 
     if (payload) {
@@ -695,10 +726,11 @@ export class VerifiedSakAgent {
       console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction directly (bypassing SAK's builder)...");
       const signature = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
       console.log(`[Solana] Confirmed: ${signature}`);
-      return { executed: true, verification, signature };
+      return { executed: true, verifiedExecution: true, verification, signature };
     }
 
-    // Only reachable with GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1.
+    // Only reachable with GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION set to the
+    // exact opt-in phrase.
     //
     // The AuditBind call below is deliberately NOT made. It would re-hash the
     // three constants this method just sent to Graphite and print "Hash
@@ -709,7 +741,7 @@ export class VerifiedSakAgent {
     console.warn(
       [
         "[Graphite] EXECUTING A SWAP GRAPHITE DID NOT VERIFY.",
-        "  GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=1 is set.",
+        `  GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=${UNVERIFIED_SWAP_OPT_IN} is set.`,
         "  Verified: the wallet address, the Jupiter program id, and the swap discriminator.",
         "  NOT observed: destination token account, vaults, authority, every other account,",
         "  the instruction data, the amounts, the slippage, and the route.",
@@ -726,7 +758,18 @@ export class VerifiedSakAgent {
       params.input_token, params.output_token, params.amount, params.slippage_bps ?? 300,
     );
     console.log(`[SAK] Swap executed: ${result.signature ?? result}`);
-    return { executed: true, verification, signature: result.signature };
+    // Machine-readable, so a caller cannot mistake this for a verified
+    // execution however it reads the log.
+    return {
+      executed: true,
+      verifiedExecution: false,
+      verification,
+      signature: result.signature,
+      unverifiedReason:
+        "GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION opt-in: SAK's builder constructed and " +
+        "submitted an instruction Graphite did not verify — destination, vaults, authority, " +
+        "amounts, slippage and route were not observed",
+    };
   }
 
   getSakAgent(): SolanaAgentKit | null { return this.sakAgent; }

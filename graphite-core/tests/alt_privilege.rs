@@ -58,6 +58,12 @@ fn acct(name: &str) -> String {
 /// the state diff and the state's bytes to the resolver. The table address in
 /// the request body is what tells them apart.
 fn serve_table() -> String {
+    serve_table_owned_by("AddressLookupTab1e1111111111111111111111111")
+}
+
+/// The same mock, with the table account under an arbitrary owner.
+fn serve_table_owned_by(owner: &str) -> String {
+    let owner = owner.to_string();
     let table = fixture()["table_account_base64"]
         .as_str()
         .expect("table data")
@@ -76,7 +82,7 @@ fn serve_table() -> String {
             let payload = if body.contains(&table_address) {
                 format!(
                     r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":[
-                        {{"lamports":1000000,"owner":"AddressLookupTab1e1111111111111111111111111",
+                        {{"lamports":1000000,"owner":"{owner}",
                           "data":["{table}","base64"],"executable":false,"rentEpoch":0}}]}}}}"#
                 )
             } else {
@@ -338,4 +344,30 @@ fn an_unresolvable_table_leaves_the_privilege_unestablished_and_says_so() {
         !r.approved,
         "nothing about an unresolvable table should produce an approval"
     );
+}
+
+/// A well-formed table under the wrong owner resolves nothing.
+///
+/// The bytes decode perfectly — same table data as the tests above — but the
+/// runtime only honours a table owned by the lookup-table program, so a
+/// transaction referencing this account would fail at execution. Decoding it
+/// anyway would answer questions about a transaction that will not run, and
+/// worse, would let an RPC that serves attacker-chosen bytes under an
+/// attacker-chosen owner define what the lookup resolves to.
+#[test]
+fn a_table_under_the_wrong_owner_is_refused_even_when_its_bytes_decode() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let endpoint = serve_table_owned_by("11111111111111111111111111111111");
+    let r = rt.block_on(verify(&endpoint, "target_arrives_writable"));
+    dump("table under the System program", &r);
+
+    // The escalation is in this artifact, and with the table refused it cannot
+    // be established — so no privilege block, and the verdict must say why.
+    assert!(!blocked_on_privilege(&r));
+    let unobserved = r.scope.unobserved().join(" | ");
+    assert!(
+        unobserved.contains("not the Address Lookup Table program"),
+        "the refusal must name the owner problem: {unobserved}"
+    );
+    assert!(!r.approved);
 }

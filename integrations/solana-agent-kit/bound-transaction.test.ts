@@ -24,9 +24,23 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
+  Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
 import { BoundTransaction, messageOf } from "./artifact.js";
+
+/**
+ * Reach the private transaction the way a hostile in-process actor would.
+ *
+ * TypeScript `private` is a compile-time promise. Code that ignores it — a
+ * malicious plugin, a monkey-patch, a debugger — is the threat the digest check
+ * exists for, so the mutation tests below go through this rather than through
+ * an API that no longer exists. A caller that respects the type system has no
+ * route to the object at all; see the alias tests for that half.
+ */
+function hostile(b: BoundTransaction): Transaction {
+  return (b as unknown as { tx: Transaction }).tx;
+}
 
 const payer = Keypair.generate();
 const destination = Keypair.generate().publicKey;
@@ -81,7 +95,7 @@ test("a refreshed blockhash after approval is refused", () => {
   // with one blockhash, submit with whatever the sender fetched.
   const bound = build();
   const digest = approvedDigest(bound);
-  bound.tx.recentBlockhash = OTHER_BLOCKHASH;
+  hostile(bound).recentBlockhash = OTHER_BLOCKHASH;
   assert.throws(
     () => bound.signApproved(digest, [payer]),
     /changed between approval and signing/,
@@ -92,14 +106,14 @@ test("a refreshed blockhash after approval is refused", () => {
 test("a changed fee payer after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
-  bound.tx.feePayer = Keypair.generate().publicKey;
+  hostile(bound).feePayer = Keypair.generate().publicKey;
   assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("an instruction appended after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
-  bound.tx.add(transfer(1));
+  hostile(bound).add(transfer(1));
   assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
@@ -108,28 +122,28 @@ test("a rewritten amount after approval is refused", () => {
   const digest = approvedDigest(bound);
   // Mutate the live instruction data in place — the mutation a snapshot-based
   // check cannot see.
-  bound.tx.instructions[0].data.writeBigUInt64LE(9_000_000n, 4);
+  hostile(bound).instructions[0].data.writeBigUInt64LE(9_000_000n, 4);
   assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("a redirected destination after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
-  bound.tx.instructions[0].keys[1].pubkey = Keypair.generate().publicKey;
+  hostile(bound).instructions[0].keys[1].pubkey = Keypair.generate().publicKey;
   assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("a flipped writable bit after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
-  bound.tx.instructions[0].keys[1].isWritable = false;
+  hostile(bound).instructions[0].keys[1].isWritable = false;
   assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("the digest names both sides so an operator can tell which moved", () => {
   const bound = build();
   const digest = approvedDigest(bound);
-  bound.tx.recentBlockhash = OTHER_BLOCKHASH;
+  hostile(bound).recentBlockhash = OTHER_BLOCKHASH;
   try {
     bound.signApproved(digest, [payer]);
     assert.fail("should have thrown");

@@ -30,9 +30,23 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
+  Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
 import { BoundTransaction, messageOf } from "./artifact.js";
+
+/**
+ * Reach the private transaction the way a hostile in-process actor would.
+ *
+ * TypeScript `private` is a compile-time promise. Code that ignores it — a
+ * malicious plugin, a monkey-patch, a debugger — is the threat the digest check
+ * exists for, so the mutation tests below go through this rather than through
+ * an API that no longer exists. A caller that respects the type system has no
+ * route to the object at all; see the alias tests for that half.
+ */
+function hostile(b: BoundTransaction): Transaction {
+  return (b as unknown as { tx: Transaction }).tx;
+}
 
 const payer = Keypair.generate();
 const destination = Keypair.generate().publicKey;
@@ -268,18 +282,18 @@ test("structural mutations of the live object are all refused", () => {
   // Each entry mutates the approved transaction through a reference an attacker
   // with any foothold would hold, then requires the gate to refuse.
   const mutations: [string, (b: BoundTransaction) => void][] = [
-    ["blockhash", (b) => { b.tx.recentBlockhash = "So11111111111111111111111111111111111111112"; }],
-    ["fee payer", (b) => { b.tx.feePayer = Keypair.generate().publicKey; }],
-    ["append instruction", (b) => { b.tx.add(transfer(1)); }],
-    ["drop instruction", (b) => { b.tx.instructions.pop(); }],
-    ["reorder instructions", (b) => { b.tx.instructions.reverse(); }],
-    ["instruction data", (b) => { b.tx.instructions[0].data[4] ^= 0xff; }],
-    ["program id", (b) => { b.tx.instructions[0].programId = Keypair.generate().publicKey; }],
-    ["account pubkey", (b) => { b.tx.instructions[0].keys[1].pubkey = Keypair.generate().publicKey; }],
+    ["blockhash", (b) => { hostile(b).recentBlockhash = "So11111111111111111111111111111111111111112"; }],
+    ["fee payer", (b) => { hostile(b).feePayer = Keypair.generate().publicKey; }],
+    ["append instruction", (b) => { hostile(b).add(transfer(1)); }],
+    ["drop instruction", (b) => { hostile(b).instructions.pop(); }],
+    ["reorder instructions", (b) => { hostile(b).instructions.reverse(); }],
+    ["instruction data", (b) => { hostile(b).instructions[0].data[4] ^= 0xff; }],
+    ["program id", (b) => { hostile(b).instructions[0].programId = Keypair.generate().publicKey; }],
+    ["account pubkey", (b) => { hostile(b).instructions[0].keys[1].pubkey = Keypair.generate().publicKey; }],
 
-    ["swap account order", (b) => { b.tx.instructions[0].keys.reverse(); }],
+    ["swap account order", (b) => { hostile(b).instructions[0].keys.reverse(); }],
     ["append account", (b) => {
-      b.tx.instructions[0].keys.push({
+      hostile(b).instructions[0].keys.push({
         pubkey: Keypair.generate().publicKey,
         isSigner: false,
         isWritable: true,
@@ -293,11 +307,11 @@ test("structural mutations of the live object are all refused", () => {
   // message. See `per_instruction_privilege_flags_are_compilation_inputs`.
   mutations.push([
     "isWritable (single instruction)",
-    (b) => { b.tx.instructions[0].keys[1].isWritable = false; },
+    (b) => { hostile(b).instructions[0].keys[1].isWritable = false; },
   ]);
   mutations.push([
     "isSigner (single instruction)",
-    (b) => { b.tx.instructions[0].keys[1].isSigner = true; },
+    (b) => { hostile(b).instructions[0].keys[1].isSigner = true; },
   ]);
 
   for (const [label, mutate] of mutations) {
@@ -357,50 +371,100 @@ test("per_instruction_privilege_flags_are_compilation_inputs", () => {
 
   // The union already happened: the account is writable in the compiled
   // message despite instruction 0 asking for read-only.
-  const compiled = bound.tx.compileMessage();
+  const compiled = hostile(bound).compileMessage();
   const index = compiled.accountKeys.findIndex((k) => k.equals(shared));
   assert.ok(compiled.isAccountWritable(index), "the union makes it writable");
 
   // So lowering instruction 0's flag changes nothing that executes, and the
   // gate correctly does not refuse it.
-  bound.tx.instructions[0].keys[1].isWritable = false;
+  hostile(bound).instructions[0].keys[1].isWritable = false;
   assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
 
   // Lowering it on the instruction that actually determines the union DOES
   // change the message, and is refused.
   const other = build([readonlyFirst, writableSecond]);
   const otherDigest = digestOf(other.artifactBytes);
-  other.tx.instructions[1].keys[1].isWritable = false;
+  hostile(other).instructions[1].keys[1].isWritable = false;
   assert.throws(
     () => other.signApproved(otherDigest, [payer]),
     /changed between approval and signing/,
   );
 });
 
-test("mutation through an ALIASED instruction reference is refused", () => {
-  // The caller keeps its own handle on the instruction it passed in. JavaScript
-  // shares that object by reference, so `BoundTransaction` holding it is not
-  // the caller giving it up. This is the realistic shape: a plugin or helper
-  // that kept a pointer.
+// -- 4. Aliasing: closed by construction, not only by detection --------------
+//
+// Round 6 proved that mutating a caller-retained instruction was DETECTED. That
+// is the backstop. `BoundTransaction.build` now deep-copies every instruction,
+// so a caller's retained reference does not reach the transaction at all: the
+// honest path signs, the digest still matches, and what was signed is what was
+// approved — the alias mutated an object the transaction no longer shares.
+
+test("a caller-retained instruction alias no longer reaches the transaction", () => {
   const ix = transfer();
   const bound = build([ix]);
   const digest = digestOf(bound.artifactBytes);
 
-  ix.data.writeBigUInt64LE(900_000_000n, 4); // drained through the alias
-  assert.throws(
-    () => bound.signApproved(digest, [payer]),
-    /changed between approval and signing/,
-    "an alias the caller kept must not be a way around the gate",
+  ix.data.writeBigUInt64LE(900_000_000n, 4); // the alias is drained...
+  const raw = bound.signApproved(digest, [payer]); // ...and the transaction is not
+  assert.deepEqual(
+    Array.from(messageOf(raw)),
+    Array.from(bound.messageBytes),
+    "the signed message is the approved message, untouched by the alias",
   );
+  // And the transaction's own data still carries the approved amount.
+  assert.equal(bound.instructions()[0].data.readBigUInt64LE(4), 2_000_000n);
 });
 
-test("mutation through an aliased AccountMeta is refused", () => {
+test("a caller-retained AccountMeta alias no longer reaches the transaction", () => {
   const ix = transfer();
   const keys = ix.keys;
   const bound = build([ix]);
   const digest = digestOf(bound.artifactBytes);
 
   keys[1].pubkey = Keypair.generate().publicKey;
+  keys[1].isWritable = false;
+  assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
+  assert.ok(
+    bound.instructions()[0].keys[1].pubkey.equals(destination),
+    "the destination inside the transaction is the one that was approved",
+  );
+});
+
+test("a caller-retained data Buffer alias no longer reaches the transaction", () => {
+  // The sharpest alias: the Buffer itself. `new TransactionInstruction` does
+  // not copy `data`, so without isolation the caller and the transaction
+  // literally share bytes.
+  const data = Buffer.from([2, 0, 0, 0, 0x80, 0x84, 0x1e, 0, 0, 0, 0, 0]);
+  const ix = new TransactionInstruction({
+    programId: SystemProgram.programId,
+    keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: destination, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+  const bound = build([ix]);
+  const digest = digestOf(bound.artifactBytes);
+
+  data.fill(0xff, 4); // rewrite the shared buffer
+  assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
+});
+
+test("the accessor returns copies, so a projection cannot reach the transaction", () => {
+  const bound = build();
+  const digest = digestOf(bound.artifactBytes);
+  const projected = bound.instructions();
+  projected[0].data.fill(0xff);
+  projected[0].keys[1].pubkey = Keypair.generate().publicKey;
+  assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
+});
+
+test("a hostile actor reaching past `private` is still detected", () => {
+  // The backstop the isolation sits on top of. Reaching the transaction
+  // requires ignoring the type system, and doing so still changes the digest.
+  const bound = build();
+  const digest = digestOf(bound.artifactBytes);
+  hostile(bound).instructions[0].data.writeBigUInt64LE(900_000_000n, 4);
   assert.throws(
     () => bound.signApproved(digest, [payer]),
     /changed between approval and signing/,

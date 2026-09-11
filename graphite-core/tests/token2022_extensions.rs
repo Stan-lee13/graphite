@@ -26,8 +26,11 @@
 //! | `Informational`           | Reported, does not block |
 
 use graphite_core::state_diff::{
-    detect_token2022_extensions, AccountSnapshot, DetectedExtension, ExtensionImpact,
+    detect_token2022_extensions, AccountSnapshot, DetectedExtension, ExtensionImpact, ExtensionScan,
 };
+
+#[allow(dead_code)]
+fn _scan_type_is_exported(_: ExtensionScan) {}
 
 const TOKEN_2022: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -64,11 +67,11 @@ fn names(found: &[DetectedExtension]) -> Vec<String> {
 /// rather than as an error.
 #[test]
 fn a_base_account_carries_no_extensions() {
-    assert!(detect_token2022_extensions(&base_account(1000)).is_empty());
+    assert!(detect_token2022_extensions(&base_account(1000)).is_clean());
     // Even with the type byte and nothing after it.
     let mut typed = base_account(1000);
     typed.push(2);
-    assert!(detect_token2022_extensions(&typed).is_empty());
+    assert!(detect_token2022_extensions(&typed).is_clean());
 }
 
 /// The extensions that can redirect or block value are recognised by name.
@@ -85,7 +88,7 @@ fn semantics_altering_extensions_are_named_and_classified() {
         (14, "TransferHook"),
         (15, "TransferHookAccount"),
     ] {
-        let found = detect_token2022_extensions(&with_extensions(1000, &[(discriminant, 8)]));
+        let found = detect_token2022_extensions(&with_extensions(1000, &[(discriminant, 8)])).found;
         assert_eq!(found.len(), 1, "discriminant {discriminant}");
         assert_eq!(found[0].name, expected);
         assert_eq!(
@@ -100,7 +103,8 @@ fn semantics_altering_extensions_are_named_and_classified() {
 #[test]
 fn authority_altering_extensions_are_classified_separately() {
     for (discriminant, expected) in [(3u16, "MintCloseAuthority"), (12, "PermanentDelegate")] {
-        let found = detect_token2022_extensions(&with_extensions(1000, &[(discriminant, 32)]));
+        let found =
+            detect_token2022_extensions(&with_extensions(1000, &[(discriminant, 32)])).found;
         assert_eq!(found[0].name, expected);
         assert_eq!(found[0].impact, ExtensionImpact::AltersAuthority);
     }
@@ -122,7 +126,7 @@ fn informational_extensions_are_reported_without_alarm() {
         (18, "MetadataPointer"),
         (19, "TokenMetadata"),
     ] {
-        let found = detect_token2022_extensions(&with_extensions(1000, &[(discriminant, 4)]));
+        let found = detect_token2022_extensions(&with_extensions(1000, &[(discriminant, 4)])).found;
         assert_eq!(found[0].name, expected);
         assert_eq!(found[0].impact, ExtensionImpact::Informational);
     }
@@ -134,7 +138,7 @@ fn informational_extensions_are_reported_without_alarm() {
 /// get quieter as Token-2022 got richer, which is the wrong direction.
 #[test]
 fn an_unrecognised_extension_is_reported_rather_than_ignored() {
-    let found = detect_token2022_extensions(&with_extensions(1000, &[(4242, 16)]));
+    let found = detect_token2022_extensions(&with_extensions(1000, &[(4242, 16)])).found;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].discriminant, 4242);
     assert!(
@@ -151,7 +155,8 @@ fn multiple_extensions_are_all_detected() {
     let found = detect_token2022_extensions(&with_extensions(
         1000,
         &[(7, 0), (2, 8), (14, 32), (19, 12)],
-    ));
+    ))
+    .found;
     assert_eq!(
         names(&found),
         vec![
@@ -163,19 +168,136 @@ fn multiple_extensions_are_all_detected() {
     );
 }
 
-/// A malformed TLV stops the walk rather than inventing entries.
+/// A malformed TLV stops the walk, keeps what was read, and SAYS it stopped.
 #[test]
-fn a_length_running_past_the_buffer_stops_the_walk() {
+fn a_length_running_past_the_buffer_stops_the_walk_and_says_so() {
     let mut data = with_extensions(1000, &[(7, 0)]);
     // A second entry claiming 60000 bytes that are not there.
     data.extend_from_slice(&14u16.to_le_bytes());
     data.extend_from_slice(&60000u16.to_le_bytes());
-    let found = detect_token2022_extensions(&data);
+    let scan = detect_token2022_extensions(&data);
     assert_eq!(
-        names(&found),
+        names(&scan.found),
         vec!["ImmutableOwner"],
         "the readable entry is kept and the malformed one is not guessed at"
     );
+    assert!(!scan.is_clean());
+    let why = scan
+        .malformed
+        .expect("the walk stopped early and must say so");
+    assert!(
+        why.contains("type 14") && why.contains("60000"),
+        "the reason must name what was unreadable: {why}"
+    );
+}
+
+/// R7-01: a malformed FIRST entry must not look like "no extensions".
+///
+/// This is the fail-open the scan type exists to close. Before it, the walk
+/// stopped at the corrupt length, returned an empty list, and the state-diff
+/// check read an empty list as an account with nothing attached — so a
+/// transfer hook behind a bad length byte produced no finding at all.
+#[test]
+fn a_malformed_first_entry_is_distinguishable_from_no_extensions() {
+    let mut data = base_account(1000);
+    data.push(2);
+    data.extend_from_slice(&14u16.to_le_bytes()); // TransferHook...
+    data.extend_from_slice(&60000u16.to_le_bytes()); // ...behind a corrupt length
+
+    let corrupt = detect_token2022_extensions(&data);
+    let mut plain = base_account(1000);
+    plain.push(2);
+    let none = detect_token2022_extensions(&plain);
+
+    assert!(none.is_clean());
+    assert!(!corrupt.is_clean(), "unreadable is not the same as empty");
+    assert!(corrupt.found.is_empty(), "nothing was read cleanly");
+    assert!(corrupt.malformed.is_some());
+    assert_ne!(corrupt, none);
+}
+
+/// Trailing bytes too short to be a header are reported, not ignored.
+#[test]
+fn trailing_bytes_shorter_than_a_header_are_reported() {
+    let mut data = with_extensions(1000, &[(7, 0)]);
+    data.extend_from_slice(&[0x0e, 0x00, 0x20]); // three of the four header bytes
+    let scan = detect_token2022_extensions(&data);
+    assert_eq!(names(&scan.found), vec!["ImmutableOwner"]);
+    assert!(
+        scan.malformed.as_deref().unwrap_or("").contains("trailing"),
+        "{:?}",
+        scan.malformed
+    );
+}
+
+/// A type byte that is neither Account nor Mint on data long enough to carry a
+/// TLV region is reported as unreadable, not read as nothing.
+#[test]
+fn an_unknown_account_type_byte_is_reported() {
+    let mut data = base_account(1000);
+    data.push(9); // not Account (2), not Mint (1)
+    data.extend_from_slice(&[0x0e, 0x00, 0x00, 0x00]);
+    let scan = detect_token2022_extensions(&data);
+    assert!(scan.found.is_empty());
+    assert!(
+        scan.malformed
+            .as_deref()
+            .unwrap_or("")
+            .contains("type byte 9"),
+        "{:?}",
+        scan.malformed
+    );
+}
+
+/// Duplicate extensions are both reported. Whether the program permits them is
+/// its business; Graphite reports what is there.
+#[test]
+fn duplicate_extensions_are_all_reported() {
+    let scan = detect_token2022_extensions(&with_extensions(1000, &[(14, 32), (14, 32)]));
+    assert_eq!(names(&scan.found), vec!["TransferHook", "TransferHook"]);
+    assert!(scan.malformed.is_none());
+}
+
+/// Every discriminant the build names, checked against the spl-token-2022
+/// `ExtensionType` order, so a renumbering upstream fails here rather than
+/// mislabelling a hook as metadata.
+#[test]
+fn every_named_discriminant_has_the_expected_classification() {
+    use ExtensionImpact::*;
+    let table: &[(u16, &str, ExtensionImpact)] = &[
+        (1, "TransferFeeConfig", AltersTransferSemantics),
+        (2, "TransferFeeAmount", AltersTransferSemantics),
+        (3, "MintCloseAuthority", AltersAuthority),
+        (4, "ConfidentialTransferMint", AltersTransferSemantics),
+        (5, "ConfidentialTransferAccount", AltersTransferSemantics),
+        (6, "DefaultAccountState", AltersTransferSemantics),
+        (7, "ImmutableOwner", Informational),
+        (8, "MemoTransfer", Informational),
+        (9, "NonTransferable", AltersTransferSemantics),
+        (10, "InterestBearingConfig", Informational),
+        (11, "CpiGuard", Informational),
+        (12, "PermanentDelegate", AltersAuthority),
+        (13, "NonTransferableAccount", AltersTransferSemantics),
+        (14, "TransferHook", AltersTransferSemantics),
+        (15, "TransferHookAccount", AltersTransferSemantics),
+        (16, "ConfidentialTransferFeeConfig", AltersTransferSemantics),
+        (17, "ConfidentialTransferFeeAmount", AltersTransferSemantics),
+        (18, "MetadataPointer", Informational),
+        (19, "TokenMetadata", Informational),
+        (20, "GroupPointer", Informational),
+        (21, "TokenGroup", Informational),
+        (22, "GroupMemberPointer", Informational),
+        (23, "TokenGroupMember", Informational),
+    ];
+    for &(d, name, impact) in table {
+        let scan = detect_token2022_extensions(&with_extensions(1, &[(d, 4)]));
+        assert_eq!(scan.found.len(), 1, "discriminant {d}");
+        assert_eq!(scan.found[0].name, name, "discriminant {d}");
+        assert_eq!(scan.found[0].impact, impact, "discriminant {d}");
+    }
+    // And the one past the table is Unknown, which blocks.
+    let scan = detect_token2022_extensions(&with_extensions(1, &[(24, 4)]));
+    assert_eq!(scan.found[0].impact, Unknown);
 }
 
 /// Classic SPL Token has no extension region, and none is invented for it.
@@ -192,12 +314,12 @@ fn classic_spl_token_accounts_are_never_scanned_for_extensions() {
 
     let classic = AccountSnapshot::from_raw("acct", 1_000_000, SPL_TOKEN, &data);
     assert!(
-        classic.extensions.is_empty(),
+        classic.extensions.is_clean(),
         "a classic SPL Token account has no TLV region to read"
     );
 
     let t22 = AccountSnapshot::from_raw("acct", 1_000_000, TOKEN_2022, &data);
-    assert_eq!(names(&t22.extensions), vec!["TransferHook"]);
+    assert_eq!(names(&t22.extensions.found), vec!["TransferHook"]);
 }
 
 /// A snapshot of a Token-2022 account carries its extensions.
@@ -212,7 +334,7 @@ fn snapshots_carry_the_extensions_they_found() {
     assert!(snap.token.is_some(), "the base layout still decodes");
     assert_eq!(snap.token.as_ref().unwrap().amount, 5_000);
     assert_eq!(
-        names(&snap.extensions),
+        names(&snap.extensions.found),
         vec!["TransferFeeAmount", "TransferHook"]
     );
 }
@@ -239,6 +361,6 @@ fn the_base_layout_still_decodes_beneath_the_extensions() {
         plain.token.as_ref().map(|t| t.owner.clone()),
         extended.token.as_ref().map(|t| t.owner.clone())
     );
-    assert!(plain.extensions.is_empty());
-    assert_eq!(extended.extensions.len(), 2);
+    assert!(plain.extensions.is_clean());
+    assert_eq!(extended.extensions.found.len(), 2);
 }

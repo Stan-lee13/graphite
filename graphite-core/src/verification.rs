@@ -2700,41 +2700,65 @@ impl GraphiteCore {
         // indexes and silently mis-attributes the rest, one position off, which
         // is worse than an absence because it looks like an answer.
         #[cfg(feature = "rpc")]
-        let resolved_lookups: Option<Result<crate::tx_artifact::ResolvedLookups, String>> =
-            match (&self.rpc_client, input.signed_transaction.as_ref()) {
-                (Some(client), Some(artifact)) if !artifact.is_empty() => {
-                    match crate::tx_artifact::parse_transaction(artifact) {
-                        Ok(message) if message.has_lookup_accounts() => {
-                            let table_addrs: Vec<String> =
-                                message.lookups.iter().map(|l| l.table.clone()).collect();
-                            let fetched =
-                                within_budget(&budget, client.get_multiple_accounts(&table_addrs))
-                                    .await
-                                    .unwrap_or_else(|()| {
-                                        Err(crate::rpc_client::RpcError::Timeout(budget.total()))
-                                    });
-                            match fetched {
-                                Ok(accounts) => {
-                                    let mut tables: std::collections::HashMap<String, Vec<u8>> =
-                                        std::collections::HashMap::new();
-                                    for (addr, acc) in table_addrs.iter().zip(accounts.iter()) {
-                                        if let Some(a) = acc {
-                                            tables.insert(addr.clone(), a.data.clone());
+        let resolved_lookups: Option<Result<crate::tx_artifact::ResolvedLookups, String>> = match (
+            &self.rpc_client,
+            input.signed_transaction.as_ref(),
+        ) {
+            (Some(client), Some(artifact)) if !artifact.is_empty() => {
+                match crate::tx_artifact::parse_transaction(artifact) {
+                    Ok(message) if message.has_lookup_accounts() => {
+                        let table_addrs: Vec<String> =
+                            message.lookups.iter().map(|l| l.table.clone()).collect();
+                        let fetched =
+                            within_budget(&budget, client.get_multiple_accounts(&table_addrs))
+                                .await
+                                .unwrap_or_else(|()| {
+                                    Err(crate::rpc_client::RpcError::Timeout(budget.total()))
+                                });
+                        match fetched {
+                            Ok(accounts) => {
+                                let mut tables: std::collections::HashMap<String, Vec<u8>> =
+                                    std::collections::HashMap::new();
+                                let mut wrong_owner: Option<String> = None;
+                                for (addr, acc) in table_addrs.iter().zip(accounts.iter()) {
+                                    if let Some(a) = acc {
+                                        // The runtime only honours a table
+                                        // owned by the lookup-table program.
+                                        // Bytes at that address under any
+                                        // other owner would be refused at
+                                        // execution, and decoding them here
+                                        // would resolve accounts the
+                                        // transaction cannot actually reach
+                                        // — an answer about a transaction
+                                        // that will not run.
+                                        if a.owner
+                                            != crate::tx_artifact::ADDRESS_LOOKUP_TABLE_PROGRAM
+                                        {
+                                            wrong_owner.get_or_insert_with(|| {
+                                                    format!(
+                                                        "the account at table address {addr} is owned by {}, not the Address Lookup Table program",
+                                                        a.owner
+                                                    )
+                                                });
+                                            continue;
                                         }
+                                        tables.insert(addr.clone(), a.data.clone());
                                     }
-                                    Some(
-                                        crate::tx_artifact::resolve_lookups(&message, &tables)
-                                            .map_err(|e| e.to_string()),
-                                    )
                                 }
-                                Err(e) => Some(Err(e.to_string())),
+                                Some(match wrong_owner {
+                                    Some(why) => Err(why),
+                                    None => crate::tx_artifact::resolve_lookups(&message, &tables)
+                                        .map_err(|e| e.to_string()),
+                                })
                             }
+                            Err(e) => Some(Err(e.to_string())),
                         }
-                        _ => None,
                     }
+                    _ => None,
                 }
-                _ => None,
-            };
+            }
+            _ => None,
+        };
         // No RPC compiled in means no tables to resolve them from. The accounts
         // stay unidentified and every disclosure below says so.
         #[cfg(not(feature = "rpc"))]

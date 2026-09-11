@@ -533,6 +533,9 @@ pub fn correspond(
 /// ```
 pub const LOOKUP_TABLE_META_SIZE: usize = 56;
 
+/// The only program whose accounts the runtime will treat as lookup tables.
+pub const ADDRESS_LOOKUP_TABLE_PROGRAM: &str = "AddressLookupTab1e1111111111111111111111111";
+
 /// A slot value meaning "not deactivating". Anything else means the table is on
 /// its way out, and a table that is being retired is not one to resolve
 /// security-relevant identities against.

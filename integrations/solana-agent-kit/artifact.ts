@@ -185,8 +185,24 @@ export function realAccountMetas(
  */
 export class BoundTransaction {
   private constructor(
-    /** The single object that is verified, signed and submitted. */
-    readonly tx: Transaction,
+    /**
+     * The single object that is verified, signed and submitted.
+     *
+     * Private, and built from COPIES of the caller's instructions. Both matter
+     * and they close different holes. `readonly` on a public field prevented
+     * reassignment and nothing else: a caller who kept its own reference to an
+     * instruction, an AccountMeta array, or a data Buffer could mutate the
+     * transaction through that alias, because JavaScript shares those by
+     * reference. The digest check caught every such mutation — but catching a
+     * mutation is detection, and this is structure: there is no longer a
+     * reference outside this object through which the transaction can be
+     * reached at all.
+     *
+     * TypeScript `private` is compile-time only. Code that reaches in with
+     * `as any` is a hostile in-process actor, and the digest check remains for
+     * exactly that case. The two together are the design.
+     */
+    private readonly tx: Transaction,
     /** The unsigned serialization handed to Graphite. */
     readonly artifactBytes: Uint8Array,
     /** The message, captured before verification. */
@@ -195,6 +211,27 @@ export class BoundTransaction {
     readonly lastValidBlockHeight: number,
   ) {}
 
+  /**
+   * Deep-copy an instruction so nothing the caller holds reaches the bound
+   * transaction.
+   *
+   * Every field is copied by value: the program id and each pubkey through
+   * their bytes, the data through a fresh Buffer, the meta flags as primitives.
+   * `data` in particular is a Buffer the caller may still hold — a shared
+   * buffer is a shared transaction.
+   */
+  private static isolate(ix: TransactionInstruction): TransactionInstruction {
+    return new TransactionInstruction({
+      programId: new PublicKey(ix.programId.toBytes()),
+      keys: ix.keys.map((k) => ({
+        pubkey: new PublicKey(k.pubkey.toBytes()),
+        isSigner: k.isSigner,
+        isWritable: k.isWritable,
+      })),
+      data: Buffer.from(ix.data),
+    });
+  }
+
   static build(params: {
     instructions: TransactionInstruction[];
     feePayer: PublicKey;
@@ -202,10 +239,10 @@ export class BoundTransaction {
     lastValidBlockHeight: number;
   }): BoundTransaction {
     const tx = new Transaction({
-      feePayer: params.feePayer,
+      feePayer: new PublicKey(params.feePayer.toBytes()),
       recentBlockhash: params.recentBlockhash,
     });
-    tx.add(...params.instructions);
+    tx.add(...params.instructions.map(BoundTransaction.isolate));
     const artifactBytes = Uint8Array.from(
       tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
     );
@@ -220,6 +257,23 @@ export class BoundTransaction {
   /** The bytes to send as `signed_transaction`. */
   artifact(): number[] {
     return Array.from(this.artifactBytes);
+  }
+
+  /**
+   * The instructions, as fresh copies.
+   *
+   * A caller that needs to project them (AuditBind does) gets objects it can do
+   * anything to without touching the transaction. Returning the internal ones
+   * would hand back the alias `isolate` exists to remove.
+   */
+  instructions(): TransactionInstruction[] {
+    return this.tx.instructions.map(BoundTransaction.isolate);
+  }
+
+  /** The blockhash this transaction was built on. */
+  get recentBlockhash(): string {
+    // Set in `build`; a Transaction constructed with one always has one.
+    return this.tx.recentBlockhash as string;
   }
 
   /**
