@@ -221,8 +221,8 @@ cargo fmt --all -- --check                      clean
 npm test  (integrations/solana-agent-kit)       69 passed, 0 failed
 ```
 
-CI for `76d0ade`: **completed success** (Actions API). CI for this round's
-commit: reported in the commit that lands it, verified after the push.
+CI for `76d0ade`: **completed success** (Actions API). CI for `1830e7b`, the
+commit carrying this round: **completed success** (Actions API, all seven jobs).
 
 ---
 
