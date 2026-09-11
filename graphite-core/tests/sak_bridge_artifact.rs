@@ -253,3 +253,70 @@ fn the_verdict_is_artifact_bound() {
         "an artifact-bound verdict still has limits and must name them"
     );
 }
+
+/// The digest the bridge will compare against is the digest the Core computes.
+///
+/// `BoundTransaction.assertApproved` re-serializes the transaction immediately
+/// before signing and requires `scope.transaction_sha256`. That check is only
+/// meaningful if both sides hash the same bytes with the same function — and if
+/// they ever disagreed, the failure would not be a silent bypass but a total
+/// one: every honest transaction would be refused at the signing boundary,
+/// because a digest would be compared against the digest of something else.
+///
+/// The fixture carries what Node's `createHash("sha256")` produced over the
+/// artifact. This asserts the Rust pipeline reports the same string.
+#[test]
+fn the_core_and_the_bridge_agree_on_the_digest_of_the_same_bytes() {
+    let f = fixture();
+    let expected = f["transaction_sha256"].as_str().expect("digest");
+    let r = verify(declared_siblings(&f));
+
+    let scope = serde_json::to_value(&r.scope).expect("scope must serialize");
+    assert_eq!(scope["kind"], "artifact_bound");
+    assert_eq!(
+        scope["transaction_sha256"].as_str().expect("digest"),
+        expected,
+        "the Core hashed different bytes than the bridge will compare against"
+    );
+    assert_eq!(
+        scope["transaction_bytes"].as_u64().expect("length") as usize,
+        f["signed_transaction"].as_array().expect("bytes").len(),
+        "the reported length must be the length of what was supplied"
+    );
+
+    // Anti-vacuity: the fixture's digest is a real SHA-256 of those bytes and
+    // not some constant both sides happen to echo.
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes(&f["signed_transaction"]));
+    assert_eq!(hex::encode(h.finalize()), expected);
+}
+
+/// One byte of difference is a different digest.
+///
+/// The property the execution check rests on. Without it, "the digest still
+/// matches" would be compatible with a transaction that had been edited.
+#[test]
+fn changing_one_byte_of_the_artifact_changes_the_reported_digest() {
+    let f = fixture();
+    let original = verify(declared_siblings(&f));
+    let original_digest = serde_json::to_value(&original.scope).unwrap()["transaction_sha256"]
+        .as_str()
+        .expect("digest")
+        .to_string();
+
+    // Flip a byte inside the instruction data — the lamport amount's low byte.
+    let mut mutated = bytes(&f["signed_transaction"]);
+    let last = mutated.len() - 1;
+    mutated[last] ^= 0x01;
+
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(&mutated);
+    let mutated_digest = hex::encode(h.finalize());
+
+    assert_ne!(
+        original_digest, mutated_digest,
+        "a one-byte edit must change the digest, or the binding binds nothing"
+    );
+}

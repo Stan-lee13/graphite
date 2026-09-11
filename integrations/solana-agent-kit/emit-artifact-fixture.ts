@@ -16,6 +16,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import {
   Keypair,
   PublicKey,
@@ -84,6 +85,12 @@ if (primaryIndex < 0) {
   throw new Error("the fixture's primary instruction must be found");
 }
 
+const artifactBytes = serializeUnsignedArtifact({
+  instructions,
+  feePayer: payer.publicKey,
+  recentBlockhash: BLOCKHASH,
+});
+
 const fixture = {
   _: "Emitted by integrations/solana-agent-kit/emit-artifact-fixture.ts. The " +
     "artifact and declarations the SAK bridge really sends, so the Rust Core " +
@@ -95,11 +102,16 @@ const fixture = {
     instruction_data: Array.from(transferData),
     real_account_metas: realAccountMetas(transfer),
   },
-  signed_transaction: serializeUnsignedArtifact({
-    instructions,
-    feePayer: payer.publicKey,
-    recentBlockhash: BLOCKHASH,
-  }),
+  signed_transaction: artifactBytes,
+  // What the TypeScript side computes over exactly those bytes. The Rust suite
+  // asserts the Core's `scope.transaction_sha256` equals this, which is the
+  // binding itself pinned across the language boundary: if the two sides ever
+  // disagree about which bytes were hashed, the execution check in
+  // `BoundTransaction.assertApproved` would compare a digest to a digest of
+  // something else and refuse every honest transaction.
+  transaction_sha256: createHash("sha256")
+    .update(Uint8Array.from(artifactBytes))
+    .digest("hex"),
   transaction_instructions: declareSiblings(instructions, primaryIndex),
   instruction_count: instructions.length,
 };

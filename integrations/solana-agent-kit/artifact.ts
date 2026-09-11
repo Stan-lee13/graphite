@@ -19,14 +19,17 @@
  * never verifies a signature. Nothing in this module signs, sends, or touches
  * an account.
  *
- * The blockhash is a real recent one because a transaction is not well-formed
- * without it, and it is not part of what Graphite binds — the executed
- * transaction will carry a fresher one. What must match between the artifact
- * and the executed transaction is the instructions, and those are the same
- * objects.
+ * The blockhash is a real recent one, and as of `BoundTransaction` below it IS
+ * part of what gets bound: the same transaction object is verified, signed and
+ * submitted, so a refreshed blockhash is a different transaction and has to be
+ * re-verified. This paragraph previously said the opposite — that the executed
+ * transaction would carry a fresher blockhash and only the instructions had to
+ * match. That was true of the code and it was the gap.
  */
 
+import { createHash } from "node:crypto";
 import {
+  Keypair,
   PublicKey,
   Transaction,
   TransactionInstruction,
@@ -151,4 +154,139 @@ export function realAccountMetas(
     is_signer: k.isSigner,
     is_writable: k.isWritable,
   }));
+}
+
+/**
+ * One transaction, carried from verification through to submission.
+ *
+ * The gap this closes: the bridge serialized an artifact for Graphite and then
+ * built a SEPARATE `Transaction` to execute, letting `sendAndConfirmTransaction`
+ * prepare it. Graphite's strongest statement is "these exact bytes were
+ * verified", and the bytes it verified were not the bytes that got signed. What
+ * stood in between was AuditBind, which proves the instructions still match —
+ * strong, and a different invariant. It cannot see the fee payer, the
+ * blockhash, the message version, the header, or the lookup structure, because
+ * none of those are instruction-level facts.
+ *
+ * What is provable here and what is not, stated precisely rather than rounded up:
+ *
+ *   - The verified artifact carries EMPTY signature slots; the submitted one
+ *     carries a real signature. Whole-transaction byte equality is therefore
+ *     impossible by construction, and any claim of it would be false.
+ *   - The stable invariant is the MESSAGE — everything after the signature
+ *     array. That is the part Solana executes and the part a signature commits
+ *     to, and it is byte-identical across the two.
+ *
+ * So the guarantee is: the message inside the bytes submitted to the network is
+ * byte-identical to the message inside the bytes Graphite approved. The digest
+ * comparison before signing proves nothing mutated the object in between; the
+ * message slice after signing proves signing itself changed nothing but the
+ * signatures.
+ */
+export class BoundTransaction {
+  private constructor(
+    /** The single object that is verified, signed and submitted. */
+    readonly tx: Transaction,
+    /** The unsigned serialization handed to Graphite. */
+    readonly artifactBytes: Uint8Array,
+    /** The message, captured before verification. */
+    readonly messageBytes: Uint8Array,
+    /** Needed to confirm the submission against the blockhash it was built on. */
+    readonly lastValidBlockHeight: number,
+  ) {}
+
+  static build(params: {
+    instructions: TransactionInstruction[];
+    feePayer: PublicKey;
+    recentBlockhash: string;
+    lastValidBlockHeight: number;
+  }): BoundTransaction {
+    const tx = new Transaction({
+      feePayer: params.feePayer,
+      recentBlockhash: params.recentBlockhash,
+    });
+    tx.add(...params.instructions);
+    const artifactBytes = Uint8Array.from(
+      tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+    );
+    return new BoundTransaction(
+      tx,
+      artifactBytes,
+      Uint8Array.from(tx.serializeMessage()),
+      params.lastValidBlockHeight,
+    );
+  }
+
+  /** The bytes to send as `signed_transaction`. */
+  artifact(): number[] {
+    return Array.from(this.artifactBytes);
+  }
+
+  /**
+   * Re-serialize now and require the digest Graphite approved.
+   *
+   * Called immediately before signing, so what it rules out is anything that
+   * touched the transaction between approval and the signature — a refreshed
+   * blockhash, a changed fee payer, an appended instruction, a rewritten
+   * account list. Recomputing rather than comparing a stored value is the
+   * point: a stored digest would still match after the object moved on.
+   */
+  assertApproved(approvedSha256: string): void {
+    const now = Uint8Array.from(
+      this.tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+    );
+    const digest = createHash("sha256").update(now).digest("hex");
+    if (digest !== approvedSha256) {
+      throw new Error(
+        `[Graphite] The transaction changed between approval and signing. ` +
+          `Graphite approved ${approvedSha256}; this transaction now serializes to ${digest}. ` +
+          `ABORTING rather than signing something that was not verified. If the blockhash ` +
+          `needed refreshing, rebuild and re-verify — a new blockhash is a new transaction.`,
+      );
+    }
+  }
+
+  /**
+   * Sign, then prove the submitted bytes carry the message that was approved.
+   *
+   * The message is read back out of the signed bytes by slicing off the
+   * signature array rather than by re-compiling the transaction object: a
+   * recompile would be asking the same code that built it whether it built it,
+   * and would hide exactly the mutation this is looking for.
+   */
+  signAndFreeze(signers: Keypair[]): Uint8Array {
+    this.tx.sign(...signers);
+    const raw = Uint8Array.from(this.tx.serialize());
+    const submitted = messageOf(raw);
+    if (!equalBytes(submitted, this.messageBytes)) {
+      throw new Error(
+        "[Graphite] The message inside the signed transaction is not the message that was " +
+          "verified. Signing must change only the signatures. ABORTING.",
+      );
+    }
+    return raw;
+  }
+}
+
+/** The message half of a serialized transaction: everything after the signatures. */
+export function messageOf(raw: Uint8Array): Uint8Array {
+  // compact-u16 signature count, then that many 64-byte signatures.
+  let offset = 0;
+  let count = 0;
+  for (let group = 0; group < 3; group++) {
+    const byte = raw[offset++];
+    if (byte === undefined) throw new Error("[Graphite] truncated signature count");
+    count |= (byte & 0x7f) << (group * 7);
+    if ((byte & 0x80) === 0) break;
+  }
+  offset += count * 64;
+  if (offset > raw.length) throw new Error("[Graphite] signature array runs past the transaction");
+  return raw.subarray(offset);
+}
+
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let same = 0;
+  for (let i = 0; i < a.length; i++) same |= a[i] ^ b[i];
+  return same === 0;
 }

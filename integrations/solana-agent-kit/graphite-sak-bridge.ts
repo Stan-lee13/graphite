@@ -29,7 +29,11 @@ import {
 } from "solana-agent-kit";
 import TokenPlugin from "@solana-agent-kit/plugin-token";
 import DefiPlugin from "@solana-agent-kit/plugin-defi";
-import { Keypair, Connection, SystemProgram, Transaction, PublicKey, TransactionInstruction, sendAndConfirmTransaction } from "@solana/web3.js";
+// `sendAndConfirmTransaction` is deliberately NOT imported: it prepares the
+// transaction it is given, including fetching a blockhash when one is missing,
+// and a mutation after approval is a mutation however benign. Signing goes
+// through `signSubmitAndConfirm`, which submits bytes that are already final.
+import { Keypair, Connection, SystemProgram, Transaction, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 // AuditBind lives in ./auditbind.ts — a dependency-free module (Node crypto
@@ -61,8 +65,16 @@ import {
   serializeUnsignedArtifact,
   findPrimaryIndex,
   declareSiblings,
+  BoundTransaction,
+  messageOf,
 } from "./artifact.js";
-export { serializeUnsignedArtifact, findPrimaryIndex, declareSiblings };
+export {
+  serializeUnsignedArtifact,
+  findPrimaryIndex,
+  declareSiblings,
+  BoundTransaction,
+  messageOf,
+};
 
 /**
  * RPC Simulation helper — calls simulateTransaction to get real resource usage.
@@ -269,6 +281,15 @@ export class VerifiedSakAgent {
      * no reason other than the two concerns sharing a field.
      */
     artifactInstructions?: TransactionInstruction[];
+    /**
+     * The transaction that will be signed and submitted.
+     *
+     * When present, ITS bytes are what Graphite verifies — not a separately
+     * serialized copy of the same instructions. That is the whole point: a copy
+     * proves the instructions match, and the executed transaction is more than
+     * its instructions.
+     */
+    bound?: BoundTransaction;
   }): Promise<VerificationResult> {
     let computeUnits = 0, accountWrites = 0, cpiHops = 0;
     if (params.instructions && params.instructions.length > 0) {
@@ -303,17 +324,23 @@ export class VerifiedSakAgent {
     // and the Core reports which mode it used, so a caller is never told a
     // Descriptive verdict is artifact-bound.
     const artifactInstructions =
-      params.artifactInstructions ?? params.instructions;
+      params.bound?.tx.instructions ??
+      params.artifactInstructions ??
+      params.instructions;
     let signed_transaction: number[] | undefined;
     let transaction_instructions: ReturnType<typeof declareSiblings> | undefined;
     if (artifactInstructions && artifactInstructions.length > 0) {
       try {
-        const { blockhash } = await this.connection.getLatestBlockhash();
-        signed_transaction = serializeUnsignedArtifact({
-          instructions: artifactInstructions,
-          feePayer: this.walletKeypair.publicKey,
-          recentBlockhash: blockhash,
-        });
+        // A prepared transaction supplies its own bytes. Re-serializing the
+        // same instructions into a fresh object would verify a copy and sign
+        // the original, which is the gap this parameter exists to close.
+        signed_transaction =
+          params.bound?.artifact() ??
+          serializeUnsignedArtifact({
+            instructions: artifactInstructions,
+            feePayer: this.walletKeypair.publicKey,
+            recentBlockhash: (await this.connection.getLatestBlockhash()).blockhash,
+          });
         const primary = findPrimaryIndex(artifactInstructions, {
           programId: params.programId,
           instructionDiscriminator: params.instructionDiscriminator,
@@ -353,6 +380,52 @@ export class VerifiedSakAgent {
     return this.graphite.verify(input);
   }
 
+  /**
+   * The last step, and the only place this bridge signs anything.
+   *
+   * Three things happen in one place on purpose. The verdict must be bound to
+   * bytes at all; the transaction must still serialize to the digest Graphite
+   * approved; and the bytes that go to the network must carry the message that
+   * was approved. Splitting them across call sites is how the previous version
+   * ended up verifying one transaction and submitting another.
+   *
+   * `sendRawTransaction` rather than `sendAndConfirmTransaction`: the latter
+   * prepares the transaction itself, including fetching a blockhash if one is
+   * missing, which is a mutation after approval no matter how benign. These
+   * bytes are final.
+   */
+  private async signSubmitAndConfirm(
+    bound: BoundTransaction,
+    verification: VerificationResult,
+    label: string,
+  ): Promise<string> {
+    const scope = verification.scope;
+    if (scope?.kind !== "artifact_bound") {
+      throw new Error(
+        `[Graphite] ${label}: the verdict is ${scope?.kind ?? "unscoped"}, not artifact_bound. ` +
+          "A descriptive verdict describes what the request SAID; it does not constrain what " +
+          "gets signed. ABORTING.",
+      );
+    }
+    // Recomputed now, over this object, and compared against what Graphite
+    // hashed. Anything that touched the transaction since approval — a
+    // refreshed blockhash, a changed fee payer, an appended instruction —
+    // changes this digest.
+    bound.assertApproved(scope.transaction_sha256);
+    const raw = bound.signAndFreeze([this.walletKeypair]);
+    console.log(
+      `[Graphite] ${label}: transaction matches the approved digest ` +
+        `${scope.transaction_sha256.slice(0, 16)}… — signing and submitting those exact bytes.`,
+    );
+    const signature = await this.connection.sendRawTransaction(raw);
+    await this.connection.confirmTransaction({
+      signature,
+      blockhash: bound.tx.recentBlockhash!,
+      lastValidBlockHeight: bound.lastValidBlockHeight,
+    });
+    return signature;
+  }
+
   async executeTransfer(
     naturalLanguage: string
   ): Promise<{ executed: boolean; verification: VerificationResult; signature?: string }> {
@@ -381,10 +454,24 @@ export class VerifiedSakAgent {
     // AuditBind projection together — changing only one side would make the
     // check permanently abort.
     const transferData = Array.from(transferIx.data);
+    // ONE transaction object, built before verification and carried through to
+    // submission. Everything downstream operates on this object: the bytes
+    // Graphite verifies come out of it, the digest is re-checked against it
+    // immediately before signing, and the signed bytes come from it. There is
+    // no second transaction for the two to drift apart.
+    const { blockhash, lastValidBlockHeight } =
+      await this.connection.getLatestBlockhash();
+    const bound = BoundTransaction.build({
+      instructions: [transferIx],
+      feePayer: this.walletKeypair.publicKey,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+    });
     const verification = await this.verifyTransaction({
       programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
       accountAddresses: [this.walletPublicKey, destination], proposedIntent, instructions: [transferIx],
       instructionData: transferData,
+      bound,
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
@@ -410,10 +497,10 @@ export class VerifiedSakAgent {
     // went to the signer (reproduced in toctou-signing-boundary.test.ts).
     //
     // Everything below is projected from the live objects on the path to
-    // `sendAndConfirmTransaction`. The discriminator is passed explicitly
+    // signing. The discriminator is passed explicitly
     // because System Transfer's is 4 bytes and the Anchor default would read 8,
     // picking up half the lamport amount and never matching Graphite's hash.
-    const tx = new Transaction().add(transferIx);
+    const tx = bound.tx;
     const project = (ix: TransactionInstruction) => ({
       programId: ix.programId.toBase58(),
       data: ix.data,
@@ -448,7 +535,11 @@ export class VerifiedSakAgent {
     // 3. Re-checked immediately before signing, so the binding covers the
     //    window rather than preceding it.
     AuditBind.verifyTransactionUnchanged(tx.instructions.map(project), binding);
-    const signature = await sendAndConfirmTransaction(this.connection, tx, [this.walletKeypair]);
+    // 4. And the whole transaction, not only its instructions. AuditBind cannot
+    //    see the fee payer, the blockhash, the header or the message version,
+    //    because none of them are instruction-level facts. This compares the
+    //    digest Graphite computed over the exact bytes.
+    const signature = await this.signSubmitAndConfirm(bound, verification, "transfer");
     console.log(`[Solana] Confirmed: ${signature}`);
     return { executed: true, verification, signature };
   }
@@ -544,18 +635,30 @@ export class VerifiedSakAgent {
     // real_account_metas so the Core cross-checks them against the manifest's
     // declared expectations, not just the account addresses.
     const realAccountMetas = payload?.accounts.map((a) => ({ is_signer: a.isSigner, is_writable: a.isWritable }));
+    // Built once, from the payload, before verification — the same construction
+    // that used to happen after approval.
+    let boundSwap: BoundTransaction | undefined;
+    if (payload) {
+      const { blockhash, lastValidBlockHeight } =
+        await this.connection.getLatestBlockhash();
+      boundSwap = BoundTransaction.build({
+        instructions: [buildInstructionFromPayload(payload)],
+        feePayer: this.walletKeypair.publicKey,
+        recentBlockhash: blockhash,
+        lastValidBlockHeight,
+      });
+    }
     const verification = await this.verifyTransaction({
       programId: payload?.programId ?? JUPITER_V6_PROGRAM,
       instructionDiscriminator: payload?.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
       accountAddresses, proposedIntent,
       instructionData: payload?.instructionData,
       realAccountMetas,
-      // The same construction `buildInstructionFromPayload` performs below to
-      // submit, so the bytes verified and the bytes submitted come from one
-      // source. Without a payload there is nothing to serialize and the
-      // verification stays descriptive — which the abort above already treats
-      // as the unverified case.
-      artifactInstructions: payload ? [buildInstructionFromPayload(payload)] : undefined,
+      // The transaction that will be signed, not a copy of its instructions.
+      // Without a payload there is nothing to build and the verification stays
+      // descriptive — which the abort above already treats as the unverified
+      // case.
+      bound: boundSwap,
     });
 
     console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
@@ -580,10 +683,16 @@ export class VerifiedSakAgent {
       // just hashed above, so what executes is byte-identical to what was
       // verified by construction, not by trusting a second code path to
       // agree with the first.
-      const ix = buildInstructionFromPayload(payload);
-      const tx = new Transaction().add(ix);
-      console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound instruction directly (bypassing SAK's builder)...");
-      const signature = await sendAndConfirmTransaction(this.connection, tx, [this.walletKeypair]);
+      // `boundSwap` holds the instruction built from this same payload before
+      // verification, and its bytes are what Graphite verified. Rebuilding here
+      // would reintroduce the copy-versus-original gap one level down.
+      if (!boundSwap) {
+        throw new Error(
+          "[Graphite] a payload was supplied but no bound transaction was built; refusing to sign an unverified construction",
+        );
+      }
+      console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction directly (bypassing SAK's builder)...");
+      const signature = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
       console.log(`[Solana] Confirmed: ${signature}`);
       return { executed: true, verification, signature };
     }
