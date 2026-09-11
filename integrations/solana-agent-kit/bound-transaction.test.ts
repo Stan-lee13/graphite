@@ -59,8 +59,7 @@ test("the honest path: the same transaction verifies, signs and submits", () => 
   const bound = build();
   const digest = approvedDigest(bound);
 
-  bound.assertApproved(digest); // nothing changed
-  const raw = bound.signAndFreeze([payer]);
+  const raw = bound.signApproved(digest, [payer]); // nothing changed
 
   assert.deepEqual(
     Array.from(messageOf(raw)),
@@ -73,7 +72,7 @@ test("the honest path: the same transaction verifies, signs and submits", () => 
 test("signing changes only the signatures", () => {
   const bound = build();
   const before = Uint8Array.from(bound.messageBytes);
-  const raw = bound.signAndFreeze([payer]);
+  const raw = bound.signApproved(approvedDigest(bound), [payer]);
   assert.deepEqual(Array.from(messageOf(raw)), Array.from(before));
 });
 
@@ -84,7 +83,7 @@ test("a refreshed blockhash after approval is refused", () => {
   const digest = approvedDigest(bound);
   bound.tx.recentBlockhash = OTHER_BLOCKHASH;
   assert.throws(
-    () => bound.assertApproved(digest),
+    () => bound.signApproved(digest, [payer]),
     /changed between approval and signing/,
     "a new blockhash is a new transaction and must be re-verified",
   );
@@ -94,14 +93,14 @@ test("a changed fee payer after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
   bound.tx.feePayer = Keypair.generate().publicKey;
-  assert.throws(() => bound.assertApproved(digest), /changed between approval/);
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("an instruction appended after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
   bound.tx.add(transfer(1));
-  assert.throws(() => bound.assertApproved(digest), /changed between approval/);
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("a rewritten amount after approval is refused", () => {
@@ -110,21 +109,21 @@ test("a rewritten amount after approval is refused", () => {
   // Mutate the live instruction data in place — the mutation a snapshot-based
   // check cannot see.
   bound.tx.instructions[0].data.writeBigUInt64LE(9_000_000n, 4);
-  assert.throws(() => bound.assertApproved(digest), /changed between approval/);
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("a redirected destination after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
   bound.tx.instructions[0].keys[1].pubkey = Keypair.generate().publicKey;
-  assert.throws(() => bound.assertApproved(digest), /changed between approval/);
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("a flipped writable bit after approval is refused", () => {
   const bound = build();
   const digest = approvedDigest(bound);
   bound.tx.instructions[0].keys[1].isWritable = false;
-  assert.throws(() => bound.assertApproved(digest), /changed between approval/);
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
 });
 
 test("the digest names both sides so an operator can tell which moved", () => {
@@ -132,7 +131,7 @@ test("the digest names both sides so an operator can tell which moved", () => {
   const digest = approvedDigest(bound);
   bound.tx.recentBlockhash = OTHER_BLOCKHASH;
   try {
-    bound.assertApproved(digest);
+    bound.signApproved(digest, [payer]);
     assert.fail("should have thrown");
   } catch (e) {
     const msg = String(e);
@@ -204,7 +203,7 @@ test("a transaction with several instructions binds all of them", () => {
     transfer(),
   ]);
   const digest = approvedDigest(withBudget);
-  withBudget.assertApproved(digest);
+  withBudget.signApproved(digest, [payer]);
 
   // Reordering is a different transaction even with identical instructions.
   const reordered = build([

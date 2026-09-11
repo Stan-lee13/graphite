@@ -411,8 +411,9 @@ export class VerifiedSakAgent {
     // hashed. Anything that touched the transaction since approval — a
     // refreshed blockhash, a changed fee payer, an appended instruction —
     // changes this digest.
-    bound.assertApproved(scope.transaction_sha256);
-    const raw = bound.signAndFreeze([this.walletKeypair]);
+    // One call: the digest check, the signer check and the signature are not
+    // separately reachable, so no refactor can leave the signature without them.
+    const raw = bound.signApproved(scope.transaction_sha256, [this.walletKeypair]);
     console.log(
       `[Graphite] ${label}: transaction matches the approved digest ` +
         `${scope.transaction_sha256.slice(0, 16)}… — signing and submitting those exact bytes.`,

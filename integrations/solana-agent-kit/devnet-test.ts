@@ -8,8 +8,12 @@
  * This demonstrates the full verification gate: Graphite verifies, then gates execution.
  */
 
-import { Keypair, Connection, SystemProgram, Transaction, LAMPORTS_PER_SOL, sendAndConfirmTransaction, PublicKey } from "@solana/web3.js";
+import { Keypair, Connection, SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
+// The same execution gate the bridge uses. A demo that reaches
+// `sendAndConfirmTransaction` on a Descriptive verdict is teaching the pattern
+// the bridge was changed to stop doing.
+import { BoundTransaction, declareSiblings, findPrimaryIndex } from "./artifact.js";
 
 async function verifyThroughGraphite(payload: any): Promise<any> {
   const res = await fetch("http://localhost:7331/verify", {
@@ -134,28 +138,85 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("\n✅ APPROVED — Graphite verified this transaction is safe to execute.");
+  console.log("\n✅ APPROVED — but `approved` alone is not the gate; see below.");
 
   // ── EXECUTE ON DEVNET ──
   console.log("\n═══════════════════════════════════════════════════");
   console.log("  DEVNET EXECUTION");
   console.log("═══════════════════════════════════════════════════");
-  console.log(`\nTransferring ${transferAmount} SOL to ${destination} on devnet...`);
+  console.log(`
+Transferring ${transferAmount} SOL to ${destination} on devnet...`);
 
+  // This script exists to DEMONSTRATE the gate, so it has to demonstrate the
+  // real one. It previously verified a description — no `signed_transaction`,
+  // so a Descriptive verdict that constrains nothing about what gets signed —
+  // gated on `approved` alone, and then built a SEPARATE transaction and
+  // submitted it. Every one of those is the pattern the bridge was changed to
+  // stop doing, in the file most likely to be copied.
   const transferIx = SystemProgram.transfer({
     fromPubkey: keyPair.publicKey,
     toPubkey: new PublicKey(destination),
     lamports: Math.floor(transferAmount * LAMPORTS_PER_SOL),
   });
 
-  const { blockhash } = await connection.getLatestBlockhash("confirmed");
-  const tx = new Transaction({
-    recentBlockhash: blockhash,
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash("confirmed");
+  const bound = BoundTransaction.build({
+    instructions: [transferIx],
     feePayer: keyPair.publicKey,
-  }).add(transferIx);
+    recentBlockhash: blockhash,
+    lastValidBlockHeight,
+  });
 
-  console.log("Signing and broadcasting...");
-  const signature = await sendAndConfirmTransaction(connection, tx, [keyPair]);
+  // Verify the BYTES, not a description of them.
+  const primary = {
+    programId: "11111111111111111111111111111111",
+    instructionDiscriminator: "02000000",
+    accountAddresses: [keyPair.publicKey.toBase58(), destination],
+  };
+  const boundVerification = await verifyThroughGraphite({
+    ...basePayload,
+    wallet_profile: { Custom: { min_confidence: 0.0, min_trust_tier: "Unknown" } },
+    instruction_data: Array.from(transferIx.data),
+    signed_transaction: bound.artifact(),
+    transaction_instructions: declareSiblings(
+      [transferIx],
+      findPrimaryIndex([transferIx], primary),
+    ),
+  });
+  printVerification("Artifact-bound Verification", boundVerification);
+
+  if (!boundVerification.approved) {
+    console.log("\n❌ The artifact-bound verification did not approve. Not executing.");
+    process.exit(1);
+  }
+  if (boundVerification.scope?.kind !== "artifact_bound") {
+    console.log(
+      `
+❌ scope.kind is ${boundVerification.scope?.kind ?? "absent"}, not artifact_bound. ` +
+        "A descriptive verdict describes what the request SAID and does not constrain what " +
+        "gets signed. Not executing.",
+    );
+    process.exit(1);
+  }
+  console.log(
+    `
+✅ artifact_bound, digest ${boundVerification.scope.transaction_sha256.slice(0, 16)}…`,
+  );
+  console.log("   Still unobserved by this verdict:");
+  for (const u of boundVerification.scope.unobserved ?? []) {
+    console.log(`     • ${u}`);
+  }
+
+  console.log("\nSigning and broadcasting the exact approved transaction...");
+  // One call: the digest is re-checked against the live object, the signer set
+  // is checked against the message, and only then is anything signed.
+  const raw = bound.signApproved(
+    boundVerification.scope.transaction_sha256,
+    [keyPair],
+  );
+  const signature = await connection.sendRawTransaction(raw);
+  await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight });
 
   console.log(`\n✅ TRANSACTION CONFIRMED ON DEVNET!`);
   console.log(`Signature: ${signature}`);

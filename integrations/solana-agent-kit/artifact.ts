@@ -223,15 +223,65 @@ export class BoundTransaction {
   }
 
   /**
+   * Check the digest and sign, as one indivisible step.
+   *
+   * The two used to be separate calls, adjacent in the bridge. That is safe in
+   * JavaScript — nothing can run between two synchronous statements with no
+   * await between them — but it was safe by arrangement rather than by
+   * construction, and an arrangement is one refactor away from a window. There
+   * is now no API through which this object can be signed without its digest
+   * being checked first, because signing is not separately reachable.
+   *
+   * Returns the exact bytes to submit. Nothing else may be submitted: they are
+   * the only thing here that has been checked end to end.
+   */
+  signApproved(approvedSha256: string, signers: Keypair[]): Uint8Array {
+    this.assertApproved(approvedSha256);
+    this.assertSignersMatchTheMessage(signers);
+    return this.signAndFreeze(signers);
+  }
+
+  /**
+   * The signers must be exactly the ones this message requires.
+   *
+   * Graphite is a pre-signature gate and does not verify signatures, so nothing
+   * downstream of it would notice a transaction signed by the wrong key, or one
+   * short of a required signature — the network would reject it, which is a
+   * failed transaction rather than a wrong one, but it is also the shape in
+   * which an extra unexpected signer would slip through unremarked.
+   *
+   * The requirement is read out of the message rather than taken from the
+   * caller: `numRequiredSignatures` over the compiled account keys is what
+   * Solana itself will demand.
+   */
+  private assertSignersMatchTheMessage(signers: Keypair[]): void {
+    const message = this.tx.compileMessage();
+    const required = message.accountKeys
+      .slice(0, message.header.numRequiredSignatures)
+      .map((k) => k.toBase58())
+      .sort();
+    const supplied = signers.map((s) => s.publicKey.toBase58()).sort();
+    const same =
+      required.length === supplied.length &&
+      required.every((k, i) => k === supplied[i]);
+    if (!same) {
+      throw new Error(
+        `[Graphite] The signer set does not match the transaction. This message requires ` +
+          `[${required.join(", ")}] and was given [${supplied.join(", ")}]. Signing with the ` +
+          `wrong set, or one short of it, produces a transaction that is not the one that was ` +
+          `approved. ABORTING.`,
+      );
+    }
+  }
+
+  /**
    * Re-serialize now and require the digest Graphite approved.
    *
-   * Called immediately before signing, so what it rules out is anything that
-   * touched the transaction between approval and the signature — a refreshed
-   * blockhash, a changed fee payer, an appended instruction, a rewritten
-   * account list. Recomputing rather than comparing a stored value is the
-   * point: a stored digest would still match after the object moved on.
+   * Private: reachable only through `signApproved`, so it cannot be called and
+   * then forgotten. Recomputing rather than comparing a stored value is the
+   * point — a stored digest would still match after the object moved on.
    */
-  assertApproved(approvedSha256: string): void {
+  private assertApproved(approvedSha256: string): void {
     const now = Uint8Array.from(
       this.tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
     );
@@ -254,7 +304,7 @@ export class BoundTransaction {
    * recompile would be asking the same code that built it whether it built it,
    * and would hide exactly the mutation this is looking for.
    */
-  signAndFreeze(signers: Keypair[]): Uint8Array {
+  private signAndFreeze(signers: Keypair[]): Uint8Array {
     this.tx.sign(...signers);
     const raw = Uint8Array.from(this.tx.serialize());
     const submitted = messageOf(raw);
@@ -268,19 +318,59 @@ export class BoundTransaction {
   }
 }
 
-/** The message half of a serialized transaction: everything after the signatures. */
+/**
+ * The message half of a serialized transaction: everything after the signatures.
+ *
+ * This is a second implementation of Solana's compact-u16 in a second language,
+ * and two parsers of one wire format must accept the same language or the
+ * format has effectively forked. The Rust core learned this the hard way: its
+ * ShortU16 reader accepted values up to 2,097,151 until a review caught it. The
+ * rules below are that reader's, deliberately:
+ *
+ *   - at most three groups, and the third must terminate;
+ *   - minimally encoded — a multi-byte form whose final group is zero is a
+ *     second spelling of a shorter number, and two spellings of one length are
+ *     what a binding exists to prevent;
+ *   - no larger than a u16, which is what the field is.
+ *
+ * A malformed count must never yield a plausible slice. Getting this wrong
+ * would not read out of bounds — the bounds check below catches that — it would
+ * silently compare the WRONG range of one transaction against the right range
+ * of another, which is worse.
+ */
 export function messageOf(raw: Uint8Array): Uint8Array {
-  // compact-u16 signature count, then that many 64-byte signatures.
   let offset = 0;
   let count = 0;
+  let terminated = false;
   for (let group = 0; group < 3; group++) {
     const byte = raw[offset++];
-    if (byte === undefined) throw new Error("[Graphite] truncated signature count");
-    count |= (byte & 0x7f) << (group * 7);
-    if ((byte & 0x80) === 0) break;
+    if (byte === undefined) {
+      throw new Error("[Graphite] truncated signature count");
+    }
+    const bits = byte & 0x7f;
+    count |= bits << (group * 7);
+    if ((byte & 0x80) === 0) {
+      if (group > 0 && bits === 0) {
+        throw new Error(
+          "[Graphite] signature count is not minimally encoded — two spellings of one length",
+        );
+      }
+      terminated = true;
+      break;
+    }
+  }
+  if (!terminated) {
+    throw new Error("[Graphite] signature count continues past its third byte");
+  }
+  if (count > 0xffff) {
+    throw new Error(
+      `[Graphite] signature count ${count} does not fit the u16 this field is`,
+    );
   }
   offset += count * 64;
-  if (offset > raw.length) throw new Error("[Graphite] signature array runs past the transaction");
+  if (offset > raw.length) {
+    throw new Error("[Graphite] signature array runs past the transaction");
+  }
   return raw.subarray(offset);
 }
 
