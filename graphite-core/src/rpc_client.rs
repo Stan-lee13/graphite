@@ -428,7 +428,18 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         fee: value.get("fee").and_then(|v| v.as_u64()),
         loaded_addresses,
         artifact_account_count,
+        slot: None,
     })
+}
+
+/// The `context.slot` a JSON-RPC result was computed at, when the response
+/// carries one. Every Solana read method returns it; a mock or a
+/// non-conforming provider may not.
+fn context_slot(result: &serde_json::Value) -> Option<u64> {
+    result
+        .get("context")
+        .and_then(|c| c.get("slot"))
+        .and_then(|s| s.as_u64())
 }
 
 /// Account state from RPC
@@ -503,6 +514,16 @@ pub struct SimulationResult {
     /// transaction that references no lookup table are indistinguishable here,
     /// and the code that consumes this must not read empty as "legacy".
     pub loaded_addresses: Option<LoadedAddresses>,
+    /// The slot the simulation was executed against (`result.context.slot`),
+    /// when the response carried one.
+    ///
+    /// Round 9: the pre-state read and the simulation are two RPC calls and
+    /// can land on different slots. When they do, changes made by other
+    /// transactions in between appear in the state diff as this
+    /// transaction's — the L4 detail says so, and the two slots are the
+    /// evidence.
+    #[serde(default)]
+    pub slot: Option<u64>,
     /// How many accounts the transaction references in total, from the length
     /// of the balance arrays.
     ///
@@ -822,7 +843,9 @@ impl SolanaRpcClient {
         let value = result
             .get("value")
             .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
-        parse_simulation_value(value)
+        let mut sim = parse_simulation_value(value)?;
+        sim.slot = context_slot(&result);
+        Ok(sim)
     }
 
     /// Fetch several accounts in one round trip.
@@ -840,8 +863,25 @@ impl SolanaRpcClient {
         &self,
         pubkeys: &[String],
     ) -> Result<Vec<Option<AccountState>>, RpcError> {
+        self.get_multiple_accounts_at(pubkeys)
+            .await
+            .map(|(_, accounts)| accounts)
+    }
+
+    /// `get_multiple_accounts`, also returning the slot the read was served
+    /// at: `Some(slot)` when every chunk of the request came back at the same
+    /// slot, `None` when the response carried no slot or the chunks disagree
+    /// (a multi-chunk read that straddled a slot boundary is not one
+    /// snapshot, and reporting either chunk's slot as "the" slot would say it
+    /// was).
+    pub async fn get_multiple_accounts_at(
+        &self,
+        pubkeys: &[String],
+    ) -> Result<(Option<u64>, Vec<Option<AccountState>>), RpcError> {
         const CHUNK: usize = 100;
         let mut out: Vec<Option<AccountState>> = Vec::with_capacity(pubkeys.len());
+        let mut slot: Option<u64> = None;
+        let mut slots_agree = true;
         for chunk in pubkeys.chunks(CHUNK) {
             let params = serde_json::json!([
                 chunk,
@@ -851,6 +891,11 @@ impl SolanaRpcClient {
                 "jsonrpc":"2.0","id":1,"method":"getMultipleAccounts","params":params
             });
             let result = self.post_rpc(body).await?;
+            match (slot, context_slot(&result)) {
+                (None, s) if out.is_empty() => slot = s,
+                (Some(a), Some(b)) if a == b => {}
+                _ => slots_agree = false,
+            }
             let values = result
                 .get("value")
                 .and_then(|v| v.as_array())
@@ -866,7 +911,7 @@ impl SolanaRpcClient {
                 out.push(parse_account_value(addr, value)?);
             }
         }
-        Ok(out)
+        Ok((if slots_agree { slot } else { None }, out))
     }
 
     /// Simulate a transaction and ask the RPC for the post-execution state of
@@ -914,7 +959,8 @@ impl SolanaRpcClient {
             .get("value")
             .ok_or_else(|| RpcError::InvalidResponse("missing result.value".to_string()))?;
 
-        let sim = parse_simulation_value(value)?;
+        let mut sim = parse_simulation_value(value)?;
+        sim.slot = context_slot(&result);
 
         // `accounts` is null when the simulation failed outright, and an
         // element is null when that account does not exist after execution.

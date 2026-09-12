@@ -613,6 +613,16 @@ pub const DEFAULT_RPC_BUDGET: std::time::Duration = std::time::Duration::from_se
 /// hundred and report as though that were the transaction.
 pub const MAX_SIMULATION_ACCOUNTS: usize = 100;
 
+/// The most sibling instructions one request may declare.
+///
+/// A 1232-byte packet holds at most ~400 instructions of the smallest
+/// possible encoding (3 bytes each) and, in practice, a handful; every
+/// declaration is risk-assessed as a secondary instruction and matched
+/// against every instruction in the artifact, so the list needs a bound of
+/// its own. 256 is far past any real transaction and small enough that the
+/// worst case (`tests/round9_resource_bounds.rs`) stays in milliseconds.
+pub const MAX_TRANSACTION_INSTRUCTIONS: usize = 256;
+
 /// Run one RPC call against the shared deadline.
 ///
 /// `Err(())` means the budget ran out — distinct from the call itself failing,
@@ -635,50 +645,6 @@ async fn within_budget_of<F: std::future::Future>(
         return Err(());
     }
     tokio::time::timeout(slice, call).await.map_err(|_| ())
-}
-
-/// The shortest instruction data this check will treat as identifying.
-///
-/// Anchor discriminators are 8 bytes; a System-Program instruction carries a
-/// 4-byte discriminator plus its arguments. Below 8 bytes a byte sequence is
-/// short enough to occur inside a pubkey or a blockhash by chance, and a check
-/// that can be satisfied by coincidence is worse than one that abstains.
-const MIN_IDENTIFYING_INSTRUCTION_DATA: usize = 8;
-
-/// Does the supplied artifact actually CONTAIN the instruction data Graphite is
-/// verifying?
-///
-/// Found 2026-09-09 attacking the artifact semantic boundary. Every other check
-/// held: same payer, same recipient, same program, same discriminator, same
-/// account count, lamports conserved, coverage complete. Only the AMOUNT
-/// differed — 0.002 SOL described, 0.9 SOL in the bytes — and the amount lives
-/// in the instruction data. Graphite returned `approved: true` with
-/// `scope: artifact_bound`.
-///
-/// It held both facts and never compared them: `content_hash` covers the
-/// DESCRIPTION and was byte-identical across the two requests, while
-/// `transaction_sha256` covers the ARTIFACT and differed.
-///
-/// This is not a transaction parser and does not pretend to be one. A Solana
-/// message serializes instruction data as raw, length-prefixed bytes, so an
-/// instruction that is in the transaction has its data in the transaction's
-/// bytes — verbatim, contiguously. Presence is therefore a NECESSARY condition,
-/// checkable with a substring search and no format knowledge at all.
-///
-/// What it does not establish: that the bytes found belong to an instruction
-/// with the described program and accounts, rather than appearing somewhere
-/// else in the message. Necessary, not sufficient — and stated as such in
-/// `scope.unobserved`. What it does establish is that the described instruction
-/// data is in there at all, which is exactly what the attack above needed to be
-/// false.
-///
-/// Unlike account keys, instruction data can never be supplied by an address
-/// lookup table, so this holds identically for legacy and v0 transactions.
-fn artifact_contains_instruction_data(artifact: &[u8], data: &[u8]) -> bool {
-    if data.is_empty() || data.len() > artifact.len() {
-        return false;
-    }
-    artifact.windows(data.len()).any(|w| w == data)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -838,6 +804,125 @@ pub struct ExecutionAudit {
 /// could gate on `approved` without ever learning that Graphite had not seen a
 /// transaction at all — which is exactly how the SAK swap path ended up
 /// executing an instruction nothing had examined.
+/// A machine-readable name for one entry of `scope.unobserved`.
+///
+/// The prose in `unobserved` is for people; a consumer that has to DECIDE
+/// whether a residual is acceptable needs a stable identifier, not a string
+/// to grep. `unobserved_codes[i]` names `unobserved[i]`, same length, same
+/// order (`tests/round9_identity_requires_data.rs` pins the pairing).
+///
+/// Round 9: until this existed, every consumer that gated on
+/// `artifact_bound` — the SAK bridge above all — executed on any approved
+/// artifact-bound verdict regardless of what it had not observed, because
+/// "not observed" was prose. The bridge now refuses any residual that is not
+/// inherent and not explicitly accepted by the operator (`ResidualPolicy` in
+/// `integrations/solana-agent-kit/residual-policy.ts`).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum UnobservedCode {
+    // ── Artifact-bound ────────────────────────────────────────────────────
+    /// The bytes were supplied but no simulator executed them.
+    NotSimulated,
+    /// Simulated, but no pre/post state diff was built.
+    NoStateDiff,
+    /// Signer/writable flags came from the caller, not the message.
+    PrivilegesFromCaller,
+    /// No signer/writable flags at all.
+    PrivilegesAbsent,
+    /// Lookup-table accounts were counted, not identified.
+    LookupTablesUnresolved,
+    /// What the instructions do beyond simulated effects, for programs
+    /// without manifests. Inherent to every artifact-bound verdict.
+    ProgramSemantics,
+    /// CPI callees are visible through simulation only. Inherent.
+    InnerInstructions,
+    /// The artifact could not be parsed as a Solana message.
+    ArtifactUnparsed,
+    /// With no parse, account identity inside the artifact is unknown.
+    AccountIdentityUnparsed,
+    /// The described instruction was not located in the message (no
+    /// instruction data supplied, no parse, or no instruction matched), so
+    /// L2 failed and the binding rests on nothing.
+    InstructionNotLocated,
+    // ── Descriptive ───────────────────────────────────────────────────────
+    /// No transaction was supplied at all.
+    NoArtifact,
+    /// Other instructions in the eventual transaction are unexamined.
+    OtherInstructions,
+    /// Fee payer, blockhash and signer set are unexamined.
+    FeePayerBlockhashSigners,
+    /// Nothing to simulate, so no real effects were measured.
+    NoRealEffects,
+}
+
+impl UnobservedCode {
+    /// True for the residuals every artifact-bound verdict carries by
+    /// construction — the ones a policy that accepts nothing else can accept
+    /// without accepting anything the pipeline could have observed and did
+    /// not. Everything else names an observation that was possible and did
+    /// not happen.
+    pub fn inherent(&self) -> bool {
+        matches!(
+            self,
+            UnobservedCode::ProgramSemantics | UnobservedCode::InnerInstructions
+        )
+    }
+
+    /// The snake_case name on the wire, for messages and logs.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UnobservedCode::NotSimulated => "not_simulated",
+            UnobservedCode::NoStateDiff => "no_state_diff",
+            UnobservedCode::PrivilegesFromCaller => "privileges_from_caller",
+            UnobservedCode::PrivilegesAbsent => "privileges_absent",
+            UnobservedCode::LookupTablesUnresolved => "lookup_tables_unresolved",
+            UnobservedCode::ProgramSemantics => "program_semantics",
+            UnobservedCode::InnerInstructions => "inner_instructions",
+            UnobservedCode::ArtifactUnparsed => "artifact_unparsed",
+            UnobservedCode::AccountIdentityUnparsed => "account_identity_unparsed",
+            UnobservedCode::InstructionNotLocated => "instruction_not_located",
+            UnobservedCode::NoArtifact => "no_artifact",
+            UnobservedCode::OtherInstructions => "other_instructions",
+            UnobservedCode::FeePayerBlockhashSigners => "fee_payer_blockhash_signers",
+            UnobservedCode::NoRealEffects => "no_real_effects",
+        }
+    }
+
+    /// Every code, in declaration order — what the SDKs and the bridge's
+    /// policy validate an operator's accepted list against.
+    pub const ALL: [UnobservedCode; 14] = [
+        UnobservedCode::NotSimulated,
+        UnobservedCode::NoStateDiff,
+        UnobservedCode::PrivilegesFromCaller,
+        UnobservedCode::PrivilegesAbsent,
+        UnobservedCode::LookupTablesUnresolved,
+        UnobservedCode::ProgramSemantics,
+        UnobservedCode::InnerInstructions,
+        UnobservedCode::ArtifactUnparsed,
+        UnobservedCode::AccountIdentityUnparsed,
+        UnobservedCode::InstructionNotLocated,
+        UnobservedCode::NoArtifact,
+        UnobservedCode::OtherInstructions,
+        UnobservedCode::FeePayerBlockhashSigners,
+        UnobservedCode::NoRealEffects,
+    ];
+}
+
+/// The prose and the code for one residual, kept together so they cannot
+/// drift apart.
+#[derive(Default)]
+struct Residuals {
+    prose: Vec<String>,
+    codes: Vec<UnobservedCode>,
+}
+
+impl Residuals {
+    fn push(&mut self, code: UnobservedCode, prose: impl Into<String>) {
+        self.prose.push(prose.into());
+        self.codes.push(code);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VerificationScope {
@@ -859,6 +944,9 @@ pub enum VerificationScope {
         /// independently observed. Empty is a strong claim and is not made
         /// lightly.
         unobserved: Vec<String>,
+        /// `unobserved_codes[i]` names `unobserved[i]`.
+        #[serde(default)]
+        unobserved_codes: Vec<UnobservedCode>,
     },
     /// No artifact was supplied. The verdict describes what the caller SAID the
     /// transaction is. Nothing in it constrains what gets signed.
@@ -866,6 +954,9 @@ pub enum VerificationScope {
         /// What Graphite did not observe, stated so a consumer does not have to
         /// infer it from an absence.
         unobserved: Vec<String>,
+        /// `unobserved_codes[i]` names `unobserved[i]`.
+        #[serde(default)]
+        unobserved_codes: Vec<UnobservedCode>,
     },
 }
 
@@ -879,7 +970,18 @@ impl VerificationScope {
     pub fn unobserved(&self) -> &[String] {
         match self {
             VerificationScope::ArtifactBound { unobserved, .. } => unobserved,
-            VerificationScope::Descriptive { unobserved } => unobserved,
+            VerificationScope::Descriptive { unobserved, .. } => unobserved,
+        }
+    }
+    /// The codes naming each entry of `unobserved`, in either mode.
+    pub fn unobserved_codes(&self) -> &[UnobservedCode] {
+        match self {
+            VerificationScope::ArtifactBound {
+                unobserved_codes, ..
+            } => unobserved_codes,
+            VerificationScope::Descriptive {
+                unobserved_codes, ..
+            } => unobserved_codes,
         }
     }
 }
@@ -900,20 +1002,21 @@ fn verification_scope(
     diff_built: bool,
     privileges: PrivilegeSource,
     lookups: Option<Result<usize, String>>,
+    instruction_located: bool,
 ) -> VerificationScope {
     match &input.signed_transaction {
         Some(bytes) if !bytes.is_empty() => {
             use sha2::{Digest, Sha256};
-            let mut unobserved: Vec<String> = Vec::new();
+            let mut r = Residuals::default();
             if !simulated {
-                unobserved.push(
-                    "the transaction was supplied but never executed by a simulator, so its real effects are unknown — this verdict is the static analysis of the described instruction"
-                        .to_string(),
+                r.push(
+                    UnobservedCode::NotSimulated,
+                    "the transaction was supplied but never executed by a simulator, so its real effects are unknown — this verdict is the static analysis of the described instruction",
                 );
             } else if !diff_built {
-                unobserved.push(
-                    "the transaction was simulated but no pre/post state diff was built, so what it actually changes was not compared against the manifest"
-                        .to_string(),
+                r.push(
+                    UnobservedCode::NoStateDiff,
+                    "the transaction was simulated but no pre/post state diff was built, so what it actually changes was not compared against the manifest",
                 );
             }
             // What the pipeline actually did, rather than this function's
@@ -925,13 +1028,13 @@ fn verification_scope(
                 PrivilegeSource::Artifact
                 | PrivilegeSource::ArtifactWithLookupTables
                 | PrivilegeSource::ArtifactContradictingCaller => {}
-                PrivilegeSource::Caller => unobserved.push(
-                    "whether the signer/writable flags supplied with this request match the transaction's own: at least one described account could not be placed in the static keys or in a resolved lookup table, so the flags could not be derived and the caller's were used"
-                        .to_string(),
+                PrivilegeSource::Caller => r.push(
+                    UnobservedCode::PrivilegesFromCaller,
+                    "whether the signer/writable flags supplied with this request match the transaction's own: at least one described account could not be placed in the static keys or in a resolved lookup table, so the flags could not be derived and the caller's were used",
                 ),
-                PrivilegeSource::Absent => unobserved.push(
-                    "per-account signer/writable flags: none were supplied and they could not be derived from the artifact, so privilege escalation within the account list is not checked"
-                        .to_string(),
+                PrivilegeSource::Absent => r.push(
+                    UnobservedCode::PrivilegesAbsent,
+                    "per-account signer/writable flags: none were supplied and they could not be derived from the artifact, so privilege escalation within the account list is not checked",
                 ),
             }
             // What is left unobserved now depends on whether the message
@@ -945,11 +1048,20 @@ fn verification_scope(
             // rebuilds a control Graphite already has.
             match crate::tx_artifact::parse_transaction(bytes) {
                 Ok(message) => {
-                    // Parsed. L2 has already established that exactly one
-                    // instruction under the described program carries the
-                    // described data, and that no OTHER instruction is present
-                    // undescribed — those are gates, not caveats, so they do
-                    // not belong here. What remains genuinely unestablished:
+                    // Parsed. When L2 located the described instruction it has
+                    // established that exactly one instruction under the
+                    // described program carries the described data on the
+                    // described accounts, and that no OTHER instruction is
+                    // present undescribed — those are gates, not caveats, so
+                    // they do not belong here. When it did NOT locate it (no
+                    // instruction data, or nothing matched), L2 failed and the
+                    // binding rests on nothing: say so, first.
+                    if !instruction_located {
+                        r.push(
+                            UnobservedCode::InstructionNotLocated,
+                            "whether the described instruction is in these bytes at all: it was not located in the message (no instruction_data was supplied, or no instruction under the described program carries that exact data), so L2 failed and nothing ties this description to the transaction",
+                        );
+                    }
                     // The blanket "Graphite does not fetch the tables" claim
                     // here was true when written and false since the resolver
                     // landed. Only the cases where resolution did NOT happen
@@ -957,37 +1069,51 @@ fn verification_scope(
                     if message.has_lookup_accounts() {
                         match &lookups {
                             Some(Ok(_)) => {}
-                            Some(Err(why)) => unobserved.push(format!(
-                                "the identity of {} account(s) this transaction reaches through {} address lookup table(s): the tables could not be resolved ({why}), so those accounts are counted and not identified",
-                                message.alt_account_count(),
-                                message.alt_table_count()
-                            )),
-                            None => unobserved.push(format!(
-                                "the identity of {} account(s) this transaction reaches through {} address lookup table(s): the message carries table indexes rather than addresses and no table was fetched, so those accounts are counted and not identified",
-                                message.alt_account_count(),
-                                message.alt_table_count()
-                            )),
+                            Some(Err(why)) => r.push(
+                                UnobservedCode::LookupTablesUnresolved,
+                                format!(
+                                    "the identity of {} account(s) this transaction reaches through {} address lookup table(s): the tables could not be resolved ({why}), so those accounts are counted and not identified",
+                                    message.alt_account_count(),
+                                    message.alt_table_count()
+                                ),
+                            ),
+                            None => r.push(
+                                UnobservedCode::LookupTablesUnresolved,
+                                format!(
+                                    "the identity of {} account(s) this transaction reaches through {} address lookup table(s): the message carries table indexes rather than addresses and no table was fetched, so those accounts are counted and not identified",
+                                    message.alt_account_count(),
+                                    message.alt_table_count()
+                                ),
+                            ),
                         }
                     }
-                    unobserved.push(
-                        "what the instructions DO beyond the effects the simulation surfaced: the message gives Graphite each instruction's program, accounts and raw data, and it decodes that data only for the protocols it has manifests for"
-                            .to_string(),
+                    r.push(
+                        UnobservedCode::ProgramSemantics,
+                        "what the instructions DO beyond the effects the simulation surfaced: the message gives Graphite each instruction's program, accounts and raw data, and it decodes that data only for the protocols it has manifests for",
                     );
-                    unobserved.push(
-                        "inner instructions: only top-level instructions appear in a message, so anything a program invokes by CPI is visible to Graphite through simulation effects rather than through the artifact"
-                            .to_string(),
+                    r.push(
+                        UnobservedCode::InnerInstructions,
+                        "inner instructions: only top-level instructions appear in a message, so anything a program invokes by CPI is visible to Graphite through simulation effects rather than through the artifact",
                     );
                 }
                 Err(e) => {
-                    // Not parsed. The older, weaker disclosures still apply
-                    // exactly as before, and the reason is named rather than
-                    // left as a silent downgrade.
-                    unobserved.push(format!(
-                        "the structure of this artifact: it could not be parsed as a legacy or v0 Solana message ({e}), so Graphite fell back to checking that the described instruction's bytes appear somewhere in it — which does not establish that they belong to an instruction with the described program and accounts, nor that no other instruction sits alongside"
-                    ));
-                    unobserved.push(
-                        "the IDENTITY of the accounts inside the artifact: with no parse, Graphite compares how many accounts the transaction references against how many this request names, not which ones, so naming an address the transaction does not contain can mask one it does"
-                            .to_string(),
+                    // Not parsed. L2 has failed (Round 9: an unreadable
+                    // artifact is no longer a weaker check, it is a failed
+                    // one) and the reason is named rather than left as a
+                    // silent downgrade.
+                    r.push(
+                        UnobservedCode::ArtifactUnparsed,
+                        format!(
+                            "the structure of this artifact: it could not be parsed as a legacy or v0 Solana message ({e}), so L2 failed — Graphite makes no claim about bytes it cannot read"
+                        ),
+                    );
+                    r.push(
+                        UnobservedCode::AccountIdentityUnparsed,
+                        "the IDENTITY of the accounts inside the artifact: with no parse, nothing about which accounts the transaction references was established",
+                    );
+                    r.push(
+                        UnobservedCode::InstructionNotLocated,
+                        "whether the described instruction is in these bytes at all: there is no message to locate it in",
                     );
                 }
             }
@@ -995,28 +1121,40 @@ fn verification_scope(
                 transaction_sha256: hex::encode(Sha256::digest(bytes)),
                 transaction_bytes: bytes.len(),
                 simulated,
-                unobserved,
+                unobserved: r.prose,
+                unobserved_codes: r.codes,
             }
         }
         _ => {
-            let mut unobserved = vec![
-                "no signed transaction was supplied, so nothing here constrains what is actually signed"
-                    .to_string(),
-                "the transaction's other instructions — an approved instruction can be submitted alongside any number of unexamined ones"
-                    .to_string(),
-                "the fee payer, the recent blockhash, and the signer set".to_string(),
-                "the transaction's real effects: with no artifact there is nothing to simulate, so L3 and L4 have no measurement to work from"
-                    .to_string(),
-            ];
+            let mut r = Residuals::default();
+            r.push(
+                UnobservedCode::NoArtifact,
+                "no signed transaction was supplied, so nothing here constrains what is actually signed",
+            );
+            r.push(
+                UnobservedCode::OtherInstructions,
+                "the transaction's other instructions — an approved instruction can be submitted alongside any number of unexamined ones",
+            );
+            r.push(
+                UnobservedCode::FeePayerBlockhashSigners,
+                "the fee payer, the recent blockhash, and the signer set",
+            );
+            r.push(
+                UnobservedCode::NoRealEffects,
+                "the transaction's real effects: with no artifact there is nothing to simulate, so L3 and L4 have no measurement to work from",
+            );
             let metas_supplied = input.real_account_metas.len() == input.account_addresses.len()
                 && !input.account_addresses.is_empty();
             if !metas_supplied {
-                unobserved.push(
-                    "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked"
-                        .to_string(),
+                r.push(
+                    UnobservedCode::PrivilegesAbsent,
+                    "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked",
                 );
             }
-            VerificationScope::Descriptive { unobserved }
+            VerificationScope::Descriptive {
+                unobserved: r.prose,
+                unobserved_codes: r.codes,
+            }
         }
     }
 }
@@ -2781,6 +2919,30 @@ impl GraphiteCore {
                 input.cpi_targets.len()
             )));
         }
+        // The two Round-3 inputs that had no bound (Round 9). The artifact is
+        // bounded by the network's packet size: bytes past it can never
+        // execute, and examining them cost 122 seconds for one request
+        // before this check (`tests/round9_resource_bounds.rs`). The
+        // declaration list is bounded by the same fact from the other side —
+        // more declared instructions than a packet can hold instructions
+        // describe a transaction other than the one supplied — and each
+        // declaration is otherwise risk-assessed and matched against every
+        // artifact instruction.
+        if let Some(artifact) = &input.signed_transaction {
+            if artifact.len() > crate::tx_artifact::MAX_TRANSACTION_BYTES {
+                return Err(VerificationError::InvalidInput(format!(
+                    "signed_transaction is {} bytes; a Solana transaction is at most {} bytes (PACKET_DATA_SIZE) and the network refuses anything larger",
+                    artifact.len(),
+                    crate::tx_artifact::MAX_TRANSACTION_BYTES
+                )));
+            }
+        }
+        if input.transaction_instructions.len() > MAX_TRANSACTION_INSTRUCTIONS {
+            return Err(VerificationError::InvalidInput(format!(
+                "transaction_instructions exceeds maximum of {MAX_TRANSACTION_INSTRUCTIONS} entries (got {})",
+                input.transaction_instructions.len()
+            )));
+        }
 
         // ONE deadline for every RPC call this verification makes, started
         // before the first of them. A budget that does not cover every call
@@ -3067,34 +3229,57 @@ impl GraphiteCore {
         // below), which is the correct severity — a verdict about an
         // instruction the transaction does not contain is not a weak verdict,
         // it is a verdict about something else.
+        // Whether the described instruction was actually located in the
+        // parsed artifact — program, exact data and accounts, at one position.
+        // `scope` reports it, so a consumer knows whether "artifact_bound"
+        // rests on a located instruction or on a failed L2.
+        let mut artifact_instruction_located = false;
         let l2_result = match (&input.signed_transaction, &input.instruction_data) {
-            (Some(artifact), Some(data))
-                if !artifact.is_empty() && data.len() >= MIN_IDENTIFYING_INSTRUCTION_DATA =>
-            {
-                // Read the message when it can be read.
+            (Some(artifact), data) if !artifact.is_empty() => {
+                // Every artifact goes through here. Until Round 9 this arm
+                // was keyed on `instruction_data` being present and at least
+                // 8 bytes long, with two consequences: an artifact supplied
+                // WITHOUT data skipped the correspondence check entirely
+                // (L2 "Passed", scope `artifact_bound`, a 100 SOL transfer
+                // approved under a description that never said an amount —
+                // the 2026-09-09 amount finding, reopened by omitting the
+                // field), and an artifact that could not be parsed fell back
+                // to a substring search over its bytes, which is satisfiable
+                // by bytes that are not a Solana message at all.
                 //
-                // The substring search below is the fallback, and it is a
-                // necessary condition rather than a sufficient one: it proves
-                // those bytes are SOMEWHERE in the transaction, not that they
-                // belong to the described instruction. Parsing answers the
-                // actual question — is there an instruction, under the
-                // described program, carrying exactly this data — and it also
-                // exposes the instructions the request never mentioned, which
-                // no amount of measuring the artifact could reveal.
-                //
-                // Fail-closed in the direction that matters: a parse failure
-                // falls back to the substring check rather than passing. An
-                // artifact Graphite cannot read is one it makes no structural
-                // claim about; it must never be one that gets a stronger
-                // verdict for being unreadable.
+                // Both are now L2 failures. Parsing answers the actual
+                // question — is there an instruction, under the described
+                // program, carrying exactly this data, on these accounts —
+                // and an artifact Graphite cannot read, or cannot locate the
+                // described instruction in, gets no claim made about it.
+                // `correspond` matches on exact data equality, so no minimum
+                // length is needed: a one-byte `CloseAccount` is identified
+                // by its program, its byte and its accounts at one position.
                 match crate::tx_artifact::parse_transaction(artifact) {
+                    Err(e) => PipelineLayerResult::new(
+                        "L2_InstructionVerification",
+                        LayerStatus::Failed,
+                        format!(
+                            "the supplied transaction could not be parsed as a legacy or v0 Solana message ({e}). Graphite makes no claim about bytes it cannot read: an artifact-bound verdict requires the described instruction to be located in the message, and there is no message to locate it in"
+                        ),
+                    ),
+                    Ok(_) if data.is_none() => PipelineLayerResult::new(
+                        "L2_InstructionVerification",
+                        LayerStatus::Failed,
+                        "a transaction was supplied but instruction_data was not, so the described instruction cannot be located in it: an artifact-bound verdict identifies the instruction by its program, its exact data and its accounts at one position in the message, and without the data the bytes about to be signed cannot be tied to this description. Supply instruction_data (the SAK bridge and the SDKs always do), or omit signed_transaction and receive a descriptive verdict that says so"
+                            .to_string(),
+                    ),
                     Ok(message) => {
+                        let data = data.as_deref().unwrap_or_default();
                         let c = crate::tx_artifact::correspond(
                             &message,
                             &input.program_id,
                             Some(data),
                             &input.account_addresses,
                         );
+                        if c.matched_instruction.is_some() {
+                            artifact_instruction_located = true;
+                        }
                         match c.matched_instruction {
                             None => PipelineLayerResult::new(
                                 "L2_InstructionVerification",
@@ -3194,24 +3379,6 @@ impl GraphiteCore {
                                     )
                                 }
                             },
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "artifact could not be parsed ({e}); falling back to the                              instruction-data presence check"
-                        );
-                        if artifact_contains_instruction_data(artifact, data) {
-                            l2_result
-                        } else {
-                            PipelineLayerResult::new(
-                        "L2_InstructionVerification",
-                        LayerStatus::Failed,
-                        format!(
-                            "the supplied transaction does not contain the instruction being verified: its {} bytes of instruction data appear nowhere in the {} bytes of the artifact. A Solana message stores instruction data verbatim, so an instruction that is in the transaction has its data in the transaction — this verdict would otherwise describe a different instruction from the one about to be signed",
-                            data.len(),
-                            artifact.len()
-                        ),
-                    )
                         }
                     }
                 }
@@ -3894,6 +4061,11 @@ impl GraphiteCore {
         // outranks a claim about evidence (P5).
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut observed_diff: Option<crate::state_diff::StateDiff> = None;
+        // The slots the two halves of that diff were read at, when both are
+        // known: (pre-state read, simulation). Different slots mean the diff
+        // spans other transactions' changes as well as this one's.
+        #[cfg(feature = "rpc")]
+        let mut diff_slots: Option<(u64, u64)> = None;
         // Why Graphite could NOT build its own diff, when it tried and failed.
         //
         // L4 has two very different modes — a real pre/post state diff, and a
@@ -4221,13 +4393,16 @@ impl GraphiteCore {
                         if !implausible_units && !post.is_empty() && sim_res.err.is_none() {
                             match within_budget(
                                 &budget,
-                                client.get_multiple_accounts(&diff_addresses),
+                                client.get_multiple_accounts_at(&diff_addresses),
                             )
                             .await
                             .unwrap_or_else(|()| {
                                 Err(crate::rpc_client::RpcError::Timeout(budget.total()))
                             }) {
-                                Ok(pre) => {
+                                Ok((pre_slot, pre)) => {
+                                    if let (Some(p), Some(s)) = (pre_slot, sim_res.slot) {
+                                        diff_slots = Some((p, s));
+                                    }
                                     // Coverage comes from what the simulator
                                     // measured, not from what the caller
                                     // declared. `account_writes` is derived
@@ -4550,6 +4725,26 @@ impl GraphiteCore {
                 }
                 fallback
             }
+        };
+        // Two RPC calls, two slots. A diff whose pre-state and post-state
+        // were read at different slots attributes every change made by other
+        // transactions in between to this one. The comparison above still
+        // runs — the skew cannot manufacture an approval, only a change the
+        // manifest then has to explain — but a reader of the detail must be
+        // able to tell a one-slot skew from a measurement of this transaction
+        // alone, so the slots are named (Round 9).
+        #[cfg(feature = "rpc")]
+        let l4_result = match diff_slots {
+            Some((pre, sim)) if pre != sim && observed_diff.is_some() => PipelineLayerResult::new(
+                "L4_StateVerification",
+                l4_result.status,
+                format!(
+                    "{} | NOTE: the pre-state was read at slot {pre} and the simulation ran at slot {sim}; state changes made by other transactions in the {} slot(s) between them are attributed to this transaction by this diff",
+                    l4_result.reason,
+                    pre.abs_diff(sim)
+                ),
+            ),
+            _ => l4_result,
         };
         // L4: plugin folds (Block → layer Failed; Note → report annotation).
         let l4_result = self
@@ -5085,6 +5280,7 @@ impl GraphiteCore {
                     resolved_lookups
                         .as_ref()
                         .map(|r| r.as_ref().map(|l| l.len()).map_err(|e| e.clone())),
+                    artifact_instruction_located,
                 )
             },
             resolved_accounts: resolution.resolved_accounts.clone(),

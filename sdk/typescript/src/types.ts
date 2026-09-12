@@ -252,6 +252,65 @@ export interface VerificationResult {
   scope?: VerificationScope;
 }
 
+/**
+ * A machine-readable name for one entry of `scope.unobserved`.
+ *
+ * `unobserved_codes[i]` names `unobserved[i]`: same length, same order. The
+ * prose is for people; a consumer that has to DECIDE whether a residual is
+ * acceptable needs a stable identifier, and this is it. Mirrors
+ * `UnobservedCode` in `graphite-core/src/verification.rs` and the enum in
+ * `schemas/verification-result-v1.json`.
+ *
+ * `program_semantics` and `inner_instructions` are inherent to every
+ * artifact-bound verdict (see `INHERENT_UNOBSERVED`). Every other code names
+ * an observation that was possible and did not happen. An execution-capable
+ * integration must not execute on a verdict carrying one it has not
+ * explicitly accepted.
+ */
+export type UnobservedCode =
+  | "not_simulated"
+  | "no_state_diff"
+  | "privileges_from_caller"
+  | "privileges_absent"
+  | "lookup_tables_unresolved"
+  | "program_semantics"
+  | "inner_instructions"
+  | "artifact_unparsed"
+  | "account_identity_unparsed"
+  | "instruction_not_located"
+  | "no_artifact"
+  | "other_instructions"
+  | "fee_payer_blockhash_signers"
+  | "no_real_effects";
+
+/** Every code, in the core's declaration order. */
+export const UNOBSERVED_CODES: readonly UnobservedCode[] = [
+  "not_simulated",
+  "no_state_diff",
+  "privileges_from_caller",
+  "privileges_absent",
+  "lookup_tables_unresolved",
+  "program_semantics",
+  "inner_instructions",
+  "artifact_unparsed",
+  "account_identity_unparsed",
+  "instruction_not_located",
+  "no_artifact",
+  "other_instructions",
+  "fee_payer_blockhash_signers",
+  "no_real_effects",
+] as const;
+
+/**
+ * The residuals every artifact-bound verdict carries by construction. A
+ * policy that accepts only these accepts nothing the pipeline could have
+ * observed and did not.
+ */
+export const INHERENT_UNOBSERVED: ReadonlySet<UnobservedCode> = new Set<UnobservedCode>([
+  "program_semantics",
+  "inner_instructions",
+]);
+
 /** `scope.kind === "artifact_bound"`: the verdict is tied to concrete bytes. */
 export interface ArtifactBoundScope {
   kind: "artifact_bound";
@@ -268,12 +327,19 @@ export interface ArtifactBoundScope {
   simulated: boolean;
   /** Security-relevant properties still not independently observed. */
   unobserved: string[];
+  /**
+   * `unobserved_codes[i]` names `unobserved[i]`. Optional only for servers
+   * older than Round 9 (2026-09-12); a gate that decides on codes must treat
+   * its absence as unknown, not as empty.
+   */
+  unobserved_codes?: UnobservedCode[];
 }
 
 /** `scope.kind === "descriptive"`: nothing here constrains what gets signed. */
 export interface DescriptiveScope {
   kind: "descriptive";
   unobserved: string[];
+  unobserved_codes?: UnobservedCode[];
 }
 
 export type VerificationScope = ArtifactBoundScope | DescriptiveScope;
@@ -298,6 +364,87 @@ export function isArtifactBound(
  */
 export function unobserved(result: Pick<VerificationResult, "scope">): string[] {
   return result.scope?.unobserved ?? [];
+}
+
+/**
+ * The codes naming each entry of `unobserved`, or `undefined` when the server
+ * did not report them (pre-Round-9). Never an empty array for a missing
+ * field: "no codes reported" and "nothing unobserved" are different answers,
+ * and the second is never true.
+ */
+export function unobservedCodes(
+  result: Pick<VerificationResult, "scope">,
+): UnobservedCode[] | undefined {
+  return result.scope?.unobserved_codes;
+}
+
+/**
+ * A caller-reported lifecycle stage. Graphite performs construction,
+ * simulation and verification itself and records those; signing,
+ * submission, confirmation and finalization happen in the caller, and only
+ * the caller can put them on the trail (`POST /audit/event`).
+ */
+export type CallerLifecycleEvent = "signing" | "submission" | "confirmation" | "finalization";
+
+export interface LifecycleEventInput {
+  event_type: CallerLifecycleEvent;
+  /** The verification's `content_hash`: 16 lowercase hex characters. */
+  content_hash: string;
+  audit_trail_id?: string;
+  /** Base58 signature, once one exists (submission onward). */
+  transaction_signature?: string;
+  /** Who is reporting — an operator-meaningful name, never a credential. */
+  reported_by?: string;
+  /** Free-form, at most 1024 characters. */
+  detail?: string;
+}
+
+/**
+ * What the trail held for the event's `content_hash` when the event was
+ * recorded — established by Graphite, not reported by the caller. `blocked`
+ * means the caller just reported acting on a transaction Graphite refused.
+ */
+export type VerdictOnRecord = "approved" | "blocked" | "not_found";
+
+export interface LifecycleEventReceipt {
+  recorded: true;
+  event_type: CallerLifecycleEvent;
+  content_hash: string;
+  verdict_on_record: VerdictOnRecord;
+}
+
+/** Body of `POST /verify/execution` (L8). */
+export interface ExecutionCheckInput {
+  /** The on-chain signature to confirm. */
+  signature: string;
+  /** The verification this execution corresponds to. */
+  content_hash?: string;
+  reported_by?: string;
+}
+
+/**
+ * L8's answer: what the chain says about the signature, reconciled against
+ * the verdict on record. `reconciliation` is the server's tagged enum,
+ * carried as-is; `BlockedButExecuted` is the one to page on.
+ */
+export interface ExecutionCheckResult {
+  signature: string;
+  /** The server's `ExecutionVerification` for the signature, as-is. */
+  chain_status: unknown;
+  /** The verdict on record for the content_hash, when one exists. */
+  recorded_approved: boolean | null;
+  recorded_audit_trail_id: string | null;
+  /**
+   * The server's `ExecutionReconciliation`: a string for unit variants
+   * (`"ApprovedAndExecuted"`, `"BlockedButExecuted"`, `"NotFound"`,
+   * `"NoVerificationOnRecord"`, ...) or a one-key object for variants that
+   * carry data. Read `discrepancy` for the decision.
+   */
+  reconciliation: unknown;
+  /** True for `BlockedButExecuted`: Graphite's decision did not govern. */
+  discrepancy: boolean;
+  /** Whether this reconciliation row reached the trail. */
+  audit_recorded: boolean;
 }
 
 export interface PipelineLayerResult {

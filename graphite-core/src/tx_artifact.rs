@@ -81,7 +81,23 @@ pub enum ArtifactParseError {
     },
     #[error("{trailing} trailing bytes after the message")]
     TrailingBytes { trailing: usize },
+    /// Larger than the network will carry. Checked before anything else is
+    /// read, so the cost of an oversized artifact is one comparison.
+    #[error("artifact is {len} bytes; a Solana transaction is at most {max} (PACKET_DATA_SIZE) and the network refuses anything larger")]
+    TooLarge { len: usize, max: usize },
 }
+
+/// The largest serialized transaction the Solana network accepts:
+/// `PACKET_DATA_SIZE` = 1280 (IPv6 minimum MTU) − 40 (IPv6 header) − 8 (UDP
+/// header) = 1232 bytes. `sendTransaction` refuses anything larger, so bytes
+/// past this bound describe a transaction that can never execute.
+///
+/// Round 9: this is also the bound that keeps the parser and L2's sibling
+/// coverage (every artifact instruction against every declaration) at a cost
+/// that fits inside the request timeout. Measured before the bound: a 200 KB
+/// artifact of 50,000 minimal instructions with 2,000 declarations spent
+/// 122 seconds in one `/verify` call.
+pub const MAX_TRANSACTION_BYTES: usize = 1232;
 
 /// One top-level instruction, with its program and accounts resolved from the
 /// message's key table into addresses.
@@ -310,6 +326,12 @@ fn skip_signatures(r: &mut Reader<'_>) -> Result<(), ArtifactParseError> {
 /// actual acceptance language against `@solana/web3.js`'s rather than a
 /// test-local reimplementation of it.
 pub fn message_bytes(bytes: &[u8]) -> Result<&[u8], ArtifactParseError> {
+    if bytes.len() > MAX_TRANSACTION_BYTES {
+        return Err(ArtifactParseError::TooLarge {
+            len: bytes.len(),
+            max: MAX_TRANSACTION_BYTES,
+        });
+    }
     let mut r = Reader::new(bytes);
     skip_signatures(&mut r)?;
     Ok(&bytes[r.pos..])
@@ -321,6 +343,12 @@ pub fn message_bytes(bytes: &[u8]) -> Result<&[u8], ArtifactParseError> {
 /// partially-populated "best effort" value, because a caller cannot tell one of
 /// those from a real answer.
 pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseError> {
+    if bytes.len() > MAX_TRANSACTION_BYTES {
+        return Err(ArtifactParseError::TooLarge {
+            len: bytes.len(),
+            max: MAX_TRANSACTION_BYTES,
+        });
+    }
     let mut r = Reader::new(bytes);
     skip_signatures(&mut r)?;
 

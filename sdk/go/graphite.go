@@ -293,6 +293,57 @@ type VerificationScope struct {
 	// Unobserved lists security-relevant properties that were not
 	// independently established.
 	Unobserved []string `json:"unobserved,omitempty"`
+	// UnobservedCodes names each entry of Unobserved with a stable
+	// identifier (UnobservedCodes[i] names Unobserved[i]). The prose is for
+	// people; a gate that decides which residuals it accepts decides on
+	// these. ProgramSemantics and InnerInstructions are inherent to every
+	// artifact-bound verdict; every other code names an observation that was
+	// possible and did not happen. Nil from a server older than 2026-09-12,
+	// which is unknown rather than empty.
+	UnobservedCodes []string `json:"unobserved_codes,omitempty"`
+}
+
+// The residual codes a Graphite server can report in UnobservedCodes.
+// Mirrors UnobservedCode in graphite-core/src/verification.rs and the enum in
+// schemas/verification-result-v1.json.
+const (
+	UnobservedNotSimulated             = "not_simulated"
+	UnobservedNoStateDiff              = "no_state_diff"
+	UnobservedPrivilegesFromCaller     = "privileges_from_caller"
+	UnobservedPrivilegesAbsent         = "privileges_absent"
+	UnobservedLookupTablesUnresolved   = "lookup_tables_unresolved"
+	UnobservedProgramSemantics         = "program_semantics"
+	UnobservedInnerInstructions        = "inner_instructions"
+	UnobservedArtifactUnparsed         = "artifact_unparsed"
+	UnobservedAccountIdentityUnparsed  = "account_identity_unparsed"
+	UnobservedInstructionNotLocated    = "instruction_not_located"
+	UnobservedNoArtifact               = "no_artifact"
+	UnobservedOtherInstructions        = "other_instructions"
+	UnobservedFeePayerBlockhashSigners = "fee_payer_blockhash_signers"
+	UnobservedNoRealEffects            = "no_real_effects"
+)
+
+// IsInherentUnobserved reports whether a residual code is one every
+// artifact-bound verdict carries by construction.
+func IsInherentUnobserved(code string) bool {
+	return code == UnobservedProgramSemantics || code == UnobservedInnerInstructions
+}
+
+// NonInherentUnobserved returns the residual codes on this verdict that name
+// an observation which was possible and did not happen — the ones an
+// execution gate has to decide on. Nil (with ok == false) when the server
+// reported no codes, which a gate must treat as undecidable, not as clear.
+func (r *VerificationResult) NonInherentUnobserved() (codes []string, ok bool) {
+	if r == nil || r.Scope == nil || r.Scope.UnobservedCodes == nil {
+		return nil, false
+	}
+	out := []string{}
+	for _, c := range r.Scope.UnobservedCodes {
+		if !IsInherentUnobserved(c) {
+			out = append(out, c)
+		}
+	}
+	return out, true
 }
 
 // IsArtifactBound reports whether the verdict is tied to concrete transaction

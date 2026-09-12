@@ -33,7 +33,7 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
-import { BoundTransaction, messageOf } from "./artifact.js";
+import { BoundTransaction, MAX_TRANSACTION_BYTES, messageOf, readSignatureCount } from "./artifact.js";
 
 /**
  * Reach the private transaction the way a hostile in-process actor would.
@@ -83,25 +83,40 @@ function frame(encoded: number[], sigs: number, body = [1, 2, 3, 4]): Uint8Array
 test("messageOf accepts every legal signature count at the boundaries", () => {
   const body = [9, 9, 9];
   // Single byte: 0..127. Two bytes: 128..16383. Three: 16384..65535.
-  for (const count of [0, 1, 2, 3, 127]) {
+  for (const count of [0, 1, 2, 3, 19]) {
     assert.deepEqual(
       Array.from(messageOf(frame([count], count, body))),
       body,
       `count=${count}`,
     );
   }
+  // 127 is the largest single-byte count and 8 KB of signatures: decoded by
+  // the reader, refused by `messageOf` on size.
+  assert.deepEqual(readSignatureCount(frame([127], 127, body)), { count: 127, offset: 1 + 64 * 127 });
+  assert.throws(() => messageOf(frame([127], 127, body)), /at most 1232/);
+  // Multi-byte counts describe signature arrays no packet can hold (128
+  // signatures is 8 KB against a 1232-byte packet), so `messageOf` refuses
+  // them on size before reading a byte — and the reader underneath it must
+  // still decode every encoding at the boundaries, or the two sides of the
+  // corpus would disagree on WHY a frame is refused.
   for (const [count, encoded] of [
     [128, [0x80, 0x01]],
     [129, [0x81, 0x01]],
     [255, [0xff, 0x01]],
     [256, [0x80, 0x02]],
+    [16384, [0x80, 0x80, 0x01]],
   ] as [number, number[]][]) {
-    assert.deepEqual(
-      Array.from(messageOf(frame(encoded, count, body))),
-      body,
-      `count=${count}`,
-    );
+    const raw = frame(encoded, count, body);
+    assert.ok(raw.length > MAX_TRANSACTION_BYTES);
+    assert.throws(() => messageOf(raw), /at most 1232/, `count=${count}`);
+    assert.deepEqual(readSignatureCount(raw), { count, offset: encoded.length + 64 * count });
   }
+  // The most signatures a packet can carry: 19 (19 × 64 = 1216, plus the
+  // count byte and a 15-byte message). Accepted; one more byte is not.
+  const packed = frame([19], 19, new Array(15).fill(9));
+  assert.equal(packed.length, MAX_TRANSACTION_BYTES);
+  assert.equal(messageOf(packed).length, 15);
+  assert.throws(() => messageOf(frame([19], 19, new Array(16).fill(9))), /at most 1232/);
 });
 
 test("messageOf accepts 65535 and refuses 65536", () => {

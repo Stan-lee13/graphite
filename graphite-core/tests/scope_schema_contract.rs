@@ -112,6 +112,45 @@ fn both_branches_require_a_non_empty_unobserved_list() {
     }
 }
 
+/// `unobserved_codes` is required on both branches, and its enum IS the
+/// implementation's `UnobservedCode` — every code the core can emit is in
+/// the schema, and the schema names nothing the core cannot emit. A consumer
+/// that validates the wire format and a policy that decides on the codes
+/// are reading the same list (Round 9).
+#[test]
+fn the_unobserved_codes_enum_matches_the_implementation() {
+    use graphite_core::verification::UnobservedCode;
+    for title in ["artifact_bound", "descriptive"] {
+        assert!(
+            required(title).iter().any(|r| r == "unobserved_codes"),
+            "{title}: unobserved_codes must be required"
+        );
+        let b = branch(title);
+        assert_eq!(b["properties"]["unobserved_codes"]["minItems"], 1);
+        let schema_codes: Vec<String> = b["properties"]["unobserved_codes"]["items"]["enum"]
+            .as_array()
+            .expect("enum")
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        let impl_codes: Vec<String> = UnobservedCode::ALL
+            .iter()
+            .map(|c| c.as_str().to_string())
+            .collect();
+        assert_eq!(
+            schema_codes, impl_codes,
+            "{title}: schema enum vs UnobservedCode::ALL"
+        );
+        // And `as_str` is the serde name.
+        for c in UnobservedCode::ALL {
+            assert_eq!(
+                serde_json::to_string(&c).unwrap(),
+                format!("\"{}\"", c.as_str())
+            );
+        }
+    }
+}
+
 /// The other half: what the implementation actually emits satisfies the branch
 /// it claims.
 ///

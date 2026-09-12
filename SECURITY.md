@@ -81,7 +81,7 @@ A dedicated adversarial pass against the pipeline logic itself (previous passes 
 - **The audit trail now models the whole transaction lifecycle (P9).** The Constitution requires construction, simulation, verification, signing, submission, confirmation and finalization each to emit an audit event. The trail carried exactly one kind of record — a verification outcome — with no `event_type` field at all, so six of the seven were absent and the format could not even express them. Records now carry a `LifecycleEvent`, and `POST /audit/event` lets the caller record the stages Graphite does not perform. **This is deliberately an attestation, not a synthesis:** Graphite is a pre-signature service — it does not sign, submit, or watch the chain, so it does not invent those events. An audit trail that fabricates events it never witnessed would be worse than one that admits the gap. Caller-reported events are keyed by `content_hash` so the lifecycle reconciles to one transaction, name their reporter, and are authenticated; a caller cannot inject a `verification` row, since forging an approval into the audit trail is exactly the record a dispute would be settled on. Existing logs stay readable — records written before the field default to `verification`, which is what they were.
 - **A latent determinism landmine was removed.** The union of a protocol's `allowed_cpis` was built by collecting into a `HashSet` and out to a `Vec`. `HashSet` iteration order derives from a per-process random hasher seed, so that ordering differed across machines and restarts. Every current consumer is a membership test, so nothing observable broke — but the moment any consumer rendered that list into a finding or summary string (a pattern used elsewhere in the same file), P2 determinism would have broken silently and invisibly to CI, since one test process has a single fixed seed for its whole run. Now ordered by construction.
 
-## The Transaction Identity Boundary (2026-09-08 → 2026-09-12; Rounds 3–8)
+## The Transaction Identity Boundary (2026-09-08 → 2026-09-12; Rounds 3–9)
 
 Six adversarial rounds against one invariant: **for every executable
 `artifact_bound` approval, the exact Solana message Graphite approved is the
@@ -89,7 +89,8 @@ exact message contained in the bytes signed and submitted.** Full reports:
 `docs/identity-boundary-campaign-2026-09-11.md`,
 `docs/round6-execution-boundary-2026-09-11.md`,
 `docs/round7-adversarial-assurance-2026-09-11.md`,
-`docs/round8-remaining-assumptions-2026-09-12.md`. The recurring defect shape was
+`docs/round8-remaining-assumptions-2026-09-12.md`,
+`docs/round9-next-surface-2026-09-12.md`. The recurring defect shape was
 *a security-relevant property taken from the party proposing the transaction while
 the bytes that settle it sat in the same request.* Closed, each with a reproduction
 committed as a test and the fix reverted once to show the test fails without it:
@@ -122,11 +123,12 @@ committed as a test and the fix reverted once to show the test fails without it:
   entry returned an empty extension list, indistinguishable from "no extensions", so a
   hidden TransferHook could vanish. `ExtensionScan.malformed` now blocks.
 - **Wire-format bounds on both sides.** Rust `compact_u16` and TypeScript `messageOf`
-  share one acceptance language, asserted equal on 12 shapes and 1,641 byte-level
+  share one acceptance language, asserted equal on 12 shapes and 1,647 byte-level
   mutations emitted by `@solana/web3.js`; CI regenerates the corpus and fails on
-  drift. Graphite is stricter than `web3.js` on 45 mutations (non-minimal shortvec,
+  drift. Graphite is stricter than `web3.js` on 51 mutations (non-minimal shortvec,
   over-long declared lengths, trailing bytes, impossible headers, out-of-range
-  indexes — all things the runtime's decoder refuses) and looser on none.
+  indexes, and anything over the 1232-byte packet — all things the runtime refuses)
+  and looser on none.
 - **Audit durability (Round 8).** `File::flush()` is a no-op for an unbuffered file and
   was the primitive behind "durably on disk"; now `sync_data` per record, measured at
   1.2 ms on NTFS. The read path saw only the active file, so after a rotation L8
@@ -140,14 +142,45 @@ committed as a test and the fix reverted once to show the test fails without it:
 - **Durable nonces (Round 8).** Detected by the runtime's rule, refused at L2 by
   default, permitted by operator opt-in only after the nonce account is fetched and
   matches (value, authority, authority signs); the bridge refuses to build one.
+- **An artifact without `instruction_data` was bound without being compared (Round 9,
+  R9-01, P1).** L2's correspondence check was keyed on the data being present and eight
+  bytes long; omitting the optional field skipped it while `scope` still said
+  `artifact_bound`. Reproduced through a mock cluster: a well-formed 100 SOL transfer,
+  approved at 0.64 under a "send 0.002 SOL" description. Now: no data → L2 fails; no
+  parse → L2 fails (the substring fallback is deleted; the Round 8 limitation is
+  withdrawn); the scope names `instruction_not_located`. The SAK bridge always sent the
+  data, so the reference integration was not exposed; direct API and SDK callers were.
+- **Residuals are codes, and the bridge decides on them (Round 9, R9-03).**
+  `scope.unobserved_codes` names each prose entry; the bridge's `ResidualPolicy` refuses
+  execution on any code that is neither inherent (`program_semantics`,
+  `inner_instructions`) nor named by the operator in `GRAPHITE_ACCEPT_UNOBSERVED`, and
+  refuses a server that reports prose only. "Surfaced, not gated" is no longer the
+  position.
+- **Input bounds the runtime already implies (Round 9, R9-04).** `signed_transaction`
+  ≤ 1232 bytes (`PACKET_DATA_SIZE`), refused at entry, in the parser, and in `messageOf`;
+  ≤ 256 declared siblings. Before: a 200 KB artifact of 50,000 minimal instructions
+  cost one authenticated request 122 seconds inside the 10-second timeout.
+- **Lifecycle rows bounded and grounded (Round 9, R9-05/06/07).** Every `/audit/event`
+  field is shape- and length-checked at the boundary and bounded again on the way to
+  disk (the 2026-09-06 error-record fix had not covered this record type; one request
+  wrote a megabyte). Each row carries `verdict_on_record`, computed by the server from
+  its own trail. The bridge records `signing` before submission and `submission` after,
+  and runs L8 at the end — it had recorded nothing after the verdict.
+- **The L8 join is indexed (Round 9, R9-10).** `last_verification_for` over a 64 MB
+  active file cost 953 ms per caller-driven lookup; it is now a seek (0.5 ms hit, 1.1 ms
+  miss) via an in-memory offset index built at open and maintained per append.
+- **Repository integrity (Round 9, R9-08).** The CI token is read-only; every action is
+  pinned to a commit SHA; both container base images are pinned by manifest digest.
 
 **NOT findings, with the invariant named:** ALT mutation after approval (extension is
 append-only, deactivated tables are refused by the runtime, a table's PDA slot is not
 reusable); per-instruction privilege flags (Solana privileges are per message);
 Windows rename-while-open (Rust's handles carry `FILE_SHARE_DELETE`; a foreign handle
 without it is reproduced and counted); caller-reported lifecycle events (a different
-record type no reader treats as a verdict); retry/rebuild substitution (no retry code
-path; a rebuilt transaction is a new digest).
+record type no reader treats as a verdict; timestamps are server-assigned; receipt order
+is file order); retry/rebuild substitution (no retry code path; a rebuilt transaction is
+a new digest; a resubmitted one is idempotent on-chain); RPC entry-count misalignment
+(refused); multi-tenancy (single-tenant by construction).
 
 ## RPC Client Security
 
@@ -205,12 +238,14 @@ These are documented scope boundaries, not hidden vulnerabilities:
 - **No instruction data semantic parsing** — Graphite matches known discriminators (hex byte comparison) but does not parse the semantic meaning of instruction data beyond the discriminator.
 - **L3 simulation is opt-in** — L3 (Simulation Verification) runs live `simulateTransaction` when an RPC client is attached (`GRAPHITE_RPC_URL`). Without an RPC client it reports an honest `Inconclusive` state, never a phantom pass.
 - **`content_hash` is an instruction-level identifier, not the transaction's identity.** It is a 64-bit hash over one instruction's projection (program, discriminator, accounts, data, CPI targets) and cannot see the fee payer, blockhash, signer set or sibling instructions. It remains the audit-trail and L8 join key and the SDKs' `verifyInstruction` secondary check; the authoritative binding is `scope.transaction_sha256` over the supplied bytes, checked by the bridge's `signApproved`. A rename that says so (`instruction_content_id`) is open work.
-- **An unparseable artifact takes a weaker L2 path, not a failed one.** When the bytes cannot be parsed, L2 falls back to "the described instruction's data appears somewhere in the artifact" and `scope.unobserved` names the downgrade. This cannot reach `approved` under any built-in profile (L3 stays Inconclusive → confidence ≤ 0.44 < 0.55) and a weaker `Custom` profile requires `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`; it would additionally need bytes the runtime accepts and Graphite refuses, measured at zero across 1,641 mutations but not proven impossible. A hard L2 failure on parse error is the recommended follow-up.
-- **`scope.unobserved` is surfaced, not gated.** Every `artifact_bound` verdict carries a non-empty residual by design; which residuals a deployment accepts is a deployment decision.
+- **An accepted residual is the operator's decision.** The bridge refuses every non-inherent `unobserved_codes` entry by default; an operator who names `no_state_diff` or `lookup_tables_unresolved` in `GRAPHITE_ACCEPT_UNOBSERVED` has chosen to execute without that observation, and the execution outcome records the choice. Nothing at execution time second-guesses configuration (P1).
+- **Pre-signature verification has a window.** The chain moves between verification and execution; the blockhash bounds the window to roughly a minute for ordinary transactions. Nothing signed in advance can be verified against the state it will execute in.
+- **Single-tenant.** One API key, one wallet-profile pin, one audit trail and one semantic graph per process. Tenant isolation is process isolation; no document claims otherwise.
+- **Archive lookups are scans.** The L8 / lifecycle join is indexed for the active file only; a hash older than the last rotation costs one pass over each archive, newest first.
 - **A permitted durable-nonce transaction has no clock.** With `GRAPHITE_ALLOW_DURABLE_NONCE=1`, a verified nonce transaction is executable as verified *if submitted before the nonce advances*; the missing expiry is the operator's recorded tradeoff, and the opt-in is process-wide.
 - **`fdatasync` proves the device acknowledged, not the platter.** A storage device with a lying write cache is outside what any userspace program can verify.
 - **Token-2022 `TransferFee` is refused, not modelled.** Fee-bearing mints block until the fee is modelled.
-- **Graphite's parser is compared against `messageOf` and `@solana/web3.js`, not against Solana's own decoder.** The 45 stricter-than-SDK cases are argued from the runtime's documented rules, not observed against it; a Rust-SDK-backed oracle would close this.
+- **Graphite's parser is compared against `messageOf` and `@solana/web3.js`, not against Solana's own decoder.** The 51 stricter-than-SDK cases are argued from the runtime's documented rules, not observed against it; a Rust-SDK-backed oracle would close this, and there is no continuous fuzzing campaign over `parse_transaction` — the 1232-byte bound makes one cheap.
 - **Round-8 era swap-path residual: the unverified opt-out.** `executeSwap` without a built payload aborts unless `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=I_ACCEPT_UNVERIFIED_SWAP_EXECUTION`, in which case SAK's builder executes an instruction Graphite never saw and the outcome says `verifiedExecution: false`. The remainder of this historical bullet is kept for the record:** execution then goes through SAK's opaque `methods.swap`, which is not guaranteed to submit the reduced-projection-verified instruction — `GRAPHITE_SWAP_STRICT=1` refuses that path entirely. See `ARCHITECTURE.md` → Known Boundary Limitations.
 - **State diffing needs RPC and a signed transaction** — L4 builds a real pre/post account diff only when an RPC client is attached (`GRAPHITE_RPC_URL`) AND the caller supplies `signed_transaction`; a bare `instruction_data` payload can be simulated for compute numbers but the post-state it implies is not trustworthy, so no diff is built from it. A caller may pass `state_diff` directly, but under `CallerSupplied` provenance it can only fail the layer, never certify it (a clean caller diff yields `Inconclusive`). The diff also covers only the instruction's declared writable accounts; an RPC that will not return post-state (over 100 addresses, or an older node) leaves L4 on its structural fallback. Token balance changes are decoded for SPL Token and Token-2022 accounts and mints — other program-owned account data is compared by length and owner only, so a semantic change inside an opaque account is seen as "data changed", not interpreted.
 - **The P10 gate on a FIRST manifest submission bootstraps a baseline; it does not validate the manifest** — a brand-new program has no prior recorded behaviour, so there is nothing for its first submission to regress against. A fixture recorded under the candidate manifest and replayed under the same manifest agrees with itself by construction. Requiring one still matters: it stops a program being enshrined with an empty regression history, which would leave every later version un-gatable too. The submitter chooses which transaction to pin (`graphite registry record-fixture` prints the outcome it pinned), the same assumption the upgrade path already makes. An upgrade that does not RAISE the trust tier is not a promotion and is not gated — the tier ladder, not the manifest diff, is what the gate keys off.

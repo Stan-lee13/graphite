@@ -276,6 +276,7 @@ mod tests {
             trust_tier: "OfficialManifest".to_string(),
             scope: crate::verification::VerificationScope::Descriptive {
                 unobserved: vec!["test fixture; no transaction was supplied".to_string()],
+                unobserved_codes: vec![crate::verification::UnobservedCode::NoArtifact],
             },
             risk_verdict: RiskVerdictSummary {
                 status: if approved {

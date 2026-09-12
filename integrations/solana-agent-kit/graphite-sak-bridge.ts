@@ -43,6 +43,8 @@ export { AuditBind };
 
 // Graphite TS SDK
 import { GraphiteClient } from "../../sdk/typescript/src/client.js";
+import { ResidualPolicy } from "./residual-policy.js";
+import { executeBoundTransaction, type ExecutionLifecycle } from "./execution-lifecycle.js";
 import type {
   VerificationInput,
   VerificationResult,
@@ -93,6 +95,13 @@ export interface ExecutionOutcome {
   signature?: string;
   /** Present on the opt-out path, naming what was not verified. */
   unverifiedReason?: string;
+  /**
+   * What happened after the verdict, stage by stage — the residuals the
+   * policy accepted, whether signing and submission reached the audit
+   * trail, confirmation, and L8's reconciliation. Present on every verified
+   * execution (Round 9).
+   */
+  lifecycle?: ExecutionLifecycle;
 }
 
 /**
@@ -203,15 +212,23 @@ export class VerifiedSakAgent {
   private walletPublicKey: string;
   private walletKeypair: Keypair;
   private simulator: RpcSimulator;
+  private residualPolicy: ResidualPolicy;
 
   private constructor(
     sakAgent: SolanaAgentKit | null, graphite: GraphiteClient, connection: Connection,
     walletProfile: WalletProfile, aiLayerUrl: string, walletPublicKey: string, walletKeypair: Keypair,
+    residualPolicy: ResidualPolicy,
   ) {
     this.sakAgent = sakAgent; this.graphite = graphite; this.connection = connection;
     this.walletProfile = walletProfile; this.aiLayerUrl = aiLayerUrl;
     this.walletPublicKey = walletPublicKey; this.walletKeypair = walletKeypair;
     this.simulator = new RpcSimulator(connection.rpcEndpoint);
+    this.residualPolicy = residualPolicy;
+  }
+
+  /** The `reported_by` on every lifecycle row this bridge writes. */
+  private reporter(): string {
+    return `sak-bridge:${this.walletPublicKey.slice(0, 8)}`;
   }
 
   static async create(config?: {
@@ -219,6 +236,13 @@ export class VerifiedSakAgent {
     graphiteCoreUrl?: string; aiLayerUrl?: string; walletProfile?: WalletProfile;
     /** Bearer API key for a secured Graphite Core (GRAPHITE_API_KEY). */
     graphiteApiKey?: string;
+    /**
+     * Residual codes (`scope.unobserved_codes`) this deployment accepts on an
+     * approved verdict, beyond the two inherent ones. Default: none — any
+     * non-inherent residual refuses execution. Overrides
+     * GRAPHITE_ACCEPT_UNOBSERVED. See `residual-policy.ts`.
+     */
+    acceptUnobserved?: string[];
   }): Promise<VerifiedSakAgent> {
     const privateKey = config?.privateKey ?? process.env.SOLANA_PRIVATE_KEY;
     const rpcUrl = config?.rpcUrl ?? process.env.SOLANA_RPC_URL;
@@ -265,8 +289,19 @@ export class VerifiedSakAgent {
     try { await graphite.health(); } catch {
       throw new Error(`Graphite Core not reachable at ${graphiteCoreUrl}. Start: GRAPHITE_API_KEY=... cargo run --release -- server`);
     }
+    // Built here, not lazily: a typo in the accepted list is a startup error,
+    // never a silent refusal at execution time.
+    const residualPolicy = config?.acceptUnobserved
+      ? new ResidualPolicy(config.acceptUnobserved)
+      : ResidualPolicy.fromEnv();
+    const accepted = residualPolicy.accepts();
+    console.log(
+      accepted.length === 0
+        ? "[Graphite] residual policy: inherent residuals only — any other unobserved property refuses execution"
+        : `[Graphite] residual policy: accepting ${accepted.join(", ")} in addition to the inherent residuals`,
+    );
 
-    return new VerifiedSakAgent(sakAgent, graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair);
+    return new VerifiedSakAgent(sakAgent, graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair, residualPolicy);
   }
 
   async parseIntent(naturalLanguage: string): Promise<ProposedIntent> {
@@ -421,38 +456,30 @@ export class VerifiedSakAgent {
    * prepares the transaction itself, including fetching a blockhash if one is
    * missing, which is a mutation after approval no matter how benign. These
    * bytes are final.
+   *
+   * Round 9: the residual policy decides first, the signing is on the trail
+   * before submission, the submission is on the trail after it, and L8
+   * reconciles the signature at the end. The returned lifecycle says which
+   * of those happened.
    */
   private async signSubmitAndConfirm(
     bound: BoundTransaction,
     verification: VerificationResult,
     label: string,
-  ): Promise<string> {
-    const scope = verification.scope;
-    if (scope?.kind !== "artifact_bound") {
-      throw new Error(
-        `[Graphite] ${label}: the verdict is ${scope?.kind ?? "unscoped"}, not artifact_bound. ` +
-          "A descriptive verdict describes what the request SAID; it does not constrain what " +
-          "gets signed. ABORTING.",
-      );
-    }
-    // Recomputed now, over this object, and compared against what Graphite
-    // hashed. Anything that touched the transaction since approval — a
-    // refreshed blockhash, a changed fee payer, an appended instruction —
-    // changes this digest.
-    // One call: the digest check, the signer check and the signature are not
-    // separately reachable, so no refactor can leave the signature without them.
-    const raw = bound.signApproved(scope.transaction_sha256, [this.walletKeypair]);
-    console.log(
-      `[Graphite] ${label}: transaction matches the approved digest ` +
-        `${scope.transaction_sha256.slice(0, 16)}… — signing and submitting those exact bytes.`,
-    );
-    const signature = await this.connection.sendRawTransaction(raw);
-    await this.connection.confirmTransaction({
-      signature,
-      blockhash: bound.recentBlockhash,
-      lastValidBlockHeight: bound.lastValidBlockHeight,
+  ): Promise<ExecutionLifecycle> {
+    // The whole path — policy, signing, the lifecycle events, submission,
+    // confirmation, L8 — is `executeBoundTransaction`, in that order. See
+    // execution-lifecycle.ts for why each step sits where it does.
+    return executeBoundTransaction({
+      bound,
+      verification,
+      signers: [this.walletKeypair],
+      connection: this.connection,
+      graphite: this.graphite,
+      policy: this.residualPolicy,
+      reportedBy: this.reporter(),
+      label,
     });
-    return signature;
   }
 
   async executeTransfer(
@@ -508,11 +535,10 @@ export class VerifiedSakAgent {
     // `approved` alone is not the gate. A verdict that merely described
     // caller-supplied metadata and one bound to real signed bytes are the same
     // shape on the wire, so `approved` cannot tell whether Graphite was ever
-    // shown a transaction — which is how an integration ends up executing an
-    // instruction nothing examined. Reported rather than enforced here: this
-    // path does not yet hand the Core a serialized artifact, so requiring
-    // artifact binding would refuse every transfer. AuditBind below binds the
-    // live instruction, which is the protection this path actually has.
+    // shown a transaction. This path hands the Core the exact bytes it will
+    // sign (`bound` above), and `signSubmitAndConfirm` refuses anything but
+    // an artifact-bound verdict whose residuals the policy accepts. The
+    // report here is the human-readable half of that decision.
     reportVerificationScope(verification, "transfer");
 
     // Build the transaction FIRST, then bind what is actually in it.
@@ -570,9 +596,9 @@ export class VerifiedSakAgent {
     //    see the fee payer, the blockhash, the header or the message version,
     //    because none of them are instruction-level facts. This compares the
     //    digest Graphite computed over the exact bytes.
-    const signature = await this.signSubmitAndConfirm(bound, verification, "transfer");
-    console.log(`[Solana] Confirmed: ${signature}`);
-    return { executed: true, verifiedExecution: true, verification, signature };
+    const lifecycle = await this.signSubmitAndConfirm(bound, verification, "transfer");
+    console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
+    return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
   }
 
   /**
@@ -724,9 +750,9 @@ export class VerifiedSakAgent {
         );
       }
       console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction directly (bypassing SAK's builder)...");
-      const signature = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
-      console.log(`[Solana] Confirmed: ${signature}`);
-      return { executed: true, verifiedExecution: true, verification, signature };
+      const lifecycle = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
+      console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
+      return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
     }
 
     // Only reachable with GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION set to the
@@ -758,6 +784,24 @@ export class VerifiedSakAgent {
       params.input_token, params.output_token, params.amount, params.slippage_bps ?? 300,
     );
     console.log(`[SAK] Swap executed: ${result.signature ?? result}`);
+    // On the trail as what it is: a submission the caller performed under the
+    // opt-out, against a verdict that never saw the submitted instruction. A
+    // failure to record is reported, not hidden — the swap has already gone
+    // out and nothing here can change that.
+    if (typeof result?.signature === "string") {
+      try {
+        await this.graphite.recordLifecycleEvent({
+          event_type: "submission",
+          content_hash: verification.content_hash,
+          audit_trail_id: verification.audit_trail_id,
+          transaction_signature: result.signature,
+          reported_by: this.reporter(),
+          detail: `UNVERIFIED: ${UNVERIFIED_SWAP_OPT_IN} — SAK's builder constructed the submitted instruction; the verdict is descriptive`,
+        });
+      } catch (e) {
+        console.warn(`[Graphite] WARNING — the unverified submission was NOT recorded: ${(e as Error).message}`);
+      }
+    }
     // Machine-readable, so a caller cannot mistake this for a verified
     // execution however it reads the log.
     return {

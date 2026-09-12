@@ -282,6 +282,16 @@ fn mutate(raw: &[u8], m: &serde_json::Value) -> Vec<u8> {
             out.extend_from_slice(&bytes(&m["bytes"]));
             out
         }
+        // Zero-pad to exactly `to` bytes: the packet-size bound from both
+        // sides (1232 is a legal packet, 1233 is refused before a byte is
+        // read).
+        "pad" => {
+            let to = m["to"].as_u64().unwrap() as usize;
+            assert!(to >= raw.len(), "pad target below the base length");
+            let mut out = raw.to_vec();
+            out.resize(to, 0);
+            out
+        }
         other => panic!("unknown mutation op {other}"),
     }
 }
@@ -293,7 +303,7 @@ fn mutations() -> Vec<serde_json::Value> {
     raw["mutations"].as_array().expect("mutations").clone()
 }
 
-/// The same 1,641 damaged transactions, read by both sides.
+/// The same 1,647 damaged transactions, read by both sides.
 ///
 /// Three things are required, and one is measured.
 ///
@@ -388,6 +398,7 @@ fn every_byte_level_mutation_is_read_the_same_way_on_both_sides() {
                     }
                     ArtifactParseError::UnsupportedVersion(_) => "unsupported version",
                     ArtifactParseError::Empty => "empty",
+                    ArtifactParseError::TooLarge { .. } => "larger than a packet",
                 };
                 *graphite_stricter.entry(why).or_insert(0) += 1;
             }

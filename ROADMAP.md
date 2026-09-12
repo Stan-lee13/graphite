@@ -134,6 +134,11 @@ fix reverted once to prove its test fails without it. Status of every guarantee:
 - [x] Authenticated by default; `GRAPHITE_DEV_MODE=1` loopback-only; keyless container refusal proven in CI (Round 8)
 - [x] Durable-nonce transactions refused at L2; opt-in only after on-chain nonce verification; bridge refuses to build them (Round 8)
 - [x] Documentation provenance: `docs/CURRENT.md`; every dated report banner-linked as historical (Round 8)
+- [x] Artifact identity requires the data: no `instruction_data` or no parse → L2 fails; a 100 SOL transfer under a 0.002 SOL description reproduced and refused (Round 9, P1)
+- [x] Residual codes (`scope.unobserved_codes`) and the bridge's `ResidualPolicy`: non-inherent residuals refuse execution unless accepted by code (Round 9)
+- [x] Packet-size bound (1232 bytes) at entry, parser and `messageOf`; 256 declared siblings; 122 s → 1.6 ms (Round 9)
+- [x] Lifecycle rows bounded, `verdict_on_record` on every row, the bridge reports signing/submission and runs L8; indexed L8 join (Round 9)
+- [x] CI token read-only, actions pinned by SHA, base images pinned by digest (Round 9)
 - [x] 1,422 Rust tests (301 featureless, 1,281 cli-only), 73 TypeScript, CI green on every commit since `f10e4ab`
 
 ## Phase 3 (Production) — what gates it

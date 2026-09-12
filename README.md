@@ -11,7 +11,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 **Current status, in one place: [docs/CURRENT.md](docs/CURRENT.md).** Every dated report under `docs/` is a historical record and points there.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1422_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1444_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-33-blue?style=flat-square)](graphite-core/protocols/)
@@ -66,10 +66,10 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,422 tests — zero setup (1,432 total; 10 network-dependent tests ignored
+# Run 1,444 tests — zero setup (1,454 total; 10 network-dependent tests ignored
 # unless run explicitly with a live RPC)
 cargo test --release
-# summed across the test binaries: 1422 passed; 0 failed; 10 ignored
+# summed across the test binaries: 1444 passed; 0 failed; 10 ignored
 
 # The same gate CI runs on the feature matrix: the library with no features
 # (301 tests) and the cli-only build (1,281) must pass too.
@@ -196,7 +196,7 @@ graphite/
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
 │   ├── protocols/                 ← 33 JSON protocol manifests (803 instructions)
-│   └── tests/                     ← 1,422 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
+│   └── tests/                     ← 1,444 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -210,7 +210,9 @@ graphite/
 │       ├── artifact.ts            ← BoundTransaction: deep-copied, digest-rechecked, signer-set-checked signing gate; messageOf
 │       ├── auditbind.ts           ← Secondary instruction-level binding (content_hash); the digest is authoritative
 │       ├── bound-instruction.ts   ← Builds the swap instruction from the verified payload, never from SAK's builder
-│       ├── emit-corpus.ts         ← Cross-language corpus: 12 shapes + 1,641 byte-level mutations, diffed in CI
+│       ├── emit-corpus.ts         ← Cross-language corpus: 12 shapes + 1,647 byte-level mutations, diffed in CI
+│       ├── residual-policy.ts     ← Which unobserved residuals a deployment accepts; refuses the rest before signing
+│       ├── execution-lifecycle.ts ← The one path from verdict to network: policy → sign → record → submit → record → confirm → L8
 │       ├── demo.ts               ← End-to-end demo
 │       ├── devnet-test.ts         ← Live devnet test (BoundTransaction → signApproved → sendRawTransaction)
 │       └── mainnet-benchmark.ts   ← Real mainnet exploit benchmark runner
@@ -300,7 +302,7 @@ GRAPHITE_API_KEY=$(openssl rand -hex 32) GRAPHITE_RATE_LIMIT=100 \
 
 ### Integrating safely (read this before writing the integration)
 
-Graphite verifies **before** the transaction is signed. Three rules make that
+Graphite verifies **before** the transaction is signed. Four rules make that
 protection real; skipping any one of them produces an integration that looks
 correct and protects nothing.
 
@@ -320,7 +322,13 @@ in it constrains what is signed.
 Read `scope.unobserved` in both modes: it lists, in words, the security-relevant
 properties Graphite did *not* establish. It is never empty — a verdict claiming
 to have observed everything would be a strong assertion, and one Graphite does
-not make. Which residuals a deployment accepts is a deployment decision.
+not make. Decide on `scope.unobserved_codes`, not on the prose (rule 3).
+
+Always send `instruction_data` with the bytes. An artifact-bound verdict
+identifies the described instruction in the message by its program, its exact
+data and its accounts at one position; without the data L2 fails, because
+Graphite will not bind a verdict to bytes it could not compare (Round 9: a
+100 SOL transfer was approved under a 0.002 SOL description by omitting it).
 
 A transport error, timeout, or non-200 means *verification did not happen*:
 that is a hard stop, never an implicit pass.
@@ -338,6 +346,7 @@ A rebuilt or refreshed transaction is a different digest and is refused.
 ```ts
 import { GraphiteClient, isArtifactBound } from "@graphite/sdk";
 import { BoundTransaction } from "./artifact.js"; // integrations/solana-agent-kit
+import { ResidualPolicy } from "./residual-policy.js";
 
 const graphite = new GraphiteClient({ baseUrl, apiKey });
 const bound = BoundTransaction.build({ instructions, feePayer, recentBlockhash, lastValidBlockHeight });
@@ -351,14 +360,46 @@ try {
 
 if (!result.approved) throw new Error(`blocked: ${result.summary}`);
 if (!isArtifactBound(result)) throw new Error("verdict is descriptive; nothing is bound");
+// Rule 3: refuses any residual that is not inherent and not accepted by name.
+new ResidualPolicy(process.env.GRAPHITE_ACCEPT_UNOBSERVED?.split(",") ?? []).assertExecutable(result.scope, "transfer");
 
 // Throws unless the digest of these exact bytes equals the approved one and
 // the supplied signers are exactly the message's required signers.
 const raw = bound.signApproved(result.scope.transaction_sha256, [walletKeypair]);
-await connection.sendRawTransaction(raw);
+// Rule 4: the signing is on the trail before anything leaves the process.
+const receipt = await graphite.recordLifecycleEvent({ event_type: "signing", content_hash: result.content_hash });
+if (receipt.verdict_on_record !== "approved") throw new Error("the approval in hand is not the approval on record");
+const signature = await connection.sendRawTransaction(raw);
+await graphite.recordLifecycleEvent({ event_type: "submission", content_hash: result.content_hash, transaction_signature: signature });
+const l8 = await graphite.verifyExecution({ signature, content_hash: result.content_hash });
+if (l8.discrepancy) throw new Error("BlockedButExecuted: the gate did not govern");
 ```
 
-**3. `content_hash` is the audit key, not the binding.** `content_hash` is a
+**3. Refuse any residual you have not accepted by name.** Every verdict carries
+`scope.unobserved_codes`, one stable code per `unobserved` entry. Two codes are
+inherent to every artifact-bound verdict — `program_semantics` and
+`inner_instructions` — and a policy that accepts only those accepts nothing
+Graphite could have observed and did not. Every other code (`no_state_diff`,
+`not_simulated`, `privileges_from_caller`, `privileges_absent`,
+`lookup_tables_unresolved`, `artifact_unparsed`, `account_identity_unparsed`,
+`instruction_not_located`) names an observation that was possible and did not
+happen. The SAK bridge's `ResidualPolicy` refuses execution on any of them
+unless the operator lists it in `GRAPHITE_ACCEPT_UNOBSERVED`, validates that
+list at startup, refuses a server that reports prose only, and records the
+accepted codes on the execution outcome. A verdict is a description of what was
+checked; the policy is where a deployment says what it is willing to sign
+without.
+
+**4. Put your signing and submission on the trail, then reconcile.** Graphite
+records what it verifies; only you can record what you sign and send.
+`recordLifecycleEvent({ event_type: "signing", content_hash })` *before*
+submission — and do not submit if it is not recorded or its `verdict_on_record`
+is not `approved` — then `submission` with the signature, then
+`verifyExecution({ signature, content_hash })` for L8. The reference sequence is
+`executeBoundTransaction` in `integrations/solana-agent-kit/execution-lifecycle.ts`;
+no irreversible step proceeds unless the step before it is on the trail.
+
+**`content_hash` is the audit key, not the binding.** `content_hash` is a
 64-bit identifier over one instruction's projection — program, discriminator,
 accounts, data, CPI targets. It links the verdict to the audit trail and to L8
 reconciliation, and the SDKs' `verifyInstruction` / `VerifyInstruction`
@@ -423,6 +464,12 @@ curl -X POST http://localhost:7331/verify/execution   -H "Content-Type: applicat
 # monitoring check.
 graphite execution --signature <base58 signature> --content-hash <hash>
 ```
+
+The SAK bridge makes this call itself after every verified execution, and
+records its `signing` and `submission` on the trail around it (`POST
+/audit/event`); each such row carries `verdict_on_record`, what the trail said
+about the hash when the report arrived, and a report against a blocked verdict
+is counted at `/metrics` and logged at ERROR.
 
 The field to watch is `reconciliation`. `ApprovedAndExecuted` and
 `BlockedAndNotExecuted` are the gate being obeyed. `ApprovedButFailedOnChain` is
@@ -554,7 +601,10 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 | **Address lookup tables** | Fetched, owner-checked, decoded; runtime account numbering rebuilt (static ++ writable ++ readonly); all-or-nothing — an unresolved table is disclosed as unobserved, never treated as empty |
 | **Token-2022** | Extensions classified, not modelled: transfer-semantics, authority and unknown extensions block; an unreadable extension region blocks; informational extensions warn |
 | **Durable nonces** | Detected by the runtime's rule; refused at L2 by default; opt-in only after on-chain nonce verification |
-| **Wire-format bounds** | Canonical compact-u16 (≤ 65,535, minimal encoding), trailing bytes refused, indexes bounds-checked — the same rules on the TypeScript side, asserted equal across 1,641 byte-level mutations in CI |
+| **Wire-format bounds** | Canonical compact-u16 (≤ 65,535, minimal encoding), trailing bytes refused, indexes bounds-checked, nothing over the 1232-byte packet — the same rules on the TypeScript side, asserted equal across 1,647 byte-level mutations in CI |
+| **The described instruction is located, or L2 fails** | An artifact without `instruction_data`, or one that does not parse, fails L2; `artifact_bound` never claims a comparison L2 did not make (Round 9: a 100 SOL transfer was approved under a 0.002 SOL description by omitting the optional field) |
+| **Residuals are gated at execution** | `scope.unobserved_codes` names each residual; the bridge's `ResidualPolicy` refuses any non-inherent one the operator has not accepted in `GRAPHITE_ACCEPT_UNOBSERVED` |
+| **Lifecycle on the trail** | The bridge records signing before it submits (and aborts if it cannot), submission after, and runs L8 at the end; every caller-reported row carries the server's `verdict_on_record` and is bounded on disk |
 | **RPC evidence provenance** | Simulation writes/CPI hops derived only from canonical response fields; non-standard provider fields that disagree are reported as anomalies, never used |
 | **API auth** | Bearer API key required by default — the server refuses to start without one; `GRAPHITE_DEV_MODE=1` permits keyless on loopback only. Constant-time compared; `429` per-IP rate limiting; `503` load shedding; CORS allowlist (denied by default) |
 | **Durability** | Every audit record `fdatasync`'d before the response; a verdict that cannot be recorded is refused with `503`; rotation is a rename, archives retained, and every reader (dashboard, L8) covers the whole trail; snapshot and rotation failures surface on `/health` as `degraded_reasons` |
@@ -577,7 +627,7 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 1,422 Rust tests passing (1,432 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
+- 1,444 Rust tests passing (1,454 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
 - 14 risk checks (13 risk patterns, incl. `UnspendableDestination` and `PluginBlock`) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
 - 33 protocol manifests / 803 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42 + Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi C46 + Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2 C56).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.

@@ -73,6 +73,15 @@ pub struct AuditLog {
     rotation_seq: Arc<AtomicU64>,
     /// Rotations that completed (rename + fresh active file).
     rotations_ok: Arc<AtomicU64>,
+    /// `content_hash` → byte offset of the LAST verification record for that
+    /// hash in the ACTIVE file. Built by one scan at open, maintained on
+    /// every append under the file lock, cleared when the active file
+    /// rotates. What makes `last_verification_for` — the join L8 and every
+    /// lifecycle event perform — a seek and one line instead of a scan of
+    /// the whole active file (Round 9; measured at 953 ms per lookup over
+    /// a 64 MB file, once per `/verify/execution` and per `/audit/event`,
+    /// both caller-driven; 0.5 ms indexed).
+    active_index: Arc<Mutex<HashMap<String, u64>>>,
     /// Rotations that could not happen. The record is still appended — an
     /// oversized log is strictly better than a dropped audit trail — but the
     /// failure used to be invisible, and it is retried on every subsequent
@@ -356,12 +365,41 @@ pub struct AuditRecord {
 /// does not and cannot independently confirm a signing or submission it did
 /// not perform — recording it as attestation is honest, recording it as fact
 /// would not be.
+/// What the trail held for a lifecycle event's `content_hash` at the moment
+/// the event was recorded — computed by Graphite, never reported by the
+/// caller.
+///
+/// A caller-reported event is an attestation about the caller's own action.
+/// This field is the one fact about it Graphite can establish itself: whether
+/// the verification the event claims to follow exists, and what it decided.
+/// A `signing` reported against a verdict Graphite BLOCKED is the gate being
+/// bypassed, visible at signing time instead of after L8; a report against
+/// a hash with no verification on record is an event about nothing Graphite
+/// examined. Neither is refused — the trail records what was reported — but
+/// both are named on the row, counted, and logged loudly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerdictOnRecord {
+    /// The most recent verification of this hash was an approval.
+    Approved,
+    /// The most recent verification of this hash was a block.
+    Blocked,
+    /// No verification of this hash exists anywhere in the trail.
+    NotFound,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LifecycleEventRecord {
     pub event_type: LifecycleEvent,
     pub timestamp: String,
     /// Links this event to the verification that approved the transaction.
     pub content_hash: String,
+    /// What the trail said about `content_hash` when this row was written.
+    /// `None` on rows written before the field existed and on rows whose
+    /// writer did not consult the trail (the L8 reconciliation row carries
+    /// its answer in `detail` instead).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict_on_record: Option<VerdictOnRecord>,
     /// The verification's audit trail id, when the caller has it.
     #[serde(default)]
     pub audit_trail_id: Option<String>,
@@ -407,6 +445,24 @@ fn bound_field(value: &str) -> String {
     format!("{kept}… [truncated, {} chars total]", value.chars().count())
 }
 
+impl LifecycleEventRecord {
+    /// Every caller-supplied field bounded to `MAX_AUDIT_FIELD_CHARS`, with
+    /// truncation recorded. Defence in depth behind the length checks in
+    /// `lifecycle_event_handler`; see `AuditErrorRecord::bounded`.
+    fn bounded(&self) -> LifecycleEventRecord {
+        LifecycleEventRecord {
+            event_type: self.event_type,
+            timestamp: self.timestamp.clone(),
+            content_hash: bound_field(&self.content_hash),
+            verdict_on_record: self.verdict_on_record,
+            audit_trail_id: self.audit_trail_id.as_deref().map(bound_field),
+            transaction_signature: self.transaction_signature.as_deref().map(bound_field),
+            reported_by: self.reported_by.as_deref().map(bound_field),
+            detail: self.detail.as_deref().map(bound_field),
+        }
+    }
+}
+
 impl AuditErrorRecord {
     /// The record as it may be written to disk, with every caller-influenced
     /// field bounded.
@@ -432,6 +488,37 @@ impl AuditErrorRecord {
     }
 }
 
+/// One pass over the active file: the offset of the last verification line
+/// per `content_hash`. A torn final line, an error record and a lifecycle
+/// event are not verification records and are skipped.
+fn build_active_index(path: &Path) -> HashMap<String, u64> {
+    let mut index = HashMap::new();
+    let Ok(file) = File::open(path) else {
+        return index;
+    };
+    let mut reader = BufReader::new(file);
+    let mut offset: u64 = 0;
+    let mut line: Vec<u8> = Vec::new();
+    loop {
+        line.clear();
+        // Bytes, not `read_line`: a single line of invalid UTF-8 (a torn
+        // write, a disk fault) would otherwise end the scan and leave every
+        // later record unindexed — and an unindexed hash reads as "no
+        // verification on record". One bad line skips one line.
+        let Ok(n) = reader.read_until(b'\n', &mut line) else {
+            break;
+        };
+        if n == 0 {
+            break;
+        }
+        if let Ok(r) = serde_json::from_slice::<AuditRecord>(&line) {
+            index.insert(r.content_hash, offset);
+        }
+        offset += n as u64;
+    }
+    index
+}
+
 impl AuditLog {
     /// Open (creating if needed) the audit log at `path`. The parent
     /// directory must already exist (callers create the data dir first).
@@ -448,6 +535,7 @@ impl AuditLog {
     ) -> std::io::Result<Self> {
         let path = path.as_ref().to_path_buf();
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
+        let active_index = build_active_index(&path);
         Ok(Self {
             file: std::sync::Arc::new(Mutex::new(file)),
             path: Arc::new(path),
@@ -459,6 +547,7 @@ impl AuditLog {
             rotations_ok: Arc::new(AtomicU64::new(0)),
             rotations_failed: Arc::new(AtomicU64::new(0)),
             archive_stats: Arc::new(Mutex::new(HashMap::new())),
+            active_index: Arc::new(Mutex::new(active_index)),
         })
     }
 
@@ -669,6 +758,12 @@ impl AuditLog {
         {
             Ok(fresh) => {
                 *file = fresh;
+                // The active file is empty now; every offset the index
+                // holds points into the archive.
+                match self.active_index.lock() {
+                    Ok(mut g) => g.clear(),
+                    Err(poisoned) => poisoned.into_inner().clear(),
+                }
                 // The rename and the new file are directory entries; make
                 // them durable so a crash right after rotation cannot lose
                 // the archive's NAME while its data survives.
@@ -800,11 +895,13 @@ impl AuditLog {
         if wanted.is_empty() {
             return None;
         }
-        let (archives, active) = self.snapshot();
         let find_in = |file: File| -> Option<AuditRecord> {
             let mut last = None;
             for line in BufReader::new(file).lines().map_while(Result::ok) {
-                if line.trim().is_empty() {
+                // A line that does not contain the hash cannot be its
+                // record; the substring test is the cheap filter in front of
+                // the JSON parse.
+                if !line.contains(wanted) {
                     continue;
                 }
                 if let Ok(r) = serde_json::from_str::<AuditRecord>(&line) {
@@ -815,11 +912,44 @@ impl AuditLog {
             }
             last
         };
-        if let Some((file, _)) = active {
-            if let Some(r) = find_in(file) {
-                return Some(r);
+        // The active file, by index, under the append lock so the offset
+        // cannot go stale between the lookup and the read. An indexed hash
+        // whose line does not read back is a corrupted active file (or a
+        // bug in the index): the whole active file is scanned rather than
+        // answering from a broken index, and the failure is logged.
+        let archives = {
+            let _guard = match self.file.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let offset = match self.active_index.lock() {
+                Ok(g) => g.get(wanted).copied(),
+                Err(poisoned) => poisoned.into_inner().get(wanted).copied(),
+            };
+            if let Some(offset) = offset {
+                let indexed = File::open(self.path.as_ref()).ok().and_then(|mut file| {
+                    use std::io::Seek;
+                    let mut line = String::new();
+                    file.seek(std::io::SeekFrom::Start(offset)).ok()?;
+                    BufReader::new(file).read_line(&mut line).ok()?;
+                    serde_json::from_str::<AuditRecord>(line.trim_end())
+                        .ok()
+                        .filter(|r| r.content_hash == wanted)
+                });
+                if indexed.is_some() {
+                    return indexed;
+                }
+                tracing::error!(
+                    "audit index: offset {offset} for {wanted} did not read back as its record; scanning the active file"
+                );
+                if let Some(r) = File::open(self.path.as_ref()).ok().and_then(find_in) {
+                    return Some(r);
+                }
             }
-        }
+            self.archives()
+        };
+        // Not in the active file. The archives are immutable and searched
+        // newest-first.
         for archive in archives.iter().rev() {
             if let Ok(file) = File::open(archive) {
                 if let Some(r) = find_in(file) {
@@ -870,7 +1000,7 @@ impl AuditLog {
     /// incident response all read that trail.
     #[must_use]
     pub fn append(&self, record: &AuditRecord) -> bool {
-        self.append_line(record)
+        self.append_line_indexed(record, Some(&record.content_hash))
     }
 
     /// Append an error-path record (same durability contract).
@@ -879,10 +1009,19 @@ impl AuditLog {
     }
 
     /// Append a lifecycle event (P9). Same durability contract as `append`:
-    /// flushed before the caller is answered, non-fatal on failure but
+    /// synced before the caller is answered, non-fatal on failure but
     /// counted, and subject to the same rotation.
+    ///
+    /// Bounded like the error record (Round 9): every field of this record
+    /// is caller-supplied, and until this was bounded a single
+    /// `POST /audit/event` could put a megabyte of chosen bytes on the
+    /// operator's audit volume — 64 of them forced a rotation, and with
+    /// `GRAPHITE_AUDIT_MAX_ARCHIVES` set, rotations prune the oldest archive
+    /// of REAL verifications. The 2026-09-06 fix bounded the error record and
+    /// the entry-point identifiers; this record type was added after it and
+    /// was not covered.
     pub fn append_lifecycle(&self, record: &LifecycleEventRecord) -> bool {
-        self.append_line(record)
+        self.append_line(&record.bounded())
     }
 
     /// Returns true when the line is written AND synced to the storage device.
@@ -899,6 +1038,18 @@ impl AuditLog {
     /// audit record; `audit_append_syncs_the_device` measures it so the
     /// number in the report is observed, not assumed.
     fn append_line<T: serde::Serialize>(&self, record: &T) -> bool {
+        self.append_line_indexed(record, None)
+    }
+
+    /// `append_line`, recording `index_key` → this line's offset in the
+    /// active index when the write succeeds. The offset is the file's length
+    /// before the write, read under the same lock the write holds, so no
+    /// other writer can interleave between the two.
+    fn append_line_indexed<T: serde::Serialize>(
+        &self,
+        record: &T,
+        index_key: Option<&str>,
+    ) -> bool {
         let line = match serde_json::to_string(record) {
             Ok(l) => l,
             Err(e) => {
@@ -912,6 +1063,7 @@ impl AuditLog {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
+        let offset = index_key.and_then(|_| file.metadata().ok().map(|m| m.len()));
         if let Err(e) = writeln!(file, "{}", line).and_then(|_| file.sync_data()) {
             // Counted AND reported. The comment here used to say a failing
             // audit disk "must not take down verification", and that reasoning
@@ -923,6 +1075,13 @@ impl AuditLog {
             return false;
         }
         self.writes_ok.fetch_add(1, Ordering::Relaxed);
+        if let (Some(key), Some(offset)) = (index_key, offset) {
+            let mut index = match self.active_index.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            index.insert(key.to_string(), offset);
+        }
         // Rotate AFTER a successful append, while still holding the lock, so
         // the size check and rename cannot interleave with another writer.
         self.rotate_if_needed(&mut file);
@@ -1714,6 +1873,223 @@ mod tests {
     extern "C" {
         #[link_name = "geteuid"]
         fn libc_geteuid() -> u32;
+    }
+
+    /// Round 9: a lifecycle event's fields are bounded on the way to disk.
+    /// Before, the record was written verbatim, so a 1 MiB `detail` was a
+    /// 1 MiB line.
+    #[test]
+    fn lifecycle_event_fields_are_bounded_on_disk() {
+        let dir = std::env::temp_dir().join(format!(
+            "gr-lifecycle-bound-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("audit.jsonl");
+        let log = AuditLog::open(&path).unwrap();
+        let big = "x".repeat(1024 * 1024);
+        assert!(log.append_lifecycle(&LifecycleEventRecord {
+            event_type: LifecycleEvent::Signing,
+            timestamp: now_utc_rfc3339(),
+            content_hash: big.clone(),
+            verdict_on_record: Some(VerdictOnRecord::NotFound),
+            audit_trail_id: Some(big.clone()),
+            transaction_signature: Some(big.clone()),
+            reported_by: Some(big.clone()),
+            detail: Some(big.clone()),
+        }));
+        let on_disk = std::fs::metadata(&path).unwrap().len();
+        assert!(
+            on_disk < 5 * 1024,
+            "five 1 MiB fields must land as five bounded ones: {on_disk} bytes on disk"
+        );
+        let line = std::fs::read_to_string(&path).unwrap();
+        assert!(line.contains("[truncated, 1048576 chars total]"), "{line}");
+        assert!(
+            line.contains("\"verdict_on_record\":\"not_found\""),
+            "{line}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Round 9: what an L8 / lifecycle lookup costs against a full active
+    /// file. Measurement, reported; the assertion is only that the substring
+    /// prefilter keeps a miss on a 64 MB trail under a second, since a miss
+    /// (a hash with no verification on record) is the case a caller can
+    /// force at will.
+    #[test]
+    fn last_verification_scans_a_full_active_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "gr-l8-scan-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("audit.jsonl");
+        // Written directly, without per-record sync, to build the file fast.
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            let mut w = std::io::BufWriter::new(&mut f);
+            let mut i = 0u64;
+            let mut written = 0u64;
+            while written < 64 * 1024 * 1024 {
+                let r = rec_with(
+                    &format!("gr-{i}"),
+                    &format!("{i:016x}"),
+                    "11111111111111111111111111111111",
+                    i.is_multiple_of(2),
+                );
+                let line = serde_json::to_string(&r).unwrap();
+                written += line.len() as u64 + 1;
+                writeln!(w, "{line}").unwrap();
+                i += 1;
+            }
+            w.flush().unwrap();
+        }
+        let len = std::fs::metadata(&path).unwrap().len();
+        // What the lookup cost before the index: parse every line.
+        let started = std::time::Instant::now();
+        let mut found = None;
+        for line in BufReader::new(File::open(&path).unwrap())
+            .lines()
+            .map_while(Result::ok)
+        {
+            if let Ok(r) = serde_json::from_str::<AuditRecord>(&line) {
+                if r.content_hash == "ffffffffffffffff" {
+                    found = Some(r);
+                }
+            }
+        }
+        let full_scan = started.elapsed();
+        assert!(found.is_none());
+
+        let started = std::time::Instant::now();
+        let log = AuditLog::open(&path).unwrap();
+        let open_cost = started.elapsed();
+        let started = std::time::Instant::now();
+        let hit = log.last_verification_for("0000000000000010");
+        let hit_cost = started.elapsed();
+        assert_eq!(hit.map(|r| r.audit_trail_id), Some("gr-16".to_string()));
+        let started = std::time::Instant::now();
+        let miss = log.last_verification_for("ffffffffffffffff");
+        let miss_cost = started.elapsed();
+        assert!(miss.is_none());
+        // A record appended after open is found through the index too, and
+        // the newest one wins.
+        assert!(log.append(&rec_with("gr-new", "0000000000000010", "P", false)));
+        let newest = log.last_verification_for("0000000000000010").unwrap();
+        assert_eq!(newest.audit_trail_id, "gr-new");
+        assert!(!newest.approved);
+        println!(
+            "round9: last_verification_for over a {} MB active file: full scan {:?}; indexed: open {:?}, hit {:?}, miss {:?}",
+            len / (1024 * 1024),
+            full_scan,
+            open_cost,
+            hit_cost,
+            miss_cost
+        );
+        assert!(
+            hit_cost.as_millis() < 50 && miss_cost.as_millis() < 50,
+            "an indexed lookup must not scan the file: hit {hit_cost:?}, miss {miss_cost:?}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A stale or wrong index entry never yields a wrong answer, and a
+    /// non-UTF-8 line in the active file does not end the index build.
+    #[test]
+    fn last_verification_index_never_answers_from_a_broken_entry() {
+        let dir = std::env::temp_dir().join(format!(
+            "gr-l8-index-broken-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = audit_path(&dir);
+        // A record, then a line of invalid UTF-8, then another record.
+        {
+            let mut f = std::fs::File::create(&path).unwrap();
+            let a =
+                serde_json::to_string(&rec_with("gr-a", "aaaaaaaaaaaaaaaa", "P", true)).unwrap();
+            let b =
+                serde_json::to_string(&rec_with("gr-b", "bbbbbbbbbbbbbbbb", "P", false)).unwrap();
+            f.write_all(a.as_bytes()).unwrap();
+            f.write_all(b"\n\xff\xfe garbage \xc3\n").unwrap();
+            f.write_all(b.as_bytes()).unwrap();
+            f.write_all(b"\n").unwrap();
+        }
+        let log = AuditLog::open(&path).unwrap();
+        assert_eq!(
+            log.last_verification_for("bbbbbbbbbbbbbbbb")
+                .map(|r| r.audit_trail_id),
+            Some("gr-b".to_string()),
+            "the record after the bad line must be indexed"
+        );
+        // Poison the index: point the hash at a wrong offset. The lookup
+        // must fall back to a scan and still find the right record.
+        log.active_index
+            .lock()
+            .unwrap()
+            .insert("aaaaaaaaaaaaaaaa".to_string(), 7);
+        let r = log.last_verification_for("aaaaaaaaaaaaaaaa").unwrap();
+        assert_eq!(r.audit_trail_id, "gr-a");
+        assert!(r.approved);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The index survives what the file goes through: a rotation empties it
+    /// (the offsets point into the archive now, and the archive scan finds
+    /// the record), and a reopen rebuilds it from disk.
+    #[test]
+    fn last_verification_index_tracks_rotation_and_reopen() {
+        let dir = std::env::temp_dir().join(format!(
+            "gr-l8-index-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = audit_path(&dir);
+        let log = AuditLog::open_with_rotation(&path, 2_000, 0).unwrap();
+        for i in 0..20 {
+            assert!(log.append(&rec_with(
+                &format!("gr-{i}"),
+                &format!("{i:016x}"),
+                "P",
+                true
+            )));
+        }
+        assert!(
+            log.health().rotations_ok >= 1,
+            "rotation must have happened"
+        );
+        // Old records are in archives; the newest is in the active file.
+        for i in 0..20 {
+            let r = log
+                .last_verification_for(&format!("{i:016x}"))
+                .unwrap_or_else(|| panic!("record {i} lost across rotation"));
+            assert_eq!(r.audit_trail_id, format!("gr-{i}"));
+        }
+        drop(log);
+        let reopened = AuditLog::open_with_rotation(&path, 2_000, 0).unwrap();
+        for i in 0..20 {
+            assert!(reopened
+                .last_verification_for(&format!("{i:016x}"))
+                .is_some());
+        }
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// Measures what per-record device sync costs on this machine — and

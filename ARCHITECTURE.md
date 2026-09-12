@@ -102,8 +102,22 @@ instruction with its program, account indexes and raw data, and the address-tabl
 lookups with their indexes. A parse failure never yields a partial answer.
 `message_bytes` — the same signature skip the parser uses — is exported so the
 TypeScript bridge's `messageOf` and Graphite's acceptance language can be asserted equal:
-`tests/sak_bridge_corpus.rs` replays 12 transaction shapes and 1,641 byte-level
+`tests/sak_bridge_corpus.rs` replays 12 transaction shapes and 1,647 byte-level
 mutations emitted by `@solana/web3.js` and requires exact agreement on every one.
+An artifact larger than `PACKET_DATA_SIZE` (1232 bytes) is refused before a byte is
+read — on both sides, and at the `/verify` entry — because the network refuses it too,
+and because a 200 KB artifact of minimal instructions cost one request 122 seconds in
+L2's sibling matching before the bound existed (Round 9).
+
+**The described instruction must be located.** L2's artifact branch runs for every
+non-empty artifact: a parse failure fails L2 with the parser's error; an artifact
+supplied without `instruction_data` fails L2 (the instruction cannot be located
+without the data that identifies it); otherwise `correspond` requires exactly one
+instruction under the described program carrying exactly the described data, at one
+position, on the described accounts, with every sibling declared. Until Round 9 the
+branch was keyed on the data being present and eight bytes long, so omitting the field
+skipped the comparison while `scope` still said `artifact_bound` — a 100 SOL transfer
+was approved under a "0.002 SOL" description (`tests/round9_identity_requires_data.rs`).
 
 **Address lookup tables.** A v0 message names tables and indexes, not addresses. With
 an RPC client attached, the tables are fetched under the RPC budget *before* account
@@ -134,12 +148,21 @@ writable section — reach different verdicts (`tests/privilege_from_artifact.rs
 unsigned; readonly slot writable) fold into the hard-block `AccountIdentityMismatch`.
 
 **Scope.** `VerificationResult.scope` is `oneOf` two shapes (`schemas/verification-result-v1.json`):
-`artifact_bound { transaction_sha256, transaction_bytes, simulated, unobserved }` when
-bytes were supplied, `descriptive { unobserved }` otherwise. `unobserved` names, in
-words, what was not established — unsimulated bytes, unresolved tables, the caller's
-privileges having been used, inner instructions invisible to a message parser. It is
-never empty; which residuals a deployment accepts is a deployment decision, and the
-bridge surfaces them without deciding.
+`artifact_bound { transaction_sha256, transaction_bytes, simulated, unobserved, unobserved_codes }`
+when bytes were supplied, `descriptive { unobserved, unobserved_codes }` otherwise.
+`unobserved` names, in words, what was not established; `unobserved_codes[i]` names
+`unobserved[i]` with one of fourteen stable `UnobservedCode`s (`not_simulated`,
+`no_state_diff`, `privileges_from_caller`, `privileges_absent`, `lookup_tables_unresolved`,
+`program_semantics`, `inner_instructions`, `artifact_unparsed`, `account_identity_unparsed`,
+`instruction_not_located`, `no_artifact`, `other_instructions`, `fee_payer_blockhash_signers`,
+`no_real_effects`). Two are inherent to every artifact-bound verdict — `program_semantics`
+(what programs without manifests do beyond simulated effects) and `inner_instructions`
+(CPI callees, visible only through simulation); every other code names an observation
+that was possible and did not happen. The list is never empty. The prose and the codes
+are built together (`Residuals::push`) so they cannot drift, and the schema's enum is
+pinned to `UnobservedCode::ALL` in both directions. Which non-inherent residuals a
+deployment accepts is that deployment's decision, made in configuration — and the
+bridge now enforces it (see The Execution Boundary).
 
 **Durable Nonces.** The runtime treats a transaction whose instruction 0 is a System
 `AdvanceNonceAccount` as nonce-based: its `recent_blockhash` slot carries the nonce
@@ -193,12 +216,12 @@ reconciliation), `POST /audit/event` (caller-reported lifecycle events, P9),
 |---|---|
 | **Authentication** | Bearer API key (`GRAPHITE_API_KEY`), compared in constant time (SHA-256), required on every route except `/health`. Startup refuses without a key unless `GRAPHITE_DEV_MODE=1`, which is permitted only on loopback (`server::auth_posture`, decided before anything binds). |
 | **Rate limiting / load shedding** | Per-IP token bucket (`GRAPHITE_RATE_LIMIT`, default 30 req/s) returns `429`; in-flight verifications capped (`GRAPHITE_MAX_CONCURRENT`, default 32) and excess shed with `503` + `Retry-After`. Counted separately at `/metrics`. |
-| **Request bounds** | 1 MiB body, 10 s request timeout that the RPC budget fits inside, identifier length caps on every caller-influenced field that reaches a log or the audit trail. |
+| **Request bounds** | 1 MiB body, 10 s request timeout that the RPC budget fits inside, identifier length caps on every caller-influenced field that reaches a log or the audit trail; `signed_transaction` ≤ 1232 bytes (`PACKET_DATA_SIZE`), ≤ 256 declared sibling instructions; `/audit/event` and `/verify/execution` require a 16-hex `content_hash`, bound the signature to 90 characters and `reported_by` / `audit_trail_id` / `detail` to 128 / 128 / 1024. |
 | **CORS** | Denied by default; `GRAPHITE_CORS_ORIGINS` (comma-separated) enables specific browser origins. |
-| **Audit trail** | Append-only JSONL under `GRAPHITE_DATA_DIR`. Every record is `sync_data`'d to the device before the response is sent; a verification whose record cannot be written is refused with `503` rather than answered. Rotation at `GRAPHITE_AUDIT_ROTATE_BYTES` (64 MiB) is a rename, never a rewrite; archives are kept unless `GRAPHITE_AUDIT_MAX_ARCHIVES` is set. Every reader — dashboard endpoints and L8's `last_verification_for` — covers the archives plus the active file, with per-archive statistics cached because archives are immutable. Lifecycle events reported by callers are stored as attestations with `reported_by`; no reader treats them as a verdict. |
+| **Audit trail** | Append-only JSONL under `GRAPHITE_DATA_DIR`. Every record is `sync_data`'d to the device before the response is sent; a verification whose record cannot be written is refused with `503` rather than answered. Rotation at `GRAPHITE_AUDIT_ROTATE_BYTES` (64 MiB) is a rename, never a rewrite; archives are kept unless `GRAPHITE_AUDIT_MAX_ARCHIVES` is set. Every reader — dashboard endpoints and L8's `last_verification_for` — covers the archives plus the active file, with per-archive statistics cached because archives are immutable; the L8 / lifecycle join is an in-memory `content_hash → offset` index over the active file (built at open, maintained per append, cleared on rotation; a lookup is one seek), with archives scanned newest-first only on a miss. Lifecycle events reported by callers are stored as attestations with `reported_by`, every field bounded on the way to disk, and each row carries `verdict_on_record` — what the trail said about the hash when the report arrived (`approved` / `blocked` / `not_found`), computed by the server; a report against a blocked verdict is counted (`graphite_lifecycle_events_on_blocked_total`) and logged as loudly as an L8 discrepancy. No reader treats a lifecycle row as a verdict. |
 | **Durability** | Semantic-graph snapshot (trust tiers + earned simulation baselines) written atomically (temp file synced, then renamed) and reloaded on restart. Snapshot failures are counted. |
 | **Health** | `/health` reports `degraded` with `degraded_reasons` (`audit_writes_failed`, `audit_rotation_failed`, `audit_disabled`, `graph_snapshot_failed`), audit counters, and `graph_persistence`; `status` stays `ok` while traffic can be served so load balancers do not pull a working node. |
-| **Metrics** | Verification volume / approve / block / error, auth failures, `429` and `503` counts, lifecycle events, audit writes and rotations, archive count, snapshot outcomes. Every series is genuinely incremented. |
+| **Metrics** | Verification volume / approve / block / error, auth failures, `429` and `503` counts, lifecycle events (total, on a blocked verdict, with no verification on record), audit writes and rotations, archive count, snapshot outcomes. Every series is genuinely incremented. |
 | **Operator policy** | `GRAPHITE_WALLET_PROFILE` pins the profile server-side (the request body's profile is then ignored); `GRAPHITE_ALLOW_PERMISSIVE_PROFILES` gates `Custom` profiles below the weakest built-in; `GRAPHITE_ALLOW_DURABLE_NONCE` permits nonce transactions after on-chain verification. All default closed. |
 | **Graceful shutdown** | SIGINT/SIGTERM drain in-flight requests before exit. |
 | **Trusted proxy** | `GRAPHITE_TRUST_PROXY` is the number of proxy hops; the client IP is taken that many entries from the right of `X-Forwarded-For`, never the attacker-controlled left end. |
@@ -235,8 +258,21 @@ Graphite approved is the exact message contained in the bytes signed and submitt
   amount, a redirected destination or a flipped writable bit after approval is a
   different digest and is refused (`bound-transaction.test.ts`,
   `execution-boundary-fuzz.test.ts`).
-- **A descriptive verdict never executes.** The bridge requires
-  `scope.kind === "artifact_bound"` before signing.
+- **A descriptive verdict never executes, and neither does an approval carrying a
+  residual the operator has not accepted.** `ResidualPolicy` (`residual-policy.ts`)
+  runs before signing: it requires `artifact_bound`, requires `unobserved_codes` (a
+  server that reports prose only is refused — prose is not a decision), and refuses any
+  code that is neither inherent nor named in `GRAPHITE_ACCEPT_UNOBSERVED` /
+  `VerifiedSakAgent.create({ acceptUnobserved })`. The accepted list is validated at
+  startup; the codes accepted for an execution are recorded on its outcome.
+- **The lifecycle is on the trail, in order.** `executeBoundTransaction`
+  (`execution-lifecycle.ts`) is the only path from verdict to network: policy →
+  `signApproved` → `POST /audit/event` `signing` → `sendRawTransaction` → `POST
+  /audit/event` `submission` → confirm → `POST /verify/execution` (L8). No irreversible
+  step proceeds unless the step before it is on the trail: a signing that cannot be
+  recorded, or whose `verdict_on_record` is not `approved`, aborts before submission;
+  after submission every failure is reported on `ExecutionOutcome.lifecycle` and none
+  is hidden. Until Round 9 the bridge recorded nothing after the verdict.
 - **Swaps require the built payload.** Without the exact instruction (program id,
   discriminator, accounts with real flags, data) there is nothing to bind, and the bridge
   aborts. Executing an unverified swap requires
@@ -248,13 +284,14 @@ Graphite approved is the exact message contained in the bytes signed and submitt
   transaction's identity and is not what the signing gate checks.
 - **Durable-nonce shapes are refused at build.** `lastValidBlockHeight` does not bound them.
 - **Cross-language agreement is asserted, not assumed.** `emit-corpus.ts` records what
-  `@solana/web3.js` and `messageOf` conclude about 12 shapes and 1,641 mutations;
-  `tests/sak_bridge_corpus.rs` requires Graphite to agree; CI regenerates the corpus and
-  fails on drift.
+  `@solana/web3.js` and `messageOf` conclude about 12 shapes and 1,647 mutations
+  (including pads to exactly 1232 and 1233 bytes); `tests/sak_bridge_corpus.rs` requires
+  Graphite to agree; CI regenerates the corpus and fails on drift.
 
 **Outside the boundary, stated as such:** a process that can rewrite the bridge module
-can replace the gate itself; `unobserved` is surfaced and not gated; a permitted
-durable-nonce transaction has no clock.
+can replace the gate itself; a residual the operator accepted by code is the operator's
+decision; a permitted durable-nonce transaction has no clock; the chain moves inside the
+blockhash window between verification and execution.
 
 ## Repository Structure
 

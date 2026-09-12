@@ -32,7 +32,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { messageOf } from "./artifact.js";
+import { MAX_TRANSACTION_BYTES, messageOf } from "./artifact.js";
 
 const SYSTEM = SystemProgram.programId;
 const COMPUTE_BUDGET = new PublicKey("ComputeBudget111111111111111111111111111111");
@@ -256,7 +256,9 @@ type MutationOp =
   | { op: "truncate"; at: number }
   | { op: "flip"; at: number }
   | { op: "prefix"; bytes: number[] }
-  | { op: "append"; bytes: number[] };
+  | { op: "append"; bytes: number[] }
+  /** Zero-pad to exactly `to` bytes: the packet-size bound, from both sides. */
+  | { op: "pad"; to: number };
 
 interface Mutation {
   base: string;
@@ -283,6 +285,12 @@ function applyMutation(raw: Uint8Array, m: MutationOp): Uint8Array {
     }
     case "append":
       return Uint8Array.from([...raw, ...m.bytes]);
+    case "pad": {
+      if (m.to < raw.length) throw new Error(`pad: ${raw.length} bytes already exceed ${m.to}`);
+      const out = new Uint8Array(m.to);
+      out.set(raw);
+      return out;
+    }
   }
 }
 
@@ -331,6 +339,11 @@ for (const baseName of ["legacy_single_transfer", "legacy_two_signers", "v0_real
   for (let at = 0; at < raw.length; at++) mutations.push(observe(baseName, raw, { op: "flip", at }));
   for (const bytes of PREFIXES) mutations.push(observe(baseName, raw, { op: "prefix", bytes }));
   for (const bytes of [[0x00], [0xff], [0x01, 0x02, 0x03]]) mutations.push(observe(baseName, raw, { op: "append", bytes }));
+  // The packet-size bound: 1232 bytes is a legal packet (trailing zeros are
+  // still refused as trailing bytes by the message parser, but not by
+  // messageOf, which only strips signatures), 1233 is refused by both sides
+  // before anything is read.
+  for (const to of [MAX_TRANSACTION_BYTES, MAX_TRANSACTION_BYTES + 1]) mutations.push(observe(baseName, raw, { op: "pad", to }));
 }
 
 // Digests must be pairwise distinct: the corpus exists partly to show that the

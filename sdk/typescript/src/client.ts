@@ -1,4 +1,12 @@
-import type { VerificationInput, VerificationResult, ProtocolManifest } from "./types.js";
+import type {
+  ExecutionCheckInput,
+  ExecutionCheckResult,
+  LifecycleEventInput,
+  LifecycleEventReceipt,
+  ProtocolManifest,
+  VerificationInput,
+  VerificationResult,
+} from "./types.js";
 
 export interface GraphiteClientOptions {
   baseUrl: string;
@@ -119,6 +127,62 @@ export class GraphiteClient {
       );
     }
     return raw as VerificationResult;
+  }
+
+  /**
+   * Put a caller-performed lifecycle stage on Graphite's append-only trail
+   * (`POST /audit/event`, Constitution P9).
+   *
+   * Resolves only when the server says `recorded: true`: a 503 means the
+   * event was NOT recorded and is thrown, never swallowed, so a caller that
+   * is about to submit knows the signing it just performed is not on the
+   * trail. The receipt carries `verdict_on_record` — what Graphite's own
+   * trail says about the hash — and a caller reporting a signing against a
+   * `blocked` verdict has just told Graphite the gate was bypassed.
+   */
+  async recordLifecycleEvent(event: LifecycleEventInput): Promise<LifecycleEventReceipt> {
+    const response = await fetch(`${this.baseUrl}/audit/event`, {
+      method: "POST",
+      headers: this.headers({ "content-type": "application/json" }),
+      body: JSON.stringify(event),
+      signal: this.signal(),
+    });
+    const raw = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!response.ok || raw.recorded !== true) {
+      throw new Error(
+        `Graphite did not record the ${event.event_type} event: ${response.status} ${response.statusText} — ${
+          typeof raw.error === "string" ? raw.error : "no detail"
+        }`,
+      );
+    }
+    return raw as unknown as LifecycleEventReceipt;
+  }
+
+  /**
+   * L8: confirm a submitted signature on-chain and reconcile it against the
+   * verdict Graphite recorded (`POST /verify/execution`).
+   *
+   * A 503 (`AuditUnavailable`) still carries the reconciliation in
+   * `outcome`; it is thrown here with that detail in the message, because a
+   * reconciliation that was not recorded is not one the trail can be
+   * audited against.
+   */
+  async verifyExecution(input: ExecutionCheckInput): Promise<ExecutionCheckResult> {
+    const response = await fetch(`${this.baseUrl}/verify/execution`, {
+      method: "POST",
+      headers: this.headers({ "content-type": "application/json" }),
+      body: JSON.stringify(input),
+      signal: this.signal(),
+    });
+    const raw = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!response.ok) {
+      throw new Error(
+        `Graphite execution check failed: ${response.status} ${response.statusText} — ${
+          typeof raw.error === "string" ? raw.error : "no detail"
+        }${raw.outcome ? ` (outcome: ${JSON.stringify(raw.outcome)})` : ""}`,
+      );
+    }
+    return raw as unknown as ExecutionCheckResult;
   }
 
   async health(): Promise<{ status: string; service: string; version: string }> {

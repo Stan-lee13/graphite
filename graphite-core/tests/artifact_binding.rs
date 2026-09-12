@@ -85,7 +85,7 @@ fn every_verdict_declares_what_it_is_bound_to() {
                 );
                 assert!(*transaction_bytes > 0);
             }
-            VerificationScope::Descriptive { unobserved } => {
+            VerificationScope::Descriptive { unobserved, .. } => {
                 assert!(
                     !unobserved.is_empty(),
                     "descriptive with nothing unobserved is a contradiction"
@@ -296,15 +296,54 @@ fn the_scope_survives_the_wire() {
 // DESCRIPTION and was byte-identical across the two requests; `transaction_sha256`
 // covers the ARTIFACT and differed. Nothing joined them.
 //
-// The containment needs no parser. A Solana message stores instruction data as
-// raw, length-prefixed bytes, so an instruction that is in the transaction has
-// its data in the transaction's bytes, verbatim and contiguous. Presence is a
-// NECESSARY condition, and the attack above needed it to be false.
+// The first fix (2026-09-09) was a substring search: an instruction that is in
+// the transaction has its data in the transaction's bytes, so absence proved
+// the mismatch. Round 9 replaced it: the artifact is parsed, the described
+// instruction is located by program, exact data and accounts at one position,
+// and an artifact that cannot be parsed — or that was supplied without the
+// data that would locate the instruction — is an L2 failure rather than a
+// weaker check. The substring search could be satisfied by bytes that are not
+// a Solana message at all, and skipping the check when `instruction_data` was
+// absent let a 100 SOL transfer through under a description that never said
+// an amount (`tests/round9_identity_requires_data.rs`).
 
-/// A "transaction" carrying `data` somewhere inside it, with plausible
-/// surrounding bytes. The check is a substring search, so this is a faithful
-/// stand-in for a serialized message without needing one.
-fn artifact_containing(data: &[u8]) -> Vec<u8> {
+fn compact_u16(mut v: usize, out: &mut Vec<u8>) {
+    loop {
+        let byte = (v & 0x7f) as u8;
+        v >>= 7;
+        if v == 0 {
+            out.push(byte);
+            return;
+        }
+        out.push(byte | 0x80);
+    }
+}
+
+/// A legacy transaction on this file's keys — FROM, TO, System — carrying one
+/// instruction under the System program with `data`. Encoded field by field
+/// the way the runtime reads it.
+fn message_carrying(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    compact_u16(1, &mut out);
+    out.extend_from_slice(&[0u8; 64]);
+    out.extend_from_slice(&[1, 0, 1]);
+    compact_u16(3, &mut out);
+    for k in [FROM, TO, SYSTEM] {
+        out.extend_from_slice(&bs58::decode(k).into_vec().unwrap());
+    }
+    out.extend_from_slice(&[9u8; 32]);
+    compact_u16(1, &mut out);
+    out.push(2);
+    compact_u16(2, &mut out);
+    out.extend_from_slice(&[0, 1]);
+    compact_u16(data.len(), &mut out);
+    out.extend_from_slice(data);
+    out
+}
+
+/// Bytes that are not a Solana message but carry `data` verbatim inside them
+/// — exactly what the retired substring check would have accepted.
+fn garbage_containing(data: &[u8]) -> Vec<u8> {
     let mut bytes = vec![0xABu8; 64];
     bytes.extend_from_slice(data);
     bytes.extend_from_slice(&[0xCD; 64]);
@@ -340,13 +379,13 @@ fn an_artifact_that_does_not_contain_the_described_instruction_fails_l2() {
     let mut executed = vec![2u8, 0, 0, 0];
     executed.extend_from_slice(&900_000_000u64.to_le_bytes());
 
-    let (passed, reason) = l2_of(&with_artifact(described, artifact_containing(&executed)));
+    let (passed, reason) = l2_of(&with_artifact(described, message_carrying(&executed)));
     assert!(
         !passed,
         "the artifact sends 450x the described amount and L2 passed: {reason}"
     );
     assert!(
-        reason.contains("does not contain the instruction being verified"),
+        reason.contains("no instruction matching what is being verified"),
         "L2 failed for some other reason, so this test would not notice the check being \
          removed: {reason}"
     );
@@ -358,7 +397,7 @@ fn an_artifact_that_does_not_contain_the_described_instruction_fails_l2() {
 fn an_artifact_that_does_contain_the_described_instruction_passes_l2() {
     let mut data = vec![2u8, 0, 0, 0];
     data.extend_from_slice(&2_000_000u64.to_le_bytes());
-    let (passed, reason) = l2_of(&with_artifact(data.clone(), artifact_containing(&data)));
+    let (passed, reason) = l2_of(&with_artifact(data.clone(), message_carrying(&data)));
     assert!(
         passed,
         "an artifact that does contain the described instruction was rejected — the check is \
@@ -378,7 +417,7 @@ fn a_single_differing_byte_anywhere_in_the_instruction_data_is_caught() {
         executed[flip] ^= 0x01;
         let (passed, _) = l2_of(&with_artifact(
             described.clone(),
-            artifact_containing(&executed),
+            message_carrying(&executed),
         ));
         assert!(
             !passed,
@@ -388,20 +427,55 @@ fn a_single_differing_byte_anywhere_in_the_instruction_data_is_caught() {
     }
 }
 
-/// The check abstains rather than guessing when the data is too short to
-/// identify anything. Eight bytes is the Anchor discriminator length; below
-/// that a sequence can occur inside a pubkey or a blockhash by chance, and a
-/// check satisfiable by coincidence is worse than one that says nothing.
+/// A prefix is not the instruction. Four bytes described against an
+/// instruction carrying twelve used to be "too short to identify anything"
+/// and skipped the check; now nothing in the message carries exactly those
+/// four bytes, and L2 says so. Exact equality is what makes short data safe:
+/// a one-byte `CloseAccount` is identified by program, byte and accounts at
+/// one position, never by a coincidence-prone substring.
 #[test]
-fn instruction_data_too_short_to_identify_anything_does_not_trigger_the_check() {
-    let described = vec![2u8, 0, 0, 0]; // 4 bytes
-    let executed = vec![9u8, 9, 9, 9];
-    let (passed, reason) = l2_of(&with_artifact(described, artifact_containing(&executed)));
-    assert!(
-        passed,
-        "a 4-byte discriminator is too short to be identifying; the check must abstain rather \
-         than block on a coincidence-prone comparison: {reason}"
-    );
+fn a_data_prefix_does_not_locate_the_instruction() {
+    let described = vec![2u8, 0, 0, 0];
+    let mut executed = vec![2u8, 0, 0, 0];
+    executed.extend_from_slice(&2_000_000u64.to_le_bytes());
+    let (passed, reason) = l2_of(&with_artifact(
+        described.clone(),
+        message_carrying(&executed),
+    ));
+    assert!(!passed, "{reason}");
+    assert!(reason.contains("no instruction matching"), "{reason}");
+    // And exactly those four bytes, in a real message, IS located.
+    let (passed, reason) = l2_of(&with_artifact(
+        described.clone(),
+        message_carrying(&described),
+    ));
+    assert!(passed, "{reason}");
+}
+
+/// Bytes that are not a Solana message fail L2 whatever they contain. The
+/// retired substring check passed this artifact; the described data is in
+/// it, verbatim.
+#[test]
+fn an_unreadable_artifact_fails_l2_even_when_it_contains_the_data() {
+    let mut data = vec![2u8, 0, 0, 0];
+    data.extend_from_slice(&2_000_000u64.to_le_bytes());
+    let (passed, reason) = l2_of(&with_artifact(data.clone(), garbage_containing(&data)));
+    assert!(!passed, "{reason}");
+    assert!(reason.contains("could not be parsed"), "{reason}");
+}
+
+/// A real message supplied WITHOUT instruction data fails L2: the
+/// instruction cannot be located, and the verdict says which field would
+/// locate it.
+#[test]
+fn a_message_without_instruction_data_fails_l2() {
+    let mut data = vec![2u8, 0, 0, 0];
+    data.extend_from_slice(&2_000_000u64.to_le_bytes());
+    let mut i = input(Some(message_carrying(&data)));
+    i.instruction_data = None;
+    let (passed, reason) = l2_of(&i);
+    assert!(!passed, "{reason}");
+    assert!(reason.contains("instruction_data was not"), "{reason}");
 }
 
 /// With no artifact there is nothing to look inside, so the check must not fire
@@ -419,20 +493,26 @@ fn a_descriptive_verification_is_unaffected_by_the_presence_check() {
     );
 }
 
-/// The residual is disclosed, not just commented. Presence is necessary, not
-/// sufficient: finding the bytes does not prove they belong to an instruction
-/// with the described program and accounts.
+/// The residual is disclosed, not just commented: an unparseable artifact's
+/// scope names the failed parse, the unknown account identity and the
+/// unlocated instruction, by code as well as by prose.
 #[test]
-fn the_limit_of_the_presence_check_is_reported_to_the_caller() {
+fn an_unparseable_artifact_is_disclosed_in_the_scope() {
+    use graphite_core::verification::UnobservedCode;
     let mut data = vec![2u8, 0, 0, 0];
     data.extend_from_slice(&2_000_000u64.to_le_bytes());
     let r = GraphiteCore::new()
-        .verify(&with_artifact(data.clone(), artifact_containing(&data)))
+        .verify(&with_artifact(data.clone(), garbage_containing(&data)))
         .expect("verify ok");
     let joined = r.scope.unobserved().join(" | ");
-    assert!(
-        joined.contains("fell back to checking that the described instruction"),
-        "an unparseable artifact must state that the fallback proves the bytes are PRESENT, \
-         not that they belong to the described instruction: {joined}"
-    );
+    assert!(joined.contains("could not be parsed"), "{joined}");
+    let codes = r.scope.unobserved_codes();
+    for code in [
+        UnobservedCode::ArtifactUnparsed,
+        UnobservedCode::AccountIdentityUnparsed,
+        UnobservedCode::InstructionNotLocated,
+    ] {
+        assert!(codes.contains(&code), "{code:?} missing from {codes:?}");
+    }
+    assert_eq!(codes.len(), r.scope.unobserved().len());
 }

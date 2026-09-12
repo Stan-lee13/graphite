@@ -20,7 +20,7 @@
 use crate::account_resolution::AccountResolutionError;
 use crate::durable::{
     audit_path, AuditErrorRecord, AuditLog, AuditRecord, AuditSelector, LifecycleEvent,
-    LifecycleEventRecord,
+    LifecycleEventRecord, VerdictOnRecord,
 };
 use crate::verification::{GraphiteCore, VerificationError, VerificationInput, VerificationResult};
 use axum::extract::{ConnectInfo, State};
@@ -41,6 +41,13 @@ use tower_http::trace::TraceLayer;
 /// Maximum request body size (1 MB). Verification inputs are small —
 /// 10 accounts x 44 bytes + metadata ~= 2 KB. 1 MB is generous.
 const MAX_BODY_SIZE: usize = 1024 * 1024;
+/// A base58 Solana signature is 64 bytes: 87–88 characters.
+const MAX_SIGNATURE_CHARS: usize = 90;
+/// `audit_trail_id` (a `gr-<uuid>`) and `reported_by` (an operator-meaningful
+/// name) on `/audit/event`.
+const MAX_LIFECYCLE_ID_CHARS: usize = 128;
+/// Free-form `detail` on `/audit/event`: a slot, a failure reason.
+const MAX_LIFECYCLE_DETAIL_CHARS: usize = 1024;
 
 /// Request timeout. Verification should complete in <1ms; 10s is
 /// generous and prevents slow-loris style attacks.
@@ -124,6 +131,14 @@ struct Metrics {
     /// Requests shed because the server was already at its in-flight limit.
     load_shed: Arc<std::sync::atomic::AtomicU64>,
     lifecycle_events: Arc<std::sync::atomic::AtomicU64>,
+    /// Lifecycle events reported against a content_hash whose most recent
+    /// verification was a BLOCK: a signing, submission or confirmation of a
+    /// transaction Graphite refused. The gate being bypassed, visible at
+    /// the report rather than after L8.
+    lifecycle_on_blocked: Arc<std::sync::atomic::AtomicU64>,
+    /// Lifecycle events reported against a content_hash with no
+    /// verification on record anywhere in the trail.
+    lifecycle_unverified: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Metrics {
@@ -1559,6 +1574,20 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
             .load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
+        "graphite_lifecycle_events_on_blocked_total",
+        "Caller-reported lifecycle events whose content_hash was most recently BLOCKED by Graphite: a signing/submission/confirmation of a refused transaction. Page on this.",
+        "counter",
+        m.lifecycle_on_blocked
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_lifecycle_events_unverified_total",
+        "Caller-reported lifecycle events whose content_hash has no verification on record in the trail.",
+        "counter",
+        m.lifecycle_unverified
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
         "graphite_audit_writes_ok_total",
         "Audit records successfully appended.",
         "counter",
@@ -1714,7 +1743,7 @@ async fn execution_handler(
     // A base58 Solana signature is 64 bytes => 87-88 characters. Bounding this
     // keeps an oversized value out of the log line and the audit record, the
     // same reasoning as the identifier caps on /verify.
-    if signature.len() > 90 {
+    if signature.len() > MAX_SIGNATURE_CHARS {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
@@ -1724,6 +1753,31 @@ async fn execution_handler(
                 ),
             })),
         ));
+    }
+    if let Some(h) = body.content_hash.as_deref() {
+        let h = h.trim();
+        if h.len() != 16 || !h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!(
+                        "content_hash is {} characters; a Graphite content_hash is 16 lowercase hexadecimal characters",
+                        h.len()
+                    ),
+                })),
+            ));
+        }
+    }
+    if let Some(r) = body.reported_by.as_deref() {
+        let n = r.chars().count();
+        if n > MAX_LIFECYCLE_ID_CHARS {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("reported_by is {n} characters; the maximum is {MAX_LIFECYCLE_ID_CHARS}"),
+                })),
+            ));
+        }
     }
 
     let audit = state.audit.as_ref();
@@ -1744,6 +1798,7 @@ async fn execution_handler(
                 .clone()
                 .or_else(|| body.content_hash.clone())
                 .unwrap_or_default(),
+            verdict_on_record: None,
             audit_trail_id: result.recorded_audit_trail_id.clone(),
             transaction_signature: Some(signature.clone()),
             reported_by: body.reported_by.clone(),
@@ -1891,6 +1946,7 @@ async fn quarantine_handler(
         log.append_lifecycle(&LifecycleEventRecord {
             event_type: LifecycleEvent::OperatorAction,
             timestamp: crate::durable::now_utc_rfc3339(),
+            verdict_on_record: None,
             content_hash: program_id.clone(),
             audit_trail_id: None,
             transaction_signature: None,
@@ -1982,13 +2038,65 @@ async fn lifecycle_event_handler(
             })),
         ));
     }
-    if body.content_hash.trim().is_empty() {
+    let content_hash = body.content_hash.trim().to_string();
+    if content_hash.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
                 "error": "content_hash is required — it links this event to the verification that approved the transaction",
             })),
         ));
+    }
+    // Every field of this body lands on the audit volume. The shape checks
+    // refuse what cannot be the thing it claims to be — a content_hash is 16
+    // lowercase hex characters, a signature at most 88 base58 characters —
+    // and the length caps bound the free-form ones, reporting lengths and
+    // never values, so the rejection cannot amplify (Round 9; the same rule
+    // `/verify` has applied to its identifiers since 2026-09-06).
+    if content_hash.len() != 16
+        || !content_hash
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "content_hash is {} characters; a Graphite content_hash is 16 lowercase hexadecimal characters",
+                    content_hash.len()
+                ),
+            })),
+        ));
+    }
+    for (name, value, max) in [
+        (
+            "audit_trail_id",
+            body.audit_trail_id.as_deref(),
+            MAX_LIFECYCLE_ID_CHARS,
+        ),
+        (
+            "transaction_signature",
+            body.transaction_signature.as_deref(),
+            MAX_SIGNATURE_CHARS,
+        ),
+        (
+            "reported_by",
+            body.reported_by.as_deref(),
+            MAX_LIFECYCLE_ID_CHARS,
+        ),
+        ("detail", body.detail.as_deref(), MAX_LIFECYCLE_DETAIL_CHARS),
+    ] {
+        if let Some(v) = value {
+            let n = v.chars().count();
+            if n > max {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": format!("{name} is {n} characters; the maximum is {max}"),
+                    })),
+                ));
+            }
+        }
     }
 
     let Some(log) = &state.audit else {
@@ -2002,10 +2110,42 @@ async fn lifecycle_event_handler(
         ));
     };
 
+    // The one fact about this attestation Graphite can establish itself:
+    // what the trail says about the hash it names. Computed here, recorded
+    // on the row, returned to the caller, counted — and, for a report
+    // against a BLOCKED verdict, logged as loudly as an L8 discrepancy,
+    // because it is one: the caller is telling Graphite it signed or sent
+    // something Graphite refused.
+    let verdict_on_record = match log.last_verification_for(&content_hash) {
+        Some(r) if r.approved => VerdictOnRecord::Approved,
+        Some(_) => VerdictOnRecord::Blocked,
+        None => VerdictOnRecord::NotFound,
+    };
+    match verdict_on_record {
+        VerdictOnRecord::Blocked => {
+            Metrics::inc(&state.metrics.lifecycle_on_blocked);
+            tracing_server_error(&format!(
+                "LIFECYCLE REPORT ON A BLOCKED VERDICT: {:?} reported by {:?} for content_hash {} which Graphite BLOCKED — the gate's decision did not govern the wallet",
+                body.event_type,
+                body.reported_by.as_deref().unwrap_or("<unnamed>"),
+                content_hash
+            ));
+        }
+        VerdictOnRecord::NotFound => {
+            Metrics::inc(&state.metrics.lifecycle_unverified);
+            tracing_log(&format!(
+                "lifecycle {:?} reported for content_hash {} with no verification on record",
+                body.event_type, content_hash
+            ));
+        }
+        VerdictOnRecord::Approved => {}
+    }
+
     let record = LifecycleEventRecord {
         event_type: body.event_type,
         timestamp: crate::durable::now_utc_rfc3339(),
-        content_hash: body.content_hash,
+        content_hash,
+        verdict_on_record: Some(verdict_on_record),
         audit_trail_id: body.audit_trail_id,
         transaction_signature: body.transaction_signature,
         reported_by: body.reported_by,
@@ -2033,6 +2173,7 @@ async fn lifecycle_event_handler(
         "recorded": true,
         "event_type": record.event_type,
         "content_hash": record.content_hash,
+        "verdict_on_record": verdict_on_record,
     })))
 }
 
@@ -2878,7 +3019,7 @@ mod tests {
             None,
             serde_json::json!({
                 "event_type": "signing",
-                "content_hash": "abc123",
+                "content_hash": "afb61d8865b4cb68",
                 "reported_by": "test",
             }),
         )
@@ -3515,6 +3656,164 @@ mod tests {
                 "{ev} missing from the audit trail"
             );
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn verification_row(hash: &str, approved: bool) -> AuditRecord {
+        AuditRecord {
+            event_type: LifecycleEvent::Verification,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            audit_trail_id: format!("gr-{hash}"),
+            content_hash: hash.to_string(),
+            program_id: "11111111111111111111111111111111".to_string(),
+            instruction_name: "transfer".to_string(),
+            protocol_name: "System Program".to_string(),
+            manifest_version: Some("1.0.0".to_string()),
+            approved,
+            confidence: if approved { 0.9 } else { 0.3 },
+            risk_status: "Clear".to_string(),
+            policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),
+            l3_status: "inconclusive".to_string(),
+            l8_status: "inconclusive".to_string(),
+        }
+    }
+
+    /// Round 9: every field of `/audit/event` is bounded at the boundary.
+    /// Before, a 1 MiB `detail` was a 1 MiB line on the audit volume, and
+    /// 64 such requests forced a rotation — which, with a max-archives
+    /// setting, prunes an archive of real verifications. The body limit is
+    /// 1 MiB, so the request below is the largest one the server accepts.
+    #[tokio::test]
+    async fn lifecycle_event_fields_are_bounded_at_the_boundary() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        let before = std::fs::metadata(audit_path(&dir))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let padding = "x".repeat(1_000_000);
+        for (field, value) in [
+            ("detail", padding.clone()),
+            ("reported_by", padding.clone()),
+            ("audit_trail_id", padding.clone()),
+            ("transaction_signature", "s".repeat(91)),
+        ] {
+            let (status, body) = post_json(
+                &app,
+                "/audit/event",
+                None,
+                serde_json::json!({
+                    "event_type": "signing",
+                    "content_hash": "afb61d8865b4cb68",
+                    field: value,
+                }),
+            )
+            .await;
+            assert_eq!(
+                status,
+                axum::http::StatusCode::BAD_REQUEST,
+                "{field}: {body}"
+            );
+            let err = body["error"].as_str().unwrap();
+            assert!(err.contains(field) && err.contains("characters"), "{err}");
+            assert!(
+                !err.contains("xxxx"),
+                "the rejection must not echo the value"
+            );
+        }
+        // Malformed join keys: not the shape of a content_hash.
+        for bad in [
+            "abc123",
+            "AFB61D8865B4CB68",
+            "afb61d8865b4cb68ff",
+            "zzzzzzzzzzzzzzzz",
+        ] {
+            let (status, body) = post_json(
+                &app,
+                "/audit/event",
+                None,
+                serde_json::json!({ "event_type": "signing", "content_hash": bad }),
+            )
+            .await;
+            assert_eq!(status, axum::http::StatusCode::BAD_REQUEST, "{bad}: {body}");
+        }
+        let after = std::fs::metadata(audit_path(&dir))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        assert_eq!(after, before, "a refused event writes nothing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Round 9: the one fact Graphite can establish about a caller-reported
+    /// event is what its own trail says about the hash. Recorded on the row,
+    /// returned to the caller, counted — and a report against a BLOCKED
+    /// verdict is the gate being bypassed, counted separately.
+    #[tokio::test]
+    async fn lifecycle_events_carry_the_verdict_on_record() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&verification_row("aaaaaaaaaaaaaaaa", true)));
+        assert!(log.append(&verification_row("bbbbbbbbbbbbbbbb", false)));
+        // Verified twice: the newest decision governs.
+        assert!(log.append(&verification_row("cccccccccccccccc", true)));
+        assert!(log.append(&verification_row("cccccccccccccccc", false)));
+        let metrics = state.metrics.clone();
+        let app = build_app(state, vec![]);
+        for (hash, expect) in [
+            ("aaaaaaaaaaaaaaaa", "approved"),
+            ("bbbbbbbbbbbbbbbb", "blocked"),
+            ("cccccccccccccccc", "blocked"),
+            ("dddddddddddddddd", "not_found"),
+        ] {
+            let (status, body) = post_json(
+                &app,
+                "/audit/event",
+                None,
+                serde_json::json!({
+                    "event_type": "signing",
+                    "content_hash": hash,
+                    "reported_by": "bridge",
+                }),
+            )
+            .await;
+            assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+            assert_eq!(body["verdict_on_record"], expect, "{hash}: {body}");
+        }
+        assert_eq!(
+            metrics
+                .lifecycle_on_blocked
+                .load(std::sync::atomic::Ordering::Relaxed),
+            2
+        );
+        assert_eq!(
+            metrics
+                .lifecycle_unverified
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        assert_eq!(
+            contents
+                .matches("\"verdict_on_record\":\"blocked\"")
+                .count(),
+            2
+        );
+        assert_eq!(
+            contents
+                .matches("\"verdict_on_record\":\"not_found\"")
+                .count(),
+            1
+        );
+        assert_eq!(
+            contents
+                .matches("\"verdict_on_record\":\"approved\"")
+                .count(),
+            1
+        );
+        // The verification rows are untouched by the events: still four, still
+        // the same decisions, and a lifecycle row never reads as a verdict.
+        let (records, _, total, _) = log.read_tail_filtered(100, AuditSelector::All);
+        assert_eq!(total, 4);
+        assert_eq!(records.iter().filter(|r| r.approved).count(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

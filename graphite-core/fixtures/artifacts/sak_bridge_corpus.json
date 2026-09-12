@@ -12809,6 +12809,26 @@
       "sdk_accepts": true
     },
     {
+      "base": "legacy_single_transfer",
+      "mutation": {
+        "op": "pad",
+        "to": 1232
+      },
+      "ts_message_len": 1167,
+      "ts_message_sha256": "e209f4935b8f9e605c0a80da18c04a92bffe7c9156e120ab897d2fca6805015f",
+      "sdk_accepts": true
+    },
+    {
+      "base": "legacy_single_transfer",
+      "mutation": {
+        "op": "pad",
+        "to": 1233
+      },
+      "ts_message_len": null,
+      "ts_message_sha256": null,
+      "sdk_accepts": true
+    },
+    {
       "base": "legacy_two_signers",
       "mutation": {
         "op": "truncate",
@@ -19271,6 +19291,26 @@
       "sdk_accepts": true
     },
     {
+      "base": "legacy_two_signers",
+      "mutation": {
+        "op": "pad",
+        "to": 1232
+      },
+      "ts_message_len": 1103,
+      "ts_message_sha256": "a7ee19857e3dcce9fed0e8771d60900629559ff3623483dae9b2bfd479d7a2c0",
+      "sdk_accepts": true
+    },
+    {
+      "base": "legacy_two_signers",
+      "mutation": {
+        "op": "pad",
+        "to": 1233
+      },
+      "ts_message_len": null,
+      "ts_message_sha256": null,
+      "sdk_accepts": true
+    },
+    {
       "base": "v0_real_lookup_table",
       "mutation": {
         "op": "truncate",
@@ -24850,6 +24890,26 @@
       },
       "ts_message_len": 206,
       "ts_message_sha256": "9e66b507c0c62aa5f90c0975fb8b26e0203e30371043eac56030754ebd383701",
+      "sdk_accepts": true
+    },
+    {
+      "base": "v0_real_lookup_table",
+      "mutation": {
+        "op": "pad",
+        "to": 1232
+      },
+      "ts_message_len": 1167,
+      "ts_message_sha256": "1f8a83b5a23eb6bf546faa3c7fbe0b4d7e1783e704ff6c2ce41d7818ead02912",
+      "sdk_accepts": true
+    },
+    {
+      "base": "v0_real_lookup_table",
+      "mutation": {
+        "op": "pad",
+        "to": 1233
+      },
+      "ts_message_len": null,
+      "ts_message_sha256": null,
       "sdk_accepts": true
     }
   ]

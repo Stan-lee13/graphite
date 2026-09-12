@@ -3,6 +3,20 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 9 — the next surface] — 2026-09-12
+
+Report: `docs/round9-next-surface-2026-09-12.md`.
+
+- **Artifact without `instruction_data` bound without comparison (P1, fixed)**: L2's artifact branch ran only when the data was present and ≥ 8 bytes; omitting the optional field skipped the positional/sibling check while `scope` still reported `artifact_bound`. A 100 SOL transfer was approved under a "0.002 SOL" description through a mock cluster. Now the branch runs for every artifact: no data → L2 fails; no parse → L2 fails (substring fallback deleted); `correspond` matches exact data at any length.
+- **`UnobservedCode`** (14 codes) and `scope.unobserved_codes`, parallel to `unobserved`; `inherent()` for `program_semantics` / `inner_instructions`; schema enum pinned to `UnobservedCode::ALL`. New code `instruction_not_located`.
+- **Packet-size bound**: `MAX_TRANSACTION_BYTES` = 1232 (`ArtifactParseError::TooLarge`) in `parse_transaction`, `message_bytes` and the `/verify` entry; `MAX_TRANSACTION_INSTRUCTIONS` = 256. Measured 122 s → 1.6 ms for one request.
+- **Lifecycle rows**: `LifecycleEventRecord::bounded()`; `/audit/event` shape and length checks (16-hex `content_hash`, signature ≤ 90, ids ≤ 128, detail ≤ 1024); `VerdictOnRecord` (`approved` / `blocked` / `not_found`) computed server-side and written on every row; `graphite_lifecycle_events_on_blocked_total`, `graphite_lifecycle_events_unverified_total`.
+- **Active-file index** for `last_verification_for`: `content_hash → offset`, built at open, maintained per append under the file lock, cleared on rotation. 953 ms → 0.5 ms per lookup over 64 MB.
+- **Slot capture**: `SimulationResult.slot`, `get_multiple_accounts_at`; L4's reason names the pre-state and simulation slots when they differ.
+- **SDKs**: TS `UnobservedCode`, `unobservedCodes()`, `recordLifecycleEvent`, `verifyExecution`; Go residual constants and `NonInherentUnobserved()`.
+- **Bridge**: `residual-policy.ts` (refuses non-inherent residuals unless accepted by code; refuses servers without codes), `execution-lifecycle.ts` (policy → sign → record signing → submit → record submission → confirm → L8), `ExecutionOutcome.lifecycle`; `messageOf` packet bound with `readSignatureCount` factored out; corpus `pad` mutations (1,647 total).
+- **CI / image**: workflow token `contents: read`; every action pinned to a commit SHA; Docker base images pinned by digest.
+
 ## [Round 8 — remaining assumptions] — 2026-09-12
 
 Full report: `docs/round8-remaining-assumptions-2026-09-12.md`. Current status

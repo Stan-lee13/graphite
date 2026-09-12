@@ -3,6 +3,7 @@ package graphite
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -612,5 +613,51 @@ func TestHealthCheck(t *testing.T) {
 	err := client.Health()
 	if err == nil {
 		t.Error("expected error for non-existent server")
+	}
+}
+
+// Round 9: the residual codes ride alongside the prose, and a gate can pick
+// out the ones it has to decide on. A server that reports no codes is
+// reported as undecidable, not as clear.
+func TestUnobservedCodesArePairedAndDecidable(t *testing.T) {
+	raw := `{
+		"approved": true, "confidence": 0.64, "breakdown": [], "trust_tier": "OfficialManifest",
+		"risk_verdict": {"status": "Clear", "findings": []}, "policy_verdict": "Approved",
+		"audit_trail_id": "gr-x", "content_hash": "afb61d8865b4cb68",
+		"transaction": {"instructions": [], "signers": [], "recent_blockhash": ""},
+		"resolved_accounts": [], "protocol_name": "System Program", "instruction_name": "Transfer",
+		"manifest_found": true, "unknown_protocol": false, "summary": "APPROVED",
+		"scope": {
+			"kind": "artifact_bound", "transaction_sha256": "` + "e32950f70a7f63c5d34695964ac376fc53b6727806c26269639ee27b2bc3a886" + `",
+			"transaction_bytes": 215, "simulated": true,
+			"unobserved": ["no diff", "semantics", "cpi"],
+			"unobserved_codes": ["no_state_diff", "program_semantics", "inner_instructions"]
+		}
+	}`
+	var r VerificationResult
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		t.Fatal(err)
+	}
+	if !r.IsArtifactBound() {
+		t.Fatal("artifact_bound expected")
+	}
+	if len(r.Scope.UnobservedCodes) != len(r.Scope.Unobserved) {
+		t.Fatalf("codes and prose must pair: %v vs %v", r.Scope.UnobservedCodes, r.Scope.Unobserved)
+	}
+	codes, ok := r.NonInherentUnobserved()
+	if !ok || len(codes) != 1 || codes[0] != UnobservedNoStateDiff {
+		t.Fatalf("expected exactly no_state_diff to need a decision: %v (ok=%v)", codes, ok)
+	}
+	if !IsInherentUnobserved(UnobservedProgramSemantics) || IsInherentUnobserved(UnobservedNoStateDiff) {
+		t.Fatal("inherent classification is wrong")
+	}
+
+	// Older server: prose only.
+	var old VerificationResult
+	if err := json.Unmarshal([]byte(strings.Replace(raw, `"unobserved_codes": ["no_state_diff", "program_semantics", "inner_instructions"]`, `"unobserved_codes": null`, 1)), &old); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := old.NonInherentUnobserved(); ok {
+		t.Fatal("a server that reports no codes must be undecidable, not clear")
 	}
 }

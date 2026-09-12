@@ -116,6 +116,7 @@ pub fn run_benchmark() {
                         "verification returned an error; nothing about this transaction was observed"
                             .to_string(),
                     ],
+                    unobserved_codes: vec![crate::verification::UnobservedCode::NoArtifact],
                 },
                 transaction: crate::transaction_builder::BuiltTransaction {
                     program_id: case.input.program_id.clone(),

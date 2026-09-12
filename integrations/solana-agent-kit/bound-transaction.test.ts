@@ -27,7 +27,7 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
-import { BoundTransaction, messageOf } from "./artifact.js";
+import { BoundTransaction, messageOf, readSignatureCount } from "./artifact.js";
 
 /**
  * Reach the private transaction the way a hostile in-process actor would.
@@ -178,9 +178,12 @@ test("messageOf finds the message behind any signature count", () => {
     const raw = Uint8Array.from([count, ...new Uint8Array(64 * count), ...body]);
     assert.deepEqual(Array.from(messageOf(raw)), Array.from(body), `count=${count}`);
   }
-  // Two-byte compact-u16: 128 signatures.
+  // Two-byte compact-u16: 128 signatures. That is 8 KB — no packet holds
+  // it, so `messageOf` refuses it on size (Round 9), while the count reader
+  // it is built on still decodes the encoding correctly.
   const many = Uint8Array.from([0x80, 0x01, ...new Uint8Array(64 * 128), ...body]);
-  assert.deepEqual(Array.from(messageOf(many)), Array.from(body));
+  assert.throws(() => messageOf(many), /at most 1232/);
+  assert.deepEqual(readSignatureCount(many), { count: 128, offset: 2 + 64 * 128 });
 });
 
 test("messageOf refuses a signature array that runs past the transaction", () => {

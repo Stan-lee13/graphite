@@ -4,7 +4,12 @@
 # Constitution P1: Only deterministic Rust core. Python AI Layer runs separately.
 # Manifests are compile-time baked via include_str! (P12 fail-closed).
 
-FROM rust:1.97-bookworm AS builder
+# Base images are pinned by manifest digest (Round 9, repository integrity):
+# a tag is a mutable pointer and a build that resolves it differently on two
+# days is two builds. The tag is kept beside the digest so a bump is a
+# reviewable one-line change; the digests were read from Docker Hub on
+# 2026-09-12 and are the multi-arch manifest lists.
+FROM rust:1.97-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS builder
 WORKDIR /usr/src/graphite
 # Cargo places target/ under the workspace root (graphite-core/) unless told
 # otherwise; pin it so the COPY below can find the binary.
@@ -42,7 +47,7 @@ COPY graphite-core/protocols ./graphite-core/protocols
 RUN touch graphite-core/src/lib.rs \
     && cargo build --manifest-path graphite-core/Cargo.toml --locked --release --features server,cli
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
 # ca-certificates is required for outbound TLS to GRAPHITE_RPC_URL (reqwest +
 # rustls needs a trust store). curl is NOT installed: the healthcheck uses the
 # binary's own `healthcheck` subcommand instead, keeping curl and its

@@ -42,15 +42,31 @@ npm install
 ## What the bridge guarantees
 
 The bridge is the reference execution boundary for Graphite. Its invariant, attacked in
-Rounds 6–8 (`docs/round6-execution-boundary-2026-09-11.md` onward): **the exact
+Rounds 6–9 (`docs/round6-execution-boundary-2026-09-11.md` onward): **the exact
 message Graphite approved is the exact message in the bytes that are signed and
-submitted.**
+submitted — and nothing is signed under a residual the operator has not accepted.**
 
 - Both `executeTransfer` and `executeSwap` build **one** `BoundTransaction`
   (`artifact.ts`) *before* verification, from deep-copied instructions, and send its
   bytes as `signed_transaction`. No alias to the transaction exists outside it.
 - Execution requires `scope.kind === "artifact_bound"`. A descriptive verdict never
   executes.
+- **Residual policy (Round 9).** Every verdict names what Graphite did not observe as
+  codes (`scope.unobserved_codes`). Two are inherent to every artifact-bound verdict
+  (`program_semantics`, `inner_instructions`). Every other code — `no_state_diff`,
+  `not_simulated`, `privileges_from_caller`, `privileges_absent`,
+  `lookup_tables_unresolved`, `artifact_unparsed`, `account_identity_unparsed`,
+  `instruction_not_located` — **refuses execution** unless the operator names it in
+  `GRAPHITE_ACCEPT_UNOBSERVED` (comma-separated) or `create({ acceptUnobserved })`. A
+  typo in that list is a startup error; a Core that reports no codes (pre-Round-9) is
+  refused. The codes accepted for an execution are recorded on
+  `outcome.lifecycle.acceptedUnobserved`. See `residual-policy.ts`.
+- **The lifecycle is on Graphite's trail, in order (Round 9).** `execution-lifecycle.ts`
+  is the only path from verdict to network: policy → `signApproved` → `POST /audit/event`
+  `signing` → submit → `POST /audit/event` `submission` → confirm → `POST
+  /verify/execution` (L8). A signing that cannot be recorded, or whose
+  `verdict_on_record` is not `approved`, aborts *before* submission; after submission
+  every failure is reported on `outcome.lifecycle` and none is hidden.
 - `bound.signApproved(scope.transaction_sha256, [wallet])` is the only signing path: it
   recomputes the digest of the exact bytes, derives the required signer set from the
   compiled message, refuses any mismatch, and returns the only bytes that go to
@@ -62,8 +78,9 @@ submitted.**
   phrase, so it is not set by accident — lets SAK's own builder execute a swap Graphite
   never saw; the outcome then says `verifiedExecution: false` with `unverifiedReason`.
 - Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
-- `scope.unobserved` is printed for every verdict and not gated — which residuals a
-  deployment accepts is the deployment's decision.
+- `scope.unobserved` is printed for every verdict; which residuals a deployment
+  accepts is the deployment's decision, made in configuration and enforced by the
+  residual policy above.
 - `content_hash` / AuditBind (`auditbind.ts`) remains as a secondary instruction-level
   check and the audit/L8 join key; the digest is the authoritative binding.
 
@@ -103,18 +120,23 @@ if (!outcome.executed) {
 }
 ```
 
-`ExecutionOutcome` is `{ executed, verifiedExecution, verification, signature?, unverifiedReason? }`.
-Gate on `verifiedExecution`, not on `executed`: the latter is also true for the
-opt-out path.
+`ExecutionOutcome` is `{ executed, verifiedExecution, verification, signature?,
+unverifiedReason?, lifecycle? }`. Gate on `verifiedExecution`, not on `executed`: the
+latter is also true for the opt-out path. `lifecycle` (every verified execution) is
+`{ signature, acceptedUnobserved, signingRecorded, verdictOnRecordAtSigning,
+submissionRecorded, submissionRecordError?, confirmed, confirmationError?,
+reconciliation?, reconciliationError? }` — read `reconciliation.discrepancy` for L8's
+verdict on what actually landed.
 
 ### Tests and the cross-language corpus
 
 ```bash
 npm run typecheck
-npm test                 # 73 tests: BoundTransaction gate, execution-boundary fuzz,
-                         # TOCTOU signing boundary, AuditBind, artifact, nonces
+npm test                 # 95 tests: BoundTransaction gate, execution-boundary fuzz,
+                         # TOCTOU signing boundary, AuditBind, artifact, nonces,
+                         # residual policy, execution lifecycle
 npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json
-                         # (12 shapes + 1,641 byte-level mutations); CI fails on drift
+                         # (12 shapes + 1,647 byte-level mutations); CI fails on drift
 npm run emit:artifact-fixture
 ```
 

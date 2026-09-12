@@ -397,6 +397,13 @@ export class BoundTransaction {
 }
 
 /**
+ * The largest serialized transaction the network accepts: `PACKET_DATA_SIZE`
+ * = 1280 − 40 − 8 = 1232 bytes. Mirrors `MAX_TRANSACTION_BYTES` in
+ * `graphite-core/src/tx_artifact.rs`; the corpus pins both sides to it.
+ */
+export const MAX_TRANSACTION_BYTES = 1232;
+
+/**
  * The message half of a serialized transaction: everything after the signatures.
  *
  * This is a second implementation of Solana's compact-u16 in a second language,
@@ -417,6 +424,28 @@ export class BoundTransaction {
  * of another, which is worse.
  */
 export function messageOf(raw: Uint8Array): Uint8Array {
+  if (raw.length > MAX_TRANSACTION_BYTES) {
+    throw new Error(
+      `[Graphite] transaction is ${raw.length} bytes; a Solana transaction is at most ` +
+        `${MAX_TRANSACTION_BYTES} (PACKET_DATA_SIZE) and the network refuses anything larger`,
+    );
+  }
+  const { offset } = readSignatureCount(raw);
+  if (offset > raw.length) {
+    throw new Error("[Graphite] signature array runs past the transaction");
+  }
+  return raw.subarray(offset);
+}
+
+/**
+ * The compact-u16 signature count at the front of a serialized transaction,
+ * and the offset of the first message byte behind it. The acceptance rules
+ * are `messageOf`'s, documented there; this is the reader on its own so the
+ * rules can be exercised at counts no packet could hold — 128 signatures is
+ * 8 KB, seven times the packet size, and `messageOf` refuses that on size
+ * before it reads a byte.
+ */
+export function readSignatureCount(raw: Uint8Array): { count: number; offset: number } {
   let offset = 0;
   let count = 0;
   let terminated = false;
@@ -445,11 +474,7 @@ export function messageOf(raw: Uint8Array): Uint8Array {
       `[Graphite] signature count ${count} does not fit the u16 this field is`,
     );
   }
-  offset += count * 64;
-  if (offset > raw.length) {
-    throw new Error("[Graphite] signature array runs past the transaction");
-  }
-  return raw.subarray(offset);
+  return { count, offset: offset + count * 64 };
 }
 
 function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
