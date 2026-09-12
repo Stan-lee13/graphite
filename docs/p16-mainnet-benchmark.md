@@ -1,5 +1,7 @@
 # P16 — Real Mainnet Benchmark Report (C19)
 
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Date:** 2026-08-08
 **Harness:** `integrations/solana-agent-kit/mainnet-benchmark.ts`
 **Server:** local `graphite-core` build (`server --port 7331`, fresh data dir — no seeded evidence)

@@ -61,7 +61,7 @@ Both quarantining and lifting are appends (P4): the pre-quarantine record stays 
 
 An accepted manifest submission appends a behaviour record, and a resubmission at the same tier is not a promotion and so is not P10-gated. An append therefore carries an active quarantine forward: otherwise publishing any new version would be a self-service restore, available to the actor whose program had just been withdrawn, with nothing checking that the new version fixed anything.
 
-Reachable through `graphite quarantine add|lift|list` (operating on the server's durable graph, so a restart picks the change up) and `POST/GET /admin/quarantine` on a running server. The endpoint is refused outright unless `GRAPHITE_API_KEY` is configured — elsewhere an absent key means dev mode, but here it would hand anyone who can reach the port a switch that blocks any program.
+Reachable through `graphite quarantine add|lift|list` (operating on the server's durable graph, so a restart picks the change up) and `POST/GET /admin/quarantine` on a running server. The endpoint is refused outright unless `GRAPHITE_API_KEY` is configured — a `GRAPHITE_DEV_MODE=1` instance is loopback-only and keyless, and even there this switch stays closed.
 
 **Deliberately operator-triggered, not automatic (recorded tradeoff, P14).** Quarantine forces a program to `Unknown`, which is a denial of service on every wallet profile with a tier floor. Triggering it from request traffic — N blocked verifications, N risk findings — would hand that denial to anyone who can send requests, because the inputs those checks judge are chosen by the caller: a handful of crafted transactions would withdraw Jupiter from trust for every user of the gate. The evidence for the decision is surfaced on `/api/policy-violations` and `/api/graph`; the decision itself belongs to an operator or an external monitor holding the API key.
 
@@ -124,7 +124,7 @@ The axum-based HTTP server exposes `POST /verify`, `GET /manifests` (listing), `
 
 | Concern | Implementation |
 |---|---|
-| **Authentication** | Optional Bearer API key (`GRAPHITE_API_KEY`), compared in constant time (SHA-256). `/verify` and `/manifests` require it when set; `/health` stays open for load balancers. |
+| **Authentication** | Bearer API key (`GRAPHITE_API_KEY`), compared in constant time (SHA-256), required on every route except `/health`. Startup refuses without a key unless `GRAPHITE_DEV_MODE=1`, which is permitted only on loopback. |
 | **Rate limiting** | Per-IP token bucket (`GRAPHITE_RATE_LIMIT`, default 30 req/s), FIFO eviction, returns `429` on exhaustion. |
 | **CORS** | Denied by default; `GRAPHITE_CORS_ORIGINS` (comma-separated) enables specific browser origins. Server-to-server clients are unaffected. |
 | **Audit log** | Append-only JSONL (`audit.jsonl` under `GRAPHITE_DATA_DIR`) written after every verification — covers all four outcomes: approved, blocked, HTTP 400, HTTP 500. |

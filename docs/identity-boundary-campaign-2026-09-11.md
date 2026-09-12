@@ -1,5 +1,7 @@
 # Transaction Identity Boundary — Campaign Report, 2026-09-11
 
+> **Historical record (2026-09-11).** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Scope of this report.** `main` from `bed23c6` to `d2cd17a` (seven commits,
 2026-09-09 to 2026-09-11). It answers one question: *can Graphite return an
 executable approval for a transaction whose exact signed artifact contains

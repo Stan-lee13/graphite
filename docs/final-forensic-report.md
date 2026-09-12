@@ -1,5 +1,7 @@
 # Graphite — Final Full-System Forensic Validation Report
 
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Date:** 2026-08-08
 **Scope:** Phase 1 + Phase 1.5 + Phase 2, all surfaces (core, CLI, server, SDKs, AI layer, dashboard, manifests, plugins, PDA, AuditBind, CI, docs, on-chain behavior)
 **Method:** No prior certification accepted as truth. Every claim traced to code, tests, or live data.

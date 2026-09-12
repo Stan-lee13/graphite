@@ -1150,10 +1150,22 @@ impl PipelineLayerResult {
 const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
 
 /// Atomically write `json` to `path` via a uniquely-named temp file + rename.
-/// Never fatal — failures are logged. A unique temp name (`pid` + monotonic
-/// counter) means concurrent writers can't clobber each other's temp files;
-/// the rename is atomic, so readers only ever see complete documents.
-fn persist_json_atomic(path: &std::path::Path, json: &str) {
+///
+/// Never fatal to verification — a snapshot that cannot be written must not
+/// stop the gate from answering — but never silent either: the outcome is
+/// returned so the core can count it and /health can say the node is
+/// degraded. Before 2026-09-12 a failure was a `tracing::warn!` and nothing
+/// else, so a node whose data volume had filled kept earning trust tiers and
+/// baselines in memory that vanished on the next restart, with no signal an
+/// operator could alert on.
+///
+/// A unique temp name (`pid` + monotonic counter) means concurrent writers
+/// can't clobber each other's temp files; the temp file is synced before the
+/// rename so the committed snapshot is complete on the device, not only in
+/// the page cache; and the rename is atomic, so readers only ever see
+/// complete documents.
+fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String> {
+    use std::io::Write as _;
     use std::sync::atomic::{AtomicU64, Ordering};
     static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
     let tmp = path.with_extension(format!(
@@ -1161,14 +1173,61 @@ fn persist_json_atomic(path: &std::path::Path, json: &str) {
         std::process::id(),
         TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    if let Err(e) = std::fs::write(&tmp, json) {
-        tracing::warn!("failed to persist semantic graph: {}", e);
-        return;
+    let written = (|| -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(json.as_bytes())?;
+        f.sync_data()
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("write {}: {e}", tmp.display()));
     }
     if let Err(e) = std::fs::rename(&tmp, path) {
-        tracing::warn!("failed to commit semantic graph snapshot: {}", e);
         let _ = std::fs::remove_file(&tmp);
+        return Err(format!("commit {}: {e}", path.display()));
     }
+    Ok(())
+}
+
+/// Shared counters for the semantic-graph snapshot, surfaced by /health.
+#[derive(Debug, Default)]
+struct PersistenceCounters {
+    snapshots_ok: std::sync::atomic::AtomicU64,
+    snapshots_failed: std::sync::atomic::AtomicU64,
+    last_error: Mutex<Option<String>>,
+}
+
+impl PersistenceCounters {
+    fn record(&self, outcome: Result<(), String>) {
+        use std::sync::atomic::Ordering;
+        match outcome {
+            Ok(()) => {
+                self.snapshots_ok.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(e) => {
+                let n = self.snapshots_failed.fetch_add(1, Ordering::Relaxed) + 1;
+                if n == 1 || n.is_multiple_of(100) {
+                    tracing::error!("semantic graph snapshot failed ({n} times): {e}");
+                }
+                if let Ok(mut last) = self.last_error.lock() {
+                    *last = Some(e);
+                }
+            }
+        }
+    }
+}
+
+/// A point-in-time view of semantic-graph persistence, for /health.
+///
+/// `enabled == false` means the core has no data directory: nothing is
+/// persisted and nothing is failing. `snapshots_failed > 0` means state this
+/// node has earned since the last good snapshot exists only in memory.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PersistenceHealth {
+    pub enabled: bool,
+    pub snapshots_ok: u64,
+    pub snapshots_failed: u64,
+    pub last_error: Option<String>,
 }
 
 /// Phase 2 evidence-derived confidence signals, read from the Semantic Graph's
@@ -1221,10 +1280,15 @@ pub struct GraphiteCore {
     rpc_client: Option<SolanaRpcClient>,
     /// Optional durability directory (snapshots + audit trail).
     data_dir: Option<PathBuf>,
+    /// Snapshot outcomes, shared across clones so /health sees every write.
+    persistence: Arc<PersistenceCounters>,
     /// P8 plugin orchestrator (sole caller of every plugin).
     plugins: crate::plugin_orchestrator::PluginOrchestrator,
     /// Total wall-clock one verification may spend on RPC. See `RpcBudget`.
     rpc_budget: std::time::Duration,
+    /// Whether a durable-nonce transaction may pass L2 at all. Off by default;
+    /// see `set_allow_durable_nonce`.
+    allow_durable_nonce: bool,
 }
 
 impl std::fmt::Debug for GraphiteCore {
@@ -1255,7 +1319,9 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            persistence: Arc::new(PersistenceCounters::default()),
             rpc_budget: DEFAULT_RPC_BUDGET,
+            allow_durable_nonce: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -1271,7 +1337,9 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            persistence: Arc::new(PersistenceCounters::default()),
             rpc_budget: DEFAULT_RPC_BUDGET,
+            allow_durable_nonce: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
         }
     }
@@ -1284,7 +1352,9 @@ impl GraphiteCore {
             #[cfg(feature = "rpc")]
             rpc_client: None,
             data_dir: None,
+            persistence: Arc::new(PersistenceCounters::default()),
             rpc_budget: DEFAULT_RPC_BUDGET,
+            allow_durable_nonce: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -1444,7 +1514,23 @@ impl GraphiteCore {
             return;
         };
         let path = dir.join(SEMANTIC_GRAPH_FILENAME);
-        persist_json_atomic(&path, &json);
+        self.persistence.record(persist_json_atomic(&path, &json));
+    }
+
+    /// Whether snapshots are landing on disk. See [`PersistenceHealth`].
+    pub fn persistence_health(&self) -> PersistenceHealth {
+        use std::sync::atomic::Ordering;
+        PersistenceHealth {
+            enabled: self.data_dir.is_some(),
+            snapshots_ok: self.persistence.snapshots_ok.load(Ordering::Relaxed),
+            snapshots_failed: self.persistence.snapshots_failed.load(Ordering::Relaxed),
+            last_error: self
+                .persistence
+                .last_error
+                .lock()
+                .ok()
+                .and_then(|l| l.clone()),
+        }
     }
 
     /// Async variant for use inside `verify_async` (rpc feature only — the
@@ -1462,7 +1548,12 @@ impl GraphiteCore {
             return;
         };
         let path = dir.join(SEMANTIC_GRAPH_FILENAME);
-        let _ = tokio::task::spawn_blocking(move || persist_json_atomic(&path, &json)).await;
+        let outcome =
+            match tokio::task::spawn_blocking(move || persist_json_atomic(&path, &json)).await {
+                Ok(outcome) => outcome,
+                Err(join) => Err(format!("snapshot task did not complete: {join}")),
+            };
+        self.persistence.record(outcome);
     }
 
     /// Attach an RPC client for Phase 2 features (simulation, on-chain checks).
@@ -1477,6 +1568,22 @@ impl GraphiteCore {
     /// server has a request timeout, a CLI run has a human waiting. See
     /// `RpcBudget` for why the total, rather than the per-call timeout, is the
     /// number that has to fit.
+    /// Permit durable-nonce transactions (operator decision, P14).
+    ///
+    /// A durable-nonce transaction does not expire: once signed it stays
+    /// valid until its nonce account advances, so every state-based
+    /// conclusion in a verdict holds only at verification time and the
+    /// bridge's `lastValidBlockHeight` expiry does not apply. Graphite's
+    /// intended caller — an agent verifying immediately before signing — has
+    /// no use for one, so they are refused at L2 by default. An operator
+    /// whose flow genuinely needs them (offline or hardware-wallet signing)
+    /// opts in here, and even then the nonce account is verified on-chain
+    /// under the RPC budget; without RPC the transaction is still refused,
+    /// because the opt-in is "allowed once verified", not "allowed".
+    pub fn set_allow_durable_nonce(&mut self, allow: bool) {
+        self.allow_durable_nonce = allow;
+    }
+
     pub fn set_rpc_budget(&mut self, budget: std::time::Duration) {
         self.rpc_budget = budget;
     }
@@ -1562,16 +1669,14 @@ impl GraphiteCore {
 
         // Find what Graphite decided for this transaction, if anything.
         let recorded = match (content_hash, audit) {
-            (Some(hash), Some(log)) => {
-                let hash = hash.trim().to_string();
-                let (records, _errors, _n, _m) =
-                    log.read_tail_filtered(20_000, move |r| r.content_hash == hash);
-                // The LAST verification for this content hash is the one that
-                // governed: a caller may verify the same transaction more than
-                // once, and the decision that mattered is the most recent one
-                // before submission.
-                records.into_iter().next_back()
-            }
+            // The LAST verification for this content hash is the one that
+            // governed: a caller may verify the same transaction more than
+            // once, and the decision that mattered is the most recent one
+            // before submission. The lookup covers the whole trail — every
+            // rotated archive, not just the active file — because a blocked
+            // verdict that rotated out of the active file is still the verdict
+            // that `BlockedButExecuted` must be able to find.
+            (Some(hash), Some(log)) => log.last_verification_for(hash),
             _ => None,
         };
 
@@ -2780,6 +2885,43 @@ impl GraphiteCore {
             .as_ref()
             .filter(|b| !b.is_empty())
             .and_then(|b| crate::tx_artifact::parse_transaction(b).ok());
+        // Durable nonce: declared by the bytes (instruction 0 is a System
+        // AdvanceNonceAccount), verified against the nonce account when the
+        // operator has opted in and RPC is available. See `DurableNonce`.
+        let declared_nonce = artifact_message
+            .as_ref()
+            .and_then(crate::tx_artifact::durable_nonce);
+        #[cfg(feature = "rpc")]
+        let nonce_check: Option<Result<(), String>> =
+            match (&declared_nonce, self.allow_durable_nonce, &self.rpc_client) {
+                (Some(nonce), true, Some(client)) => {
+                    let fetched = within_budget(
+                        &budget,
+                        client.get_multiple_accounts(std::slice::from_ref(&nonce.nonce_account)),
+                    )
+                    .await
+                    .unwrap_or_else(|()| Err(crate::rpc_client::RpcError::Timeout(budget.total())));
+                    Some(match fetched {
+                        Ok(accounts) => match accounts.first() {
+                            Some(Some(acc)) => {
+                                crate::tx_artifact::decode_nonce_account(&acc.owner, &acc.data)
+                                    .and_then(|state| {
+                                        crate::tx_artifact::check_durable_nonce(nonce, &state)
+                                    })
+                            }
+                            _ => Err(format!(
+                                "nonce account {} does not exist on-chain",
+                                nonce.nonce_account
+                            )),
+                        },
+                        Err(e) => Err(format!("nonce account could not be fetched: {e}")),
+                    })
+                }
+                _ => None,
+            };
+        #[cfg(not(feature = "rpc"))]
+        let nonce_check: Option<Result<(), String>> = None;
+
         let artifact_privileges = artifact_message.as_ref().and_then(|m| {
             privileges_from_artifact(
                 m,
@@ -3075,6 +3217,62 @@ impl GraphiteCore {
                 }
             }
             _ => l2_result,
+        };
+
+        // A durable-nonce transaction is a different kind of object from the
+        // one every other check assumes: it has no expiry. L2 is where the
+        // transaction's shape is confirmed, and "this transaction does not
+        // expire" is a fact about its shape that changes what every later
+        // layer's answer is worth. Refused unless the operator opted in AND
+        // the nonce account was verified on-chain; an opt-in without RPC
+        // refuses too, because the opt-in is conditional on that check.
+        let l2_result = match &declared_nonce {
+            None => l2_result,
+            Some(nonce) => {
+                let what = format!(
+                    "instruction 0 is System AdvanceNonceAccount on nonce account {} (authority {}), so this is a DURABLE-NONCE transaction: its recent_blockhash slot carries the nonce value {} and it does not expire — once signed it stays valid until the nonce advances, and every state-based conclusion in this verdict is true at verification time only",
+                    nonce.nonce_account,
+                    nonce
+                        .nonce_authority
+                        .as_deref()
+                        .unwrap_or("<missing: fewer than three accounts>"),
+                    nonce.nonce_value,
+                );
+                if !self.allow_durable_nonce {
+                    PipelineLayerResult::new(
+                        "L2_InstructionVerification",
+                        LayerStatus::Failed,
+                        format!(
+                            "{what}. Durable-nonce transactions are refused by default: the verdict's expiry assumption does not hold for them. An operator can permit them with GRAPHITE_ALLOW_DURABLE_NONCE=1, after which the nonce account is verified on-chain before L2 passes"
+                        ),
+                    )
+                } else {
+                    match &nonce_check {
+                        Some(Ok(())) => PipelineLayerResult::new(
+                            "L2_InstructionVerification",
+                            l2_result.status,
+                            format!(
+                                "{}; {what}. Permitted by operator policy; the nonce account was fetched and holds this nonce value under this authority, which is a required signer",
+                                l2_result.reason
+                            ),
+                        ),
+                        Some(Err(why)) => PipelineLayerResult::new(
+                            "L2_InstructionVerification",
+                            LayerStatus::Failed,
+                            format!(
+                                "{what}. Permitted by operator policy, but the nonce account does not support it: {why}"
+                            ),
+                        ),
+                        None => PipelineLayerResult::new(
+                            "L2_InstructionVerification",
+                            LayerStatus::Failed,
+                            format!(
+                                "{what}. Permitted by operator policy only once the nonce account is verified on-chain, and no RPC client is attached (or the budget was exhausted), so it was not"
+                            ),
+                        ),
+                    }
+                }
+            }
         };
 
         let protocol_name = manifest

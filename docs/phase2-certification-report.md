@@ -1,4 +1,6 @@
 # Graphite Phase 2 Certification Report
+
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
 ## Final Gap Closure, Real-World Validation & Certification
 
 **Date:** August 12, 2026 (deployment verification pass C54; prior revalidation C39–C53)

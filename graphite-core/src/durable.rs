@@ -3,9 +3,18 @@
 //! The semantic-graph/baseline snapshot is handled inside
 //! [`crate::verification::GraphiteCore::with_data_dir`]; this module owns the
 //! append-only JSONL audit log that the HTTP server writes after every
-//! verification. One JSON object per line, flushed per write so a crash loses
-//! at most the in-flight request.
+//! verification. One JSON object per line, synced to the storage device per
+//! write (`sync_data`, not `flush`) so a crash — of the process OR the
+//! machine — loses at most the in-flight request.
+//!
+//! The read side sees the WHOLE trail: every rotated archive plus the active
+//! file, in order. Until 2026-09-12 it opened only the active file, so the
+//! moment a rotation happened the dashboard totals dropped to zero and L8
+//! reconciliation forgot every verdict older than the active file — including
+//! blocked ones, which are exactly the ones `BlockedButExecuted` exists to
+//! catch.
 
+use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -36,7 +45,7 @@ pub const DEFAULT_ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 /// own initiative.
 #[derive(Debug, Clone)]
 pub struct AuditLog {
-    file: std::sync::Arc<Mutex<File>>,
+    pub(crate) file: std::sync::Arc<Mutex<File>>,
     /// The log's path, kept so the read path (`read_all`) can re-open the
     /// file for reading without disturbing the append handle.
     path: Arc<PathBuf>,
@@ -62,6 +71,26 @@ pub struct AuditLog {
     /// on a Windows dev machine (~4ms per rotation, measured) and failed in
     /// Linux CI.
     rotation_seq: Arc<AtomicU64>,
+    /// Rotations that completed (rename + fresh active file).
+    rotations_ok: Arc<AtomicU64>,
+    /// Rotations that could not happen. The record is still appended — an
+    /// oversized log is strictly better than a dropped audit trail — but the
+    /// failure used to be invisible, and it is retried on every subsequent
+    /// append, so an operator saw only a file that never stopped growing.
+    /// The realistic cause is another process holding the active file
+    /// without delete-sharing (a log shipper, a scanner, `Get-Content -Wait`)
+    /// or a read-only directory.
+    rotations_failed: Arc<AtomicU64>,
+    /// Per-archive statistics, computed once per archive.
+    ///
+    /// An archive is immutable by construction — rotation renames and never
+    /// rewrites, and nothing appends to a renamed file — so its record counts
+    /// are fixed the moment it exists. Caching them is what lets the read
+    /// side account for the whole trail without rescanning every archive on
+    /// every dashboard poll, which would reintroduce the unbounded read cost
+    /// rotation was introduced to remove. Entries are validated by file
+    /// length and dropped when the archive is pruned.
+    archive_stats: Arc<Mutex<HashMap<PathBuf, ArchiveStats>>>,
 }
 
 /// A point-in-time view of audit-log health, surfaced by /health and /metrics.
@@ -71,6 +100,143 @@ pub struct AuditHealth {
     pub writes_failed: u64,
     /// Current size of the ACTIVE audit file in bytes (archives excluded).
     pub active_bytes: u64,
+    /// Completed rotations since the process started.
+    pub rotations_ok: u64,
+    /// Rotations that failed and left the active file growing. Non-zero is a
+    /// degraded condition: the trail is intact but unbounded.
+    pub rotations_failed: u64,
+    /// Rotated archives currently on disk.
+    pub archive_count: u64,
+}
+
+/// Which verification records a read selects.
+///
+/// A closed set rather than a closure so that per-archive totals can be
+/// cached: an archive's count of approved and blocked records never changes,
+/// and the dashboard asks the same three questions on every poll.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditSelector {
+    /// Every verification record.
+    All,
+    /// Only records with `approved == true`.
+    Approved,
+    /// Only records with `approved == false` — the policy-violation feed.
+    Blocked,
+}
+
+impl AuditSelector {
+    fn keeps(self, r: &AuditRecord) -> bool {
+        match self {
+            AuditSelector::All => true,
+            AuditSelector::Approved => r.approved,
+            AuditSelector::Blocked => !r.approved,
+        }
+    }
+}
+
+/// What one scan of one audit file established. Every field is computed in
+/// the same forward pass, so a file scanned for any reason yields the full
+/// statistics for the cache.
+#[derive(Debug, Clone, Default)]
+struct ArchiveStats {
+    /// File length when scanned; a mismatch on a later read invalidates the
+    /// entry (an archive is never appended to, so this only ever catches a
+    /// file that is not actually one of ours).
+    len: u64,
+    approved: usize,
+    blocked: usize,
+    errors: usize,
+    by_program: HashMap<String, usize>,
+}
+
+impl ArchiveStats {
+    fn records(&self, selector: AuditSelector) -> usize {
+        match selector {
+            AuditSelector::All => self.approved + self.blocked,
+            AuditSelector::Approved => self.approved,
+            AuditSelector::Blocked => self.blocked,
+        }
+    }
+}
+
+/// One forward pass over one file: the statistics plus the last `tail`
+/// records the selector keeps and the last `tail` error records, each in
+/// file order.
+struct FileScan {
+    stats: ArchiveStats,
+    records: VecDeque<AuditRecord>,
+    errors: VecDeque<AuditErrorRecord>,
+}
+
+fn scan_file(file: File, len: u64, tail: usize, selector: AuditSelector) -> FileScan {
+    let mut stats = ArchiveStats {
+        len,
+        ..Default::default()
+    };
+    let mut records: VecDeque<AuditRecord> = VecDeque::new();
+    let mut errors: VecDeque<AuditErrorRecord> = VecDeque::new();
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<AuditRecord>(&line) {
+            Ok(r) => {
+                if r.approved {
+                    stats.approved += 1;
+                } else {
+                    stats.blocked += 1;
+                }
+                *stats.by_program.entry(r.program_id.clone()).or_insert(0) += 1;
+                if selector.keeps(&r) && tail > 0 {
+                    if records.len() == tail {
+                        records.pop_front();
+                    }
+                    records.push_back(r);
+                }
+            }
+            Err(_) => {
+                if let Ok(e) = serde_json::from_str::<AuditErrorRecord>(&line) {
+                    stats.errors += 1;
+                    if tail > 0 {
+                        if errors.len() == tail {
+                            errors.pop_front();
+                        }
+                        errors.push_back(e);
+                    }
+                }
+                // else: a lifecycle event, or a torn final line from a crash
+                // mid-write — neither is a verification record. Skipped, never
+                // an error: the log is append-only and a torn tail is expected.
+            }
+        }
+    }
+    FileScan {
+        stats,
+        records,
+        errors,
+    }
+}
+
+/// Make a directory entry change (a rename, a newly created file) durable.
+///
+/// On Unix the rename that rotation performs lives in the directory, and the
+/// directory has its own write-back cache; without this a power loss after
+/// rotation can leave the archive name unlinked while the data survives. On
+/// Windows `MoveFileEx` is journaled by NTFS and directories cannot be
+/// opened for sync, so this is a no-op there.
+fn sync_dir(path: &Path) {
+    #[cfg(unix)]
+    {
+        if let Some(dir) = path.parent() {
+            if let Ok(d) = File::open(dir) {
+                let _ = d.sync_all();
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
 }
 
 /// Which point in a transaction's lifecycle an audit record describes
@@ -290,6 +456,9 @@ impl AuditLog {
             writes_ok: Arc::new(AtomicU64::new(0)),
             writes_failed: Arc::new(AtomicU64::new(0)),
             rotation_seq: Arc::new(AtomicU64::new(0)),
+            rotations_ok: Arc::new(AtomicU64::new(0)),
+            rotations_failed: Arc::new(AtomicU64::new(0)),
+            archive_stats: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -301,6 +470,105 @@ impl AuditLog {
             active_bytes: std::fs::metadata(self.path.as_ref())
                 .map(|m| m.len())
                 .unwrap_or(0),
+            rotations_ok: self.rotations_ok.load(Ordering::Relaxed),
+            rotations_failed: self.rotations_failed.load(Ordering::Relaxed),
+            archive_count: self.archives().len() as u64,
+        }
+    }
+
+    /// Every rotated archive on disk, oldest first.
+    ///
+    /// Names embed a fixed-width unix-millis stamp and a zero-padded sequence,
+    /// so lexical order is chronological order — the same invariant
+    /// `prune_archives` relies on to remove the oldest.
+    fn archives(&self) -> Vec<PathBuf> {
+        let Some(dir) = self.path.parent() else {
+            return Vec::new();
+        };
+        let Some(stem) = self.path.file_name().and_then(|s| s.to_str()) else {
+            return Vec::new();
+        };
+        let prefix = format!("{stem}.");
+        let mut archives: Vec<PathBuf> = match std::fs::read_dir(dir) {
+            Ok(entries) => entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|n| n.starts_with(&prefix))
+                        .unwrap_or(false)
+                })
+                .collect(),
+            Err(_) => return Vec::new(),
+        };
+        archives.sort();
+        archives
+    }
+
+    /// The trail as it is at one instant: the archive list and an open handle
+    /// on the active file, taken under the append lock.
+    ///
+    /// Rotation happens under that lock, so it cannot slip between the two
+    /// steps. Without the lock a rotation in the gap would either hide the
+    /// just-rotated archive from this read (listed before the rename, opened
+    /// after) or count it twice (opened before, listed after). The lock is
+    /// held for a `read_dir` and an `open` — no scanning happens under it.
+    fn snapshot(&self) -> (Vec<PathBuf>, Option<(File, u64)>) {
+        let _guard = match self.file.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let archives = self.archives();
+        let active = File::open(self.path.as_ref())
+            .ok()
+            .and_then(|f| f.metadata().ok().map(|m| (f, m.len())));
+        (archives, active)
+    }
+
+    /// Statistics for one archive, from the cache or from one scan.
+    ///
+    /// Returns the scan too when one had to happen, so a caller that also
+    /// needs the file's records does not read it twice.
+    fn archive_scan(
+        &self,
+        path: &Path,
+        tail: usize,
+        selector: AuditSelector,
+        need_records: impl FnOnce(&ArchiveStats) -> bool,
+    ) -> Option<(ArchiveStats, Option<FileScan>)> {
+        let len = std::fs::metadata(path).ok()?.len();
+        if let Some(stats) = self.cached_stats(path, len) {
+            // Only the cached statistics know whether this archive can
+            // contribute anything the caller still lacks. Deciding without
+            // them — for example "the error tail is not full yet" — made the
+            // read path rescan every archive on every poll in the common
+            // case of a trail with no error records at all, which is the
+            // cost the cache exists to remove (caught by
+            // `archive_statistics_are_cached_and_track_pruning`).
+            if !need_records(&stats) {
+                return Some((stats, None));
+            }
+        }
+        let file = File::open(path).ok()?;
+        let scan = scan_file(file, len, tail, selector);
+        if let Ok(mut cache) = self.archive_stats.lock() {
+            cache.insert(path.to_path_buf(), scan.stats.clone());
+        }
+        Some((scan.stats.clone(), Some(scan)))
+    }
+
+    /// The cached statistics for an archive, if present and still valid
+    /// for its current length.
+    fn cached_stats(&self, path: &Path, len: u64) -> Option<ArchiveStats> {
+        let cache = self.archive_stats.lock().ok()?;
+        cache.get(path).filter(|s| s.len == len).cloned()
+    }
+
+    /// Drop cache entries for archives that no longer exist (pruned).
+    fn forget_missing_archives(&self, present: &[PathBuf]) {
+        if let Ok(mut cache) = self.archive_stats.lock() {
+            cache.retain(|p, _| present.contains(p));
         }
     }
 
@@ -367,10 +635,31 @@ impl AuditLog {
             .unwrap_or(0);
         let archive = self.next_archive_path(stamp);
 
-        // If the rename fails (permissions, cross-device), keep appending to
-        // the current file rather than losing the record — an oversized log
-        // is strictly better than a dropped audit trail.
-        if std::fs::rename(self.path.as_ref(), &archive).is_err() {
+        // If the rename fails (permissions, cross-device, another process
+        // holding the file without delete-sharing), keep appending to the
+        // current file rather than losing the record — an oversized log is
+        // strictly better than a dropped audit trail. It is retried on the
+        // next append and COUNTED, so /health shows a log that cannot rotate
+        // instead of one that merely looks large.
+        //
+        // The rename happens with our own append handle still open. That is
+        // fine on every platform Rust's std supports: on Unix a rename never
+        // cares about open descriptors, and on Windows `OpenOptions` opens
+        // with `FILE_SHARE_DELETE`, under which `MoveFileEx` succeeds on an
+        // open file (verified by `active_audit_file_is_bounded_by_rotation`
+        // running on NTFS). What breaks it is a FOREIGN handle without that
+        // share mode — `rotation_failure_is_counted_and_never_drops_a_record`
+        // reproduces exactly that.
+        if let Err(e) = std::fs::rename(self.path.as_ref(), &archive) {
+            let n = self.rotations_failed.fetch_add(1, Ordering::Relaxed) + 1;
+            // Once per failure would page on every append; log the first and
+            // then every 1000th so the condition stays visible without
+            // flooding.
+            if n == 1 || n.is_multiple_of(1000) {
+                tracing::error!(
+                    "audit rotation failed ({n} times): {e}; the active file keeps growing"
+                );
+            }
             return;
         }
         match OpenOptions::new()
@@ -380,6 +669,11 @@ impl AuditLog {
         {
             Ok(fresh) => {
                 *file = fresh;
+                // The rename and the new file are directory entries; make
+                // them durable so a crash right after rotation cannot lose
+                // the archive's NAME while its data survives.
+                sync_dir(self.path.as_ref());
+                self.rotations_ok.fetch_add(1, Ordering::Relaxed);
                 tracing::info!("audit log rotated to {}", archive.display());
                 self.prune_archives();
             }
@@ -387,6 +681,7 @@ impl AuditLog {
                 // We already renamed the old file away; try to restore it so
                 // no window exists with no audit file at all.
                 let _ = std::fs::rename(&archive, self.path.as_ref());
+                self.rotations_failed.fetch_add(1, Ordering::Relaxed);
                 tracing::error!("audit rotation failed to reopen log: {}", e);
             }
         }
@@ -398,132 +693,168 @@ impl AuditLog {
         if self.max_archives == 0 {
             return;
         }
-        let dir = match self.path.parent() {
-            Some(d) => d,
-            None => return,
-        };
-        let stem = match self.path.file_name().and_then(|s| s.to_str()) {
-            Some(s) => s,
-            None => return,
-        };
-        let prefix = format!("{stem}.");
-        let mut archives: Vec<PathBuf> = match std::fs::read_dir(dir) {
-            Ok(entries) => entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|s| s.to_str())
-                        .map(|n| n.starts_with(&prefix))
-                        .unwrap_or(false)
-                })
-                .collect(),
-            Err(_) => return,
-        };
-        // Names embed a zero-padded-by-magnitude unix-millis stamp; lexical
-        // sort matches chronological order for all realistic timestamps.
-        archives.sort();
+        let mut archives = self.archives();
         while archives.len() > self.max_archives {
             let oldest = archives.remove(0);
             if let Err(e) = std::fs::remove_file(&oldest) {
                 tracing::warn!("audit archive prune failed for {}: {}", oldest.display(), e);
             }
         }
+        self.forget_missing_archives(&archives);
     }
 
-    /// Bounded stream of the most recent `tail` records, oldest-first in the
-    /// returned vectors.
+    /// The most recent `tail` records the selector keeps, oldest-first, from
+    /// the WHOLE trail: every rotated archive and the active file.
     ///
-    /// Keeps only the last `tail` records passing `keep` (and the last
-    /// `tail` error-path records), so memory stays O(tail) no matter how
-    /// large the log grows — the dashboard polls these endpoints every few
-    /// seconds and must never re-materialize an unbounded file per request.
-    /// Returns `(records, error_records, total_records, total_errors)` where
-    /// the totals count every matching record / every error record in the
-    /// log, so callers can report true volume without holding it in memory.
+    /// Returns `(records, error_records, total_records, total_errors)`. The
+    /// totals are exact over the whole trail. Memory is bounded by `tail`
+    /// plus one archive's per-program statistics; it never depends on how
+    /// large the trail has grown. `tail == 0` retains nothing and still
+    /// reports exact totals.
     ///
-    /// Malformed lines (partial writes, corruption) are skipped defensively
-    /// — the log is append-only, so a torn final line is possible and must
-    /// never fail the read.
+    /// Cost: the active file is scanned on every call — it is bounded by
+    /// rotation, which is what rotation is for. An archive is scanned at
+    /// most once for its statistics (cached; archives are immutable) and
+    /// again only when its records are needed because the newer files did
+    /// not hold `tail` of them. So a dashboard poll on a long-running node
+    /// reads the active file plus, occasionally, the newest archive — never
+    /// the whole history.
     ///
-    /// Contract: memory is bounded by `tail` — at most `tail` matching
-    /// records and at most `tail` error records are retained (`tail == 0`
-    /// retains nothing). The returned totals count every matching record in
-    /// the log, so they are exact without a sidecar counter. The read is a
-    /// single forward scan, so time is O(log size) per call — fine for the
-    /// dashboard's poll cadence on a single core node; an incremental index
-    /// can make polls O(1) if the log ever outgrows a full scan.
+    /// Malformed lines (a torn final line from a crash mid-write) and
+    /// lifecycle-event lines are skipped, never an error.
     pub fn read_tail_filtered(
         &self,
         tail: usize,
-        keep: impl Fn(&AuditRecord) -> bool,
+        selector: AuditSelector,
     ) -> (Vec<AuditRecord>, Vec<AuditErrorRecord>, usize, usize) {
-        let file = match File::open(self.path.as_ref()) {
-            Ok(f) => f,
-            Err(_) => return (Vec::new(), Vec::new(), 0, 0),
-        };
-        let mut records: std::collections::VecDeque<AuditRecord> = Default::default();
-        let mut errors: std::collections::VecDeque<AuditErrorRecord> = Default::default();
+        let (archives, active) = self.snapshot();
+        self.forget_missing_archives(&archives);
+
+        // Newest first: the active file, then archives from the newest back.
+        // Each file contributes its last records ahead of everything older,
+        // so the result is assembled from the newest end and older files are
+        // opened for records only while there is still room.
+        let mut records: VecDeque<AuditRecord> = VecDeque::new();
+        let mut errors: VecDeque<AuditErrorRecord> = VecDeque::new();
         let mut total_records = 0usize;
         let mut total_errors = 0usize;
-        for line in BufReader::new(file).lines().map_while(Result::ok) {
-            if line.trim().is_empty() {
-                continue;
+
+        let take = |scan: FileScan,
+                    records: &mut VecDeque<AuditRecord>,
+                    errors: &mut VecDeque<AuditErrorRecord>| {
+            // Prepend this (older) file's newest records under the ones
+            // already collected, keeping the overall newest `tail`.
+            for r in scan.records.into_iter().rev() {
+                if records.len() == tail {
+                    break;
+                }
+                records.push_front(r);
             }
-            match serde_json::from_str::<AuditRecord>(&line) {
-                Ok(r) => {
-                    if keep(&r) {
-                        total_records += 1;
-                        if tail > 0 {
-                            if records.len() == tail {
-                                records.pop_front();
-                            }
-                            records.push_back(r);
-                        }
-                    }
+            for e in scan.errors.into_iter().rev() {
+                if errors.len() == tail {
+                    break;
                 }
-                Err(_) => {
-                    if let Ok(e) = serde_json::from_str::<AuditErrorRecord>(&line) {
-                        total_errors += 1;
-                        if tail > 0 {
-                            if errors.len() == tail {
-                                errors.pop_front();
-                            }
-                            errors.push_back(e);
-                        }
-                    }
-                    // else: malformed — skip (append-only log, torn tail)
-                }
+                errors.push_front(e);
+            }
+        };
+
+        if let Some((file, len)) = active {
+            let scan = scan_file(file, len, tail, selector);
+            total_records += scan.stats.records(selector);
+            total_errors += scan.stats.errors;
+            take(scan, &mut records, &mut errors);
+        }
+        for archive in archives.iter().rev() {
+            let room_for_records = records.len() < tail;
+            let room_for_errors = errors.len() < tail;
+            let need_records = |stats: &ArchiveStats| {
+                (room_for_records && stats.records(selector) > 0)
+                    || (room_for_errors && stats.errors > 0)
+            };
+            let Some((stats, scan)) = self.archive_scan(archive, tail, selector, need_records)
+            else {
+                continue;
+            };
+            total_records += stats.records(selector);
+            total_errors += stats.errors;
+            if let Some(scan) = scan {
+                take(scan, &mut records, &mut errors);
             }
         }
         (records.into(), errors.into(), total_records, total_errors)
     }
 
-    /// Streaming per-program observation counts over the whole log.
+    /// The most recent verification record for `content_hash`, from the whole
+    /// trail.
+    ///
+    /// This is what L8 reconciliation joins on. It walks newest-first and
+    /// stops at the first file holding a match, taking the LAST match in that
+    /// file: a caller may verify the same transaction more than once, and the
+    /// decision that governed is the most recent one before submission.
+    ///
+    /// Not cached, and deliberately not a selector: a content hash is chosen
+    /// per call, and this lookup is rare (once per execution audit) compared
+    /// with the dashboard's polling.
+    pub fn last_verification_for(&self, content_hash: &str) -> Option<AuditRecord> {
+        let wanted = content_hash.trim();
+        if wanted.is_empty() {
+            return None;
+        }
+        let (archives, active) = self.snapshot();
+        let find_in = |file: File| -> Option<AuditRecord> {
+            let mut last = None;
+            for line in BufReader::new(file).lines().map_while(Result::ok) {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                if let Ok(r) = serde_json::from_str::<AuditRecord>(&line) {
+                    if r.content_hash == wanted {
+                        last = Some(r);
+                    }
+                }
+            }
+            last
+        };
+        if let Some((file, _)) = active {
+            if let Some(r) = find_in(file) {
+                return Some(r);
+            }
+        }
+        for archive in archives.iter().rev() {
+            if let Ok(file) = File::open(archive) {
+                if let Some(r) = find_in(file) {
+                    return Some(r);
+                }
+            }
+        }
+        None
+    }
+
+    /// Per-program observation counts over the whole trail.
     ///
     /// Memory is bounded by the number of distinct programs seen (never by
-    /// log size) — used by `/api/protocols/top`.
-    pub fn observations_by_program(&self) -> std::collections::HashMap<String, usize> {
-        let file = match File::open(self.path.as_ref()) {
-            Ok(f) => f,
-            Err(_) => return std::collections::HashMap::new(),
-        };
-        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        for line in BufReader::new(file).lines().map_while(Result::ok) {
-            if line.trim().is_empty() {
-                continue;
+    /// trail size) — used by `/api/protocols/top`. Archives contribute from
+    /// the cache after their first scan.
+    pub fn observations_by_program(&self) -> HashMap<String, usize> {
+        let (archives, active) = self.snapshot();
+        self.forget_missing_archives(&archives);
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        if let Some((file, len)) = active {
+            let scan = scan_file(file, len, 0, AuditSelector::All);
+            for (program, n) in scan.stats.by_program {
+                *counts.entry(program).or_insert(0) += n;
             }
-            if let Ok(r) = serde_json::from_str::<AuditRecord>(&line) {
-                *counts.entry(r.program_id).or_insert(0) += 1;
+        }
+        for archive in &archives {
+            if let Some((stats, _)) = self.archive_scan(archive, 0, AuditSelector::All, |_| false) {
+                for (program, n) in stats.by_program {
+                    *counts.entry(program).or_insert(0) += n;
+                }
             }
-            // Error records / malformed lines do not contribute observations.
         }
         counts
     }
 
-    /// Append one record, flushing immediately so the line is durable before
-    /// the HTTP response is sent. A write failure is logged, never fatal —
-    /// verification must not fail because the audit disk is unavailable.
     /// Append a verification record. Returns whether it is durably on disk.
     ///
     /// The return value used to be `()`. Failures were counted and otherwise
@@ -554,7 +885,19 @@ impl AuditLog {
         self.append_line(record)
     }
 
-    /// Returns true when the line is written AND flushed.
+    /// Returns true when the line is written AND synced to the storage device.
+    ///
+    /// `sync_data`, not `flush`. `std::fs::File` is unbuffered, so its
+    /// `flush` is a no-op that returns `Ok(())` without a system call — the
+    /// previous code called it and then reported the record as "durably on
+    /// disk", which was true only of the operating system's page cache. A
+    /// process crash would not have lost the record; a power loss or kernel
+    /// panic between the write and the next write-back would, and the caller
+    /// had already been told the approval was recorded. `sync_data` is
+    /// `fdatasync` / `FlushFileBuffers`: the data is on the device (or in its
+    /// battery-backed cache) when it returns. The cost is one device sync per
+    /// audit record; `audit_append_syncs_the_device` measures it so the
+    /// number in the report is observed, not assumed.
     fn append_line<T: serde::Serialize>(&self, record: &T) -> bool {
         let line = match serde_json::to_string(record) {
             Ok(l) => l,
@@ -569,7 +912,7 @@ impl AuditLog {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        if let Err(e) = writeln!(file, "{}", line).and_then(|_| file.flush()) {
+        if let Err(e) = writeln!(file, "{}", line).and_then(|_| file.sync_data()) {
             // Counted AND reported. The comment here used to say a failing
             // audit disk "must not take down verification", and that reasoning
             // is right for the process — the server should stay up — but wrong
@@ -980,7 +1323,7 @@ mod tests {
         drop(f);
 
         let log = AuditLog::open(&path).unwrap();
-        let (records, errors, total, _) = log.read_tail_filtered(4, |r| r.approved);
+        let (records, errors, total, _) = log.read_tail_filtered(4, AuditSelector::Approved);
         // 10 records, 5 approved; keep filter -> 5 approved, cap 4 -> last 4.
         assert_eq!(total, 5, "total must count all approved records");
         assert_eq!(records.len(), 4, "tail cap must bound the retained set");
@@ -991,7 +1334,7 @@ mod tests {
         assert!(errors.is_empty(), "no error records written");
 
         // tail == 0 retains nothing but still reports exact totals.
-        let (empty, _, zero_total, _) = log.read_tail_filtered(0, |_| true);
+        let (empty, _, zero_total, _) = log.read_tail_filtered(0, AuditSelector::All);
         assert!(empty.is_empty(), "tail 0 must retain nothing");
         assert_eq!(zero_total, 10, "totals stay exact under tail 0");
 
@@ -1006,7 +1349,7 @@ mod tests {
                 status: 400,
             }));
         }
-        let (_, errs, _, err_total) = log.read_tail_filtered(2, |_| true);
+        let (_, errs, _, err_total) = log.read_tail_filtered(2, AuditSelector::All);
         assert_eq!(err_total, 4, "all error records counted");
         assert_eq!(errs.len(), 2, "error ring capped at tail");
         // Most recent two by file position: prg2, prg3 (chronological).
@@ -1019,6 +1362,409 @@ mod tests {
         assert_eq!(counts.get("BBB"), Some(&5));
         assert_eq!(counts.len(), 2);
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A record with a chosen id, hash, program and verdict.
+    fn rec_with(id: &str, hash: &str, program: &str, approved: bool) -> AuditRecord {
+        let mut r = rec(id);
+        r.content_hash = hash.to_string();
+        r.program_id = program.to_string();
+        r.approved = approved;
+        r.policy_verdict = if approved { "Approved" } else { "Blocked" }.to_string();
+        r
+    }
+
+    /// Lines in the active file only — what the read path used to see.
+    fn active_only_count(dir: &Path) -> usize {
+        std::fs::read_to_string(audit_path(dir))
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count()
+    }
+
+    /// The read path must account for the whole trail, not the active file.
+    ///
+    /// Before 2026-09-12 `read_tail_filtered` and `observations_by_program`
+    /// opened only `audit.jsonl`. After a rotation the dashboard's totals fell
+    /// to whatever had been written since, `/api/protocols/top` forgot every
+    /// program not seen since, and — the part that matters — L8 reconciliation
+    /// could no longer find a verdict that had rotated out, so a BLOCKED
+    /// transaction submitted anyway reconciled as `NoVerificationOnRecord`
+    /// instead of `BlockedButExecuted`.
+    ///
+    /// Anti-vacuity: the test first proves the active file alone holds fewer
+    /// records than were written, so agreement with the total is agreement
+    /// with the archives, not with the active file.
+    #[test]
+    fn read_path_covers_every_archive_after_rotation() {
+        let dir = temp_dir("read-archives");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        let total = 120usize;
+        let mut blocked = 0usize;
+        for i in 0..total {
+            let approved = i % 3 != 0;
+            if !approved {
+                blocked += 1;
+            }
+            let program = if i % 2 == 0 { "ProgA" } else { "ProgB" };
+            assert!(log.append(&rec_with(
+                &format!("id-{i}"),
+                &format!("hash-{i}"),
+                program,
+                approved
+            )));
+        }
+        assert!(
+            archives_in(&dir).len() >= 3,
+            "the test needs several archives to be meaningful"
+        );
+        let active = active_only_count(&dir);
+        assert!(
+            active < total,
+            "the active file must hold fewer than all records ({active} of {total}) or this test proves nothing"
+        );
+
+        // Totals over the whole trail.
+        let (records, errors, n_all, n_err) = log.read_tail_filtered(10, AuditSelector::All);
+        assert_eq!(
+            n_all, total,
+            "total must count every archive, not the active file"
+        );
+        assert_eq!(n_err, 0);
+        assert!(errors.is_empty());
+        // The newest ten, oldest-first, crossing the file boundary if needed.
+        let ids: Vec<String> = records.iter().map(|r| r.audit_trail_id.clone()).collect();
+        let want: Vec<String> = (total - 10..total).map(|i| format!("id-{i}")).collect();
+        assert_eq!(ids, want, "the tail must be the newest records in order");
+
+        let (blocked_records, _, n_blocked, _) =
+            log.read_tail_filtered(1000, AuditSelector::Blocked);
+        assert_eq!(n_blocked, blocked);
+        assert_eq!(
+            blocked_records.len(),
+            blocked,
+            "a large tail returns every blocked record"
+        );
+        assert!(blocked_records.iter().all(|r| !r.approved));
+        // And in order, across every file boundary.
+        let ids: Vec<String> = blocked_records
+            .iter()
+            .map(|r| r.audit_trail_id.clone())
+            .collect();
+        let want: Vec<String> = (0..total)
+            .filter(|i| i % 3 == 0)
+            .map(|i| format!("id-{i}"))
+            .collect();
+        assert_eq!(ids, want);
+
+        // Per-program counts sum across archives.
+        let counts = log.observations_by_program();
+        assert_eq!(counts.get("ProgA").copied(), Some(total / 2));
+        assert_eq!(counts.get("ProgB").copied(), Some(total / 2));
+
+        // L8's join finds a verdict that lives in the OLDEST archive.
+        let found = log
+            .last_verification_for("hash-0")
+            .expect("the first record rotated into the oldest archive and must still be found");
+        assert_eq!(found.audit_trail_id, "id-0");
+        assert!(!found.approved, "id-0 was blocked (0 % 3 == 0)");
+        assert!(log.last_verification_for("hash-never").is_none());
+        assert!(log.last_verification_for("   ").is_none());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// When the same content hash was verified more than once, the record
+    /// that governed is the LAST one — even when the earlier verdict is in a
+    /// newer-looking position of an older file.
+    #[test]
+    fn last_verification_is_the_newest_across_files() {
+        let dir = temp_dir("last-across");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        // Blocked first, then padding to force rotation, then approved.
+        assert!(log.append(&rec_with("first", "same-hash", "P", false)));
+        for i in 0..40 {
+            assert!(log.append(&rec_with(&format!("pad-{i}"), "other", "P", true)));
+        }
+        assert!(log.append(&rec_with("second", "same-hash", "P", true)));
+        for i in 0..40 {
+            assert!(log.append(&rec_with(&format!("pad2-{i}"), "other", "P", true)));
+        }
+        assert!(archives_in(&dir).len() >= 2);
+        let governed = log.last_verification_for("same-hash").unwrap();
+        assert_eq!(governed.audit_trail_id, "second");
+        assert!(governed.approved);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Archive statistics are computed once and forgotten when pruned.
+    ///
+    /// The cache is what keeps the read path's cost bounded by the active
+    /// file rather than the whole history; a cache that never populated
+    /// would silently reintroduce the full-history scan on every poll, and
+    /// one that kept pruned archives would report records that no longer
+    /// exist.
+    #[test]
+    fn archive_statistics_are_cached_and_track_pruning() {
+        let dir = temp_dir("cache");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        for i in 0..60 {
+            assert!(log.append(&rec_with(&format!("id-{i}"), "h", "P", i % 2 == 0)));
+        }
+        let archives = archives_in(&dir);
+        assert!(archives.len() >= 2);
+        assert!(
+            log.archive_stats.lock().unwrap().is_empty(),
+            "nothing read yet"
+        );
+
+        let (_, _, n1, _) = log.read_tail_filtered(1, AuditSelector::All);
+        assert_eq!(n1, 60);
+        let cached = log.archive_stats.lock().unwrap().len();
+        assert_eq!(
+            cached,
+            archives.len(),
+            "every archive's statistics are cached after one read"
+        );
+
+        // The cache is consulted: corrupt one record in the oldest archive
+        // WITHOUT changing the file length. A rescan would now skip that line
+        // as malformed and report 59; the cache still says 60.
+        let oldest = archives[0].clone();
+        let original = std::fs::read_to_string(&oldest).unwrap();
+        let same_length = original.replacen("\"approved\":true", "\"approved\":truX", 1);
+        assert_eq!(original.len(), same_length.len());
+        assert_ne!(original, same_length);
+        std::fs::write(&oldest, &same_length).unwrap();
+        let (_, _, n2, _) = log.read_tail_filtered(1, AuditSelector::All);
+        assert_eq!(n2, 60, "an unchanged length is served from the cache");
+
+        // A length change invalidates: the corrupted line is now seen.
+        std::fs::write(
+            &oldest,
+            format!(
+                "{same_length}
+"
+            ),
+        )
+        .unwrap();
+        let (_, _, n3, _) = log.read_tail_filtered(1, AuditSelector::All);
+        assert_eq!(n3, 59, "a length mismatch re-scans the archive");
+        assert_eq!(
+            log.archive_stats
+                .lock()
+                .unwrap()
+                .get(&oldest)
+                .map(|s| s.len),
+            Some(std::fs::metadata(&oldest).unwrap().len()),
+            "the rescan re-caches under the new length"
+        );
+
+        // Pruning drops the entry.
+        let pruning = AuditLog::open_with_rotation(audit_path(&dir), 512, 1).unwrap();
+        let _ = pruning.read_tail_filtered(1, AuditSelector::All);
+        for i in 0..60 {
+            assert!(pruning.append(&rec_with(&format!("late-{i}"), "h", "P", true)));
+        }
+        let remaining = archives_in(&dir);
+        assert_eq!(remaining.len(), 1, "max_archives == 1 keeps one archive");
+        let _ = pruning.read_tail_filtered(1, AuditSelector::All);
+        let cache = pruning.archive_stats.lock().unwrap();
+        assert!(
+            cache.keys().all(|k| remaining.contains(k)),
+            "cache must not hold pruned archives: {:?}",
+            cache.keys().collect::<Vec<_>>()
+        );
+        drop(cache);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Readers polling while the writer rotates never see a torn trail, and
+    /// the final accounting is exact.
+    ///
+    /// The snapshot (archive list + active handle) is taken under the append
+    /// lock so a rotation cannot land between the two. Without that a read
+    /// could miss the just-rotated archive (listed before the rename, opened
+    /// after) or count it twice.
+    #[test]
+    fn concurrent_reads_during_rotation_never_over_or_under_count() {
+        let dir = temp_dir("concurrent");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 1024, 0).unwrap();
+        let total = 400usize;
+        let writer = {
+            let log = log.clone();
+            std::thread::spawn(move || {
+                for i in 0..total {
+                    assert!(log.append(&rec_with(&format!("id-{i}"), "h", "P", true)));
+                }
+            })
+        };
+        let reader = {
+            let log = log.clone();
+            std::thread::spawn(move || {
+                let mut last = 0usize;
+                for _ in 0..200 {
+                    let (records, _, n, _) = log.read_tail_filtered(5, AuditSelector::All);
+                    // Monotone: the trail only grows.
+                    assert!(n >= last, "total went backwards: {last} -> {n}");
+                    assert!(n <= total);
+                    last = n;
+                    // Whatever tail we got is in order and contiguous.
+                    let ids: Vec<usize> = records
+                        .iter()
+                        .map(|r| r.audit_trail_id[3..].parse().unwrap())
+                        .collect();
+                    for w in ids.windows(2) {
+                        assert_eq!(w[1], w[0] + 1, "tail must be contiguous: {ids:?}");
+                    }
+                    std::thread::yield_now();
+                }
+            })
+        };
+        writer.join().unwrap();
+        reader.join().unwrap();
+        let (_, _, n, _) = log.read_tail_filtered(1, AuditSelector::All);
+        assert_eq!(n, total);
+        assert!(log.health().rotations_ok > 0);
+        assert_eq!(log.health().rotations_failed, 0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A rotation that cannot happen is counted, and the record that
+    /// triggered it is still appended.
+    ///
+    /// On Windows the realistic cause is a foreign handle without
+    /// `FILE_SHARE_DELETE` — a log shipper, an antivirus scanner,
+    /// `Get-Content -Wait`. Rust's own handles carry that share mode, which
+    /// is why the log's own append handle never blocks its own rotation; this
+    /// test opens the file the way a foreign program would.
+    #[cfg(windows)]
+    #[test]
+    fn rotation_failure_is_counted_and_never_drops_a_record() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 0x1;
+        const FILE_SHARE_WRITE: u32 = 0x2;
+        let dir = temp_dir("foreign-handle");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        let foreign = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE) // no FILE_SHARE_DELETE
+            .open(audit_path(&dir))
+            .unwrap();
+        for i in 0..40 {
+            assert!(
+                log.append(&rec_with(&format!("held-{i}"), "h", "P", true)),
+                "the record must be appended even though rotation is blocked"
+            );
+        }
+        let h = log.health();
+        assert!(h.rotations_failed > 0, "a blocked rotation must be counted");
+        assert_eq!(h.rotations_ok, 0);
+        assert!(archives_in(&dir).is_empty());
+        assert_eq!(active_only_count(&dir), 40, "nothing was dropped");
+        assert!(h.active_bytes > 512, "the active file kept growing");
+
+        // Release the foreign handle: the very next append rotates.
+        drop(foreign);
+        assert!(log.append(&rec_with("after", "h", "P", true)));
+        assert!(
+            log.health().rotations_ok >= 1,
+            "rotation resumes once the handle is gone"
+        );
+        assert!(!archives_in(&dir).is_empty());
+        let (_, _, n, _) = log.read_tail_filtered(1, AuditSelector::All);
+        assert_eq!(
+            n, 41,
+            "every record is still accounted for across the rotation"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The Unix twin: a directory the process cannot rename inside.
+    #[cfg(unix)]
+    #[test]
+    fn rotation_failure_is_counted_and_never_drops_a_record() {
+        use std::os::unix::fs::PermissionsExt;
+        // Root ignores directory permissions; the test is meaningless there.
+        if unsafe { libc_geteuid() } == 0 {
+            eprintln!("skipping: running as root, directory permissions do not apply");
+            return;
+        }
+        let dir = temp_dir("readonly-dir");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 512, 0).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        for i in 0..40 {
+            assert!(log.append(&rec_with(&format!("held-{i}"), "h", "P", true)));
+        }
+        let h = log.health();
+        assert!(h.rotations_failed > 0, "a blocked rotation must be counted");
+        assert_eq!(h.rotations_ok, 0);
+        assert_eq!(active_only_count(&dir), 40, "nothing was dropped");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(log.append(&rec_with("after", "h", "P", true)));
+        assert!(log.health().rotations_ok >= 1);
+        let (_, _, n, _) = log.read_tail_filtered(1, AuditSelector::All);
+        assert_eq!(n, 41);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    extern "C" {
+        #[link_name = "geteuid"]
+        fn libc_geteuid() -> u32;
+    }
+
+    /// Measures what per-record device sync costs on this machine — and
+    /// deliberately asserts nothing about it.
+    ///
+    /// `append` calls `sync_data` (a real device flush) instead of the no-op
+    /// `File::flush`. Nothing observable from userspace distinguishes the
+    /// two until the machine loses power, and timing cannot stand in for
+    /// that: a first version of this test asserted "at least 2 µs per
+    /// append" and still passed with `flush` restored, because a plain write
+    /// syscall already costs more than that — a vacuous assertion, worse
+    /// than none. On tmpfs or a fast NVMe `sync_data` can be microseconds
+    /// too, so no threshold is honest across machines.
+    ///
+    /// So this prints three numbers — the cost of an append, of a bare
+    /// `sync_data`, and of a bare `flush` on the same file — for the report
+    /// to carry as observed values. The guarantee itself is established by
+    /// reading `append_line`, and by the reviewer who checks that its
+    /// `and_then` still names `sync_data`.
+    #[test]
+    fn audit_append_syncs_the_device() {
+        let dir = temp_dir("sync-cost");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        let n = 200u32;
+        let started = std::time::Instant::now();
+        for i in 0..n {
+            assert!(log.append(&rec_with(&format!("s-{i}"), "h", "P", true)));
+        }
+        let per_append = started.elapsed() / n;
+
+        let mut probe = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("probe"))
+            .unwrap();
+        let started = std::time::Instant::now();
+        for _ in 0..n {
+            probe.write_all(b"x").unwrap();
+            probe.sync_data().unwrap();
+        }
+        let per_sync = started.elapsed() / n;
+        let started = std::time::Instant::now();
+        for _ in 0..n {
+            probe.write_all(b"x").unwrap();
+            probe.flush().unwrap();
+        }
+        let per_flush = started.elapsed() / n;
+        println!(
+            "audit append: {per_append:?}; bare write+sync_data: {per_sync:?}; bare write+flush: {per_flush:?} ({n} each, {})",
+            std::env::consts::OS
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

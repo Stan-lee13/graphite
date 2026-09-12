@@ -1,5 +1,7 @@
 # C27 — Drift + Kamino Lending on-boarding: official IDLs, live-verified discriminators, source-scoped PDA grounding
 
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Date:** 2026-08-09 · **Round Six** · Supersedes nothing; adds two BattleTested manifests.
 
 ## Scope

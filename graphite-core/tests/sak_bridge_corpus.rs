@@ -258,3 +258,160 @@ fn every_entry_has_a_distinct_digest() {
         );
     }
 }
+
+// ─── Byte-level mutations ─────────────────────────────────────────────────────
+
+/// Apply one recorded mutation to a base entry's bytes, exactly as
+/// `emit-corpus.ts` did on its side.
+fn mutate(raw: &[u8], m: &serde_json::Value) -> Vec<u8> {
+    match m["op"].as_str().expect("op") {
+        "truncate" => raw[..m["at"].as_u64().unwrap() as usize].to_vec(),
+        "flip" => {
+            let mut out = raw.to_vec();
+            let at = m["at"].as_u64().unwrap() as usize;
+            out[at] ^= 0xff;
+            out
+        }
+        "prefix" => {
+            let mut out = bytes(&m["bytes"]);
+            out.extend_from_slice(&raw[1..]);
+            out
+        }
+        "append" => {
+            let mut out = raw.to_vec();
+            out.extend_from_slice(&bytes(&m["bytes"]));
+            out
+        }
+        other => panic!("unknown mutation op {other}"),
+    }
+}
+
+fn mutations() -> Vec<serde_json::Value> {
+    let raw: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/artifacts/sak_bridge_corpus.json"))
+            .expect("corpus must parse");
+    raw["mutations"].as_array().expect("mutations").clone()
+}
+
+/// The same 1,641 damaged transactions, read by both sides.
+///
+/// Three things are required, and one is measured.
+///
+/// Required: (1) Graphite's `message_bytes` — the same compact-u16 reader
+/// `parse_transaction` uses — accepts a mutation exactly when the bridge's
+/// `messageOf` does, and yields the same slice. These two functions decide
+/// whether a signed transaction's message is the message that was verified;
+/// a disagreement is an outage at the signing gate. (2) Nothing panics: a
+/// parser that panics on one byte of a hostile artifact is a denial of
+/// service on the gate. (3) Graphite never accepts bytes that
+/// `@solana/web3.js` refuses — it is at least as strict as the SDK on every
+/// mutation here.
+///
+/// Measured: how often the SDK accepts bytes Graphite refuses, and why. The
+/// SDK is not the authority — the runtime is — and `web3.js` is lenient in
+/// ways the runtime is not: its shortvec decoder accepts non-minimal
+/// encodings (`0x81 0x00` for 1), it slices a declared length past the end
+/// of the buffer instead of failing, and it ignores trailing bytes, all of
+/// which the RPC's wire decoder rejects (`reject_trailing_bytes`, and the
+/// `ShortU16` visitor's alias check). Graphite refuses each of those, and
+/// the test prints the breakdown so the number in the report is observed.
+#[test]
+fn every_byte_level_mutation_is_read_the_same_way_on_both_sides() {
+    use graphite_core::tx_artifact::{message_bytes, parse_transaction, ArtifactParseError};
+    let entries = corpus();
+    let ms = mutations();
+    assert!(
+        ms.len() >= 1_500,
+        "expected a large mutation set, got {}",
+        ms.len()
+    );
+
+    let mut prefix_agreed = 0usize;
+    let mut sdk_stricter: Vec<String> = Vec::new();
+    let mut graphite_stricter: HashMap<&'static str, usize> = HashMap::new();
+    let mut both_accept = 0usize;
+    let mut both_reject = 0usize;
+
+    for m in &ms {
+        let base = entries
+            .iter()
+            .find(|e| e["name"] == m["base"])
+            .expect("base entry");
+        let raw = bytes(&base["raw"]);
+        let mutated = mutate(&raw, &m["mutation"]);
+        let label = format!("{} {}", m["base"], m["mutation"]);
+
+        // (1) Prefix language: exact agreement with messageOf.
+        let ts_len = m["ts_message_len"].as_u64().map(|n| n as usize);
+        match (message_bytes(&mutated), ts_len) {
+            (Ok(slice), Some(len)) => {
+                assert_eq!(slice.len(), len, "{label}: message length");
+                let mut h = Sha256::new();
+                h.update(slice);
+                assert_eq!(
+                    hex::encode(h.finalize()),
+                    m["ts_message_sha256"].as_str().unwrap(),
+                    "{label}: message digest"
+                );
+                prefix_agreed += 1;
+            }
+            (Err(_), None) => prefix_agreed += 1,
+            (Ok(slice), None) => panic!(
+                "{label}: messageOf rejected these bytes but Graphite sliced a {}-byte message",
+                slice.len()
+            ),
+            (Err(e), Some(len)) => {
+                panic!("{label}: messageOf produced a {len}-byte message but Graphite refused: {e}")
+            }
+        }
+
+        // (2)/(3) The full parse, against the SDK's verdict.
+        let parsed = parse_transaction(&mutated);
+        let sdk = m["sdk_accepts"].as_bool().unwrap();
+        match (parsed, sdk) {
+            (Ok(_), true) => both_accept += 1,
+            (Err(_), false) => both_reject += 1,
+            (Ok(_), false) => sdk_stricter.push(label.clone()),
+            (Err(e), true) => {
+                let why = match e {
+                    ArtifactParseError::NonCanonicalLength { .. } => "non-canonical compact-u16",
+                    ArtifactParseError::LengthExceedsInput { .. } => "declared length past the end",
+                    ArtifactParseError::Truncated { .. } => "truncated field",
+                    ArtifactParseError::TrailingBytes { .. } => "trailing bytes",
+                    ArtifactParseError::LengthNotU16 { .. } => "length not a u16",
+                    ArtifactParseError::ImpossibleHeader { .. } => "impossible header",
+                    ArtifactParseError::ProgramIndexOutOfRange { .. } => {
+                        "program index out of range"
+                    }
+                    ArtifactParseError::AccountIndexOutOfRange { .. } => {
+                        "account index out of range"
+                    }
+                    ArtifactParseError::UnsupportedVersion(_) => "unsupported version",
+                    ArtifactParseError::Empty => "empty",
+                };
+                *graphite_stricter.entry(why).or_insert(0) += 1;
+            }
+        }
+    }
+
+    println!("prefix agreement: {prefix_agreed}/{}", ms.len());
+    println!("full parse — both accept: {both_accept}, both reject: {both_reject}");
+    println!("Graphite refuses what web3.js accepts, by reason: {graphite_stricter:?}");
+    println!(
+        "web3.js refuses what Graphite accepts: {}",
+        sdk_stricter.len()
+    );
+    for s in &sdk_stricter {
+        println!("  {s}");
+    }
+    assert_eq!(prefix_agreed, ms.len());
+    assert!(
+        sdk_stricter.is_empty(),
+        "Graphite accepted {} mutation(s) that web3.js refuses; each needs a named reason before it is allowed",
+        sdk_stricter.len()
+    );
+    // The bases themselves are accepted by both — the mutation set is not
+    // vacuous because it damages transactions both sides read.
+    assert!(both_accept > 0, "no mutation was accepted by both sides");
+    assert!(both_reject > 0, "no mutation was rejected by both sides");
+}

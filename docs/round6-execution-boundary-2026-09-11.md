@@ -1,5 +1,7 @@
 # Round 6 — Breaking the Final Transaction Identity Boundary
 
+> **Historical record (2026-09-11).** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Target.** `main` from `f10e4ab` to `5c33ea0`. The question: *can anything
 anywhere in the application mutate, reconstruct, reinterpret, retry or replace
 the approved transaction between Graphite approval and Solana submission?*

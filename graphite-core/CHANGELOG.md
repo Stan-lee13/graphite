@@ -3,6 +3,21 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 8 — remaining assumptions] — 2026-09-12
+
+Full report: `docs/round8-remaining-assumptions-2026-09-12.md`. Current status
+lives in `docs/CURRENT.md`; the entry below and every earlier one are history.
+
+- **Audit durability (P2, fixed)**: `AuditLog::append_line` called `File::flush()`, which is a no-op for an unbuffered `std::fs::File`, and then reported the record as "durably on disk". It now calls `sync_data()`; measured 1.5 ms per record on NTFS. The semantic-graph snapshot syncs its temp file before the rename for the same reason; rotation syncs the directory on Unix.
+- **Archive visibility (P2, fixed)**: `read_tail_filtered` and `observations_by_program` opened only the active file, so after a rotation the dashboard totals fell to what had been written since and L8 reconciliation could not find a verdict that had rotated out — a BLOCKED transaction submitted anyway reconciled as `NoVerificationOnRecord`. Both now cover every archive; `last_verification_for` is the L8 join. Per-archive statistics are cached (archives are immutable) so a poll costs the active file, not the history. Selector is a closed enum (`AuditSelector`) to make that cache possible.
+- **Rotation failure visibility (P3, fixed)**: a failed rename was retried silently on every append. Now counted (`rotations_failed`), surfaced on `/health` (`degraded_reasons`) and `/metrics`. Windows rename-while-open is NOT a finding: Rust's handles carry `FILE_SHARE_DELETE`; a foreign handle without it is reproduced in `rotation_failure_is_counted_and_never_drops_a_record`.
+- **Semantic-graph persistence (fixed)**: snapshot failures were a `warn!`. Now counted and surfaced (`graph_persistence` on `/health`, `graphite_graph_snapshots_failed_total`).
+- **Handler panics on audit failure (P3, fixed)**: `assert!(log.append_…)` in four handlers became structured responses: `/audit/event` and `/verify/execution` answer 503 "NOT recorded"; error-path records and operator actions report the outcome.
+- **Authentication default inverted (P2, fixed)**: an absent `GRAPHITE_API_KEY` used to mean dev mode. The server now refuses to start without a key unless `GRAPHITE_DEV_MODE=1`, and then only on loopback (`server::auth_posture`).
+- **Durable-nonce transactions (P1 gap, closed)**: detected from the bytes by the runtime's rule (`tx_artifact::durable_nonce`); refused at L2 by default; `GRAPHITE_ALLOW_DURABLE_NONCE=1` permits them only after the nonce account is fetched and matches (value, authority, authority signs). The bridge refuses to build one. Corpus entries emitted by `SystemProgram.nonceAdvance`.
+- **Byte-level cross-language corpus**: 1,641 mutations (every truncation, every single-byte flip, 14 signature-count prefixes, trailing bytes) of three transactions; Graphite's `message_bytes` — now the parser's own signature skip, exported — must agree with the bridge's `messageOf` exactly, and Graphite must never accept bytes `@solana/web3.js` refuses. `web3.js` is measured lenient where the runtime is not (non-minimal shortvec, over-long declared lengths, trailing bytes); Graphite refuses those.
+- **Documentation provenance**: `docs/CURRENT.md` is the single current-status page; every dated report carries a historical banner.
+
 ## [Current State — C58: 1,014 tests, 33 manifests, 803 instructions, 13 risk checks, 37-entry exploit corpus, deployment verified, full-stack auth, v0.2.0-beta] — 2026-08-19
 
 ### Summary of all changes C28–C55

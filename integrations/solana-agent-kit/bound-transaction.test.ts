@@ -230,3 +230,39 @@ test("a transaction with several instructions binds all of them", () => {
   ]);
   assert.notEqual(approvedDigest(reordered), digest);
 });
+
+// ─── Durable nonces ───────────────────────────────────────────────────────────
+
+const nonceAccount = Keypair.generate().publicKey;
+const nonceAdvance = () =>
+  SystemProgram.nonceAdvance({ noncePubkey: nonceAccount, authorizedPubkey: payer.publicKey });
+
+test("a durable-nonce transaction is refused at build: lastValidBlockHeight does not bound it", () => {
+  assert.throws(
+    () => build([nonceAdvance(), transfer()], "So11111111111111111111111111111111111111112"),
+    /durable-nonce transaction.*does not expire/,
+  );
+});
+
+test("a nonce advance anywhere but position 0 is an ordinary instruction (the runtime's rule)", () => {
+  // Same two instructions, advance second: builds normally. Graphite's L2
+  // makes the same distinction from the bytes.
+  const b = build([transfer(), nonceAdvance()]);
+  assert.equal(b.instructions().length, 2);
+});
+
+test("trailing bytes after the nonce-advance discriminator do not hide it", () => {
+  const ix = nonceAdvance();
+  const padded = new TransactionInstruction({
+    programId: ix.programId,
+    keys: ix.keys,
+    data: Buffer.concat([ix.data, Buffer.from([0xde, 0xad])]),
+  });
+  assert.throws(() => build([padded, transfer()]), /durable-nonce/);
+});
+
+test("a System instruction that is not an advance is not mistaken for one", () => {
+  // Transfer first (discriminator 2), then something else: no refusal.
+  const b = build([transfer(), transfer(1)]);
+  assert.equal(b.instructions().length, 2);
+});

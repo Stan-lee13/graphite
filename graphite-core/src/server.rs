@@ -1,8 +1,9 @@
 //! HTTP server for Graphite Core — exposes the verification API over HTTP.
 //!
 //! Production features:
-//! - Optional API-key auth (`GRAPHITE_API_KEY` env; Bearer token, constant-time
-//!   comparison). When unset the API is unauthenticated — set it in production.
+//! - API-key auth (`GRAPHITE_API_KEY` env; Bearer token, constant-time
+//!   comparison), required by default: the server refuses to start without a
+//!   key unless `GRAPHITE_DEV_MODE=1` is set, and then only on loopback.
 //! - Per-IP rate limiting (`GRAPHITE_RATE_LIMIT` requests/second, default 30)
 //! - CORS: denied by default; allow origins via `GRAPHITE_CORS_ORIGINS`
 //!   (comma-separated). Servers calling the API don't need CORS at all.
@@ -18,7 +19,8 @@
 
 use crate::account_resolution::AccountResolutionError;
 use crate::durable::{
-    audit_path, AuditErrorRecord, AuditLog, AuditRecord, LifecycleEvent, LifecycleEventRecord,
+    audit_path, AuditErrorRecord, AuditLog, AuditRecord, AuditSelector, LifecycleEvent,
+    LifecycleEventRecord,
 };
 use crate::verification::{GraphiteCore, VerificationError, VerificationInput, VerificationResult};
 use axum::extract::{ConnectInfo, State};
@@ -82,7 +84,7 @@ const VIOLATIONS_CAP: usize = 200;
 #[derive(Clone)]
 struct AppState {
     core: GraphiteCore,
-    /// Bearer API key; `None` = unauthenticated (dev only).
+    /// Bearer API key; `None` only under `GRAPHITE_DEV_MODE=1` on loopback.
     api_key: Option<Arc<String>>,
     audit: Option<AuditLog>,
     /// Community Manifest Registry engine (read-only dashboard view — P4).
@@ -361,8 +363,80 @@ fn init_tracing() {
     };
 }
 
+/// How the server will authenticate, decided from the environment BEFORE
+/// anything binds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthPosture {
+    /// Every route except `/health` requires the Bearer key.
+    ApiKey(Arc<String>),
+    /// No authentication. Reachable only because the operator set
+    /// `GRAPHITE_DEV_MODE=1` explicitly AND the bind address is loopback.
+    DevModeLoopback,
+}
+
+/// Environment variable that permits an unauthenticated instance.
+pub const DEV_MODE_ENV: &str = "GRAPHITE_DEV_MODE";
+
+/// Decide the auth posture, refusing every combination that used to start.
+///
+/// Default = authenticated. Until 2026-09-12 the default was the other way
+/// round: an absent `GRAPHITE_API_KEY` meant "dev mode" and the server
+/// started unauthenticated, with only the CLI's loopback guard between a
+/// forgotten variable and a network-reachable gate. A security gate whose
+/// safe configuration is the one you have to remember to set is not
+/// fail-closed. Now an absent key is a startup error unless
+/// `GRAPHITE_DEV_MODE=1` is set — a deliberate act with a name that says what
+/// it does — and even then only on a loopback address.
+///
+/// `api_key` is the raw environment value (whitespace-only counts as unset);
+/// `dev_mode` is whether `GRAPHITE_DEV_MODE` is `1` or `true`.
+pub fn auth_posture(
+    addr: SocketAddr,
+    api_key: Option<&str>,
+    dev_mode: bool,
+) -> Result<AuthPosture, String> {
+    if let Some(key) = api_key.map(str::trim).filter(|k| !k.is_empty()) {
+        return Ok(AuthPosture::ApiKey(Arc::new(key.to_string())));
+    }
+    if !dev_mode {
+        return Err(format!(
+            "refusing to start without GRAPHITE_API_KEY. Every route except /health \
+             requires a Bearer key; generate one with `openssl rand -hex 32`. To run an \
+             UNAUTHENTICATED instance for local development, set {DEV_MODE_ENV}=1 — it \
+             is then permitted only on a loopback address."
+        ));
+    }
+    if !addr.ip().is_loopback() {
+        return Err(format!(
+            "refusing to bind {addr} unauthenticated: {DEV_MODE_ENV} permits a keyless \
+             instance only on a loopback address (127.0.0.1 / ::1). Set GRAPHITE_API_KEY \
+             to bind a reachable address."
+        ));
+    }
+    Ok(AuthPosture::DevModeLoopback)
+}
+
+/// Whether `GRAPHITE_DEV_MODE` is set to an affirmative value.
+pub fn dev_mode_from_env() -> bool {
+    std::env::var(DEV_MODE_ENV)
+        .map(|v| {
+            let v = v.trim();
+            v == "1" || v.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
 pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
+
+    // Decided first, before the data directory is touched or anything binds,
+    // so a misconfigured deployment fails at the first line of output rather
+    // than after it has already started serving.
+    let posture = auth_posture(
+        addr,
+        std::env::var("GRAPHITE_API_KEY").ok().as_deref(),
+        dev_mode_from_env(),
+    )?;
 
     // ---- configuration from environment ----
     let data_dir = std::env::var("GRAPHITE_DATA_DIR")
@@ -378,6 +452,19 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     probe_data_dir_writable(&data_dir)?;
 
     let mut core = GraphiteCore::with_data_dir(data_dir.clone());
+
+    // Durable-nonce transactions: refused at L2 unless the operator opts in,
+    // and then only after the nonce account is verified on-chain. See
+    // `GraphiteCore::set_allow_durable_nonce`.
+    let allow_durable_nonce = std::env::var("GRAPHITE_ALLOW_DURABLE_NONCE")
+        .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    core.set_allow_durable_nonce(allow_durable_nonce);
+    if allow_durable_nonce {
+        tracing_log(
+            "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
+        );
+    }
 
     // Plugin framework (Constitution P8): activate approved third-party plugin
     // manifests from GRAPHITE_PLUGINS_DIR (review gate — pending/rejected
@@ -447,10 +534,10 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         }
     }
 
-    let api_key = std::env::var("GRAPHITE_API_KEY")
-        .ok()
-        .filter(|k| !k.is_empty())
-        .map(Arc::new);
+    let api_key = match &posture {
+        AuthPosture::ApiKey(key) => Some(key.clone()),
+        AuthPosture::DevModeLoopback => None,
+    };
 
     let rate_per_sec = std::env::var("GRAPHITE_RATE_LIMIT")
         .ok()
@@ -627,7 +714,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         if api_key.is_some() {
             "Bearer API key (GRAPHITE_API_KEY)"
         } else {
-            "NONE (dev mode — set GRAPHITE_API_KEY in production)"
+            "NONE — GRAPHITE_DEV_MODE=1, unauthenticated, loopback only"
         },
         rate_per_sec,
         if cors_origins.is_empty() {
@@ -1136,15 +1223,22 @@ async fn verify_handler(
         Ok(p) => p,
         Err(rejection) => {
             let message = rejection.body_text();
+            // A failed append is counted and reported by the log itself and
+            // surfaces as `degraded` on /health. It is not turned into a panic
+            // here: the response is already a rejection, so nothing false is
+            // claimed by returning it, and a panic would only replace a
+            // precise 422 with an opaque 500.
             if let Some(log) = &state.audit {
-                assert!(log.append_error(&AuditErrorRecord {
+                if !log.append_error(&AuditErrorRecord {
                     timestamp: crate::durable::now_utc_rfc3339(),
                     program_id: "<malformed>".to_string(),
                     instruction_name: "<unparseable>".to_string(),
                     error: message.clone(),
                     error_type: "JsonRejection".to_string(),
                     status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
-                }));
+                }) {
+                    tracing_server_error("audit: error record for a 422 was NOT written");
+                }
             }
             tracing_log(&format!("verify: 422 unparseable body — {}", message));
             return Err((
@@ -1302,15 +1396,23 @@ async fn verify_handler(
             // oversized bodies, bad account counts) must leave a trail.
             // The record mirrors AuditRecord but carries the error instead
             // of a verdict.
+            // Same reasoning as the 422 path above: a failed append is counted
+            // and reported, never a panic, because this response is already a
+            // rejection.
             if let Some(log) = &state.audit {
-                assert!(log.append_error(&AuditErrorRecord {
+                if !log.append_error(&AuditErrorRecord {
                     timestamp: crate::durable::now_utc_rfc3339(),
                     program_id: input.program_id.clone(),
                     instruction_name: input.instruction_discriminator.clone(),
                     error: http_error.message().to_string(),
                     error_type: error_type.clone(),
                     status: status.as_u16(),
-                }));
+                }) {
+                    tracing_server_error(&format!(
+                        "audit: error record for a {} was NOT written",
+                        status.as_u16()
+                    ));
+                }
             }
 
             Err((
@@ -1342,18 +1444,37 @@ async fn verify_handler(
 /// to operators — `audit.writes_failed` is what makes it alertable.
 async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let audit = state.audit.as_ref().map(|a| a.health());
-    let degraded = match &audit {
-        Some(h) => h.writes_failed > 0,
+    let persistence = state.core.persistence_health();
+    // Every reason a node is degraded, by name. An operator paged on
+    // `degraded: true` should not have to diff counters to learn why.
+    let mut reasons: Vec<&str> = Vec::new();
+    match &audit {
+        Some(h) => {
+            if h.writes_failed > 0 {
+                reasons.push("audit_writes_failed");
+            }
+            if h.rotations_failed > 0 {
+                // The trail is intact but the active file cannot rotate, so
+                // it grows without bound and every dashboard poll scans it.
+                reasons.push("audit_rotation_failed");
+            }
+        }
         // No audit log at all is degraded, not healthy: verification still
         // works, but the P9 trail does not exist.
-        None => true,
-    };
+        None => reasons.push("audit_disabled"),
+    }
+    if persistence.snapshots_failed > 0 {
+        // Trust tiers and baselines earned since the last good snapshot
+        // exist only in memory and vanish on restart.
+        reasons.push("graph_snapshot_failed");
+    }
     Json(serde_json::json!({
         // `status` stays "ok" while the service can serve traffic so load
         // balancers don't pull a working node; `degraded` is the operator
         // signal.
         "status": "ok",
-        "degraded": degraded,
+        "degraded": !reasons.is_empty(),
+        "degraded_reasons": reasons,
         "service": "graphite-core",
         "version": env!("CARGO_PKG_VERSION"),
         "audit": match audit {
@@ -1362,9 +1483,13 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
                 "writes_ok": h.writes_ok,
                 "writes_failed": h.writes_failed,
                 "active_bytes": h.active_bytes,
+                "rotations_ok": h.rotations_ok,
+                "rotations_failed": h.rotations_failed,
+                "archive_count": h.archive_count,
             }),
             None => serde_json::json!({ "enabled": false }),
         },
+        "graph_persistence": persistence,
     }))
 }
 
@@ -1450,6 +1575,37 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "Size of the active audit log file in bytes.",
         "gauge",
         audit.map(|h| h.active_bytes).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_rotations_ok_total",
+        "Audit log rotations completed.",
+        "counter",
+        audit.map(|h| h.rotations_ok).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_rotations_failed_total",
+        "Audit log rotations that failed; the active file keeps growing (degraded).",
+        "counter",
+        audit.map(|h| h.rotations_failed).unwrap_or(0),
+    );
+    push(
+        "graphite_audit_archive_count",
+        "Rotated audit archives on disk.",
+        "gauge",
+        audit.map(|h| h.archive_count).unwrap_or(0),
+    );
+    let persistence = state.core.persistence_health();
+    push(
+        "graphite_graph_snapshots_ok_total",
+        "Semantic-graph snapshots committed to the data directory.",
+        "counter",
+        persistence.snapshots_ok,
+    );
+    push(
+        "graphite_graph_snapshots_failed_total",
+        "Semantic-graph snapshots that failed; earned state exists only in memory (degraded).",
+        "counter",
+        persistence.snapshots_failed,
     );
     push(
         "graphite_audit_enabled",
@@ -1579,8 +1735,8 @@ async fn execution_handler(
     // P9: the reconciliation is a lifecycle-grade fact about a transaction
     // Graphite verified, and a discrepancy is the single most important thing
     // this system can record. It goes on the same append-only trail.
-    if let Some(log) = audit {
-        assert!(log.append_lifecycle(&LifecycleEventRecord {
+    let recorded = match audit {
+        Some(log) => log.append_lifecycle(&LifecycleEventRecord {
             event_type: LifecycleEvent::Confirmation,
             timestamp: crate::durable::now_utc_rfc3339(),
             content_hash: result
@@ -1592,8 +1748,9 @@ async fn execution_handler(
             transaction_signature: Some(signature.clone()),
             reported_by: body.reported_by.clone(),
             detail: Some(format!("L8 reconciliation: {:?}", result.reconciliation)),
-        }));
-    }
+        }),
+        None => false,
+    };
 
     if result.reconciliation.is_discrepancy() {
         // Loud on purpose. This is Graphite telling the operator that its own
@@ -1604,14 +1761,31 @@ async fn execution_handler(
         ));
     }
 
-    Ok(Json(serde_json::json!({
+    let outcome = serde_json::json!({
         "signature": result.signature,
         "chain_status": result.chain_status,
         "recorded_approved": result.recorded_approved,
         "recorded_audit_trail_id": result.recorded_audit_trail_id,
         "reconciliation": result.reconciliation,
         "discrepancy": result.reconciliation.is_discrepancy(),
-    })))
+        "audit_recorded": recorded,
+    });
+    if !recorded && audit.is_some() {
+        // The reconciliation is still returned — an operator looking at a
+        // discrepancy must see it — but under a status that says the trail
+        // did not take it. This used to be an `assert!`, which turned a full
+        // audit disk into a panic and an opaque 500 that hid the
+        // reconciliation entirely.
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "audit write failed — this reconciliation was NOT recorded",
+                "error_type": "AuditUnavailable",
+                "outcome": outcome,
+            })),
+        ));
+    }
+    Ok(Json(outcome))
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1708,8 +1882,13 @@ async fn quarantine_handler(
     // P9: withdrawing or restoring trust is a lifecycle-grade fact about the
     // gate itself. Recording it on the same append-only trail is what makes
     // "why was this blocked in production last Tuesday" answerable.
-    if let Some(log) = &state.audit {
-        assert!(log.append_lifecycle(&LifecycleEventRecord {
+    // The action has already taken effect and is not reverted if the trail
+    // cannot take the record: un-quarantining a program because the audit
+    // disk is full would be failing open on the gate to protect the log.
+    // The response says whether the record landed, and the log's own counters
+    // mark the node degraded.
+    let audit_recorded = if let Some(log) = &state.audit {
+        log.append_lifecycle(&LifecycleEventRecord {
             event_type: LifecycleEvent::OperatorAction,
             timestamp: crate::durable::now_utc_rfc3339(),
             content_hash: program_id.clone(),
@@ -1724,7 +1903,14 @@ async fn quarantine_handler(
                     body.reason.as_deref().unwrap_or("").trim()
                 )
             }),
-        }));
+        })
+    } else {
+        false
+    };
+    if !audit_recorded {
+        tracing_server_error(&format!(
+            "audit: operator action on {program_id} took effect but was NOT recorded"
+        ));
     }
 
     // Deliberately named `earned_trust_tier`, not `trust_tier`.
@@ -1752,6 +1938,7 @@ async fn quarantine_handler(
             "verification forces Unknown and hard-blocks while quarantined"
         },
         "persisted": true,
+        "audit_recorded": audit_recorded,
     })))
 }
 
@@ -1824,7 +2011,22 @@ async fn lifecycle_event_handler(
         reported_by: body.reported_by,
         detail: body.detail,
     };
-    assert!(log.append_lifecycle(&record));
+    if !log.append_lifecycle(&record) {
+        // `recorded: true` is the one thing this endpoint promises. When the
+        // append fails the promise cannot be made, and the caller — which is
+        // reporting a signing or submission it already performed — must know
+        // to retry or to escalate. Previously an `assert!`, i.e. a panic and
+        // an opaque 500.
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "audit write failed — the event was NOT recorded",
+                "error_type": "AuditUnavailable",
+                "event_type": record.event_type,
+                "content_hash": record.content_hash,
+            })),
+        ));
+    }
     Metrics::inc(&state.metrics.lifecycle_events);
 
     Ok(Json(serde_json::json!({
@@ -1854,7 +2056,7 @@ async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde
     // dashboard is observability). The scan is O(log) per poll, which is
     // fine at the dashboard's cadence on a single core node.
     let (records, _, total, _) = match &state.audit {
-        Some(log) => log.read_tail_filtered(CONFIDENCE_SERIES_CAP, |_| true),
+        Some(log) => log.read_tail_filtered(CONFIDENCE_SERIES_CAP, AuditSelector::All),
         None => (Vec::new(), Vec::new(), 0, 0),
     };
     let series: Vec<serde_json::Value> = records
@@ -1880,7 +2082,7 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
     // Bounded read: only the most recent violations are surfaced; memory
     // stays bounded by the cap while `count` reports the exact total.
     let (records, errors, total_violations, _) = match &state.audit {
-        Some(log) => log.read_tail_filtered(VIOLATIONS_CAP, |r| !r.approved),
+        Some(log) => log.read_tail_filtered(VIOLATIONS_CAP, AuditSelector::Blocked),
         None => (Vec::new(), Vec::new(), 0, 0),
     };
     let violations: Vec<serde_json::Value> = records
@@ -2587,6 +2789,113 @@ mod tests {
         )
         .await;
         assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    /// Authenticated by default: every keyless combination that used to
+    /// start now refuses, and the one that is allowed is named and bounded.
+    ///
+    /// Inverted 2026-09-12 from "unset key = dev mode". The old CLI guard
+    /// only caught keyless + non-loopback; keyless + loopback started an
+    /// unauthenticated server with nothing but a log line saying so.
+    #[test]
+    fn auth_is_required_unless_dev_mode_is_named_and_the_bind_is_loopback() {
+        let loopback: SocketAddr = "127.0.0.1:7331".parse().unwrap();
+        let loopback6: SocketAddr = "[::1]:7331".parse().unwrap();
+        let public: SocketAddr = "0.0.0.0:7331".parse().unwrap();
+        let lan: SocketAddr = "192.168.1.10:7331".parse().unwrap();
+
+        // A key wins everywhere, dev mode or not.
+        for addr in [loopback, public, lan] {
+            for dev in [false, true] {
+                match auth_posture(addr, Some("k3y"), dev) {
+                    Ok(AuthPosture::ApiKey(k)) => assert_eq!(k.as_str(), "k3y"),
+                    other => panic!("{addr} dev={dev}: expected ApiKey, got {other:?}"),
+                }
+            }
+        }
+        // Whitespace is not a key.
+        assert!(auth_posture(loopback, Some("   "), false).is_err());
+        assert!(auth_posture(loopback, Some(""), false).is_err());
+
+        // No key, no dev mode: refused on every address, including loopback —
+        // the combination that used to start silently.
+        for addr in [loopback, loopback6, public, lan] {
+            let err = auth_posture(addr, None, false).unwrap_err();
+            assert!(err.contains("GRAPHITE_DEV_MODE"), "{addr}: {err}");
+            assert!(err.contains("refusing to start"), "{addr}: {err}");
+        }
+
+        // Dev mode: loopback only.
+        assert_eq!(
+            auth_posture(loopback, None, true).unwrap(),
+            AuthPosture::DevModeLoopback
+        );
+        assert_eq!(
+            auth_posture(loopback6, None, true).unwrap(),
+            AuthPosture::DevModeLoopback
+        );
+        for addr in [public, lan] {
+            let err = auth_posture(addr, None, true).unwrap_err();
+            assert!(err.contains("loopback"), "{addr}: {err}");
+            assert!(err.contains("refusing to bind"), "{addr}: {err}");
+        }
+    }
+
+    /// The audit-append failure on `/audit/event` is a 503 that says "NOT
+    /// recorded", not a panic. Reproduced by opening the log on a path whose
+    /// directory is then removed, so the append genuinely fails.
+    #[tokio::test]
+    async fn lifecycle_event_reports_an_unrecorded_event_instead_of_panicking() {
+        let dir = std::env::temp_dir().join(format!(
+            "gr-lifecycle-503-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = AuditLog::open(dir.join("audit.jsonl")).unwrap();
+        // Make the next append fail: on Windows an open file cannot be
+        // deleted from under a handle without FILE_SHARE_DELETE, but Rust's
+        // handles carry it; on every platform, removing the directory tree
+        // and then writing works because the open handle keeps the inode —
+        // so instead poison the log by swapping in a read-only handle.
+        {
+            let ro = std::fs::OpenOptions::new()
+                .read(true)
+                .open(dir.join("audit.jsonl"))
+                .unwrap();
+            let mut guard = log.file.lock().unwrap();
+            *guard = ro;
+        }
+        let (mut state, state_dir) = test_state();
+        state.audit = Some(log.clone());
+        let app = build_app(state, Vec::new());
+        let (status, body) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({
+                "event_type": "signing",
+                "content_hash": "abc123",
+                "reported_by": "test",
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error_type"], "AuditUnavailable");
+        assert!(
+            body["error"].as_str().unwrap().contains("NOT recorded"),
+            "{body}"
+        );
+        assert!(
+            body.get("recorded").is_none(),
+            "no recorded:true on a failure"
+        );
+        assert_eq!(log.health().writes_failed, 1);
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&state_dir).ok();
     }
 
     #[tokio::test]
@@ -3493,7 +3802,7 @@ mod tests {
         // → audit File handle drop → flush), so every append is visible to a
         // fresh open.
         let log = AuditLog::open(audit_path(&dir)).unwrap();
-        let (records, errors, total, _) = log.read_tail_filtered(10_000, |_| true);
+        let (records, errors, total, _) = log.read_tail_filtered(10_000, AuditSelector::All);
         assert_eq!(
             total,
             WORKERS * PER_WORKER,

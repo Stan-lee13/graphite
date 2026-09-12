@@ -1,5 +1,7 @@
 # Adversarial Hardening Campaign — 2026-09-06
 
+> **Historical record (2026-09-06).** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 Engineering record for the Docker-based adversarial pass against Graphite.
 Every number here was measured on this machine on the date shown; nothing is
 carried over from a prior report. Where something was not tested, it says so.

@@ -124,12 +124,34 @@ jobs:
             echo "FAIL: unauthenticated /verify returned $code, expected 401"
             docker logs graphite-ci; exit 1
           fi
+      - name: A keyless container must refuse to start
+        run: |
+          # Authenticated by default (2026-09-12): no GRAPHITE_API_KEY means no
+          # start, and GRAPHITE_DEV_MODE=1 permits keyless only on loopback —
+          # which the container's 0.0.0.0 bind is not. Both must exit non-zero
+          # with the refusal in their logs, never serve traffic.
+          for env in "" "-e GRAPHITE_DEV_MODE=1"; do
+            docker rm -f graphite-keyless >/dev/null 2>&1 || true
+            set +e
+            docker run --name graphite-keyless $env graphite-core:ci
+            code=$?
+            set -e
+            logs=$(docker logs graphite-keyless 2>&1 || true)
+            if [ "$code" = "0" ]; then
+              echo "FAIL: keyless container ($env) exited 0"; echo "$logs"; exit 1
+            fi
+            if ! echo "$logs" | grep -q "refusing to"; then
+              echo "FAIL: keyless container ($env) did not name the refusal"; echo "$logs"; exit 1
+            fi
+            echo "keyless ($env): refused with exit $code"
+          done
+          docker rm -f graphite-keyless >/dev/null 2>&1 || true
       - name: Container logs
         if: always()
         run: docker logs graphite-ci || true
       - name: Cleanup
         if: always()
-        run: docker rm -f graphite-ci || true
+        run: docker rm -f graphite-ci graphite-keyless || true
 
   typescript:
     name: TypeScript SDK + SAK integration

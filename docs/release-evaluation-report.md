@@ -1,5 +1,7 @@
 # Graphite v0.1.0-alpha — Release Evaluation Report
 
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Date:** 2026-08-07 (v0.1.0-alpha frozen 2026-07-23; Phase 1.5 completion update)  
 **Version:** v0.1.0-alpha → Phase 1.5 complete (branch: phase2-development)  
 **Repository:** github.com/Stan-lee13/graphite  

@@ -39,8 +39,8 @@ cargo clippy --release -- -D warnings  # 0 warnings
 ## Run
 
 ```bash
-# HTTP server
-cargo run --release --bin graphite -- server --port 7331
+# HTTP server (authenticated by default; GRAPHITE_DEV_MODE=1 for a keyless loopback-only instance)
+GRAPHITE_API_KEY=$(openssl rand -hex 32) cargo run --release --bin graphite -- server --port 7331
 
 # CLI
 cargo run --release --bin graphite -- verify --input examples/verify-input.json
@@ -59,7 +59,7 @@ All program IDs verified against official on-chain sources (pinned by `test_all_
 
 When run via `cargo run --release --bin graphite -- server --port 7331`, the HTTP server includes:
 
-- **Bearer API key auth** (constant-time SHA-256 comparison) via `GRAPHITE_API_KEY` — required on `/verify` and `/manifests` when set; `/health` stays open
+- **Bearer API key auth** (constant-time SHA-256 comparison) via `GRAPHITE_API_KEY` — required by default on every route except `/health`; the server refuses to start without a key unless `GRAPHITE_DEV_MODE=1` (loopback only)
 - **Per-IP token-bucket rate limiting** (`GRAPHITE_RATE_LIMIT`, returns 429, FIFO eviction)
 - **CORS denied by default**, allowlist via `GRAPHITE_CORS_ORIGINS`
 - **Audit log** — append-only JSONL (`audit.jsonl` in `GRAPHITE_DATA_DIR`) covering approved/blocked/400/500 paths

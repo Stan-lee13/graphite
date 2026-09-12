@@ -5,7 +5,7 @@
  *   Natural Language → AI Layer (parse) → SAK (construct) → Graphite (verify) → SAK (execute if approved)
  *
  * Prerequisites:
- *   1. Graphite Core running:  cargo run --release -- server  (in graphite-core/)
+ *   1. Graphite Core running:  GRAPHITE_API_KEY=... cargo run --release -- server  (in graphite-core/)
  *   2. Python AI Layer running:  python3 intent_parser.py --serve  (in python-ai-layer/)
  *   3. Environment variables set:
  *        SOLANA_PRIVATE_KEY — base58-encoded keypair secret key
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
   } catch (e) {
     console.error("Failed to initialize agent:", (e as Error).message);
     console.error("\nMake sure:");
-    console.error("  1. Graphite Core is running: cargo run --release -- server");
+    console.error("  1. Graphite Core is running: GRAPHITE_API_KEY=... cargo run --release -- server");
     console.error("  2. Python AI Layer is running: python3 intent_parser.py --serve");
     console.error("  3. SOLANA_PRIVATE_KEY, SOLANA_RPC_URL, and OPENAI_API_KEY are set");
     process.exit(1);

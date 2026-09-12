@@ -1,5 +1,7 @@
 # Graphite — Independent Gap Analysis, Web Research & Production Readiness Audit
 
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Date:** 2026-08-08 (third audit cycle)
 
 > **Update (2026-08-19, C58):** the numbers below are superseded — now 1,014 tests / 33 manifests / 803 instructions / 13 risk checks; the benchmark includes 5 REAL mainnet exploit cases + 2 SYNTHETIC (C52); MAD baseline (C28), multi-instruction + CPI trace analysis (C29), discriminator-width fix (C33), C56 protocol expansion, and C58 intent classification shipped.

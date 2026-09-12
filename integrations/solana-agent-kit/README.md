@@ -15,7 +15,8 @@ Constitution P1 (AI assists, never decides): The AI Layer only parses intent —
 1. **Graphite Core** running:
    ```bash
    cd graphite-core
-   cargo run --release -- server
+   GRAPHITE_API_KEY=$(openssl rand -hex 32) cargo run --release -- server
+   # or GRAPHITE_DEV_MODE=1 for an unauthenticated loopback-only instance
    ```
 
 2. **Python AI Layer** running:

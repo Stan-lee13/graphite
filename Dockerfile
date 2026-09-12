@@ -79,6 +79,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # `graphite server` on a host machine is not silently network-exposed). Inside
 # a container, binding all interfaces is required for the published port to
 # work, and the container boundary plus the mandatory GRAPHITE_API_KEY are what
-# constrain exposure — the server refuses to bind a non-loopback address with
-# no API key set.
+# constrain exposure — the server refuses to start with no API key at all, and
+# GRAPHITE_DEV_MODE=1 (keyless) is permitted only on loopback, which is useless
+# inside a container by design.
 CMD ["graphite", "server", "--host", "0.0.0.0"]

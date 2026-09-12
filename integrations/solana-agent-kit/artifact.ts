@@ -31,6 +31,7 @@ import { createHash } from "node:crypto";
 import {
   Keypair,
   PublicKey,
+  SystemProgram,
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
@@ -232,12 +233,35 @@ export class BoundTransaction {
     });
   }
 
+  /**
+   * The runtime's rule for a durable-nonce transaction: instruction 0 is a
+   * System `AdvanceNonceAccount` (bincode u32 LE discriminator 4). The bridge
+   * refuses to build one — `lastValidBlockHeight`, which is the bridge's
+   * only bound on how long a signed transaction stays valid, does not apply
+   * to a nonce transaction, so the "verified, then signed, then sent" window
+   * the whole boundary assumes would have no end. Graphite refuses them at L2
+   * as well; this is the earlier, cheaper refusal.
+   */
+  private static isDurableNonce(instructions: TransactionInstruction[]): boolean {
+    const first = instructions[0];
+    if (!first) return false;
+    if (!first.programId.equals(SystemProgram.programId)) return false;
+    const d = first.data;
+    return d.length >= 4 && d[0] === 4 && d[1] === 0 && d[2] === 0 && d[3] === 0;
+  }
+
   static build(params: {
     instructions: TransactionInstruction[];
     feePayer: PublicKey;
     recentBlockhash: string;
     lastValidBlockHeight: number;
   }): BoundTransaction {
+    if (BoundTransaction.isDurableNonce(params.instructions)) {
+      throw new Error(
+        "BoundTransaction: instruction 0 is SystemProgram.nonceAdvance, so this would be a durable-nonce transaction. " +
+          "It does not expire and lastValidBlockHeight does not bound it; the bridge does not build them.",
+      );
+    }
     const tx = new Transaction({
       feePayer: new PublicKey(params.feePayer.toBytes()),
       recentBlockhash: params.recentBlockhash,

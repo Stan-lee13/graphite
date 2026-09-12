@@ -1,5 +1,7 @@
 # Round 7 — Adversarial Assurance
 
+> **Historical record (2026-09-11).** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Ground truth at the start of the round.** HEAD `76d0ade`; parents `5c33ea0`,
 `0284c24`, `f10e4ab`. All four have GitHub Actions runs that completed
 **success** — verified from the Actions API, not from commit messages. rustc

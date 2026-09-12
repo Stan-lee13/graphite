@@ -278,20 +278,14 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// Parse a serialized Solana transaction: `[signatures][message]`.
+/// Advance past the signature array: a compact-u16 count of 64-byte blobs.
 ///
-/// Accepts legacy and v0. Returns the message structure, or an error — never a
-/// partially-populated "best effort" value, because a caller cannot tell one of
-/// those from a real answer.
-pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseError> {
-    if bytes.is_empty() {
+/// Their contents do not matter here — Graphite verifies before signing, so an
+/// artifact legitimately arrives with placeholder signatures.
+fn skip_signatures(r: &mut Reader<'_>) -> Result<(), ArtifactParseError> {
+    if r.bytes.is_empty() {
         return Err(ArtifactParseError::Empty);
     }
-    let mut r = Reader::new(bytes);
-
-    // Signatures: a compact array of 64-byte blobs. Their contents do not
-    // matter here — Graphite verifies before signing, so an artifact legitimately
-    // arrives with placeholder signatures.
     let sig_count = r.compact_u16("signature count")?;
     let _ = r.take(
         sig_count
@@ -303,6 +297,32 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
             })?,
         "signatures",
     )?;
+    Ok(())
+}
+
+/// The message half of a serialized transaction: everything after the
+/// signature array.
+///
+/// This is the slice a signature is computed over, and the slice the
+/// TypeScript bridge's `messageOf` produces for the signing gate's
+/// message-equality check. It uses the SAME compact-u16 reader as
+/// `parse_transaction`, so the cross-language corpus compares Graphite's
+/// actual acceptance language against `@solana/web3.js`'s rather than a
+/// test-local reimplementation of it.
+pub fn message_bytes(bytes: &[u8]) -> Result<&[u8], ArtifactParseError> {
+    let mut r = Reader::new(bytes);
+    skip_signatures(&mut r)?;
+    Ok(&bytes[r.pos..])
+}
+
+/// Parse a serialized Solana transaction: `[signatures][message]`.
+///
+/// Accepts legacy and v0. Returns the message structure, or an error — never a
+/// partially-populated "best effort" value, because a caller cannot tell one of
+/// those from a real answer.
+pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseError> {
+    let mut r = Reader::new(bytes);
+    skip_signatures(&mut r)?;
 
     // Version prefix: the high bit of the first message byte marks a versioned
     // message. Legacy messages start with the header, whose first byte is a
@@ -728,4 +748,184 @@ pub fn resolve_lookups(
             .extend(pick(lookup, &lookup.readonly_indexes, &decoded)?);
     }
     Ok(out)
+}
+
+// ─── Durable nonces ───────────────────────────────────────────────────────────
+
+/// The System program, base58.
+pub const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
+
+/// The `SystemInstruction::AdvanceNonceAccount` discriminator, as the runtime
+/// encodes it (bincode, u32 little-endian).
+pub const ADVANCE_NONCE_ACCOUNT: [u8; 4] = [4, 0, 0, 0];
+
+/// Size of a nonce account's data: version (u32) + state (u32) + authority
+/// (32) + durable nonce (32) + fee calculator (u64).
+pub const NONCE_ACCOUNT_SIZE: usize = 80;
+
+/// What a durable-nonce transaction declares about itself.
+///
+/// The runtime's rule (`Message::get_durable_nonce`) is structural: a
+/// transaction "uses a durable nonce" when its FIRST instruction is a System
+/// `AdvanceNonceAccount`. When it does, the message's `recent_blockhash`
+/// field is not a blockhash at all but the nonce value stored in the nonce
+/// account, and the transaction does not expire — it stays valid until the
+/// nonce account is advanced, which happens when this transaction (or any
+/// other signed by the nonce authority) executes.
+///
+/// That changes what a verdict means. Every state-based conclusion Graphite
+/// reaches — balances, token-account state, simulation — is true at
+/// verification time, and a normal transaction is bounded to roughly a
+/// minute after that by its blockhash. A durable-nonce transaction, once
+/// signed, is a bearer instrument with no clock: it can be submitted an hour
+/// or a month later, by whoever holds the bytes, against state that no
+/// longer resembles what was verified. `lastValidBlockHeight` — the
+/// expiry the bridge relies on — does not apply to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableNonce {
+    /// The nonce account (instruction 0, account 0). Static by runtime rule
+    /// (`require_static_nonce_account`), so it is always identifiable from
+    /// the bytes.
+    pub nonce_account: String,
+    /// The nonce authority (instruction 0, account 2), which must sign.
+    /// `None` when the instruction carries fewer than three accounts — a
+    /// transaction the runtime would reject at execution, but still one
+    /// that declares itself nonce-based.
+    pub nonce_authority: Option<String>,
+    /// Whether the authority is among the message's required signers. A
+    /// nonce advance by a non-signing authority fails at execution.
+    pub authority_is_signer: bool,
+    /// The nonce value the message carries in its `recent_blockhash` slot.
+    pub nonce_value: String,
+}
+
+/// Detect a durable-nonce transaction from the parsed message, using the
+/// runtime's own rule: instruction 0 is a System `AdvanceNonceAccount` with
+/// at least one account.
+///
+/// The discriminator check accepts trailing bytes after the four, exactly as
+/// the runtime's `limited_deserialize` does — a transaction that the runtime
+/// treats as nonce-based must be treated as nonce-based here, whatever else
+/// is appended to the instruction.
+pub fn durable_nonce(message: &ArtifactMessage) -> Option<DurableNonce> {
+    let ix = message.instructions.first()?;
+    if ix.program_id != SYSTEM_PROGRAM {
+        return None;
+    }
+    if ix.data.len() < ADVANCE_NONCE_ACCOUNT.len()
+        || ix.data[..ADVANCE_NONCE_ACCOUNT.len()] != ADVANCE_NONCE_ACCOUNT
+    {
+        return None;
+    }
+    // The nonce account is required to be static, so its index resolves
+    // without any lookup table. An index that does not resolve names an
+    // account the runtime would not accept as a nonce account either — the
+    // transaction is still declared nonce-based, and the nonce account is
+    // then reported as the unresolvable position rather than dropped.
+    let nonce_account = match ix.accounts.first()? {
+        Some(addr) => addr.clone(),
+        None => format!(
+            "<lookup-table index {}>",
+            ix.account_indexes.first().copied().unwrap_or(0)
+        ),
+    };
+    let nonce_authority = ix.accounts.get(2).and_then(|a| a.clone());
+    let authority_is_signer = nonce_authority
+        .as_ref()
+        .is_some_and(|a| message.signers.contains(a));
+    Some(DurableNonce {
+        nonce_account,
+        nonce_authority,
+        authority_is_signer,
+        nonce_value: message.recent_blockhash.clone(),
+    })
+}
+
+/// What a fetched nonce account says, decoded from the runtime's layout.
+///
+/// Layout (`NonceVersions`/`NonceState`, bincode): `u32` version — `0` is
+/// the legacy layout, `1` the current — then `u32` state (`0` uninitialized,
+/// `1` initialized), then for an initialized account the 32-byte authority,
+/// the 32-byte durable nonce and a `u64` fee calculator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonceAccountState {
+    pub authority: String,
+    pub nonce_value: String,
+}
+
+/// Decode a nonce account's data. `Err` explains why the bytes are not an
+/// initialized nonce account the runtime would honour.
+pub fn decode_nonce_account(owner: &str, data: &[u8]) -> Result<NonceAccountState, String> {
+    if owner != SYSTEM_PROGRAM {
+        return Err(format!(
+            "owned by {owner}, not the System program; the runtime only honours a System-owned nonce account"
+        ));
+    }
+    if data.len() < NONCE_ACCOUNT_SIZE {
+        return Err(format!(
+            "{} bytes of data; an initialized nonce account has {NONCE_ACCOUNT_SIZE}",
+            data.len()
+        ));
+    }
+    let version = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    if version > 1 {
+        return Err(format!(
+            "nonce account version {version} is not one the runtime defines"
+        ));
+    }
+    let state = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+    if state != 1 {
+        return Err(format!(
+            "nonce account state {state} is not Initialized; an uninitialized nonce account cannot advance"
+        ));
+    }
+    let authority = Pubkey::from_bytes(data[8..40].try_into().expect("32 bytes")).to_base58();
+    let nonce_value = Pubkey::from_bytes(data[40..72].try_into().expect("32 bytes")).to_base58();
+    Ok(NonceAccountState {
+        authority,
+        nonce_value,
+    })
+}
+
+/// Check a declared durable nonce against the nonce account's on-chain state.
+///
+/// Every mismatch is fatal to execution — the runtime refuses the
+/// transaction at load — and a verdict about a transaction that cannot run
+/// is a verdict about nothing. The stored nonce value must be the value the
+/// message carries (a stale value means the nonce has already advanced and
+/// the transaction is dead; a different one means it was never built
+/// against this account), and the stored authority must be the signer the
+/// instruction names.
+pub fn check_durable_nonce(
+    declared: &DurableNonce,
+    account: &NonceAccountState,
+) -> Result<(), String> {
+    if account.nonce_value != declared.nonce_value {
+        return Err(format!(
+            "the message carries nonce value {} but the nonce account holds {}: the nonce has advanced or the transaction was built against a different account, and the runtime will refuse it",
+            declared.nonce_value, account.nonce_value
+        ));
+    }
+    match &declared.nonce_authority {
+        Some(auth) if auth == &account.authority => {}
+        Some(auth) => {
+            return Err(format!(
+                "instruction 0 names {auth} as the nonce authority but the account's authority is {}",
+                account.authority
+            ))
+        }
+        None => {
+            return Err(
+                "instruction 0 names no nonce authority (fewer than three accounts); the advance cannot execute"
+                    .to_string(),
+            )
+        }
+    }
+    if !declared.authority_is_signer {
+        return Err(format!(
+            "the nonce authority {} is not a required signer of the message; the advance cannot execute",
+            account.authority
+        ));
+    }
+    Ok(())
 }

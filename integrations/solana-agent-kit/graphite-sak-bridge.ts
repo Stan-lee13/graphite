@@ -263,7 +263,7 @@ export class VerifiedSakAgent {
 
     const graphite = new GraphiteClient({ baseUrl: graphiteCoreUrl, apiKey: graphiteApiKey });
     try { await graphite.health(); } catch {
-      throw new Error(`Graphite Core not reachable at ${graphiteCoreUrl}. Start: cargo run --release -- server`);
+      throw new Error(`Graphite Core not reachable at ${graphiteCoreUrl}. Start: GRAPHITE_API_KEY=... cargo run --release -- server`);
     }
 
     return new VerifiedSakAgent(sakAgent, graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair);

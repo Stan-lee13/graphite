@@ -63,7 +63,7 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,399 tests — zero setup (1,409 total; 10 network-dependent tests ignored
+# Run 1,422 tests — zero setup (1,432 total; 10 network-dependent tests ignored
 # unless run explicitly with a live RPC)
 cargo test --release
 
@@ -186,7 +186,7 @@ graphite/
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
 │   ├── protocols/                 ← 33 JSON protocol manifests (803 instructions)
-│   └── tests/                     ← 1,399 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
+│   └── tests/                     ← 1,422 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -228,15 +228,20 @@ graphite/
 
 ```bash
 cd graphite-core
-cargo run --release --bin graphite -- server --port 7331
+GRAPHITE_API_KEY=$(openssl rand -hex 32) cargo run --release --bin graphite -- server --port 7331
 # Graphite Core running on port 7331
 ```
 
-### Production server configuration (all optional env vars)
+The server is **authenticated by default** and refuses to start without
+`GRAPHITE_API_KEY`. For local development only, `GRAPHITE_DEV_MODE=1` runs an
+unauthenticated instance — and even then only on a loopback address.
+
+### Production server configuration
 
 | Env var | Default | Purpose |
 |---------|---------|---------|
-| `GRAPHITE_API_KEY` | *(unset = open)* | **Set this in production.** Bearer token required on `/verify` and `/manifests` (constant-time compared). `/health` stays open for load balancers. |
+| `GRAPHITE_API_KEY` | *(required)* | Bearer token required on every route except `/health` (constant-time compared). **Startup refuses without it** unless `GRAPHITE_DEV_MODE=1`. |
+| `GRAPHITE_DEV_MODE` | `0` | `1` permits an **unauthenticated** instance for local development, and only when bound to loopback (`127.0.0.1` / `::1`). Never set this on a reachable address; the server refuses the combination. |
 | `GRAPHITE_MAX_CONCURRENT` | `32` | Verifications allowed in flight at once. Excess is shed immediately with `503` + `Retry-After` rather than accepted and left to expire at the 10s request timeout — a request that dies at the timeout carries no verdict and no audit record. Distinct from the per-IP `429`: `429` means one caller is asking too often, `503` means the instance is saturated. Both are counted separately at `/metrics`. Raise it when the upstream RPC can sustain more. |
 | `GRAPHITE_RATE_LIMIT` | `30` | Per-IP token bucket, requests/second. Returns `429` when exceeded. |
 | `GRAPHITE_CORS_ORIGINS` | *(denied)* | Comma-separated allowed browser origins. Default denies all cross-origin browser calls; server-to-server clients are unaffected. |
@@ -251,11 +256,21 @@ cargo run --release --bin graphite -- server --port 7331
 
 **Observability.** `GET /metrics` serves Prometheus text format (behind the API
 key, like every endpoint except `/health`): verification request/approve/block/
-error counts, auth failures, rate-limit rejections, and audit-log write
-success/failure counters plus active log size. `GET /health` is open for load
-balancers and reports a `degraded` flag when the audit trail is unavailable or
-has failed writes — audit writes are non-fatal by design, so this is what makes
-a silently-stopped audit trail alertable.
+error counts, auth failures, rate-limit rejections, audit-log write and
+rotation success/failure counters, active log size and archive count, and
+semantic-graph snapshot success/failure counters. `GET /health` is open for
+load balancers and reports `degraded` with a `degraded_reasons` list
+(`audit_writes_failed`, `audit_rotation_failed`, `audit_disabled`,
+`graph_snapshot_failed`) — a verdict that cannot be recorded is refused with
+`503`, and every other durability failure is counted here so a node quietly
+losing its trail or its earned state is alertable rather than invisible.
+
+**Audit durability.** Every audit record is `fdatasync`'d to the device before
+the response is sent (≈1.5 ms per record measured on an NTFS SSD; `File::flush`
+is a no-op for an unbuffered file and was what the code called before
+2026-09-12). Rotation renames the active file; the read APIs and L8
+reconciliation cover every archive plus the active file, so a verdict never
+disappears from Graphite's own view by rotating out.
 
 ```bash
 # Minimal production launch (auth + rate limit + durability)
@@ -266,9 +281,9 @@ GRAPHITE_API_KEY=$(openssl rand -hex 32) GRAPHITE_RATE_LIMIT=100 \
 
 > **Bind address.** `--host` defaults to `127.0.0.1` so running the server on a
 > laptop, shared box, or cloud VM does not silently publish the API to every
-> reachable network. Pass `--host 0.0.0.0` to expose it deliberately — the
-> server **refuses** to bind a non-loopback address when `GRAPHITE_API_KEY` is
-> unset, rather than serving an unauthenticated verification API and dashboard.
+> reachable network. Pass `--host 0.0.0.0` to expose it deliberately. Without
+> `GRAPHITE_API_KEY` the server does not start at all; with `GRAPHITE_DEV_MODE=1`
+> and no key it starts **only** on loopback.
 
 ### Integrating safely (read this before writing the integration)
 
@@ -518,6 +533,10 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 
 ## Honest Status
 
+The single authoritative statement of what is enforced today, what is not, and
+what remains undone is [docs/CURRENT.md](docs/CURRENT.md). The dated reports in
+`docs/` are evidence of the work as it happened and are not edited afterwards.
+
 What we **do not** claim:
 
 - The benchmark is 18 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a statistical evaluation on unseen data. "100% precision / 100% recall on the scored benchmark cases" is the honest claim. Composition (C52): 5 REAL mainnet exploit cases (STMT drainer 64tsGGe, AAT drainer 524t8LW, Wormhole $320M hack 5fKWY7X, fresh Aug-2026 drainer chain 2AWwL6dk, AAT mass drain 3PbK87 — pinned from `tests/real_onchain_exploits.rs` + `scripts/real_exploit_*.json`, reproducible offline) + 2 SYNTHETIC drainer cases, honestly labeled. Avg latency ~2.1ms with the real-data cases (release build); the earlier sub-ms figure predates them.
@@ -528,7 +547,7 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 1,399 Rust tests passing (1,409 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
+- 1,422 Rust tests passing (1,432 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions.
 - 14 risk checks (13 risk patterns, incl. `UnspendableDestination` and `PluginBlock`) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
 - 33 protocol manifests / 803 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42 + Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi C46 + Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2 C56).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
@@ -542,6 +561,7 @@ What we **do** claim:
 
 | Document | Description |
 |----------|-------------|
+| [docs/CURRENT.md](docs/CURRENT.md) | **The current security status** — what is enforced, what is not, what is still undone. Every dated report in `docs/` is historical and points here. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design, 8-layer pipeline, subsystem specs |
 | [ROADMAP.md](ROADMAP.md) | Phase 1 (done) → Phase 2 (in progress) → Phase 3+ |
 | [SECURITY.md](SECURITY.md) | Security policy, known limitations, reporting |

@@ -1,5 +1,7 @@
 # Graphite — Clean-Room Forensic Revalidation (C26)
 
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Date:** 2026-08-09
 **Method:** Clean-room. No prior certification, test count, audit report, or "implemented" label accepted as truth. Every conclusion below was reached by reading the code, then **disproving or confirming it empirically** — with runnable experiments and full-suite regression after every fix.
 **Result:** **One previously-undetected architectural gap confirmed and its covering test repaired; two false-confidence claims corrected; one misleading metric layer fixed. No AI-layer-scale hidden incompleteness found in the Rust core.**

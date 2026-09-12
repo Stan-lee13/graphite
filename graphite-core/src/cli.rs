@@ -544,23 +544,17 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
                 )
             })?;
             let addr = std::net::SocketAddr::new(ip, port);
-            // Refuse the genuinely dangerous combination outright: a
-            // non-loopback bind with no API key set is an unauthenticated,
-            // network-reachable verification API and dashboard. Fail closed
-            // with an actionable message rather than starting it.
-            let publicly_bound = !ip.is_loopback();
-            let keyless = std::env::var("GRAPHITE_API_KEY")
-                .map(|k| k.trim().is_empty())
-                .unwrap_or(true);
-            if publicly_bound && keyless {
-                return Err(format!(
-                    "refusing to bind {addr} without GRAPHITE_API_KEY: that would expose an \
-                     unauthenticated verification API and dashboard to the network. Set \
-                     GRAPHITE_API_KEY, or bind loopback with --host 127.0.0.1 for local \
-                     development."
-                )
-                .into());
-            }
+            // Authenticated by default. A missing GRAPHITE_API_KEY is a
+            // startup error unless GRAPHITE_DEV_MODE=1 is set, and even then
+            // the instance may only bind loopback. Decided here, before the
+            // runtime exists, so the message is the first and only line of
+            // output; `run_server` decides it again for embedders that never
+            // pass through this command.
+            crate::server::auth_posture(
+                addr,
+                std::env::var("GRAPHITE_API_KEY").ok().as_deref(),
+                crate::server::dev_mode_from_env(),
+            )?;
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(crate::server::run_server(addr))?;
             Ok(())

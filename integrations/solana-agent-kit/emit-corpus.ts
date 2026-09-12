@@ -46,6 +46,9 @@ const payer = seeded(1);
 const cosigner = seeded(2);
 const destination = seeded(3).publicKey;
 const other = seeded(4).publicKey;
+const nonceAccount = seeded(5);
+/** A nonce value: any 32 bytes, base58. Deliberately not a plausible blockhash. */
+const NONCE_VALUE = seeded(6).publicKey.toBase58();
 
 function transfer(from: PublicKey, to: PublicKey, lamports: bigint): TransactionInstruction {
   const data = Buffer.alloc(12);
@@ -210,8 +213,125 @@ const corpus: Entry[] = [
     transfer(payer.publicKey, destination, 2_000_000n),
     computeLimit(),
   ]),
+  // A durable-nonce transaction, built the way web3.js builds one: the nonce
+  // advance is instruction 0 and the `recentBlockhash` slot carries the nonce
+  // value. The Rust side must recognise it from the bytes alone.
+  legacy(
+    "legacy_durable_nonce",
+    "instruction 0 is SystemProgram.nonceAdvance; recentBlockhash is the nonce value, so the transaction never expires",
+    [
+      SystemProgram.nonceAdvance({ noncePubkey: nonceAccount.publicKey, authorizedPubkey: payer.publicKey }),
+      transfer(payer.publicKey, destination, 2_000_000n),
+    ],
+    NONCE_VALUE,
+  ),
+  // The same instructions with the advance SECOND. The runtime does not treat
+  // this as nonce-based (only instruction 0 counts), so neither may Graphite.
+  legacy(
+    "legacy_nonce_advance_not_first",
+    "a nonce advance in position 1 is an ordinary instruction; the runtime only honours position 0",
+    [
+      transfer(payer.publicKey, destination, 2_000_000n),
+      SystemProgram.nonceAdvance({ noncePubkey: nonceAccount.publicKey, authorizedPubkey: payer.publicKey }),
+    ],
+  ),
   v0WithRealTable(),
 ];
+
+// ─── Byte-level mutations ─────────────────────────────────────────────────────
+//
+// The entries above are structurally different transactions. These are the
+// same transactions damaged one byte at a time: every truncation length, every
+// single-byte flip, a set of hand-picked signature-count prefixes, and trailing
+// bytes. Each mutation records what THIS side concludes — whether `messageOf`
+// accepts it and what message it yields, and whether `@solana/web3.js` itself
+// will deserialize it — and `tests/sak_bridge_corpus.rs` requires Graphite's
+// parser to agree with `messageOf` exactly and to be at least as strict as the
+// SDK except where the runtime is stricter than the SDK.
+//
+// Mutations are stored as operations on a named base entry rather than as
+// bytes, so ~1,000 of them cost a few tens of kilobytes rather than a megabyte.
+
+type MutationOp =
+  | { op: "truncate"; at: number }
+  | { op: "flip"; at: number }
+  | { op: "prefix"; bytes: number[] }
+  | { op: "append"; bytes: number[] };
+
+interface Mutation {
+  base: string;
+  mutation: MutationOp;
+  /** `messageOf` outcome: the message length and digest, or null when it threw. */
+  ts_message_len: number | null;
+  ts_message_sha256: string | null;
+  /** Whether `VersionedTransaction.deserialize` accepts the bytes. */
+  sdk_accepts: boolean;
+}
+
+function applyMutation(raw: Uint8Array, m: MutationOp): Uint8Array {
+  switch (m.op) {
+    case "truncate":
+      return raw.slice(0, m.at);
+    case "flip": {
+      const out = Uint8Array.from(raw);
+      out[m.at] ^= 0xff;
+      return out;
+    }
+    case "prefix": {
+      // Every base entry's signature count is one byte; replace exactly it.
+      return Uint8Array.from([...m.bytes, ...raw.slice(1)]);
+    }
+    case "append":
+      return Uint8Array.from([...raw, ...m.bytes]);
+  }
+}
+
+function observe(base: string, raw: Uint8Array, m: MutationOp): Mutation {
+  const bytes = applyMutation(raw, m);
+  let ts_message_len: number | null = null;
+  let ts_message_sha256: string | null = null;
+  try {
+    const msg = messageOf(bytes);
+    ts_message_len = msg.length;
+    ts_message_sha256 = createHash("sha256").update(msg).digest("hex");
+  } catch {
+    /* rejected */
+  }
+  let sdk_accepts = false;
+  try {
+    VersionedTransaction.deserialize(bytes);
+    sdk_accepts = true;
+  } catch {
+    /* rejected */
+  }
+  return { base, mutation: m, ts_message_len, ts_message_sha256, sdk_accepts };
+}
+
+const PREFIXES: number[][] = [
+  [0x00], [0x02], [0x7f],
+  [0x80, 0x01], // 128
+  [0x80, 0x80, 0x01], // 16384
+  [0xff, 0xff, 0x03], // 65535, the largest value a u16 can hold — VALID encoding
+  [0x80, 0x80, 0x04], // 65536 — overflows u16
+  [0xff, 0xff, 0x7f], // 2,097,151 — three full groups
+  [0x81, 0x00], // 1, non-minimal (alias of 0x01)
+  [0x80, 0x00], // 0, non-minimal (alias of 0x00)
+  [0x80, 0x80, 0x00], // 0, non-minimal, three groups
+  [0x80, 0x80, 0x80], // never terminates
+  [0xff], // 1 byte with continuation bit and nothing after it
+  [0xff, 0xff], // two continuation bytes and nothing after
+];
+
+const mutations: Mutation[] = [];
+for (const baseName of ["legacy_single_transfer", "legacy_two_signers", "v0_real_lookup_table"]) {
+  const base = corpus.find((e) => e.name === baseName)!;
+  const raw = Uint8Array.from(base.raw);
+  if (raw[0] & 0x80) throw new Error(`${baseName}: prefix mutations assume a one-byte signature count`);
+  for (let at = 0; at < raw.length; at++) mutations.push(observe(baseName, raw, { op: "truncate", at }));
+  for (let at = 0; at < raw.length; at++) mutations.push(observe(baseName, raw, { op: "flip", at }));
+  for (const bytes of PREFIXES) mutations.push(observe(baseName, raw, { op: "prefix", bytes }));
+  for (const bytes of [[0x00], [0xff], [0x01, 0x02, 0x03]]) mutations.push(observe(baseName, raw, { op: "append", bytes }));
+}
 
 // Digests must be pairwise distinct: the corpus exists partly to show that the
 // "different" variants really are different transactions.
@@ -228,10 +348,14 @@ writeFileSync(
     {
       _: "Emitted by integrations/solana-agent-kit/emit-corpus.ts. Each entry is what the TypeScript side believes about its own bytes; tests/sak_bridge_corpus.rs requires the Rust parser to agree from the bytes alone. The v0 entry uses a real mainnet lookup table. Unsigned throughout.",
       entries: corpus,
+      mutations,
     },
     null,
     2,
   ) + "\n",
 );
-console.log(`wrote ${out}: ${corpus.length} entries`);
+console.log(`wrote ${out}: ${corpus.length} entries, ${mutations.length} mutations`);
+const tsAccepts = mutations.filter((m) => m.ts_message_len !== null).length;
+const sdkAccepts = mutations.filter((m) => m.sdk_accepts).length;
+console.log(`  mutations: messageOf accepts ${tsAccepts}, web3.js deserializes ${sdkAccepts}`);
 for (const e of corpus) console.log(`  ${e.name.padEnd(40)} ${e.raw.length} bytes  v${e.version ?? "legacy"}`);

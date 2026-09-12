@@ -1,5 +1,7 @@
 # RPC-Backed Validation Campaign — 2026-09-07/08
 
+> **Historical record (2026-09-08).** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Scope.** Configure a real Solana RPC endpoint and validate the layers that had
 never run against one (L3 Simulation, L4 State, L8 Execution), then attack the
 trust boundary that configuring it creates.

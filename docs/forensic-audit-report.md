@@ -1,5 +1,7 @@
 # Graphite — Full Production Forensic Audit & Independent Reconstruction
 
+> **Historical record.** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Date:** 2026-08-08
 **Branch:** `phase2-development`
 **Method:** adversarial real-world validation, live RPC evidence, root-cause investigation, roadmap/skill compliance audit, first-principles reconstruction, gap implementation, full re-validation loop.

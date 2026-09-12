@@ -1,5 +1,7 @@
 # Production-Readiness Audit — 2026-09-08
 
+> **Historical record (2026-09-08).** This report describes the codebase as it was when it was written and is kept unedited as evidence. For what is true now, read [CURRENT.md](CURRENT.md).
+
 **Method.** Internal engineering work by Anthropic's Claude acting as this
 project's engineering agent, against `main` from `ed697ec` to `926ace0`. This is
 not an independent third-party audit, a certification, or a penetration test by
