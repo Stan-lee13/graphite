@@ -432,8 +432,8 @@ than answering from a broken index.
   bound makes the input space small enough that one is cheap to run.
 - **The container smoke job is the only place the digest-pinned base images
   are exercised.** Docker Desktop was not running on this machine; the
-  digests were verified against the registry, not by a local build. CI's
-  container job is the check.
+  digests were verified against the registry, and then by CI's container
+  job on `a56c7e8` (success).
 
 ---
 
@@ -521,7 +521,13 @@ by 1. (8) `/audit/event` length caps disabled → caught by 1. TypeScript:
 moved ahead of the signing record → caught by 4. `git status` clean on
 `src/` after each; fmt and clippy re-run green.
 
-CI for the commit carrying this round: recorded in the follow-up commit that names its Actions run.
+CI for `a56c7e8`, the commit carrying this round: **completed success**,
+all seven jobs — Rust core (fmt, clippy, tests, both feature-matrix legs),
+container build + live smoke (the only check that exercises the
+digest-pinned base images, which Docker Desktop could not build locally),
+TypeScript SDK + SAK integration including the corpus drift check, Go,
+Python, dashboard, dependency CVE audit. Actions run `34720050898`, read
+from the runs endpoint for the full SHA.
 
 ---
 
@@ -535,7 +541,7 @@ Residual Policy at Execution:   ENFORCED — non-inherent residuals refuse unles
 Resource Bounds:                PASS — 1232-byte packet bound, 256 declarations, bounded lifecycle rows, indexed L8 join
 Lifecycle on the Trail:         RECORDED — signing before submission, submission after, L8 at the end (R9-07)
 Repository Integrity:           token read-only; actions and base images pinned by SHA/digest (R9-08)
-CI Certification:               PENDING at the time of this report; see the follow-up commit
+CI Certification:               CERTIFIED — a56c7e8 completed success, all seven jobs (Actions run 34720050898)
 
 P0: none
 P1: R9-01, R9-02, R9-03 (fixed / closed)
