@@ -39,6 +39,34 @@ cd integrations/solana-agent-kit
 npm install
 ```
 
+## What the bridge guarantees
+
+The bridge is the reference execution boundary for Graphite. Its invariant, attacked in
+Rounds 6–8 (`docs/round6-execution-boundary-2026-09-11.md` onward): **the exact
+message Graphite approved is the exact message in the bytes that are signed and
+submitted.**
+
+- Both `executeTransfer` and `executeSwap` build **one** `BoundTransaction`
+  (`artifact.ts`) *before* verification, from deep-copied instructions, and send its
+  bytes as `signed_transaction`. No alias to the transaction exists outside it.
+- Execution requires `scope.kind === "artifact_bound"`. A descriptive verdict never
+  executes.
+- `bound.signApproved(scope.transaction_sha256, [wallet])` is the only signing path: it
+  recomputes the digest of the exact bytes, derives the required signer set from the
+  compiled message, refuses any mismatch, and returns the only bytes that go to
+  `sendRawTransaction`. A refreshed blockhash, changed fee payer, appended instruction,
+  rewritten amount or flipped flag after approval is refused.
+- `executeSwap` requires the built payload (program id, discriminator, accounts with
+  real flags, data). Without it there is nothing to bind and the bridge aborts. Setting
+  `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=I_ACCEPT_UNVERIFIED_SWAP_EXECUTION` — a
+  phrase, so it is not set by accident — lets SAK's own builder execute a swap Graphite
+  never saw; the outcome then says `verifiedExecution: false` with `unverifiedReason`.
+- Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
+- `scope.unobserved` is printed for every verdict and not gated — which residuals a
+  deployment accepts is the deployment's decision.
+- `content_hash` / AuditBind (`auditbind.ts`) remains as a secondary instruction-level
+  check and the audit/L8 join key; the digest is the authoritative binding.
+
 ## Usage
 
 ### Run the end-to-end demo:
@@ -56,31 +84,54 @@ npx tsx demo.ts "Transfer 0.05 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgA
 ```typescript
 import { VerifiedSakAgent } from "./graphite-sak-bridge.js";
 
-const agent = await VerifiedSakAgent.create();
+const agent = await VerifiedSakAgent.create({
+  // or GRAPHITE_CORE_URL / GRAPHITE_API_KEY / GRAPHITE_AI_LAYER_URL / GRAPHITE_WALLET_PROFILE
+  graphiteCoreUrl: "http://localhost:7331",
+  graphiteApiKey: process.env.GRAPHITE_API_KEY,
+});
 
-// Every transaction is verified by Graphite before execution
-const result = await agent.executeSwap("Swap 1 SOL for USDC");
+// Every transaction is built once, verified as those exact bytes, and signed only on
+// an artifact_bound approval whose digest matches.
+const outcome = await agent.executeTransfer("Transfer 0.05 SOL to <address>");
 
-if (!result.executed) {
-  console.log("Blocked by Graphite:", result.verification.risk_verdict.findings);
+if (!outcome.executed) {
+  console.log("Blocked by Graphite:", outcome.verification.risk_verdict.findings);
+} else if (!outcome.verifiedExecution) {
+  console.log("Executed WITHOUT verification (opt-out):", outcome.unverifiedReason);
 } else {
-  console.log("Executed:", result.result);
+  console.log("Verified execution:", outcome.signature);
 }
+```
+
+`ExecutionOutcome` is `{ executed, verifiedExecution, verification, signature?, unverifiedReason? }`.
+Gate on `verifiedExecution`, not on `executed`: the latter is also true for the
+opt-out path.
+
+### Tests and the cross-language corpus
+
+```bash
+npm run typecheck
+npm test                 # 73 tests: BoundTransaction gate, execution-boundary fuzz,
+                         # TOCTOU signing boundary, AuditBind, artifact, nonces
+npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json
+                         # (12 shapes + 1,641 byte-level mutations); CI fails on drift
+npm run emit:artifact-fixture
 ```
 
 ## What Graphite Verifies
 
-Before SAK submits any transaction, Graphite checks:
+Before the bridge signs anything, Graphite checks:
 
-- **L1 Account Resolution**: Are all accounts resolved correctly for the protocol?
-- **L2 Instruction Verification**: Does the instruction match the protocol manifest?
-- **L3 Simulation Integrity**: Is the compute usage consistent with historical baselines?
-- **L4 State Verification**: Are writable/signer accounts consistent with declared state changes?
-- **L5 Semantic Verification**: Does the intent match the instruction semantics?
-- **L6 Policy Verification**: Does the confidence score meet the wallet profile threshold?
-- **L7 Risk Verification**: Are there any risk patterns (drainers, authority hijacks, fake swaps, etc.)?
+- **L1 Account Resolution**: accounts, PDAs and fixed constants; signer/writable privileges read from the transaction's own header and resolved lookup tables
+- **L2 Instruction Verification**: the described instruction is in the bytes, positionally, every sibling is declared, and the transaction is not durable-nonce based
+- **L3 Simulation Integrity**: compute/writes/CPI hops against earned baselines (live with `GRAPHITE_RPC_URL`; `Inconclusive` without)
+- **L4 State Verification**: Graphite's own pre/post diff against the manifest; Token-2022 extensions classified
+- **L5 Semantic Verification**: intent ↔ instruction alignment
+- **L6 Policy Verification**: confidence against the wallet profile threshold
+- **L7 Risk Verification**: drainers, authority hijacks, fake swaps, impersonation, multi-instruction and CPI-trace patterns
 
-If any layer fails, the transaction is NOT submitted.
+If any hard gate fails, the transaction is NOT signed. After submission, `POST
+/verify/execution` reconciles the signature against the recorded verdict (L8).
 
 ## Wallet Profiles
 
@@ -90,9 +141,18 @@ Graphite enforces different confidence thresholds per wallet profile:
 |---------|---------------|----------------|
 | Treasury | 95% | CommunityVerified |
 | TradingBot | 80% | SimulationValidated |
-| Gaming | 60% | HeuristicInferred |
+| Gaming | 55% | HeuristicInferred |
 | Enterprise | 99% | BattleTested |
 
-Set via `GRAPHITE_WALLET_PROFILE` environment variable.
+Set via `GRAPHITE_WALLET_PROFILE` (or `config.walletProfile`). When the Core pins a
+profile server-side with its own `GRAPHITE_WALLET_PROFILE`, the request's profile is
+ignored — the operator's policy wins over the agent's.
 
-**Phase 1 calibration (important):** the built-in profiles above were tuned for the Phase 2 signal set. In Phase 1 the Core intentionally zeroes the three evidence-derived confidence signals (G4 — request-body evidence is attacker-controlled) and caps trust tiers at `OfficialManifest` (P7), so the achievable confidence for a known, clean, intent-aligned protocol is **~0.44** — meaning `TradingBot` (0.80) and higher block everything in Phase 1. The bridge therefore defaults to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile (override via `GRAPHITE_WALLET_PROFILE` or `config.walletProfile`) so that genuinely-known transactions can be approved. The engine's confidence score is always the honest number; the profile is the operator's policy choice.
+**Fresh-core calibration:** the evidence-derived confidence signals read the Core's
+semantic graph, so on a fresh core (no earned evidence, no RPC) the highest reachable
+confidence for a known, clean, intent-aligned protocol is **~0.44** and every built-in
+profile blocks. The bridge defaults to `Custom { min_confidence: 0.40, min_trust_tier:
+OfficialManifest }` so known transactions can be approved for development; a `Custom`
+profile below 0.55 requires `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` on the Core. The
+engine's confidence score is always the honest number; the profile is the operator's
+policy choice.

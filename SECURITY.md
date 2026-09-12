@@ -14,6 +14,15 @@ Instead, email: victorstanley13@gmail.com with:
 
 You will receive a response within 72 hours. If the vulnerability is confirmed, a fix will be prioritized and a security advisory will be published after the fix is released.
 
+## Current status
+
+The authoritative statement of what is enforced now, what is not, and what is
+still undone is [docs/CURRENT.md](docs/CURRENT.md). The dated sections below
+record what was found and fixed, when; they are not edited afterwards. In one
+line: **CONDITIONAL — security-hardened alpha.** No known way to turn a blocked
+verdict into an executed transaction under the stated threat model; no
+independent third party has yet tried; `main` has no branch protection.
+
 ## Security Architecture
 
 Graphite follows a **fail-closed by default** philosophy (Constitution P12):
@@ -23,11 +32,14 @@ Graphite follows a **fail-closed by default** philosophy (Constitution P12):
 - NaN, Infinity, empty, and whitespace-only values in confidence signals and simulation baselines are rejected — they cannot bypass range checks or poison the trusted baseline accumulator
 - The 8-layer pipeline can only reduce confidence or block — no layer can invent confidence that lower layers didn't earn
 - Account roles that are fixed, well-known constants (SPL Token/Token-2022/System/Compute-Budget/ATA program IDs, a manifest's own program self-reference) are checked against the manifest's declared `expected_address` and hard-blocked on mismatch (`AccountIdentityMismatch`), exactly like a PDA mismatch — 542 account roles across 19 manifests as of 2026-09-05. Externally-determined roles (which cannot be pre-verified — the large majority) are honestly reported as `Unverified` on `ResolvedAccount.identity` rather than silently assumed safe; see `ARCHITECTURE.md` → Account Identity.
-- When a caller supplies real per-account signer/writable bits from the actual transaction (`VerificationInput.real_account_metas`), a manifest-required signer the real transaction did not sign, or a manifest-readonly slot the real transaction marks writable, is hard-blocked (`ResolvedAccount.privilege_mismatch`, folded into the same `AccountIdentityMismatch` finding) — fixed 2026-09-05. Optional and caller-supplied: absent or length-mismatched data never blocks and is never assumed to match; see `ARCHITECTURE.md` → Privilege (Signer/Writable) Grounding.
+- When a caller supplies real per-account signer/writable bits from the actual transaction (`VerificationInput.real_account_metas`), a manifest-required signer the real transaction did not sign, or a manifest-readonly slot the real transaction marks writable, is hard-blocked (`ResolvedAccount.privilege_mismatch`, folded into the same `AccountIdentityMismatch` finding) — fixed 2026-09-05. Optional and caller-supplied: absent or length-mismatched data never blocks and is never assumed to match; see `ARCHITECTURE.md` → Transaction Artifact. Since 2026-09-11 the artifact itself is the primary source of these bits when supplied; the caller-supplied list is the fallback.
 - Every instruction in a transaction is risk-assessed, not just the primary — CPI-flattened callees and top-level siblings are checked against the same structural risk rules (known-risky-discriminator table, CPI checks, drainer/hidden-transfer heuristics, impersonation), with an empty declared intent so intent-dependent checks never false-positive on ordinary multi-instruction patterns. A blocked secondary instruction is a hard gate exactly like a primary-instruction finding, and duplicate copies of the same risky secondary each independently re-confirm the block rather than diluting it — fixed 2026-09-05 (`tests/secondary_instruction_risk.rs`). See `ARCHITECTURE.md` → Secondary Instruction Risk Assessment.
 - The CPI-trust exemption list (DEXes/aggregators/multisigs exempted from the untrusted-CPI-root, drainer-heuristic, and deep-chain checks) is a single canonical array, not two hand-maintained ones — a prior real drift between the two (three DEXes present in one but not the other) had silently misflagged their legitimate swaps ("C56") until caught by audit; a regression test now fails immediately if that drift is ever reintroduced — fixed 2026-09-05. See `ARCHITECTURE.md` → CPI Trust Allowlist Consolidation.
 - A genuinely `Failed` L2 (instruction/data mismatch), L4 (state-verification failure), or L5 (intent/instruction mismatch) result is a hard gate — approval is blocked unconditionally, the same as an L7 risk finding, regardless of trust tier or wallet-profile threshold. This is distinct from `Inconclusive` (insufficient evidence, e.g. an unknown protocol), which never blocks and only affects confidence via the existing P12 tier ceiling. (Fixed 2026-09-05: a prior tri-state refactor correctly preserved Inconclusive's non-penalizing behavior but had unintentionally reduced a genuine Failed to a confidence penalty alone, which a high trust tier or a loose wallet profile could absorb — see `tests/l2_l4_l5_hard_gate.rs`.)
 - AI/LLM output is advisory only (Constitution P1) — it never enters the verification path as a decision
+- When the serialized transaction is supplied, the verdict is bound to it: `scope.transaction_sha256` is the SHA-256 of the exact bytes; the described instruction must be *in* those bytes positionally; every sibling instruction must be declared; signer/writable privileges are read from the message header and resolved lookup tables, never from the caller's description; and the SAK bridge signs only bytes whose digest equals the approved one. See "The Transaction Identity Boundary" below.
+- Durable-nonce transactions (instruction 0 is System `AdvanceNonceAccount`) are refused at L2 by default because they do not expire; `GRAPHITE_ALLOW_DURABLE_NONCE=1` permits them only after the nonce account is verified on-chain.
+- Token-2022 extensions are classified, not modelled: transfer-semantics, authority and unknown extensions block, and an unreadable extension region blocks rather than reading as "no extensions".
 
 ## Server Hardening (shipped 2026-08-07)
 
@@ -68,6 +80,74 @@ A dedicated adversarial pass against the pipeline logic itself (previous passes 
 - **Ambiguous discriminators are rejected on the hot path, not just in community submissions.** `discriminator_matches` is a prefix match and instruction lookup takes the first hit in declaration order, so a manifest declaring both `09` and `0900` could silently resolve a real instruction to the wrong entry — and judge it against the wrong account roles, allowed CPIs and risk rules. The community-submission validator enforced this; the validator every seed manifest and every runtime load actually goes through did not, so the weaker of the two validators was the one guarding the hot path. Both now enforce it, and all 33 shipped manifests pass.
 - **The audit trail now models the whole transaction lifecycle (P9).** The Constitution requires construction, simulation, verification, signing, submission, confirmation and finalization each to emit an audit event. The trail carried exactly one kind of record — a verification outcome — with no `event_type` field at all, so six of the seven were absent and the format could not even express them. Records now carry a `LifecycleEvent`, and `POST /audit/event` lets the caller record the stages Graphite does not perform. **This is deliberately an attestation, not a synthesis:** Graphite is a pre-signature service — it does not sign, submit, or watch the chain, so it does not invent those events. An audit trail that fabricates events it never witnessed would be worse than one that admits the gap. Caller-reported events are keyed by `content_hash` so the lifecycle reconciles to one transaction, name their reporter, and are authenticated; a caller cannot inject a `verification` row, since forging an approval into the audit trail is exactly the record a dispute would be settled on. Existing logs stay readable — records written before the field default to `verification`, which is what they were.
 - **A latent determinism landmine was removed.** The union of a protocol's `allowed_cpis` was built by collecting into a `HashSet` and out to a `Vec`. `HashSet` iteration order derives from a per-process random hasher seed, so that ordering differed across machines and restarts. Every current consumer is a membership test, so nothing observable broke — but the moment any consumer rendered that list into a finding or summary string (a pattern used elsewhere in the same file), P2 determinism would have broken silently and invisibly to CI, since one test process has a single fixed seed for its whole run. Now ordered by construction.
+
+## The Transaction Identity Boundary (2026-09-08 → 2026-09-12; Rounds 3–8)
+
+Six adversarial rounds against one invariant: **for every executable
+`artifact_bound` approval, the exact Solana message Graphite approved is the
+exact message contained in the bytes signed and submitted.** Full reports:
+`docs/identity-boundary-campaign-2026-09-11.md`,
+`docs/round6-execution-boundary-2026-09-11.md`,
+`docs/round7-adversarial-assurance-2026-09-11.md`,
+`docs/round8-remaining-assumptions-2026-09-12.md`. The recurring defect shape was
+*a security-relevant property taken from the party proposing the transaction while
+the bytes that settle it sat in the same request.* Closed, each with a reproduction
+committed as a test and the fix reverted once to show the test fails without it:
+
+- **The verdict describes the bytes, not the description.** `signed_transaction` is
+  parsed (legacy + v0, canonical compact-u16, trailing bytes refused); L2 requires the
+  described instruction to be present positionally and every sibling to be declared
+  (bijective coverage, both directions); `scope` is a schema `oneOf` of
+  `artifact_bound` / `descriptive` with `additionalProperties: false`.
+- **Lookup-table accounts are identified, not counted.** Tables are fetched under the
+  RPC budget before account resolution, owner-checked, decoded all-or-nothing; the
+  runtime's account numbering is rebuilt so every instruction position resolves —
+  81 positions across three real mainnet v0 transactions that previously fell through
+  the positional check. Ground-truthed against `meta.loadedAddresses`.
+- **Privileges come from the header.** Two artifacts differing in one header count
+  used to reach identical verdicts because the check ran against the caller's
+  `real_account_metas`. Derived flags win; a contradicting caller is reported.
+- **The signed transaction is the verified transaction.** The SAK bridge used to
+  verify one object and sign another built beside it. It now builds one
+  `BoundTransaction` — deep-copied at build so no alias reaches it — sends its bytes,
+  and the single signing path `signApproved` recomputes the digest, derives the
+  required signer set from the compiled message, refuses any mismatch, and returns
+  the only bytes meant for submission. A descriptive verdict never executes. Swaps
+  require the built payload; the unverified opt-out is a phrase
+  (`I_ACCEPT_UNVERIFIED_SWAP_EXECUTION`) and reports `verifiedExecution: false`.
+- **Provider fields cannot override canonical evidence.** `accountWrites` / `cpiHops`
+  are derived only from canonical `simulateTransaction` fields; disagreeing
+  non-standard fields are reported as provider anomalies.
+- **Token-2022 fail-open found in the Round 6 fix (R7-01).** A malformed first TLV
+  entry returned an empty extension list, indistinguishable from "no extensions", so a
+  hidden TransferHook could vanish. `ExtensionScan.malformed` now blocks.
+- **Wire-format bounds on both sides.** Rust `compact_u16` and TypeScript `messageOf`
+  share one acceptance language, asserted equal on 12 shapes and 1,641 byte-level
+  mutations emitted by `@solana/web3.js`; CI regenerates the corpus and fails on
+  drift. Graphite is stricter than `web3.js` on 45 mutations (non-minimal shortvec,
+  over-long declared lengths, trailing bytes, impossible headers, out-of-range
+  indexes — all things the runtime's decoder refuses) and looser on none.
+- **Audit durability (Round 8).** `File::flush()` is a no-op for an unbuffered file and
+  was the primitive behind "durably on disk"; now `sync_data` per record, measured at
+  1.2 ms on NTFS. The read path saw only the active file, so after a rotation L8
+  reconciliation could not find a blocked verdict (`BlockedButExecuted` became
+  `NoVerificationOnRecord`); every reader now covers the archives. Rotation failures
+  and snapshot failures are counted and surfaced on `/health`. Four handler
+  `assert!`s on audit append became `503 "NOT recorded"`.
+- **Authenticated by default (Round 8).** No `GRAPHITE_API_KEY` means no start;
+  `GRAPHITE_DEV_MODE=1` permits keyless on loopback only; CI proves the keyless
+  container refuses.
+- **Durable nonces (Round 8).** Detected by the runtime's rule, refused at L2 by
+  default, permitted by operator opt-in only after the nonce account is fetched and
+  matches (value, authority, authority signs); the bridge refuses to build one.
+
+**NOT findings, with the invariant named:** ALT mutation after approval (extension is
+append-only, deactivated tables are refused by the runtime, a table's PDA slot is not
+reusable); per-instruction privilege flags (Solana privileges are per message);
+Windows rename-while-open (Rust's handles carry `FILE_SHARE_DELETE`; a foreign handle
+without it is reproduced and counted); caller-reported lifecycle events (a different
+record type no reader treats as a verdict); retry/rebuild substitution (no retry code
+path; a rebuilt transaction is a new digest).
 
 ## RPC Client Security
 
@@ -124,14 +204,21 @@ These are documented scope boundaries, not hidden vulnerabilities:
 
 - **No instruction data semantic parsing** — Graphite matches known discriminators (hex byte comparison) but does not parse the semantic meaning of instruction data beyond the discriminator.
 - **L3 simulation is opt-in** — L3 (Simulation Verification) runs live `simulateTransaction` when an RPC client is attached (`GRAPHITE_RPC_URL`). Without an RPC client it reports an honest `Inconclusive` state, never a phantom pass.
-- **AuditBind closes the verify-to-execute TOCTOU for the transfer path and any payload-bound swap** (`verifyInstruction` re-hashes the exact instruction against the approved `content_hash`, cross-language pinned-vector tested — `integrations/solana-agent-kit/bound-instruction.test.ts`). A payload-bound swap now builds and submits the SAME instruction directly rather than handing off to SAK's internal builder (fixed 2026-09-05). **Residual gap only when NO payload is supplied to `executeSwap`:** execution then goes through SAK's opaque `methods.swap`, which is not guaranteed to submit the reduced-projection-verified instruction — `GRAPHITE_SWAP_STRICT=1` refuses that path entirely. See `ARCHITECTURE.md` → Known Boundary Limitations.
+- **`content_hash` is an instruction-level identifier, not the transaction's identity.** It is a 64-bit hash over one instruction's projection (program, discriminator, accounts, data, CPI targets) and cannot see the fee payer, blockhash, signer set or sibling instructions. It remains the audit-trail and L8 join key and the SDKs' `verifyInstruction` secondary check; the authoritative binding is `scope.transaction_sha256` over the supplied bytes, checked by the bridge's `signApproved`. A rename that says so (`instruction_content_id`) is open work.
+- **An unparseable artifact takes a weaker L2 path, not a failed one.** When the bytes cannot be parsed, L2 falls back to "the described instruction's data appears somewhere in the artifact" and `scope.unobserved` names the downgrade. This cannot reach `approved` under any built-in profile (L3 stays Inconclusive → confidence ≤ 0.44 < 0.55) and a weaker `Custom` profile requires `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`; it would additionally need bytes the runtime accepts and Graphite refuses, measured at zero across 1,641 mutations but not proven impossible. A hard L2 failure on parse error is the recommended follow-up.
+- **`scope.unobserved` is surfaced, not gated.** Every `artifact_bound` verdict carries a non-empty residual by design; which residuals a deployment accepts is a deployment decision.
+- **A permitted durable-nonce transaction has no clock.** With `GRAPHITE_ALLOW_DURABLE_NONCE=1`, a verified nonce transaction is executable as verified *if submitted before the nonce advances*; the missing expiry is the operator's recorded tradeoff, and the opt-in is process-wide.
+- **`fdatasync` proves the device acknowledged, not the platter.** A storage device with a lying write cache is outside what any userspace program can verify.
+- **Token-2022 `TransferFee` is refused, not modelled.** Fee-bearing mints block until the fee is modelled.
+- **Graphite's parser is compared against `messageOf` and `@solana/web3.js`, not against Solana's own decoder.** The 45 stricter-than-SDK cases are argued from the runtime's documented rules, not observed against it; a Rust-SDK-backed oracle would close this.
+- **Round-8 era swap-path residual: the unverified opt-out.** `executeSwap` without a built payload aborts unless `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=I_ACCEPT_UNVERIFIED_SWAP_EXECUTION`, in which case SAK's builder executes an instruction Graphite never saw and the outcome says `verifiedExecution: false`. The remainder of this historical bullet is kept for the record:** execution then goes through SAK's opaque `methods.swap`, which is not guaranteed to submit the reduced-projection-verified instruction — `GRAPHITE_SWAP_STRICT=1` refuses that path entirely. See `ARCHITECTURE.md` → Known Boundary Limitations.
 - **State diffing needs RPC and a signed transaction** — L4 builds a real pre/post account diff only when an RPC client is attached (`GRAPHITE_RPC_URL`) AND the caller supplies `signed_transaction`; a bare `instruction_data` payload can be simulated for compute numbers but the post-state it implies is not trustworthy, so no diff is built from it. A caller may pass `state_diff` directly, but under `CallerSupplied` provenance it can only fail the layer, never certify it (a clean caller diff yields `Inconclusive`). The diff also covers only the instruction's declared writable accounts; an RPC that will not return post-state (over 100 addresses, or an older node) leaves L4 on its structural fallback. Token balance changes are decoded for SPL Token and Token-2022 accounts and mints — other program-owned account data is compared by length and owner only, so a semantic change inside an opaque account is seen as "data changed", not interpreted.
 - **The P10 gate on a FIRST manifest submission bootstraps a baseline; it does not validate the manifest** — a brand-new program has no prior recorded behaviour, so there is nothing for its first submission to regress against. A fixture recorded under the candidate manifest and replayed under the same manifest agrees with itself by construction. Requiring one still matters: it stops a program being enshrined with an empty regression history, which would leave every later version un-gatable too. The submitter chooses which transaction to pin (`graphite registry record-fixture` prints the outcome it pinned), the same assumption the upgrade path already makes. An upgrade that does not RAISE the trust tier is not a promotion and is not gated — the tier ladder, not the manifest diff, is what the gate keys off.
 - **A fresh deployment approves nothing until the semantic graph has evidence** — the three evidence-derived confidence signals (SimulationMatch, HistoricalVolume, CommunityVerification) are 0.50 of the total signal weight and all read the graph, so on an empty graph the highest reachable confidence for a fully manifested protocol is 0.44 while the lowest built-in profile threshold is 0.55 (Gaming). Measured on the shipped container: 20 combinations across 5 protocols and 4 profiles, 0 approved. This is fail-closed and intentional — trust is earned, not assumed — but it means an instance with no earned history and no `GRAPHITE_RPC_URL` will block 100% of traffic indefinitely, because evidence can only be earned through RPC-verified simulation, observed volume, or reviewer attestations. `graphite evidence seed` and `graphite evidence baseline` are the operator paths for restoring an exported graph or standing an instance up before that history exists. Both are CLI-only: nothing on the HTTP surface can write evidence, because request-body evidence would let any caller mint an earned-looking tier (G4). What is seeded is EVIDENCE, not a tier — `append` recomputes the tier from it exactly as it does for earned records (P7) — and seeded evidence is operator-ASSERTED rather than observed, which the command states plainly and the append-only graph preserves.
 - **Caller-provided behavior evidence** — `behavior_evidence` fields are caller-supplied; the confidence engine deliberately zeroes the evidence-derived signals (Constitution G4) so this cannot inflate confidence.
-- **No independent Address Lookup Table / versioned-transaction (v0) detection** — Graphite only sees the flat `account_addresses` a caller supplies, never raw transaction bytes' version byte or ALT references; it cannot itself tell whether accounts a caller omitted were dropped because of ALT resolution. `VerificationInput.uses_versioned_transaction`/`.lookup_table_count` let a caller disclose this (surfaced as a non-blocking warning — never a confidence penalty, since ALT usage is normal for legitimate complex swaps). Full independent detection requires bincode `VersionedTransaction` parsing this crate does not implement (no `solana-sdk` dependency, by design) and is tracked as a follow-up.
+- **Lookup tables are resolved only with an RPC client attached (fixed 2026-09-11; this bullet used to say there was no v0/ALT detection at all).** Graphite parses v0 messages itself and, with `GRAPHITE_RPC_URL`, fetches and decodes the tables all-or-nothing. Without RPC, ALT-sourced accounts are counted and not identified, `scope.unobserved` says so, and the positional L2 check reports how many positions it could not compare. `uses_versioned_transaction` / `lookup_table_count` remain as caller disclosure but the artifact's own version byte and lookups are what Graphite reads. (Historical remainder: for legitimate complex swaps). Full independent detection requires bincode `VersionedTransaction` parsing this crate does not implement (no `solana-sdk` dependency, by design) and is tracked as a follow-up.
 - **Single-replica only; no horizontal scaling** — durable state (the append-only audit log and the semantic-graph snapshot holding earned trust tiers and simulation baselines) lives on a local volume with no cross-process locking or coordination. Two replicas sharing a volume would race on those writes; two replicas with separate volumes would fragment the earned-trust history the confidence model depends on, so a protocol's tier would differ depending on which replica answered. Run exactly one replica (Kubernetes: `strategy: Recreate` with a PVC) behind your load balancer until a shared-state backend exists. Documented rather than silently assumed — an operator scaling this to 3 pods for HA would get subtly wrong confidence scores, not an error.
-- **TLS is terminated upstream, not in-process** — the server speaks plain HTTP by design and has no TLS listener. The bearer API key and full verification payloads therefore travel in cleartext unless a reverse proxy terminates TLS in front of it. The server refuses to bind a non-loopback address without an API key, but it cannot detect the absence of TLS; that remains an operator responsibility.
+- **TLS is terminated upstream, not in-process** — the server speaks plain HTTP by design and has no TLS listener. The bearer API key and full verification payloads therefore travel in cleartext unless a reverse proxy terminates TLS in front of it. The server refuses to start without an API key (and refuses a keyless `GRAPHITE_DEV_MODE=1` instance anywhere but loopback), but it cannot detect the absence of TLS; that remains an operator responsibility.
 - **No transaction amount/value data, and no hard cap on repeated calls to an unmanifested secondary program** — Graphite has no visibility into lamport/token amounts anywhere in its schema, so it cannot bound the cumulative damage of N calls to a program it has no manifest for. A repetition COUNT cap was deliberately not added as a hard gate: it would be trivially evaded (stay one call under the threshold) and would false-positive on a legitimate multi-call batch to a protocol that simply hasn't been onboarded yet (P12). What IS surfaced (fixed 2026-09-05): a non-blocking warning once the SAME unmanifested program is invoked 3+ times as a secondary instruction, so the pattern is visible to a human/downstream auditor even though it is not itself blocked. Genuinely dangerous secondary instructions remain hard-blocked regardless of repetition by the checks that don't require amount data or a manifest (the known-risky-discriminator table, impersonation detection) — see `ARCHITECTURE.md` → Secondary Instruction Risk Assessment.
 
-See [ROADMAP.md](ROADMAP.md) for the full Phase 2 plan.
+See [ROADMAP.md](ROADMAP.md) for what gates Phase 3, and [docs/CURRENT.md](docs/CURRENT.md) for the current status of every guarantee above.

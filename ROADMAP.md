@@ -14,11 +14,11 @@
 - [x] Python advisory layer (separate process — P1 compliance)
 - [x] HTTP server (axum) + CLI (clap)
 - [x] Dockerfile + .dockerignore
-- [x] 987 unit/integration tests passing, 0 clippy warnings (2026-08-21)
+- [x] 987 unit/integration tests passing at the time, 0 clippy warnings (2026-08-21; 1,422 as of 2026-09-12)
 
-### Phase 1 Honest Status
+### Phase 1 Honest Status (as recorded then; the benchmark is 18 scored + 2 baselines as of C52)
 
-The benchmark is 16 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a
+The benchmark was 16 scored cases (safe + malicious) plus 2 baseline comparisons — NOT a
 statistical evaluation on unseen data. "100% precision / 100% recall on scored cases" is
 the honest claim. Of the exploit cases, 2 are SYNTHETIC reconstructions (CLINKSINK-style,
 AAT-style) using real program IDs but fabricated account structures and no
@@ -26,9 +26,9 @@ instruction data bytes. The other 3 are REAL mainnet data (Wormhole $320M hack,
 CLINKSINK STMT drainer TX 64tsGGe, SlowMist AAT drainer TX 524t8LW) with actual
 instruction data from published security research. All are labeled per P16.
 
-### TOCTOU Mitigation (Phase 1.5 Partial)
+### TOCTOU Mitigation (Phase 1.5 Partial — superseded 2026-09-11)
 
-The `content_hash` field is a SHA-256 hash of the transaction configuration — program ID, instruction discriminator, account addresses, instruction data, and CPI targets. This means each verification result is cryptographically tied to the exact transaction it verified.
+The `content_hash` field is a hash of one instruction's projection — program ID, instruction discriminator, account addresses, instruction data, and CPI targets. It ties a verdict to the instruction it described. **Since 2026-09-11 the authoritative binding is `scope.transaction_sha256` over the supplied transaction bytes, and the SAK bridge signs only bytes whose digest equals the approved one** (see "Hardening Rounds" below). The paragraph that follows is the Phase 1.5 record.
 
 **Phase 1.5 limitation:** Graphite verifies the transaction structure but does not re-hash the final signed transaction against the approved `content_hash` before execution. Full TOCTOU prevention requires the executor (SAK integration) to verify that the executed transaction matches the verified one — Phase 2 AuditBind middleware.
 
@@ -69,7 +69,7 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] content_hash field for deterministic verification (P2)
 - [x] .github CI templates + issue templates
 - [x] LICENSE, SECURITY.md, CONTRIBUTING.md
-- [x] 1,272 tests passing, 0 clippy warnings, fmt clean
+- [x] 1,272 tests passing at the time, 0 clippy warnings, fmt clean (1,422 as of 2026-09-12)
 - [x] Server hardening: constant-time bearer auth, per-IP rate limiting, CORS denied by default, JSONL audit log
 - [x] RPC client live-verified against Helius (mainnet + devnet)
 
@@ -115,8 +115,43 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] 1,000+ meaningful regression fixtures (2,181 corpus, C41)
 - [x] Real holdout evaluation with independent labels (38 fixtures, 0 FN, C41)
 
+## Hardening Rounds (2026-09-05 → 2026-09-12) — COMPLETE, reports in `docs/`
+
+Eight adversarial rounds run after Phase 2, each driven by an independent review of
+the previous commit and each closed with reproductions committed as tests and every
+fix reverted once to prove its test fails without it. Status of every guarantee:
+[docs/CURRENT.md](docs/CURRENT.md).
+
+- [x] Production readiness: RPC credential redaction, `X-Forwarded-For` trust hops, writable-data-dir probe, loopback default, tracing subscriber, container hardening, `cargo audit` + container smoke in CI, audit rotation, `/metrics` (2026-09-05)
+- [x] Red-team of the pipeline: empty-discriminator carve-out, caller-chosen policy profile, dead simulation-integrity path, canonical intent vocabulary, immutable seed manifests, ambiguous discriminators, P9 lifecycle events (2026-09-05)
+- [x] RPC trust boundary measured and bounded: fee cap, compute cap, unreadable-means-absent, body ceiling, verdict-field bounding; budget that fits inside the request timeout; load shedding (2026-09-08)
+- [x] Transaction identity: wire-format parser (legacy + v0), `artifact_bound` / `descriptive` scope with `transaction_sha256`, positional instruction-account identity, bijective sibling coverage, privileges from the header (2026-09-08 → 09-11)
+- [x] Address lookup tables: fetched, owner-checked, decoded all-or-nothing; runtime account numbering rebuilt; ground-truthed against three real mainnet v0 transactions (2026-09-11)
+- [x] Execution boundary: one `BoundTransaction`, deep-copied, digest-rechecked, signer set from the message, single private signing path; descriptive verdicts never execute; swap opt-out is a phrase and reports `verifiedExecution: false` (Rounds 6–7)
+- [x] Token-2022 extensions classified (block on semantics/authority/unknown/unreadable); the Round-6 fail-open on malformed TLV found and fixed in Round 7
+- [x] Cross-language corpus: 12 shapes + 1,641 byte-level mutations from `@solana/web3.js`, Rust must agree, CI diffs the corpus (Rounds 7–8)
+- [x] Audit durability: `fdatasync` per record, whole-trail reads across archives (L8 could not find rotated verdicts), rotation/snapshot failures surfaced, handler panics → `503 NOT recorded` (Round 8)
+- [x] Authenticated by default; `GRAPHITE_DEV_MODE=1` loopback-only; keyless container refusal proven in CI (Round 8)
+- [x] Durable-nonce transactions refused at L2; opt-in only after on-chain nonce verification; bridge refuses to build them (Round 8)
+- [x] Documentation provenance: `docs/CURRENT.md`; every dated report banner-linked as historical (Round 8)
+- [x] 1,422 Rust tests (301 featureless, 1,281 cli-only), 73 TypeScript, CI green on every commit since `f10e4ab`
+
+## Phase 3 (Production) — what gates it
+
+Not a feature list; a list of what has to be true before real user funds go through
+the public service. Owner decisions are marked.
+
+- [ ] **Independent third-party audit** — every report so far is internal engineering work and says so (owner)
+- [ ] **Branch protection on `main`** — required CI, no force-push; today CI is advisory because the branch accepts direct pushes (owner)
+- [ ] Token-2022 `TransferFee` modelled so fee-bearing mints stop blocking
+- [ ] A hard L2 failure on an unparseable artifact (today: a weaker fallback path, bounded by the confidence cap and the permissive-profile flag)
+- [ ] Graphite's parser checked against Solana's own decoder over the mutation corpus (today: against `messageOf` and `web3.js`)
+- [ ] `content_hash` renamed to say it is an instruction-level identifier
+- [ ] Persisted archive index so a node with years of audit archives does not scan them once at startup
+- [ ] Mainnet deployment; enterprise integrations
+
 ## Phase 3+ (Future)
 
-- **Phase 3 (Production):** Mainnet deployment, professional security audit, enterprise integrations
+- **Phase 3 (Production):** see the gates above
 - **Phase 4 (Ecosystem):** Standard verification layer for Solana AI agents
 - **Phase 5 (Multi-chain, exploratory):** Evaluate SVM-compatible chains only — full rewrite required for non-SVM chains

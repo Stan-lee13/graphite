@@ -18,7 +18,23 @@ lives in `docs/CURRENT.md`; the entry below and every earlier one are history.
 - **Byte-level cross-language corpus**: 1,641 mutations (every truncation, every single-byte flip, 14 signature-count prefixes, trailing bytes) of three transactions; Graphite's `message_bytes` — now the parser's own signature skip, exported — must agree with the bridge's `messageOf` exactly, and Graphite must never accept bytes `@solana/web3.js` refuses. `web3.js` is measured lenient where the runtime is not (non-minimal shortvec, over-long declared lengths, trailing bytes); Graphite refuses those.
 - **Documentation provenance**: `docs/CURRENT.md` is the single current-status page; every dated report carries a historical banner.
 
-## [Current State — C58: 1,014 tests, 33 manifests, 803 instructions, 13 risk checks, 37-entry exploit corpus, deployment verified, full-stack auth, v0.2.0-beta] — 2026-08-19
+## [Rounds 3–7 — the transaction identity boundary] — 2026-09-08 → 2026-09-11
+
+Reports: `docs/identity-boundary-campaign-2026-09-11.md`, `docs/round6-execution-boundary-2026-09-11.md`, `docs/round7-adversarial-assurance-2026-09-11.md`.
+
+- **Wire-format parser** (`tx_artifact.rs`): legacy + v0, canonical compact-u16 (≤ 65,535, minimal), trailing bytes and out-of-range indexes refused. `VerificationScope::{ArtifactBound, Descriptive}` as a schema `oneOf`, `transaction_sha256` over the supplied bytes.
+- **Instruction identity**: L2 requires the described instruction to be present positionally (`compare_instruction_accounts`) and every sibling declared (`sibling_coverage`, bijective). Account universe checked by address (`artifact_accounts_undescribed`).
+- **Lookup tables** resolved before account resolution, owner-checked, all-or-nothing; `runtime_account_list` rebuilds the runtime's numbering; ground-truthed against three real mainnet v0 transactions (`tests/alt_real_v0.rs`).
+- **Privileges from the artifact** (`privileges_from_artifact`, `PrivilegeSource` reported in L1); a contradicting caller is reported and overridden.
+- **Provider field precedence**: `account_writes` / `cpi_hops` from canonical fields only; `provider_anomalies` surfaced.
+- **Token-2022 extensions classified** (`ExtensionImpact`), unreadable region fail-closed (R7-01, a fail-open in the Round-6 fix).
+- **SAK bridge**: `BoundTransaction` (deep copy, private signing path `signApproved`, signer set from the message, message-slice equality), `artifact_bound` required to execute, swap opt-out phrase + `ExecutionOutcome.verifiedExecution`, AuditBind partial-metas refused, `messageOf` with the Rust acceptance language.
+- **CI**: `cargo test` on the feature matrix (28 previously-untested failures found), corpus and fixture drift checks, `npm ci` everywhere.
+- Test count 1,014 → 1,399 across these rounds.
+
+## [Historical — C58 state, 2026-08-19: 1,014 tests, 33 manifests, 803 instructions, 13 risk checks, 37-entry exploit corpus, deployment verified, full-stack auth, v0.2.0-beta]
+
+The entries from here down describe the codebase as it was when each was written. Current status: `docs/CURRENT.md`.
 
 ### Summary of all changes C28–C55
 

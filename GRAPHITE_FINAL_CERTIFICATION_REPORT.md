@@ -1,4 +1,6 @@
 # Graphite Phase 1/1.5 Final Certification Report
+
+> **Historical record (August 2026, Phase 1/1.5).** Every number in this report — test counts, layer status, the certification verdict — describes the codebase as it was then and is kept unedited as evidence. "Auditor" here names an internal engineering-agent pass, not an independent third party. For what is true now, read [docs/CURRENT.md](docs/CURRENT.md).
 ## Comprehensive Engineering Validation with Real On-Chain Attack Data
 
 **Date:** August 7, 2026 (original report: August 2, 2026)
