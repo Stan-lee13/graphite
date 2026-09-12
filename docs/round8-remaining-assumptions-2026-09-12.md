@@ -425,6 +425,13 @@ CI added one step: a keyless container must refuse to start, with and
 without `GRAPHITE_DEV_MODE=1` (0.0.0.0 is not loopback), and name the refusal
 in its logs.
 
+CI for `0a36712`, the commit carrying this round: **completed success**,
+all seven jobs — Rust core (fmt, clippy, tests, both feature-matrix legs),
+container build + live smoke including the new keyless-refusal step,
+TypeScript SDK + SAK integration including the corpus drift check, Go,
+Python, dashboard, dependency CVE audit. Actions run `34691034415`, read
+from the runs endpoint for the full SHA.
+
 The deliberate-break log, in order: (1) `sync_data` → `flush`: **not caught**
 — the timing assertion was vacuous and has been replaced by a measurement
 (R8-01). (2) archive loops skipped: caught by 5 tests. (3) nonce L2 override
@@ -446,7 +453,7 @@ Durable-Nonce Semantics:        ENFORCED — refused by default, verified on opt
 Server Auth Default:            FAIL-CLOSED — key required; dev mode named and loopback-only
 Parser / Wire Safety:           PASS — 1,641-mutation corpus, zero looser-than-SDK cases
 Documentation Provenance:       ONE CURRENT PAGE; reports marked historical
-CI Certification:               PENDING — recorded below once the Actions run for this commit completes
+CI Certification:               CERTIFIED — 0a36712 completed success, all seven jobs (Actions run 34691034415)
 
 P0: none
 P1: R8-05 (closed)
