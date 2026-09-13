@@ -243,7 +243,14 @@ active file, no longer found by digest). TypeScript: (6) the bridge's
 `verdict_on_record_key` check removed → caught by 1. `git status` clean on
 `src/` after each; fmt and clippy re-run green.
 
-CI for the commit carrying this round: recorded in the follow-up commit that names its Actions run.
+CI for `8b7e5dc`, the commit carrying this round: **completed success**,
+all seven jobs — Rust core on the pinned `1.98.1` toolchain (fmt, clippy,
+tests, both feature-matrix legs), container build on
+`rust:1.98.1-bookworm@sha256:9a73a508…` + live smoke, TypeScript SDK + SAK
+integration including the corpus drift check, Go `1.22.12`, Python with
+`--require-hashes`, dashboard, dependency CVE audit with `cargo-audit
+0.22.2`. Actions run `34750271068`, read from the runs endpoint for the full
+SHA.
 
 ---
 
@@ -256,7 +263,7 @@ L8 Exact Attribution:           ENFORCED — joined on the chain's bytes; caller
 Lifecycle verdict_on_record:    EXACT — resolved by audit_trail_id / transaction_sha256; content_hash labelled as the coarse key
 Supply Chain:                   hash-locked Python, exact Go and cargo-audit, tested compiler = shipped compiler
 RPC Decompression / Limiter:    MEASURED — 64 MiB bomb refused at 32 MiB in 35 ms; 452 ns/check at one million buckets
-CI Certification:               PENDING at the time of this report; see the follow-up commit
+CI Certification:               CERTIFIED — 8b7e5dc completed success, all seven jobs (Actions run 34750271068)
 
 P0: none
 P1: R10-01 (fixed)
