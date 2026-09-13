@@ -154,6 +154,8 @@ pub enum CliCommand {
         data_dir: Option<PathBuf>,
         signature: String,
         content_hash: Option<String>,
+        transaction_sha256: Option<String>,
+        audit_trail_id: Option<String>,
         rpc_url: Option<String>,
     },
     /// Seed operator-asserted evidence or a simulation baseline into the
@@ -520,8 +522,19 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             data_dir,
             signature,
             content_hash,
+            transaction_sha256,
+            audit_trail_id,
             rpc_url,
-        } => run_execution(data_dir, &signature, content_hash.as_deref(), rpc_url),
+        } => run_execution(
+            data_dir,
+            &signature,
+            crate::verification::ExecutionKeys {
+                content_hash: content_hash.as_deref(),
+                transaction_sha256: transaction_sha256.as_deref(),
+                audit_trail_id: audit_trail_id.as_deref(),
+            },
+            rpc_url,
+        ),
         CliCommand::ManifestVerify { path } => run_manifest_verify(&path),
         #[cfg(feature = "rpc")]
         CliCommand::RegressionSeedLive {
@@ -1201,7 +1214,7 @@ fn run_manifest_verify(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 fn run_execution(
     data_dir: Option<PathBuf>,
     signature: &str,
-    content_hash: Option<&str>,
+    keys: crate::verification::ExecutionKeys<'_>,
     rpc_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::verification::ExecutionReconciliation;
@@ -1225,16 +1238,24 @@ fn run_execution(
     let audit = crate::durable::AuditLog::open(crate::durable::audit_path(&dir)).ok();
 
     let rt = tokio::runtime::Runtime::new()?;
-    let result = rt.block_on(core.audit_execution(signature, content_hash, audit.as_ref()));
+    let result = rt.block_on(core.audit_execution(signature, keys, audit.as_ref()));
 
     println!("signature   {}", result.signature);
     println!("chain       {:?}", result.chain_status);
+    println!("attribution {:?}", result.attribution);
+    if let Some(d) = &result.chain_transaction_sha256 {
+        println!("chain tx    {d}");
+    }
     match result.recorded_approved {
         Some(a) => println!(
-            "recorded    approved={a}  audit_trail_id={}",
-            result.recorded_audit_trail_id.as_deref().unwrap_or("-")
+            "recorded    approved={a}  audit_trail_id={}  transaction_sha256={}",
+            result.recorded_audit_trail_id.as_deref().unwrap_or("-"),
+            result.recorded_transaction_sha256.as_deref().unwrap_or("-")
         ),
-        None => println!("recorded    (no verification on file for this content_hash)"),
+        None => println!("recorded    (no verification on file for this transaction)"),
+    }
+    for d in &result.caller_keys_disagree {
+        println!("WARNING     {d}");
     }
     println!("verdict     {:?}", result.reconciliation);
     println!();
@@ -1266,7 +1287,7 @@ fn run_execution(
         }
         ExecutionReconciliation::NoVerificationOnRecord => {
             println!(
-                "Graphite has no verification on file for this content_hash - an execution it\n\
+                "Graphite has no verification on file for this transaction - an execution it\n\
                  never saw. That is not proof of wrongdoing, but it is not coverage either."
             );
             Ok(())

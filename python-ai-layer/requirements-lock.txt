@@ -1,0 +1,20 @@
+# Hash-locked test dependencies for CI (Round 10, repository integrity).
+#
+# `pip install --require-hashes -r requirements-lock.txt` refuses any wheel
+# whose SHA-256 is not listed here, so the packages CI runs the tests with are
+# exactly the ones named in this file — not whatever the index serves on the
+# day. Hashes are of the pure-Python wheels (py3-none-any), which are the same
+# artifact on every platform. Regenerate with `pip download <pkg>==<ver>
+# --only-binary=:all:` followed by `pip hash`, and change the version here and
+# in requirements.txt together.
+pytest==8.3.4 \
+    --hash=sha256:50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6
+iniconfig==2.3.0 \
+    --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+pluggy==1.6.0 \
+    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+# pytest's Windows-only dependency, so the same file installs on a developer machine.
+colorama==0.4.6 ; sys_platform == "win32" \
+    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6

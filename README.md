@@ -11,7 +11,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 **Current status, in one place: [docs/CURRENT.md](docs/CURRENT.md).** Every dated report under `docs/` is a historical record and points there.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1444_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1455_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-33-blue?style=flat-square)](graphite-core/protocols/)
@@ -66,10 +66,10 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,444 tests — zero setup (1,454 total; 10 network-dependent tests ignored
+# Run 1,455 tests — zero setup (1,465 total; 10 network-dependent tests ignored
 # unless run explicitly with a live RPC)
 cargo test --release
-# summed across the test binaries: 1444 passed; 0 failed; 10 ignored
+# summed across the test binaries: 1455 passed; 0 failed; 10 ignored
 
 # The same gate CI runs on the feature matrix: the library with no features
 # (301 tests) and the cli-only build (1,281) must pass too.
@@ -196,7 +196,7 @@ graphite/
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
 │   ├── protocols/                 ← 33 JSON protocol manifests (803 instructions)
-│   └── tests/                     ← 1,444 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
+│   └── tests/                     ← 1,455 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -367,11 +367,14 @@ new ResidualPolicy(process.env.GRAPHITE_ACCEPT_UNOBSERVED?.split(",") ?? []).ass
 // the supplied signers are exactly the message's required signers.
 const raw = bound.signApproved(result.scope.transaction_sha256, [walletKeypair]);
 // Rule 4: the signing is on the trail before anything leaves the process.
-const receipt = await graphite.recordLifecycleEvent({ event_type: "signing", content_hash: result.content_hash });
-if (receipt.verdict_on_record !== "approved") throw new Error("the approval in hand is not the approval on record");
+const keys = { content_hash: result.content_hash, audit_trail_id: result.audit_trail_id, transaction_sha256: result.scope.transaction_sha256 };
+const receipt = await graphite.recordLifecycleEvent({ event_type: "signing", ...keys });
+if (receipt.verdict_on_record !== "approved" || receipt.verdict_on_record_key !== "audit_trail_id") {
+  throw new Error("the approval in hand is not the approval on record");
+}
 const signature = await connection.sendRawTransaction(raw);
-await graphite.recordLifecycleEvent({ event_type: "submission", content_hash: result.content_hash, transaction_signature: signature });
-const l8 = await graphite.verifyExecution({ signature, content_hash: result.content_hash });
+await graphite.recordLifecycleEvent({ event_type: "submission", ...keys, transaction_signature: signature });
+const l8 = await graphite.verifyExecution({ signature, ...keys });
 if (l8.discrepancy) throw new Error("BlockedButExecuted: the gate did not govern");
 ```
 
@@ -390,14 +393,19 @@ accepted codes on the execution outcome. A verdict is a description of what was
 checked; the policy is where a deployment says what it is willing to sign
 without.
 
-**4. Put your signing and submission on the trail, then reconcile.** Graphite
-records what it verifies; only you can record what you sign and send.
-`recordLifecycleEvent({ event_type: "signing", content_hash })` *before*
-submission — and do not submit if it is not recorded or its `verdict_on_record`
-is not `approved` — then `submission` with the signature, then
-`verifyExecution({ signature, content_hash })` for L8. The reference sequence is
-`executeBoundTransaction` in `integrations/solana-agent-kit/execution-lifecycle.ts`;
-no irreversible step proceeds unless the step before it is on the trail.
+**4. Put your signing and submission on the trail, then reconcile — under the
+exact keys.** Graphite records what it verifies; only you can record what you
+sign and send. `recordLifecycleEvent({ event_type: "signing", content_hash,
+audit_trail_id, transaction_sha256 })` *before* submission — and do not submit
+if it is not recorded, if its `verdict_on_record` is not `approved`, or if
+`verdict_on_record_key` is not `audit_trail_id` — then `submission` with the
+signature, then `verifyExecution({ signature, content_hash, transaction_sha256,
+audit_trail_id })` for L8. `content_hash` alone names every transaction
+carrying that instruction; the exact keys name yours. L8 itself joins on the
+chain's bytes when it can fetch them and reports which key it used
+(`attribution`). The reference sequence is `executeBoundTransaction` in
+`integrations/solana-agent-kit/execution-lifecycle.ts`; no irreversible step
+proceeds unless the step before it is on the trail.
 
 **`content_hash` is the audit key, not the binding.** `content_hash` is a
 64-bit identifier over one instruction's projection — program, discriminator,
@@ -456,14 +464,23 @@ call that closes the loop, and it is caller-driven by design — Graphite does n
 watch the chain, so someone has to report the signature.
 
 ```bash
-curl -X POST http://localhost:7331/verify/execution   -H "Content-Type: application/json"   -d '{"signature":"<base58 signature>","content_hash":"<from the /verify response>"}' | jq .
+curl -X POST http://localhost:7331/verify/execution   -H "Content-Type: application/json"   -d '{"signature":"<base58 signature>","audit_trail_id":"<from the /verify response>","transaction_sha256":"<scope.transaction_sha256>","content_hash":"<content_hash>"}' | jq .
 ```
 
 ```bash
 # Same reconciliation from the CLI. Exits 1 on a discrepancy, so it works as a
 # monitoring check.
-graphite execution --signature <base58 signature> --content-hash <hash>
+graphite execution --signature <base58 signature> --audit-trail-id <id> --transaction-sha256 <digest>
 ```
+
+With an RPC that serves `getTransaction`, L8 does not need the keys at all: it
+fetches the bytes behind the signature, zeroes the signature slots (which gives
+back exactly the artifact that was verified) and joins on their digest —
+`attribution: "chain"`. The keys are cross-checked against that and any
+disagreement is reported in `caller_keys_disagree`. Without the chain's bytes
+the most exact key you supplied decides, and `content_hash` alone is
+ambiguous by construction: it names every transaction carrying that
+instruction.
 
 The SAK bridge makes this call itself after every verified execution, and
 records its `signing` and `submission` on the trail around it (`POST
@@ -605,6 +622,7 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 | **The described instruction is located, or L2 fails** | An artifact without `instruction_data`, or one that does not parse, fails L2; `artifact_bound` never claims a comparison L2 did not make (Round 9: a 100 SOL transfer was approved under a 0.002 SOL description by omitting the optional field) |
 | **Residuals are gated at execution** | `scope.unobserved_codes` names each residual; the bridge's `ResidualPolicy` refuses any non-inherent one the operator has not accepted in `GRAPHITE_ACCEPT_UNOBSERVED` |
 | **Lifecycle on the trail** | The bridge records signing before it submits (and aborts if it cannot), submission after, and runs L8 at the end; every caller-reported row carries the server's `verdict_on_record` and is bounded on disk |
+| **L8 attribution is exact** | An execution is joined to the verification of *those bytes* — the chain's transaction with signature slots zeroed digests to `scope.transaction_sha256` — never to a same-instruction sibling by `content_hash` (Round 10: a blocked B executed after an approved A read as `ApprovedAndExecuted`) |
 | **RPC evidence provenance** | Simulation writes/CPI hops derived only from canonical response fields; non-standard provider fields that disagree are reported as anomalies, never used |
 | **API auth** | Bearer API key required by default — the server refuses to start without one; `GRAPHITE_DEV_MODE=1` permits keyless on loopback only. Constant-time compared; `429` per-IP rate limiting; `503` load shedding; CORS allowlist (denied by default) |
 | **Durability** | Every audit record `fdatasync`'d before the response; a verdict that cannot be recorded is refused with `503`; rotation is a rename, archives retained, and every reader (dashboard, L8) covers the whole trail; snapshot and rotation failures surface on `/health` as `degraded_reasons` |
@@ -627,7 +645,7 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 1,444 Rust tests passing (1,454 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
+- 1,455 Rust tests passing (1,465 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
 - 14 risk checks (13 risk patterns, incl. `UnspendableDestination` and `PluginBlock`) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
 - 33 protocol manifests / 803 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42 + Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi C46 + Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2 C56).
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.

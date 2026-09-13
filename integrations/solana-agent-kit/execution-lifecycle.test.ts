@@ -27,6 +27,7 @@ import type {
   LifecycleEventReceipt,
   UnobservedCode,
   VerdictOnRecord,
+  VerificationKeyKind,
   VerificationResult,
 } from "../../sdk/typescript/src/types.js";
 
@@ -82,6 +83,7 @@ class Fakes implements SubmitConnection, LifecycleReporter {
   events: LifecycleEventInput[] = [];
   submitted: Uint8Array[] = [];
   verdictOnRecord: VerdictOnRecord = "approved";
+  verdictKey: VerificationKeyKind = "audit_trail_id";
   failSigningRecord = false;
   failSubmissionRecord = false;
   failConfirm = false;
@@ -108,18 +110,25 @@ class Fakes implements SubmitConnection, LifecycleReporter {
       event_type: event.event_type,
       content_hash: event.content_hash,
       verdict_on_record: this.verdictOnRecord,
+      verdict_on_record_key: this.verdictKey,
     };
   }
-  async verifyExecution(input: { signature: string; content_hash?: string }): Promise<ExecutionCheckResult> {
+  l8Inputs: Array<{ signature: string; content_hash?: string; transaction_sha256?: string; audit_trail_id?: string }> = [];
+  async verifyExecution(input: { signature: string; content_hash?: string; transaction_sha256?: string; audit_trail_id?: string }): Promise<ExecutionCheckResult> {
     this.calls.push(`l8:${input.signature}`);
+    this.l8Inputs.push(input);
     if (this.failReconcile) throw new Error("rpc unavailable");
     return {
       signature: input.signature,
       chain_status: { Confirmed: { slot: 1, success: true } },
       recorded_approved: true,
       recorded_audit_trail_id: "gr-test",
+      recorded_transaction_sha256: input.transaction_sha256 ?? null,
       reconciliation: this.discrepancy ? "BlockedButExecuted" : "ApprovedAndExecuted",
       discrepancy: this.discrepancy,
+      attribution: "chain",
+      chain_transaction_sha256: input.transaction_sha256 ?? null,
+      caller_keys_disagree: [],
       audit_recorded: true,
     };
   }
@@ -142,7 +151,8 @@ function run(fakes: Fakes, bound: BoundTransaction, v: VerificationResult, polic
 test("the honest path: policy, sign, record signing, send, record submission, confirm, L8 — in that order", async () => {
   const fakes = new Fakes();
   const bound = build();
-  const lc = await run(fakes, bound, verdict(bound));
+  const v = verdict(bound);
+  const lc = await run(fakes, bound, v);
   assert.deepEqual(fakes.calls, [
     "record:signing",
     "send",
@@ -157,9 +167,15 @@ test("the honest path: policy, sign, record signing, send, record submission, co
   assert.equal(lc.confirmed, true);
   assert.deepEqual(lc.acceptedUnobserved, []);
   assert.equal(lc.reconciliation?.discrepancy, false);
-  // The events carry the join keys and the reporter.
+  // The events carry every join key — the exact ones, not only the
+  // instruction-level content_hash — and the reporter.
   assert.equal(fakes.events[0].content_hash, "afb61d8865b4cb68");
   assert.equal(fakes.events[0].audit_trail_id, "gr-test");
+  const digest = (v.scope as { transaction_sha256: string }).transaction_sha256;
+  assert.equal(fakes.events[0].transaction_sha256, digest);
+  assert.equal(fakes.events[1].transaction_sha256, digest);
+  assert.equal(fakes.l8Inputs[0].audit_trail_id, "gr-test");
+  assert.equal(fakes.l8Inputs[0].transaction_sha256, digest);
   assert.equal(fakes.events[0].reported_by, "test-bridge");
   assert.equal(fakes.events[1].transaction_signature, "5xSignature");
   // And what went out is the signed bound transaction — one submission.
@@ -167,6 +183,12 @@ test("the honest path: policy, sign, record signing, send, record submission, co
   const tx = Transaction.from(fakes.submitted[0]);
   assert.equal(tx.signatures.length, 1);
   assert.ok(tx.verifySignatures());
+  // What the chain will hold, with its signature slot zeroed, IS the artifact
+  // Graphite verified — the join L8 performs (Round 10, `unsigned_artifact`).
+  const zeroed = Uint8Array.from(fakes.submitted[0]);
+  zeroed.fill(0, 1, 65);
+  assert.deepEqual(Array.from(zeroed), Array.from(bound.artifactBytes));
+  assert.equal(createHash("sha256").update(zeroed).digest("hex"), digest);
 });
 
 test("a non-inherent residual refuses BEFORE anything is signed or recorded", async () => {
@@ -207,6 +229,19 @@ test("if the signing cannot be recorded, nothing is submitted", async () => {
   await assert.rejects(run(fakes, bound, verdict(bound)), /NOT submitting/);
   assert.deepEqual(fakes.calls, ["record:signing"]);
   assert.equal(fakes.submitted.length, 0);
+});
+
+test("a signing resolved by a coarser key than the exact id is not submitted", async () => {
+  // A content_hash-resolved "approved" may be about a different transaction
+  // carrying the same instruction (Round 10).
+  for (const key of ["content_hash", "transaction_sha256"] as VerificationKeyKind[]) {
+    const fakes = new Fakes();
+    fakes.verdictKey = key;
+    const bound = build();
+    await assert.rejects(run(fakes, bound, verdict(bound)), new RegExp(`resolved the signing by "${key}"`));
+    assert.deepEqual(fakes.calls, ["record:signing"]);
+    assert.equal(fakes.submitted.length, 0);
+  }
 });
 
 test("if the trail's verdict on record is not an approval, nothing is submitted", async () => {

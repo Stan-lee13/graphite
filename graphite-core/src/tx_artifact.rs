@@ -316,6 +316,51 @@ fn skip_signatures(r: &mut Reader<'_>) -> Result<(), ArtifactParseError> {
     Ok(())
 }
 
+/// The bytes Graphite was shown, recovered from a signed transaction: the
+/// same frame with every signature slot zeroed.
+///
+/// The bridge serializes the artifact before signing, so its signature slots
+/// are 64 zero bytes each and `transaction_sha256` is the digest of that
+/// frame. A transaction fetched from the chain carries real signatures in
+/// the same slots and nothing else differs — the count prefix and the
+/// message are byte-identical — so zeroing the slots reproduces the artifact
+/// exactly, and its SHA-256 is the key that joins an on-chain execution to
+/// the verification of those exact bytes (Round 10). Refuses what
+/// `parse_transaction` refuses about the frame: the packet bound and a
+/// signature array that runs past the input.
+pub fn unsigned_artifact(bytes: &[u8]) -> Result<Vec<u8>, ArtifactParseError> {
+    if bytes.len() > MAX_TRANSACTION_BYTES {
+        return Err(ArtifactParseError::TooLarge {
+            len: bytes.len(),
+            max: MAX_TRANSACTION_BYTES,
+        });
+    }
+    let mut r = Reader::new(bytes);
+    if r.bytes.is_empty() {
+        return Err(ArtifactParseError::Empty);
+    }
+    let sig_count = r.compact_u16("signature count")?;
+    let prefix_len = r.pos;
+    let sig_len = sig_count
+        .checked_mul(64)
+        .ok_or(ArtifactParseError::LengthExceedsInput {
+            what: "signatures",
+            declared: sig_count,
+            available: r.remaining(),
+        })?;
+    let _ = r.take(sig_len, "signatures")?;
+    let mut out = bytes.to_vec();
+    out[prefix_len..prefix_len + sig_len].fill(0);
+    Ok(out)
+}
+
+/// SHA-256 of `unsigned_artifact(bytes)`, hex — what `scope.transaction_sha256`
+/// holds for the verification of these bytes.
+pub fn artifact_sha256_of_signed(bytes: &[u8]) -> Result<String, ArtifactParseError> {
+    use sha2::{Digest, Sha256};
+    Ok(hex::encode(Sha256::digest(unsigned_artifact(bytes)?)))
+}
+
 /// The message half of a serialized transaction: everything after the
 /// signature array.
 ///

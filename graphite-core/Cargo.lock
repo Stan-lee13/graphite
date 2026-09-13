@@ -628,6 +628,7 @@ dependencies = [
  "clap",
  "curve25519-dalek",
  "ed25519-dalek",
+ "flate2",
  "hex",
  "proptest",
  "reqwest",

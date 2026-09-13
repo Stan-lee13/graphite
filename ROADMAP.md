@@ -139,6 +139,8 @@ fix reverted once to prove its test fails without it. Status of every guarantee:
 - [x] Packet-size bound (1232 bytes) at entry, parser and `messageOf`; 256 declared siblings; 122 s → 1.6 ms (Round 9)
 - [x] Lifecycle rows bounded, `verdict_on_record` on every row, the bridge reports signing/submission and runs L8; indexed L8 join (Round 9)
 - [x] CI token read-only, actions pinned by SHA, base images pinned by digest (Round 9)
+- [x] L8 attribution joined on the chain's bytes (signature slots zeroed → `transaction_sha256`), caller keys most-exact-first without fallback; `verdict_on_record` resolved the same way (Round 10, P1)
+- [x] Tested compiler = shipped compiler (`1.98.1` in CI and the container); Go, cargo-audit and Python test deps pinned/hash-locked (Round 10)
 - [x] 1,422 Rust tests (301 featureless, 1,281 cli-only), 73 TypeScript, CI green on every commit since `f10e4ab`
 
 ## Phase 3 (Production) — what gates it

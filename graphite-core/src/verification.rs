@@ -787,7 +787,60 @@ pub struct ExecutionAudit {
     pub recorded_approved: Option<bool>,
     pub recorded_audit_trail_id: Option<String>,
     pub recorded_content_hash: Option<String>,
+    pub recorded_transaction_sha256: Option<String>,
     pub reconciliation: ExecutionReconciliation,
+    /// How the execution was joined to the verification record.
+    pub attribution: ExecutionAttribution,
+    /// The artifact digest recomputed from the bytes the chain holds for
+    /// this signature (signature slots zeroed), when they could be fetched.
+    pub chain_transaction_sha256: Option<String>,
+    /// Caller-supplied keys that name a different verification from the one
+    /// the chain's bytes resolve to. Empty when they agree or were absent.
+    /// Non-empty means the caller's attestation about which verification
+    /// this execution belongs to is wrong; the reconciliation above is
+    /// against the chain's answer, not the caller's.
+    pub caller_keys_disagree: Vec<String>,
+}
+
+/// The join key an L8 reconciliation actually used, most authoritative
+/// first (Round 10).
+///
+/// `content_hash` is one instruction's projection, shared by every
+/// transaction carrying that instruction — the same transfer beside a
+/// different sibling, under a different fee payer, signer set or blockhash.
+/// Joining on it answered for whichever such transaction was verified last,
+/// so the approval of A could be returned for the execution of B. The chain
+/// settles it: the bytes behind the signature, with their signature slots
+/// zeroed, ARE the artifact Graphite was shown, and their digest is the key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionAttribution {
+    /// The transaction bytes were fetched from the chain and their artifact
+    /// digest was looked up. Independent of anything the caller said.
+    Chain,
+    /// The chain's bytes were not available; the caller's `audit_trail_id`
+    /// named the verification.
+    AuditTrailId,
+    /// The chain's bytes were not available; the caller's
+    /// `transaction_sha256` named the transaction.
+    TransactionSha256,
+    /// The chain's bytes were not available; only `content_hash` was
+    /// supplied. The answer is about *a* transaction carrying that
+    /// instruction and may not be about this one.
+    ContentHash,
+    /// Nothing to join on.
+    None,
+}
+
+/// The keys a caller may supply to `/verify/execution`, alongside the
+/// signature. All optional; the chain's bytes take precedence over all of
+/// them when available, and they are cross-checked against what the chain
+/// resolves to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExecutionKeys<'a> {
+    pub content_hash: Option<&'a str>,
+    pub transaction_sha256: Option<&'a str>,
+    pub audit_trail_id: Option<&'a str>,
 }
 
 /// What this verdict is actually BOUND to.
@@ -1783,10 +1836,17 @@ impl GraphiteCore {
     /// rather than obeyed, and which nothing inside a verification request can
     /// ever detect.
     ///
-    /// `content_hash` is how the two sides are joined. It is the deterministic
-    /// hash of the transaction Graphite verified, so the caller supplying it is
-    /// asserting "this signature is the execution of that verification". That
-    /// assertion is caller-attested, exactly like the P9 lifecycle events —
+    /// The two sides are joined on the exact transaction (Round 10): the bytes
+    /// the chain holds for the signature, signature slots zeroed, digest to
+    /// `scope.transaction_sha256` of the verification of those bytes. Only
+    /// when the chain's bytes cannot be fetched do the caller's keys stand in
+    /// — `audit_trail_id`, then `transaction_sha256`, then `content_hash`,
+    /// which is one instruction's projection and answers for whichever
+    /// transaction carrying that instruction was verified last. A
+    /// caller-supplied key is an assertion "this signature is the execution
+    /// of that verification"; it is cross-checked against the chain and any
+    /// disagreement is reported. That assertion is caller-attested, exactly
+    /// like the P9 lifecycle events —
     /// Graphite cannot independently prove a signature corresponds to a
     /// verification it performed earlier, and pretending otherwise would put
     /// fabricated certainty in the audit trail.
@@ -1797,36 +1857,134 @@ impl GraphiteCore {
     pub async fn audit_execution(
         &self,
         signature: &str,
-        content_hash: Option<&str>,
+        keys: ExecutionKeys<'_>,
         audit: Option<&crate::durable::AuditLog>,
     ) -> ExecutionAudit {
+        use crate::durable::VerificationKey;
         let chain_status = match self.verify_execution(signature).await {
             Ok(s) => s,
             Err(e) => ExecutionVerification::Unavailable(e.to_string()),
         };
 
-        // Find what Graphite decided for this transaction, if anything.
-        let recorded = match (content_hash, audit) {
-            // The LAST verification for this content hash is the one that
-            // governed: a caller may verify the same transaction more than
-            // once, and the decision that mattered is the most recent one
-            // before submission. The lookup covers the whole trail — every
-            // rotated archive, not just the active file — because a blocked
-            // verdict that rotated out of the active file is still the verdict
-            // that `BlockedButExecuted` must be able to find.
-            (Some(hash), Some(log)) => log.last_verification_for(hash),
+        // The chain's own account of what executed: the bytes behind the
+        // signature, with the signature slots zeroed, are the artifact
+        // Graphite was shown, and their digest is the exact key. Fetched
+        // whenever the signature is on-chain; a fetch that fails leaves the
+        // caller's keys to fall back on, and says so in `attribution`.
+        let chain_transaction_sha256 = match (&chain_status, &self.rpc_client) {
+            (ExecutionVerification::Confirmed { .. }, Some(client)) => {
+                match client.get_transaction_bytes(signature).await {
+                    Ok(Some(bytes)) => {
+                        match crate::tx_artifact::artifact_sha256_of_signed(&bytes) {
+                            Ok(digest) => Some(digest),
+                            Err(e) => {
+                                tracing::warn!("L8: chain bytes for {signature} do not frame as a transaction: {e}");
+                                None
+                            }
+                        }
+                    }
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::warn!("L8: getTransaction for {signature} failed: {e}");
+                        None
+                    }
+                }
+            }
             _ => None,
         };
 
+        // Find what Graphite decided for THIS transaction. The chain's digest
+        // is authoritative and independent of the caller; without it, the
+        // most exact key the caller supplied decides, and no coarser key is
+        // consulted — a fallback from a spoofed or stale `audit_trail_id` to
+        // a `content_hash` would let the caller pick which verification an
+        // execution is attributed to.
+        let (recorded, attribution) = match audit {
+            None => (None, ExecutionAttribution::None),
+            Some(log) => {
+                if let Some(digest) = &chain_transaction_sha256 {
+                    (
+                        log.find_verification(VerificationKey::TransactionSha256(digest)),
+                        ExecutionAttribution::Chain,
+                    )
+                } else if let Some(id) = keys.audit_trail_id {
+                    (
+                        log.find_verification(VerificationKey::AuditTrailId(id)),
+                        ExecutionAttribution::AuditTrailId,
+                    )
+                } else if let Some(tx) = keys.transaction_sha256 {
+                    (
+                        log.find_verification(VerificationKey::TransactionSha256(tx)),
+                        ExecutionAttribution::TransactionSha256,
+                    )
+                } else if let Some(hash) = keys.content_hash {
+                    // The LAST verification for this content hash: the most
+                    // recent decision about SOME transaction carrying this
+                    // instruction. Whole trail, every archive.
+                    (
+                        log.find_verification(VerificationKey::ContentHash(hash)),
+                        ExecutionAttribution::ContentHash,
+                    )
+                } else {
+                    (None, ExecutionAttribution::None)
+                }
+            }
+        };
+
+        // What the caller said, against what was resolved. A disagreement
+        // is reported, never used to change the answer.
+        let mut caller_keys_disagree = Vec::new();
+        if let Some(rec) = &recorded {
+            if let Some(id) = keys.audit_trail_id {
+                if id != rec.audit_trail_id {
+                    caller_keys_disagree.push(format!(
+                        "audit_trail_id {id} was supplied; the execution resolves to {}",
+                        rec.audit_trail_id
+                    ));
+                }
+            }
+            if let Some(tx) = keys.transaction_sha256 {
+                if rec.transaction_sha256.as_deref() != Some(tx) {
+                    caller_keys_disagree.push(format!(
+                        "transaction_sha256 {tx} was supplied; the execution resolves to {}",
+                        rec.transaction_sha256
+                            .as_deref()
+                            .unwrap_or("a descriptive verification")
+                    ));
+                }
+            }
+            if let Some(hash) = keys.content_hash {
+                if hash != rec.content_hash {
+                    caller_keys_disagree.push(format!(
+                        "content_hash {hash} was supplied; the execution resolves to {}",
+                        rec.content_hash
+                    ));
+                }
+            }
+        } else if let (Some(digest), Some(tx)) =
+            (&chain_transaction_sha256, keys.transaction_sha256)
+        {
+            if digest != tx {
+                caller_keys_disagree.push(format!(
+                    "transaction_sha256 {tx} was supplied; the chain's bytes for this signature digest to {digest}"
+                ));
+            }
+        }
+
+        let no_keys = keys.content_hash.is_none()
+            && keys.transaction_sha256.is_none()
+            && keys.audit_trail_id.is_none();
         let reconciliation = match (&chain_status, &recorded) {
             (ExecutionVerification::Unavailable(reason), _) => {
                 ExecutionReconciliation::Unavailable {
                     reason: reason.clone(),
                 }
             }
-            (_, None) if content_hash.is_none() => ExecutionReconciliation::Unavailable {
-                reason: "no content_hash supplied — nothing to reconcile against".to_string(),
-            },
+            (_, None) if no_keys && chain_transaction_sha256.is_none() => {
+                ExecutionReconciliation::Unavailable {
+                    reason: "no content_hash, transaction_sha256 or audit_trail_id supplied and the chain's bytes were not available — nothing to reconcile against".to_string(),
+                }
+            }
             (_, None) if audit.is_none() => ExecutionReconciliation::Unavailable {
                 reason: "no audit log available to read the recorded verdict from".to_string(),
             },
@@ -1859,7 +2017,13 @@ impl GraphiteCore {
             recorded_approved: recorded.as_ref().map(|r| r.approved),
             recorded_audit_trail_id: recorded.as_ref().map(|r| r.audit_trail_id.clone()),
             recorded_content_hash: recorded.as_ref().map(|r| r.content_hash.clone()),
+            recorded_transaction_sha256: recorded
+                .as_ref()
+                .and_then(|r| r.transaction_sha256.clone()),
             reconciliation,
+            attribution,
+            chain_transaction_sha256,
+            caller_keys_disagree,
         }
     }
 

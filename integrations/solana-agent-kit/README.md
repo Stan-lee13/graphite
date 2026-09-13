@@ -61,12 +61,16 @@ submitted — and nothing is signed under a residual the operator has not accept
   typo in that list is a startup error; a Core that reports no codes (pre-Round-9) is
   refused. The codes accepted for an execution are recorded on
   `outcome.lifecycle.acceptedUnobserved`. See `residual-policy.ts`.
-- **The lifecycle is on Graphite's trail, in order (Round 9).** `execution-lifecycle.ts`
-  is the only path from verdict to network: policy → `signApproved` → `POST /audit/event`
-  `signing` → submit → `POST /audit/event` `submission` → confirm → `POST
-  /verify/execution` (L8). A signing that cannot be recorded, or whose
-  `verdict_on_record` is not `approved`, aborts *before* submission; after submission
-  every failure is reported on `outcome.lifecycle` and none is hidden.
+- **The lifecycle is on Graphite's trail, in order, under the exact keys (Rounds 9–10).**
+  `execution-lifecycle.ts` is the only path from verdict to network: policy →
+  `signApproved` → `POST /audit/event` `signing` → submit → `POST /audit/event`
+  `submission` → confirm → `POST /verify/execution` (L8). Every call carries
+  `audit_trail_id` and `transaction_sha256` with the `content_hash`. A signing that
+  cannot be recorded, whose `verdict_on_record` is not `approved`, or that the server
+  resolved by any key other than `audit_trail_id`, aborts *before* submission; after
+  submission every failure is reported on `outcome.lifecycle` and none is hidden. L8's
+  `reconciliation` comes with `attribution` (`chain` when Graphite joined on the bytes
+  behind the signature itself) and `caller_keys_disagree`.
 - `bound.signApproved(scope.transaction_sha256, [wallet])` is the only signing path: it
   recomputes the digest of the exact bytes, derives the required signer set from the
   compiled message, refuses any mismatch, and returns the only bytes that go to
@@ -132,7 +136,7 @@ verdict on what actually landed.
 
 ```bash
 npm run typecheck
-npm test                 # 95 tests: BoundTransaction gate, execution-boundary fuzz,
+npm test                 # 96 tests: BoundTransaction gate, execution-boundary fuzz,
                          # TOCTOU signing boundary, AuditBind, artifact, nonces,
                          # residual policy, execution lifecycle
 npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json

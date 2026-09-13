@@ -59,6 +59,9 @@ codegen-units = 1
 
 [dev-dependencies]
 proptest = "1.0"
+# Already in the tree through reqwest's gzip support; used by the tests to
+# build compressed RPC responses (Round 10).
+flate2 = "1"
 
 [[bin]]
 name = "graphite"

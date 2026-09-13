@@ -52,6 +52,8 @@ export interface LifecycleReporter {
   verifyExecution(input: {
     signature: string;
     content_hash?: string;
+    transaction_sha256?: string;
+    audit_trail_id?: string;
     reported_by?: string;
   }): Promise<ExecutionCheckResult>;
 }
@@ -136,6 +138,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
       event_type: "signing",
       content_hash: verification.content_hash,
       audit_trail_id: verification.audit_trail_id,
+      transaction_sha256: scope.transaction_sha256,
       reported_by: p.reportedBy,
       detail: `digest ${scope.transaction_sha256}`,
     });
@@ -146,12 +149,22 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
         "be reconciled by L8. Retry once the audit path is healthy.",
     );
   }
+  if (signing.verdict_on_record_key !== "audit_trail_id") {
+    // The bridge sent the exact verification id; a server that answered by
+    // a coarser key (or none) is not the server this bridge is written for,
+    // and a content_hash-resolved "approved" may be about a different
+    // transaction carrying the same instruction (Round 10).
+    throw new Error(
+      `[Graphite] ${label}: the audit trail resolved the signing by "${signing.verdict_on_record_key}", ` +
+        "not by the exact audit_trail_id this bridge supplied. NOT submitting.",
+    );
+  }
   if (signing.verdict_on_record !== "approved") {
     // The server that verified this transaction is not the server whose
     // trail was just consulted, or the trail changed under us. Either way
     // the approval in hand is not the approval on record.
     throw new Error(
-      `[Graphite] ${label}: the audit trail's most recent verdict for ${verification.content_hash} ` +
+      `[Graphite] ${label}: the audit trail's verdict for ${verification.audit_trail_id} ` +
         `is "${signing.verdict_on_record}", not the approval this process holds. NOT submitting.`,
     );
   }
@@ -176,6 +189,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
       event_type: "submission",
       content_hash: verification.content_hash,
       audit_trail_id: verification.audit_trail_id,
+      transaction_sha256: scope.transaction_sha256,
       transaction_signature: signature,
       reported_by: p.reportedBy,
     });
@@ -205,13 +219,21 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
     lifecycle.reconciliation = await p.graphite.verifyExecution({
       signature,
       content_hash: verification.content_hash,
+      transaction_sha256: scope.transaction_sha256,
+      audit_trail_id: verification.audit_trail_id,
       reported_by: p.reportedBy,
     });
     const r = lifecycle.reconciliation;
     log(
-      `[Graphite] ${label}: L8 reconciliation ${JSON.stringify(r.reconciliation)}` +
+      `[Graphite] ${label}: L8 reconciliation ${JSON.stringify(r.reconciliation)} (attribution: ${r.attribution})` +
         (r.audit_recorded ? "" : " (NOT recorded on the trail)"),
     );
+    if (r.caller_keys_disagree.length > 0) {
+      log(
+        `[Graphite] ${label}: L8 resolved a different verification than this process holds: ` +
+          r.caller_keys_disagree.join(" | "),
+      );
+    }
     if (r.discrepancy) {
       log(`[Graphite] ${label}: L8 DISCREPANCY on ${signature} — Graphite's decision did not govern`);
     }

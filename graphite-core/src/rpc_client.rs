@@ -1042,6 +1042,55 @@ impl SolanaRpcClient {
         self.post_rpc(body).await
     }
 
+    /// The serialized bytes of one confirmed transaction (`getTransaction`,
+    /// encoding: base64), or `None` when the cluster has no record of the
+    /// signature.
+    ///
+    /// This is what lets L8 attribute an execution to a verification
+    /// without believing the caller: the bytes come from the chain, the
+    /// signature slots are zeroed, and the digest is looked up
+    /// (`tx_artifact::artifact_sha256_of_signed`, Round 10). Anything but a
+    /// `[base64, "base64"]` pair in `result.transaction` is an invalid
+    /// response, never a silent `None`.
+    pub async fn get_transaction_bytes(
+        &self,
+        signature: &str,
+    ) -> Result<Option<Vec<u8>>, RpcError> {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
+            "params": [signature, {"encoding": "base64", "maxSupportedTransactionVersion": 0}]
+        });
+        let result = self.post_rpc(body).await?;
+        if result.is_null() {
+            return Ok(None);
+        }
+        let pair = result
+            .get("transaction")
+            .and_then(|t| t.as_array())
+            .ok_or_else(|| {
+                RpcError::InvalidResponse(
+                    "getTransaction result.transaction is not an array".to_string(),
+                )
+            })?;
+        let (Some(encoded), Some(encoding)) = (
+            pair.first().and_then(|v| v.as_str()),
+            pair.get(1).and_then(|v| v.as_str()),
+        ) else {
+            return Err(RpcError::InvalidResponse(
+                "getTransaction result.transaction is not a [data, encoding] pair".to_string(),
+            ));
+        };
+        if encoding != "base64" {
+            return Err(RpcError::InvalidResponse(format!(
+                "getTransaction returned encoding {encoding:?}, base64 was requested"
+            )));
+        }
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map(Some)
+            .map_err(|e| RpcError::InvalidResponse(format!("getTransaction base64: {e}")))
+    }
+
     /// Get recent blockhash
     pub async fn get_latest_blockhash(&self) -> Result<String, RpcError> {
         let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash","params":[{"commitment":self.config.commitment}]});

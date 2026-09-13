@@ -81,7 +81,7 @@ A dedicated adversarial pass against the pipeline logic itself (previous passes 
 - **The audit trail now models the whole transaction lifecycle (P9).** The Constitution requires construction, simulation, verification, signing, submission, confirmation and finalization each to emit an audit event. The trail carried exactly one kind of record — a verification outcome — with no `event_type` field at all, so six of the seven were absent and the format could not even express them. Records now carry a `LifecycleEvent`, and `POST /audit/event` lets the caller record the stages Graphite does not perform. **This is deliberately an attestation, not a synthesis:** Graphite is a pre-signature service — it does not sign, submit, or watch the chain, so it does not invent those events. An audit trail that fabricates events it never witnessed would be worse than one that admits the gap. Caller-reported events are keyed by `content_hash` so the lifecycle reconciles to one transaction, name their reporter, and are authenticated; a caller cannot inject a `verification` row, since forging an approval into the audit trail is exactly the record a dispute would be settled on. Existing logs stay readable — records written before the field default to `verification`, which is what they were.
 - **A latent determinism landmine was removed.** The union of a protocol's `allowed_cpis` was built by collecting into a `HashSet` and out to a `Vec`. `HashSet` iteration order derives from a per-process random hasher seed, so that ordering differed across machines and restarts. Every current consumer is a membership test, so nothing observable broke — but the moment any consumer rendered that list into a finding or summary string (a pattern used elsewhere in the same file), P2 determinism would have broken silently and invisibly to CI, since one test process has a single fixed seed for its whole run. Now ordered by construction.
 
-## The Transaction Identity Boundary (2026-09-08 → 2026-09-12; Rounds 3–9)
+## The Transaction Identity Boundary (2026-09-08 → 2026-09-13; Rounds 3–10)
 
 Six adversarial rounds against one invariant: **for every executable
 `artifact_bound` approval, the exact Solana message Graphite approved is the
@@ -90,7 +90,8 @@ exact message contained in the bytes signed and submitted.** Full reports:
 `docs/round6-execution-boundary-2026-09-11.md`,
 `docs/round7-adversarial-assurance-2026-09-11.md`,
 `docs/round8-remaining-assumptions-2026-09-12.md`,
-`docs/round9-next-surface-2026-09-12.md`. The recurring defect shape was
+`docs/round9-next-surface-2026-09-12.md`,
+`docs/round10-exact-attribution-2026-09-13.md`. The recurring defect shape was
 *a security-relevant property taken from the party proposing the transaction while
 the bytes that settle it sat in the same request.* Closed, each with a reproduction
 committed as a test and the fix reverted once to show the test fails without it:
@@ -169,8 +170,23 @@ committed as a test and the fix reverted once to show the test fails without it:
 - **The L8 join is indexed (Round 9, R9-10).** `last_verification_for` over a 64 MB
   active file cost 953 ms per caller-driven lookup; it is now a seek (0.5 ms hit, 1.1 ms
   miss) via an in-memory offset index built at open and maintained per append.
-- **Repository integrity (Round 9, R9-08).** The CI token is read-only; every action is
-  pinned to a commit SHA; both container base images are pinned by manifest digest.
+- **Repository integrity (Round 9, R9-08; Round 10, R10-02).** The CI token is read-only;
+  every action is pinned to a commit SHA; both container base images are pinned by
+  manifest digest; the toolchain is `1.98.1` in CI and in the container (tested compiler =
+  shipped compiler); Go `1.22.12`, `cargo-audit 0.22.2`, and Python test dependencies are
+  hash-locked.
+- **L8 and the lifecycle join were keyed on `content_hash` (Round 10, R10-01, P1).**
+  `content_hash` is one instruction's projection and is shared by every transaction
+  carrying that instruction; `last_verification_for(content_hash)` returned the newest
+  such record, so the execution of a blocked transaction B resolved to the later approval
+  of a same-instruction A — `ApprovedAndExecuted` for a bypass. L8 now fetches the bytes
+  behind the signature, zeroes the signature slots (which reproduces the artifact the
+  bridge sent, byte for byte) and joins on their digest; caller keys stand in only without
+  the chain's bytes, most exact first (`audit_trail_id` → `transaction_sha256` →
+  `content_hash`), never falling back, and are cross-checked. `/audit/event` resolves
+  `verdict_on_record` the same way, refuses contradicting keys, and records the key used.
+  The bridge sends the exact keys and refuses to submit unless its signing was resolved
+  by `audit_trail_id`.
 
 **NOT findings, with the invariant named:** ALT mutation after approval (extension is
 append-only, deactivated tables are refused by the runtime, a table's PDA slot is not
@@ -180,7 +196,10 @@ without it is reproduced and counted); caller-reported lifecycle events (a diffe
 record type no reader treats as a verdict; timestamps are server-assigned; receipt order
 is file order); retry/rebuild substitution (no retry code path; a rebuilt transaction is
 a new digest; a resubmitted one is idempotent on-chain); RPC entry-count misalignment
-(refused); multi-tenancy (single-tenant by construction).
+(refused); multi-tenancy (single-tenant by construction); RPC decompression bombs (the cap
+applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 MiB in 35 ms);
+the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
+spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
 
 ## RPC Client Security
 
@@ -241,7 +260,8 @@ These are documented scope boundaries, not hidden vulnerabilities:
 - **An accepted residual is the operator's decision.** The bridge refuses every non-inherent `unobserved_codes` entry by default; an operator who names `no_state_diff` or `lookup_tables_unresolved` in `GRAPHITE_ACCEPT_UNOBSERVED` has chosen to execute without that observation, and the execution outcome records the choice. Nothing at execution time second-guesses configuration (P1).
 - **Pre-signature verification has a window.** The chain moves between verification and execution; the blockhash bounds the window to roughly a minute for ordinary transactions. Nothing signed in advance can be verified against the state it will execute in.
 - **Single-tenant.** One API key, one wallet-profile pin, one audit trail and one semantic graph per process. Tenant isolation is process isolation; no document claims otherwise.
-- **Archive lookups are scans.** The L8 / lifecycle join is indexed for the active file only; a hash older than the last rotation costs one pass over each archive, newest first.
+- **Archive lookups are scans.** The L8 / lifecycle join is indexed for the active file only; a key older than the last rotation costs one pass over each archive, newest first.
+- **Without the chain's bytes, L8 attribution is only as exact as the caller's keys.** An RPC that does not serve `getTransaction`, a pruned ledger, or no RPC leaves the join on `audit_trail_id` → `transaction_sha256` → `content_hash`; the last is ambiguous by construction and the response says `attribution: content_hash`. The bridge always supplies the first two.
 - **A permitted durable-nonce transaction has no clock.** With `GRAPHITE_ALLOW_DURABLE_NONCE=1`, a verified nonce transaction is executable as verified *if submitted before the nonce advances*; the missing expiry is the operator's recorded tradeoff, and the opt-in is process-wide.
 - **`fdatasync` proves the device acknowledged, not the platter.** A storage device with a lying write cache is outside what any userspace program can verify.
 - **Token-2022 `TransferFee` is refused, not modelled.** Fee-bearing mints block until the fee is modelled.

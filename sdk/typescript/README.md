@@ -50,11 +50,16 @@ accepted it by name — the reference is `ResidualPolicy` in
 ## Send the bytes you sent to the trail, too
 
 `recordLifecycleEvent({ event_type: "signing" | "submission" | "confirmation" |
-"finalization", content_hash, ... })` puts a stage the caller performed on Graphite's
-append-only trail (`POST /audit/event`); it resolves only on `recorded: true` and
-returns `verdict_on_record` — what the trail says about that hash. Record `signing`
-before you submit and refuse to submit if it is not recorded or the verdict on record is
-not `approved`. `verifyExecution({ signature, content_hash })` runs L8 after submission
-and returns the reconciliation; `discrepancy: true` is `BlockedButExecuted`. The
+"finalization", content_hash, audit_trail_id, transaction_sha256, ... })` puts a stage
+the caller performed on Graphite's append-only trail (`POST /audit/event`); it resolves
+only on `recorded: true` and returns `verdict_on_record` — what the trail says about the
+verification the event names — with `verdict_on_record_key`, the key it was resolved by.
+Send the exact keys: `content_hash` alone names every transaction carrying that
+instruction. Record `signing` before you submit and refuse to submit if it is not
+recorded, if the verdict on record is not `approved`, or if it was not resolved by
+`audit_trail_id`. `verifyExecution({ signature, content_hash, transaction_sha256,
+audit_trail_id })` runs L8 after submission and returns the reconciliation with
+`attribution` (`chain` when L8 joined on the bytes behind the signature) and
+`caller_keys_disagree`; `discrepancy: true` is `BlockedButExecuted`. The
 reference sequence is `executeBoundTransaction` in
 `integrations/solana-agent-kit/execution-lifecycle.ts`.

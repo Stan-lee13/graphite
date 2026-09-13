@@ -3,6 +3,15 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 10 — exact execution attribution] — 2026-09-13
+
+Report: `docs/round10-exact-attribution-2026-09-13.md`.
+
+- **L8 and the lifecycle join keyed on `content_hash` (P1, fixed)**: an instruction-level key shared by every transaction carrying that instruction; the newest such record answered, so a blocked B's execution resolved to a later approved A. `AuditRecord.transaction_sha256`; `AuditLog::find_verification(VerificationKey::{AuditTrailId, TransactionSha256, ContentHash})` with the active-file index keyed all three ways; `tx_artifact::unsigned_artifact` / `artifact_sha256_of_signed`; `rpc_client::get_transaction_bytes`; `audit_execution(signature, ExecutionKeys, audit)` joins on the chain's bytes first, then the caller's keys most-exact-first with no fallback, reporting `attribution`, `chain_transaction_sha256`, `caller_keys_disagree`; `/audit/event` resolves `verdict_on_record` the same way, refuses contradicting keys (400 `InconsistentKeys`), records `verdict_on_record_key`; CLI `--transaction-sha256` / `--audit-trail-id`.
+- **SDK / bridge**: `LifecycleEventInput.transaction_sha256`, `ExecutionCheckInput.{transaction_sha256, audit_trail_id}`, `ExecutionAttribution`, `VerificationKeyKind`; the bridge sends the exact keys on every call and refuses to submit unless its signing was resolved by `audit_trail_id`.
+- **Supply chain**: toolchain `1.98.1` in CI and `rust:1.98.1-bookworm@sha256:…` in the container; Go `1.22.12`; `cargo-audit 0.22.2`; `python-ai-layer/requirements-lock.txt` with `--require-hashes`.
+- **Measured**: a 65 KB gzip body inflating to 64 MiB is refused at the 32 MiB cap in 35 ms; 100,000-deep nesting is a parse error; the rate limiter at one million buckets costs 452 ns per check (`flate2` added as a dev-dependency, already in the tree via reqwest).
+
 ## [Round 9 — the next surface] — 2026-09-12
 
 Report: `docs/round9-next-surface-2026-09-12.md`.

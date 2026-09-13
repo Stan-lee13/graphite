@@ -388,9 +388,16 @@ export type CallerLifecycleEvent = "signing" | "submission" | "confirmation" | "
 
 export interface LifecycleEventInput {
   event_type: CallerLifecycleEvent;
-  /** The verification's `content_hash`: 16 lowercase hex characters. */
+  /**
+   * The verification's `content_hash`: 16 lowercase hex characters. An
+   * instruction-level key — every transaction carrying that instruction
+   * shares it — so send `audit_trail_id` (and `transaction_sha256`) with it.
+   */
   content_hash: string;
+  /** The exact verification. The most exact key; resolves first. */
   audit_trail_id?: string;
+  /** The exact transaction (`scope.transaction_sha256`, 64 lowercase hex). */
+  transaction_sha256?: string;
   /** Base58 signature, once one exists (submission onward). */
   transaction_signature?: string;
   /** Who is reporting — an operator-meaningful name, never a credential. */
@@ -406,21 +413,48 @@ export interface LifecycleEventInput {
  */
 export type VerdictOnRecord = "approved" | "blocked" | "not_found";
 
+/**
+ * Which key `verdict_on_record` was resolved by. `content_hash` means the
+ * answer is about *a* transaction carrying that instruction, not necessarily
+ * the one the event is about.
+ */
+export type VerificationKeyKind = "audit_trail_id" | "transaction_sha256" | "content_hash";
+
 export interface LifecycleEventReceipt {
   recorded: true;
   event_type: CallerLifecycleEvent;
   content_hash: string;
   verdict_on_record: VerdictOnRecord;
+  verdict_on_record_key: VerificationKeyKind;
 }
 
 /** Body of `POST /verify/execution` (L8). */
 export interface ExecutionCheckInput {
   /** The on-chain signature to confirm. */
   signature: string;
-  /** The verification this execution corresponds to. */
+  /** The verification this execution corresponds to (instruction-level key). */
   content_hash?: string;
+  /** The exact transaction (`scope.transaction_sha256`). */
+  transaction_sha256?: string;
+  /** The exact verification. */
+  audit_trail_id?: string;
   reported_by?: string;
 }
+
+/**
+ * How L8 joined the execution to a verification. `chain` is the answer
+ * independent of anything the caller said: the bytes behind the signature,
+ * signature slots zeroed, digest to the verification of those bytes. The
+ * others are caller-supplied keys used only when the chain's bytes could not
+ * be fetched; `content_hash` alone may name a different transaction carrying
+ * the same instruction.
+ */
+export type ExecutionAttribution =
+  | "chain"
+  | "audit_trail_id"
+  | "transaction_sha256"
+  | "content_hash"
+  | "none";
 
 /**
  * L8's answer: what the chain says about the signature, reconciled against
@@ -443,6 +477,16 @@ export interface ExecutionCheckResult {
   reconciliation: unknown;
   /** True for `BlockedButExecuted`: Graphite's decision did not govern. */
   discrepancy: boolean;
+  recorded_transaction_sha256: string | null;
+  attribution: ExecutionAttribution;
+  /** The artifact digest recomputed from the chain's bytes, when fetched. */
+  chain_transaction_sha256: string | null;
+  /**
+   * Caller-supplied keys that named a different verification from the one
+   * the execution resolves to. Non-empty means the caller's attestation was
+   * wrong; the reconciliation is against the resolved record.
+   */
+  caller_keys_disagree: string[];
   /** Whether this reconciliation row reached the trail. */
   audit_recorded: boolean;
 }

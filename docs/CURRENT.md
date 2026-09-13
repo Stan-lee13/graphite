@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-09-12, after Round 9 (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-09-13, after Round 10 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -36,10 +36,15 @@ Token-2022 extensions:           classified, not modelled — semantics/authorit
 Input bounds:                    artifact ≤ 1232 bytes (PACKET_DATA_SIZE), ≤ 256 declared siblings, every
                                  audit-trail field bounded on the way to disk
 Audit trail durability:          fdatasync per record; whole-trail reads across rotated archives; indexed L8 join
+L8 execution attribution:        joined on the chain's bytes (signature slots zeroed → scope.transaction_sha256);
+                                 caller keys audit_trail_id → transaction_sha256 → content_hash, most exact first,
+                                 cross-checked, never falling back (Round 10)
 Lifecycle on the trail:          the bridge records signing before submission and submission after it, and runs
-                                 L8 at the end; every lifecycle row carries verdict_on_record
+                                 L8 at the end, with the exact keys; every lifecycle row carries verdict_on_record
+                                 and the key that resolved it
 Server authentication:           required by default; GRAPHITE_DEV_MODE=1 permits keyless on loopback only
-Repository integrity:            CI token read-only; actions pinned by commit SHA; base images pinned by digest
+Repository integrity:            CI token read-only; actions pinned by commit SHA; base images pinned by digest;
+                                 toolchain 1.98.1 in CI and in the container; Go, cargo-audit and Python (hash-locked) pinned
 Independent third-party audit:   NOT PERFORMED — every campaign report is internal engineering work
 Branch protection on main:       ABSENT — an owner decision; see "Not yet done"
 ```
@@ -64,7 +69,10 @@ transaction under the stated threat model, and no external party has yet tried.
 | Token-2022 classification is fail-closed | `detect_token2022_extensions`, `ExtensionScan.malformed` | `tests/token2022_extensions.rs`, `tests/l4_state_diff_gate.rs` |
 | Durable-nonce transactions are refused unless verified | `tx_artifact::durable_nonce`, L2 gate | `tests/durable_nonce.rs`, `tests/durable_nonce_rpc.rs` |
 | Audit records are synced to the device before the response | `AuditLog::append_line` → `sync_data` | Established by code reading — no userspace test can observe it; `durable::tests::audit_append_syncs_the_device` measures the cost (1.2 ms vs 19 µs for the no-op it replaced) and asserts nothing |
-| L8 reconciliation sees the whole trail | `AuditLog::last_verification_for`: indexed active file, archives newest-first | `durable::tests::read_path_covers_every_archive_after_rotation`, `last_verification_index_tracks_rotation_and_reopen` |
+| L8 reconciliation sees the whole trail | `AuditLog::find_verification` by `audit_trail_id` / `transaction_sha256` / `content_hash`: indexed active file, archives newest-first | `durable::tests::read_path_covers_every_archive_after_rotation`, `last_verification_index_tracks_rotation_and_reopen`, `tests/round10_attribution.rs` |
+| An executed blocked transaction is attributed to ITS verification, not to a same-instruction approval | `audit_execution`: `getTransaction` bytes → `unsigned_artifact` → digest → `find_verification(TransactionSha256)`; caller keys most-exact-first with no fallback; `caller_keys_disagree` | `tests/round10_attribution.rs` (approved A newest, blocked B executed → `BlockedButExecuted`, attribution `chain`) |
+| A lifecycle `verdict_on_record` is about the transaction the event names | `/audit/event` resolves by `audit_trail_id`, else `transaction_sha256`, else `content_hash`; contradicting keys → 400 | `server::tests::lifecycle_verdict_resolves_by_the_most_exact_key_and_refuses_contradiction` |
+| A compressed RPC response cannot outgrow the cap | `read_body_capped` bounds decompressed chunks | `tests/round10_rpc_decompression.rs` (65 KB → 64 MiB refused in 35 ms) |
 | Caller-reported lifecycle rows are bounded and carry what the trail knows | `LifecycleEventRecord::bounded`, `/audit/event` shape and length checks, `verdict_on_record` computed server-side | `durable::tests::lifecycle_event_fields_are_bounded_on_disk`, `server::tests::lifecycle_events_carry_the_verdict_on_record` |
 | The bridge's signing and submission are on the trail, in order | `executeBoundTransaction`: policy → sign → record signing (abort if not recorded or not `approved` on record) → submit → record submission → confirm → L8 | `execution-lifecycle.test.ts` |
 | Keyless server cannot start on a reachable address | `server::auth_posture` | `server::tests::auth_is_required_unless_dev_mode_is_named_and_the_bind_is_loopback` |
@@ -86,8 +94,14 @@ transaction under the stated threat model, and no external party has yet tried.
 - **Single-tenant.** One API key, one profile pin, one trail, one semantic
   graph per process. Tenant isolation is process isolation.
 - **Archive lookups are scans.** The L8 / lifecycle join is indexed for the
-  active file; a hash older than the last rotation costs one pass over each
+  active file; a key older than the last rotation costs one pass over each
   archive.
+- **Without the chain's bytes, L8 is only as exact as the caller's keys.** An
+  RPC without `getTransaction`, a pruned ledger, or no RPC leaves attribution
+  on `audit_trail_id` → `transaction_sha256` → `content_hash`; the last names
+  every transaction carrying that instruction and the answer says so.
+- **Rows written before Round 10 carry no `transaction_sha256`**; they are
+  reachable by id and `content_hash` only.
 - **A compromised process is out of scope.** Deep copies, private fields and
   digest checks defend against callers and plugins that behave like
   JavaScript; not against code that rewrites the bridge module.
@@ -111,14 +125,15 @@ transaction under the stated threat model, and no external party has yet tried.
 | `content_hash` → a name that says it is an instruction-level identifier | Open (it is the 64-bit AuditBind key, not the authoritative binding) | Engineering |
 | Runtime-decoder oracle over the mutation corpus; continuous fuzzing of `parse_transaction` | Open | Engineering |
 | Persisted archive index for the L8 / lifecycle join | Open | Engineering |
+| Shared rate limiter for a horizontally deployed Graphite (single-instance today; 452 ns/check at one million buckets) | Open | Engineering |
 
 ## Numbers (as of this page's commit)
 
-1,444 Rust tests passing (1,454 total; 10 network-dependent ignored); 305 in
-the featureless library build; 1,293 in the cli-only build; 95 TypeScript
+1,455 Rust tests passing (1,465 total; 10 network-dependent ignored); 305 in
+the featureless library build; 1,293 in the cli-only build; 96 TypeScript
 tests in the SAK integration; 13 in the TypeScript SDK (4 live-server tests
 skip without a server); 27 Python. Clippy `-D warnings` and fmt clean on
-rustc 1.98.1. Reproduced from `cargo test` / `npm test` output in the Round 9
+rustc 1.98.1. Reproduced from `cargo test` / `npm test` output in the Round 10
 report, not estimated. CI for the
 commit is the GitHub Actions run for that SHA — the runs endpoint, not the
 combined-status endpoint.
@@ -127,6 +142,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-09-13 | [round10-exact-attribution-2026-09-13.md](round10-exact-attribution-2026-09-13.md) | L8 and lifecycle joined on `content_hash` (R10-01, P1): now joined on the chain's bytes / exact keys; supply-chain pins; decompression and limiter measured |
 | 2026-09-12 | [round9-next-surface-2026-09-12.md](round9-next-surface-2026-09-12.md) | Artifact without data bound uncompared (R9-01, P1); unparseable artifact fails L2; residual codes and the bridge's residual policy; packet-size bound; lifecycle bounds, `verdict_on_record`, the bridge's lifecycle reporting; CI/image pinning |
 | 2026-09-12 | [round8-remaining-assumptions-2026-09-12.md](round8-remaining-assumptions-2026-09-12.md) | Audit durability, archive visibility, durable nonces, auth default, byte-level parser corpus |
 | 2026-09-11 | [round7-adversarial-assurance-2026-09-11.md](round7-adversarial-assurance-2026-09-11.md) | BoundTransaction aliasing, Token-2022 malformed TLV fail-open (R7-01), ALT owner, cross-language corpus |

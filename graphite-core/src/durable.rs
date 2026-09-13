@@ -73,8 +73,9 @@ pub struct AuditLog {
     rotation_seq: Arc<AtomicU64>,
     /// Rotations that completed (rename + fresh active file).
     rotations_ok: Arc<AtomicU64>,
-    /// `content_hash` → byte offset of the LAST verification record for that
-    /// hash in the ACTIVE file. Built by one scan at open, maintained on
+    /// `id:<audit_trail_id>` / `tx:<transaction_sha256>` / `ch:<content_hash>`
+    /// → byte offset of the LAST verification record under that key in the
+    /// ACTIVE file. Built by one scan at open, maintained on
     /// every append under the file lock, cleared when the active file
     /// rotates. What makes `last_verification_for` — the join L8 and every
     /// lifecycle event perform — a seek and one line instead of a scan of
@@ -334,6 +335,14 @@ pub struct AuditRecord {
     pub timestamp: String,
     pub audit_trail_id: String,
     pub content_hash: String,
+    /// `scope.transaction_sha256` when the verification was artifact-bound:
+    /// the exact transaction this verdict is about. `None` for a descriptive
+    /// verdict and for rows written before Round 10. This — not
+    /// `content_hash`, which is one instruction's projection and is shared
+    /// by every transaction carrying that instruction — is what an
+    /// execution is joined to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transaction_sha256: Option<String>,
     pub program_id: String,
     pub instruction_name: String,
     pub protocol_name: String,
@@ -365,6 +374,80 @@ pub struct AuditRecord {
 /// does not and cannot independently confirm a signing or submission it did
 /// not perform — recording it as attestation is honest, recording it as fact
 /// would not be.
+/// How a verification record is looked up, most exact first.
+///
+/// `content_hash` is one instruction's projection — program, discriminator,
+/// accounts, data, CPI targets — and every transaction carrying that
+/// instruction shares it: the same transfer with a different sibling, fee
+/// payer, signer set or blockhash is a different transaction with the same
+/// `content_hash`. Until Round 10 it was the only join key, so L8 and
+/// `verdict_on_record` could answer for the wrong transaction — the approval
+/// of A returned for the execution of B. `transaction_sha256` names the exact
+/// bytes; `audit_trail_id` names the exact verification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerificationKey<'a> {
+    /// The unique id of one verification (`gr-<uuid>`).
+    AuditTrailId(&'a str),
+    /// The digest of the exact artifact — every verification of those bytes.
+    TransactionSha256(&'a str),
+    /// The instruction-level identifier — every transaction carrying that
+    /// instruction. Ambiguous by construction; the coarsest key.
+    ContentHash(&'a str),
+}
+
+/// The key a lookup resolved by, recorded on the row that used it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationKeyKind {
+    AuditTrailId,
+    TransactionSha256,
+    ContentHash,
+}
+
+impl VerificationKey<'_> {
+    pub fn kind(&self) -> VerificationKeyKind {
+        match self {
+            VerificationKey::AuditTrailId(_) => VerificationKeyKind::AuditTrailId,
+            VerificationKey::TransactionSha256(_) => VerificationKeyKind::TransactionSha256,
+            VerificationKey::ContentHash(_) => VerificationKeyKind::ContentHash,
+        }
+    }
+    fn value(&self) -> &str {
+        match self {
+            VerificationKey::AuditTrailId(v)
+            | VerificationKey::TransactionSha256(v)
+            | VerificationKey::ContentHash(v) => v,
+        }
+    }
+    /// The index entry for this key.
+    fn index_key(&self) -> String {
+        match self {
+            VerificationKey::AuditTrailId(v) => format!("id:{v}"),
+            VerificationKey::TransactionSha256(v) => format!("tx:{v}"),
+            VerificationKey::ContentHash(v) => format!("ch:{v}"),
+        }
+    }
+    fn matches(&self, r: &AuditRecord) -> bool {
+        match self {
+            VerificationKey::AuditTrailId(v) => r.audit_trail_id == *v,
+            VerificationKey::TransactionSha256(v) => r.transaction_sha256.as_deref() == Some(*v),
+            VerificationKey::ContentHash(v) => r.content_hash == *v,
+        }
+    }
+}
+
+/// Every index entry one verification record contributes.
+fn index_keys(r: &AuditRecord) -> Vec<String> {
+    let mut keys = vec![
+        VerificationKey::AuditTrailId(&r.audit_trail_id).index_key(),
+        VerificationKey::ContentHash(&r.content_hash).index_key(),
+    ];
+    if let Some(tx) = &r.transaction_sha256 {
+        keys.push(VerificationKey::TransactionSha256(tx).index_key());
+    }
+    keys
+}
+
 /// What the trail held for a lifecycle event's `content_hash` at the moment
 /// the event was recorded — computed by Graphite, never reported by the
 /// caller.
@@ -400,6 +483,15 @@ pub struct LifecycleEventRecord {
     /// its answer in `detail` instead).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verdict_on_record: Option<VerdictOnRecord>,
+    /// Which key `verdict_on_record` was resolved by. `content_hash` means
+    /// the answer is about *a* transaction carrying that instruction, not
+    /// necessarily this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict_on_record_key: Option<VerificationKeyKind>,
+    /// The exact transaction the caller says this event is about, when it
+    /// supplied one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transaction_sha256: Option<String>,
     /// The verification's audit trail id, when the caller has it.
     #[serde(default)]
     pub audit_trail_id: Option<String>,
@@ -455,6 +547,8 @@ impl LifecycleEventRecord {
             timestamp: self.timestamp.clone(),
             content_hash: bound_field(&self.content_hash),
             verdict_on_record: self.verdict_on_record,
+            verdict_on_record_key: self.verdict_on_record_key,
+            transaction_sha256: self.transaction_sha256.as_deref().map(bound_field),
             audit_trail_id: self.audit_trail_id.as_deref().map(bound_field),
             transaction_signature: self.transaction_signature.as_deref().map(bound_field),
             reported_by: self.reported_by.as_deref().map(bound_field),
@@ -512,7 +606,9 @@ fn build_active_index(path: &Path) -> HashMap<String, u64> {
             break;
         }
         if let Ok(r) = serde_json::from_slice::<AuditRecord>(&line) {
-            index.insert(r.content_hash, offset);
+            for k in index_keys(&r) {
+                index.insert(k, offset);
+            }
         }
         offset += n as u64;
     }
@@ -891,10 +987,24 @@ impl AuditLog {
     /// per call, and this lookup is rare (once per execution audit) compared
     /// with the dashboard's polling.
     pub fn last_verification_for(&self, content_hash: &str) -> Option<AuditRecord> {
-        let wanted = content_hash.trim();
+        self.find_verification(VerificationKey::ContentHash(content_hash))
+    }
+
+    /// The most recent verification record under `key`, from the whole
+    /// trail — the active file by index, then the archives newest-first.
+    ///
+    /// `AuditTrailId` is exact (one verification). `TransactionSha256` is
+    /// exact about the bytes and newest-first about the decision, which is
+    /// the decision that governed at submission. `ContentHash` is the
+    /// instruction-level key and answers for whichever transaction carrying
+    /// that instruction was verified last; callers that have a better key
+    /// must use it (Round 10).
+    pub fn find_verification(&self, key: VerificationKey<'_>) -> Option<AuditRecord> {
+        let wanted = key.value().trim();
         if wanted.is_empty() {
             return None;
         }
+        let index_key = key.index_key();
         let find_in = |file: File| -> Option<AuditRecord> {
             let mut last = None;
             for line in BufReader::new(file).lines().map_while(Result::ok) {
@@ -905,7 +1015,7 @@ impl AuditLog {
                     continue;
                 }
                 if let Ok(r) = serde_json::from_str::<AuditRecord>(&line) {
-                    if r.content_hash == wanted {
+                    if key.matches(&r) {
                         last = Some(r);
                     }
                 }
@@ -923,8 +1033,8 @@ impl AuditLog {
                 Err(poisoned) => poisoned.into_inner(),
             };
             let offset = match self.active_index.lock() {
-                Ok(g) => g.get(wanted).copied(),
-                Err(poisoned) => poisoned.into_inner().get(wanted).copied(),
+                Ok(g) => g.get(&index_key).copied(),
+                Err(poisoned) => poisoned.into_inner().get(&index_key).copied(),
             };
             if let Some(offset) = offset {
                 let indexed = File::open(self.path.as_ref()).ok().and_then(|mut file| {
@@ -934,7 +1044,7 @@ impl AuditLog {
                     BufReader::new(file).read_line(&mut line).ok()?;
                     serde_json::from_str::<AuditRecord>(line.trim_end())
                         .ok()
-                        .filter(|r| r.content_hash == wanted)
+                        .filter(|r| key.matches(r))
                 });
                 if indexed.is_some() {
                     return indexed;
@@ -1000,7 +1110,7 @@ impl AuditLog {
     /// incident response all read that trail.
     #[must_use]
     pub fn append(&self, record: &AuditRecord) -> bool {
-        self.append_line_indexed(record, Some(&record.content_hash))
+        self.append_line_indexed(record, &index_keys(record))
     }
 
     /// Append an error-path record (same durability contract).
@@ -1038,18 +1148,14 @@ impl AuditLog {
     /// audit record; `audit_append_syncs_the_device` measures it so the
     /// number in the report is observed, not assumed.
     fn append_line<T: serde::Serialize>(&self, record: &T) -> bool {
-        self.append_line_indexed(record, None)
+        self.append_line_indexed(record, &[])
     }
 
-    /// `append_line`, recording `index_key` → this line's offset in the
-    /// active index when the write succeeds. The offset is the file's length
-    /// before the write, read under the same lock the write holds, so no
-    /// other writer can interleave between the two.
-    fn append_line_indexed<T: serde::Serialize>(
-        &self,
-        record: &T,
-        index_key: Option<&str>,
-    ) -> bool {
+    /// `append_line`, recording every entry of `index_keys` → this line's
+    /// offset in the active index when the write succeeds. The offset is the
+    /// file's length before the write, read under the same lock the write
+    /// holds, so no other writer can interleave between the two.
+    fn append_line_indexed<T: serde::Serialize>(&self, record: &T, index_keys: &[String]) -> bool {
         let line = match serde_json::to_string(record) {
             Ok(l) => l,
             Err(e) => {
@@ -1063,7 +1169,11 @@ impl AuditLog {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let offset = index_key.and_then(|_| file.metadata().ok().map(|m| m.len()));
+        let offset = if index_keys.is_empty() {
+            None
+        } else {
+            file.metadata().ok().map(|m| m.len())
+        };
         if let Err(e) = writeln!(file, "{}", line).and_then(|_| file.sync_data()) {
             // Counted AND reported. The comment here used to say a failing
             // audit disk "must not take down verification", and that reasoning
@@ -1075,12 +1185,14 @@ impl AuditLog {
             return false;
         }
         self.writes_ok.fetch_add(1, Ordering::Relaxed);
-        if let (Some(key), Some(offset)) = (index_key, offset) {
+        if let Some(offset) = offset {
             let mut index = match self.active_index.lock() {
                 Ok(g) => g,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            index.insert(key.to_string(), offset);
+            for key in index_keys {
+                index.insert(key.clone(), offset);
+            }
         }
         // Rotate AFTER a successful append, while still holding the lock, so
         // the size check and rename cannot interleave with another writer.
@@ -1135,6 +1247,7 @@ mod tests {
             timestamp: "2026-09-05T00:00:00.000Z".to_string(),
             audit_trail_id: id.to_string(),
             content_hash: "hash".to_string(),
+            transaction_sha256: None,
             program_id: "11111111111111111111111111111111".to_string(),
             instruction_name: "transfer".to_string(),
             protocol_name: "system-program".to_string(),
@@ -1404,6 +1517,7 @@ mod tests {
             timestamp: "2026-08-06T00:00:00.000Z".to_string(),
             audit_trail_id: "gr-test".to_string(),
             content_hash: "abc".to_string(),
+            transaction_sha256: None,
             program_id: "11111111111111111111111111111111".to_string(),
             instruction_name: "transfer".to_string(),
             protocol_name: "system-program".to_string(),
@@ -1451,6 +1565,7 @@ mod tests {
                     timestamp: format!("t{i}"),
                     audit_trail_id: format!("id{i}"),
                     content_hash: "h".into(),
+                    transaction_sha256: None,
                     program_id: if i % 2 == 0 {
                         "AAA".into()
                     } else {
@@ -1897,6 +2012,8 @@ mod tests {
             timestamp: now_utc_rfc3339(),
             content_hash: big.clone(),
             verdict_on_record: Some(VerdictOnRecord::NotFound),
+            verdict_on_record_key: Some(VerificationKeyKind::ContentHash),
+            transaction_sha256: Some(big.clone()),
             audit_trail_id: Some(big.clone()),
             transaction_signature: Some(big.clone()),
             reported_by: Some(big.clone()),

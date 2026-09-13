@@ -21,7 +21,7 @@
 
 use graphite_core::durable::{audit_path, AuditLog, AuditRecord, LifecycleEvent};
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
-use graphite_core::verification::{ExecutionReconciliation, GraphiteCore};
+use graphite_core::verification::{ExecutionKeys, ExecutionReconciliation, GraphiteCore};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 
@@ -72,6 +72,7 @@ fn record(log: &AuditLog, content_hash: &str, approved: bool) {
         timestamp: "2026-09-07T00:00:00Z".to_string(),
         audit_trail_id: format!("gr-test-{content_hash}"),
         content_hash: content_hash.to_string(),
+        transaction_sha256: None,
         program_id: "11111111111111111111111111111111".to_string(),
         instruction_name: "Transfer".to_string(),
         protocol_name: "System Program".to_string(),
@@ -106,7 +107,14 @@ async fn a_blocked_transaction_that_executed_is_a_discrepancy() {
     let (endpoint, h) = mock_rpc(CONFIRMED_OK);
     let core = core_with(endpoint);
     let audit = core
-        .audit_execution(SIG, Some("hash_blocked"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("hash_blocked"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
     h.join().unwrap();
 
@@ -133,7 +141,14 @@ async fn an_approved_transaction_that_executed_is_not_a_discrepancy() {
 
     let (endpoint, h) = mock_rpc(CONFIRMED_OK);
     let audit = core_with(endpoint)
-        .audit_execution(SIG, Some("hash_ok"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("hash_ok"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
     h.join().unwrap();
 
@@ -156,7 +171,14 @@ async fn an_approved_transaction_that_failed_on_chain_is_reported_but_not_alarme
 
     let (endpoint, h) = mock_rpc(CONFIRMED_FAILED);
     let audit = core_with(endpoint)
-        .audit_execution(SIG, Some("hash_fail"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("hash_fail"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
     h.join().unwrap();
 
@@ -182,7 +204,14 @@ async fn a_blocked_transaction_the_chain_never_saw_is_clean() {
 
     let (endpoint, h) = mock_rpc(NOT_FOUND);
     let audit = core_with(endpoint)
-        .audit_execution(SIG, Some("hash_b2"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("hash_b2"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
     h.join().unwrap();
 
@@ -204,7 +233,14 @@ async fn an_approved_transaction_the_chain_has_not_seen_is_not_found() {
 
     let (endpoint, h) = mock_rpc(NOT_FOUND);
     let audit = core_with(endpoint)
-        .audit_execution(SIG, Some("hash_pending"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("hash_pending"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
     h.join().unwrap();
 
@@ -222,7 +258,14 @@ async fn an_unreachable_cluster_is_unavailable_never_a_confirmation() {
 
     // Port 1 refuses immediately.
     let audit = core_with("http://127.0.0.1:1".to_string())
-        .audit_execution(SIG, Some("hash_down"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("hash_down"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
 
     match &audit.reconciliation {
@@ -245,7 +288,9 @@ async fn an_unreachable_cluster_is_unavailable_never_a_confirmation() {
 #[tokio::test]
 async fn no_content_hash_means_no_reconciliation_not_a_pass() {
     let (endpoint, h) = mock_rpc(CONFIRMED_OK);
-    let audit = core_with(endpoint).audit_execution(SIG, None, None).await;
+    let audit = core_with(endpoint)
+        .audit_execution(SIG, ExecutionKeys::default(), None)
+        .await;
     h.join().unwrap();
 
     match &audit.reconciliation {
@@ -266,7 +311,14 @@ async fn an_execution_graphite_never_verified_is_reported_as_such() {
 
     let (endpoint, h) = mock_rpc(CONFIRMED_OK);
     let audit = core_with(endpoint)
-        .audit_execution(SIG, Some("never_seen_hash"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("never_seen_hash"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
     h.join().unwrap();
 
@@ -289,7 +341,14 @@ async fn the_most_recent_verdict_for_a_content_hash_is_the_one_that_governs() {
 
     let (endpoint, h) = mock_rpc(CONFIRMED_OK);
     let audit = core_with(endpoint)
-        .audit_execution(SIG, Some("hash_twice"), Some(&log))
+        .audit_execution(
+            SIG,
+            ExecutionKeys {
+                content_hash: Some("hash_twice"),
+                ..Default::default()
+            },
+            Some(&log),
+        )
         .await;
     h.join().unwrap();
 

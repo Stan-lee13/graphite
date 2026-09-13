@@ -20,7 +20,7 @@
 use crate::account_resolution::AccountResolutionError;
 use crate::durable::{
     audit_path, AuditErrorRecord, AuditLog, AuditRecord, AuditSelector, LifecycleEvent,
-    LifecycleEventRecord, VerdictOnRecord,
+    LifecycleEventRecord, VerdictOnRecord, VerificationKey, VerificationKeyKind,
 };
 use crate::verification::{GraphiteCore, VerificationError, VerificationInput, VerificationResult};
 use axum::extract::{ConnectInfo, State};
@@ -48,6 +48,12 @@ const MAX_SIGNATURE_CHARS: usize = 90;
 const MAX_LIFECYCLE_ID_CHARS: usize = 128;
 /// Free-form `detail` on `/audit/event`: a slot, a failure reason.
 const MAX_LIFECYCLE_DETAIL_CHARS: usize = 1024;
+
+/// The shape of a `transaction_sha256`: what `hex::encode(Sha256::digest(..))`
+/// produces, and nothing else.
+fn is_sha256_hex(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
 
 /// Request timeout. Verification should complete in <1ms; 10s is
 /// generous and prevents slow-loris style attacks.
@@ -1337,6 +1343,13 @@ async fn verify_handler(
                     timestamp: crate::durable::now_utc_rfc3339(),
                     audit_trail_id: result.audit_trail_id.clone(),
                     content_hash: result.content_hash.clone(),
+                    transaction_sha256: match &result.scope {
+                        crate::verification::VerificationScope::ArtifactBound {
+                            transaction_sha256,
+                            ..
+                        } => Some(transaction_sha256.clone()),
+                        crate::verification::VerificationScope::Descriptive { .. } => None,
+                    },
                     program_id: input.program_id.clone(),
                     instruction_name: result.instruction_name.clone(),
                     protocol_name: result.protocol_name.clone(),
@@ -1649,10 +1662,16 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
 #[derive(serde::Deserialize)]
 struct LifecycleEventBody {
     event_type: LifecycleEvent,
-    /// Join key back to the verification that approved this transaction.
+    /// Join key back to the verification that approved this transaction —
+    /// the instruction-level one. Required for compatibility; `audit_trail_id`
+    /// or `transaction_sha256` should accompany it, because `content_hash`
+    /// alone names every transaction carrying that instruction.
     content_hash: String,
     #[serde(default)]
     audit_trail_id: Option<String>,
+    /// The exact transaction this event is about (`scope.transaction_sha256`).
+    #[serde(default)]
+    transaction_sha256: Option<String>,
     #[serde(default)]
     transaction_signature: Option<String>,
     #[serde(default)]
@@ -1695,6 +1714,15 @@ struct ExecutionBody {
     /// audit trail.
     #[serde(default)]
     content_hash: Option<String>,
+    /// The exact transaction (`scope.transaction_sha256`) this execution is
+    /// the submission of. More exact than `content_hash`; still
+    /// caller-attested, and cross-checked against the chain's bytes.
+    #[serde(default)]
+    transaction_sha256: Option<String>,
+    /// The exact verification (`audit_trail_id`). The most exact key a
+    /// caller can supply; cross-checked the same way.
+    #[serde(default)]
+    audit_trail_id: Option<String>,
     /// Who is reporting this, recorded on the audit trail.
     #[serde(default)]
     reported_by: Option<String>,
@@ -1768,6 +1796,29 @@ async fn execution_handler(
             ));
         }
     }
+    if let Some(t) = body.transaction_sha256.as_deref() {
+        if !is_sha256_hex(t.trim()) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!(
+                        "transaction_sha256 is {} characters; a SHA-256 is 64 lowercase hexadecimal characters",
+                        t.trim().len()
+                    ),
+                })),
+            ));
+        }
+    }
+    if let Some(id) = body.audit_trail_id.as_deref() {
+        if id.chars().count() > MAX_LIFECYCLE_ID_CHARS {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("audit_trail_id is {} characters; the maximum is {MAX_LIFECYCLE_ID_CHARS}", id.chars().count()),
+                })),
+            ));
+        }
+    }
     if let Some(r) = body.reported_by.as_deref() {
         let n = r.chars().count();
         if n > MAX_LIFECYCLE_ID_CHARS {
@@ -1783,7 +1834,15 @@ async fn execution_handler(
     let audit = state.audit.as_ref();
     let result = state
         .core
-        .audit_execution(&signature, body.content_hash.as_deref(), audit)
+        .audit_execution(
+            &signature,
+            crate::verification::ExecutionKeys {
+                content_hash: body.content_hash.as_deref().map(str::trim),
+                transaction_sha256: body.transaction_sha256.as_deref().map(str::trim),
+                audit_trail_id: body.audit_trail_id.as_deref().map(str::trim),
+            },
+            audit,
+        )
         .await;
 
     // P9: the reconciliation is a lifecycle-grade fact about a transaction
@@ -1799,10 +1858,28 @@ async fn execution_handler(
                 .or_else(|| body.content_hash.clone())
                 .unwrap_or_default(),
             verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: result
+                .chain_transaction_sha256
+                .clone()
+                .or_else(|| result.recorded_transaction_sha256.clone())
+                .or_else(|| body.transaction_sha256.clone()),
             audit_trail_id: result.recorded_audit_trail_id.clone(),
             transaction_signature: Some(signature.clone()),
             reported_by: body.reported_by.clone(),
-            detail: Some(format!("L8 reconciliation: {:?}", result.reconciliation)),
+            detail: Some(format!(
+                "L8 reconciliation: {:?}; attribution: {:?}{}",
+                result.reconciliation,
+                result.attribution,
+                if result.caller_keys_disagree.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "; caller keys disagree: {}",
+                        result.caller_keys_disagree.join(" | ")
+                    )
+                }
+            )),
         }),
         None => false,
     };
@@ -1821,8 +1898,12 @@ async fn execution_handler(
         "chain_status": result.chain_status,
         "recorded_approved": result.recorded_approved,
         "recorded_audit_trail_id": result.recorded_audit_trail_id,
+        "recorded_transaction_sha256": result.recorded_transaction_sha256,
         "reconciliation": result.reconciliation,
         "discrepancy": result.reconciliation.is_discrepancy(),
+        "attribution": result.attribution,
+        "chain_transaction_sha256": result.chain_transaction_sha256,
+        "caller_keys_disagree": result.caller_keys_disagree,
         "audit_recorded": recorded,
     });
     if !recorded && audit.is_some() {
@@ -1947,6 +2028,8 @@ async fn quarantine_handler(
             event_type: LifecycleEvent::OperatorAction,
             timestamp: crate::durable::now_utc_rfc3339(),
             verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: None,
             content_hash: program_id.clone(),
             audit_trail_id: None,
             transaction_signature: None,
@@ -2111,12 +2194,86 @@ async fn lifecycle_event_handler(
     };
 
     // The one fact about this attestation Graphite can establish itself:
-    // what the trail says about the hash it names. Computed here, recorded
-    // on the row, returned to the caller, counted — and, for a report
-    // against a BLOCKED verdict, logged as loudly as an L8 discrepancy,
-    // because it is one: the caller is telling Graphite it signed or sent
-    // something Graphite refused.
-    let verdict_on_record = match log.last_verification_for(&content_hash) {
+    // what the trail says about the verification it names. Resolved by the
+    // most exact key supplied — `audit_trail_id`, else `transaction_sha256`,
+    // else `content_hash` — and never by a coarser one when the exact one
+    // finds nothing (a spoofed id must not be rescued by a real hash). The
+    // keys the caller supplied must agree with each other on the record
+    // found; a row whose keys name two different verifications is a
+    // malformed attestation and is refused rather than recorded. Recorded
+    // on the row with the key that resolved it, returned to the caller,
+    // counted — and, for a report against a BLOCKED verdict, logged as
+    // loudly as an L8 discrepancy, because it is one (Round 9 / Round 10).
+    let transaction_sha256 = body
+        .transaction_sha256
+        .as_deref()
+        .map(str::trim)
+        .map(String::from);
+    if let Some(t) = &transaction_sha256 {
+        if !is_sha256_hex(t) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!(
+                        "transaction_sha256 is {} characters; a SHA-256 is 64 lowercase hexadecimal characters",
+                        t.len()
+                    ),
+                })),
+            ));
+        }
+    }
+    let audit_trail_id = body
+        .audit_trail_id
+        .as_deref()
+        .map(str::trim)
+        .map(String::from);
+    let (found, verdict_on_record_key) = if let Some(id) = &audit_trail_id {
+        (
+            log.find_verification(VerificationKey::AuditTrailId(id)),
+            VerificationKeyKind::AuditTrailId,
+        )
+    } else if let Some(t) = &transaction_sha256 {
+        (
+            log.find_verification(VerificationKey::TransactionSha256(t)),
+            VerificationKeyKind::TransactionSha256,
+        )
+    } else {
+        (
+            log.find_verification(VerificationKey::ContentHash(&content_hash)),
+            VerificationKeyKind::ContentHash,
+        )
+    };
+    if let Some(r) = &found {
+        let mut disagree = Vec::new();
+        if r.content_hash != content_hash {
+            disagree.push(format!(
+                "content_hash {content_hash} was supplied but that verification's content_hash is {}",
+                r.content_hash
+            ));
+        }
+        if let Some(t) = &transaction_sha256 {
+            if r.transaction_sha256.as_deref() != Some(t.as_str()) {
+                disagree.push(format!(
+                    "transaction_sha256 {t} was supplied but that verification's is {}",
+                    r.transaction_sha256
+                        .as_deref()
+                        .unwrap_or("absent (descriptive)")
+                ));
+            }
+        }
+        if !disagree.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "the keys on this event name different verifications — refusing to record an attestation that contradicts itself",
+                    "error_type": "InconsistentKeys",
+                    "detail": disagree,
+                    "resolved_by": verdict_on_record_key,
+                })),
+            ));
+        }
+    }
+    let verdict_on_record = match &found {
         Some(r) if r.approved => VerdictOnRecord::Approved,
         Some(_) => VerdictOnRecord::Blocked,
         None => VerdictOnRecord::NotFound,
@@ -2146,7 +2303,9 @@ async fn lifecycle_event_handler(
         timestamp: crate::durable::now_utc_rfc3339(),
         content_hash,
         verdict_on_record: Some(verdict_on_record),
-        audit_trail_id: body.audit_trail_id,
+        verdict_on_record_key: Some(verdict_on_record_key),
+        transaction_sha256,
+        audit_trail_id,
         transaction_signature: body.transaction_signature,
         reported_by: body.reported_by,
         detail: body.detail,
@@ -2174,6 +2333,7 @@ async fn lifecycle_event_handler(
         "event_type": record.event_type,
         "content_hash": record.content_hash,
         "verdict_on_record": verdict_on_record,
+        "verdict_on_record_key": verdict_on_record_key,
     })))
 }
 
@@ -2535,6 +2695,45 @@ mod tests {
     /// FIFO eviction must keep the bucket map bounded: with a cap of 3,
     /// inserting a 4th distinct IP evicts the oldest-inserted one (O(1), no
     /// full-map sweep).
+    /// Round 10 measurement: the limiter at its bound. One million distinct
+    /// IPs inserted through the one mutex, then one million more that each
+    /// evict the oldest. Reported, and bounded loosely: a full map must not
+    /// turn `check` into something a caller could feel.
+    #[test]
+    fn rate_limiter_at_its_bound_stays_cheap_per_check() {
+        let rl = RateLimiter::with_capacity(MAX_BUCKETS, 1000.0);
+        let ip = |i: u32| IpAddr::V4(std::net::Ipv4Addr::from(i.wrapping_mul(2654435761)));
+        let started = Instant::now();
+        for i in 0..MAX_BUCKETS as u32 {
+            assert!(rl.check(ip(i)));
+        }
+        let fill = started.elapsed();
+        let started = Instant::now();
+        for i in MAX_BUCKETS as u32..(2 * MAX_BUCKETS) as u32 {
+            assert!(rl.check(ip(i)));
+        }
+        let churn = started.elapsed();
+        let inner = rl.buckets.lock().unwrap();
+        assert_eq!(inner.buckets.len(), MAX_BUCKETS, "bounded at the cap");
+        let per_entry = std::mem::size_of::<IpAddr>()
+            + std::mem::size_of::<Bucket>()
+            + std::mem::size_of::<IpAddr>();
+        println!(
+            "round10: rate limiter — fill {} buckets: {:?} ({:.0} ns/check); churn {} evictions: {:?} ({:.0} ns/check); ~{} MB of entries plus map overhead",
+            MAX_BUCKETS,
+            fill,
+            fill.as_nanos() as f64 / MAX_BUCKETS as f64,
+            MAX_BUCKETS,
+            churn,
+            churn.as_nanos() as f64 / MAX_BUCKETS as f64,
+            per_entry * MAX_BUCKETS / (1024 * 1024)
+        );
+        assert!(
+            (churn.as_nanos() / MAX_BUCKETS as u128) < 5_000,
+            "a check at capacity must stay under 5 µs: {churn:?}"
+        );
+    }
+
     #[test]
     fn rate_limiter_evicts_oldest_at_capacity() {
         let rl = RateLimiter::with_capacity(3, 1000.0); // huge refill rate: never tokens-starved
@@ -3091,6 +3290,7 @@ mod tests {
             timestamp: ts.clone(),
             audit_trail_id: "gr-a".to_string(),
             content_hash: "h1".to_string(),
+            transaction_sha256: None,
             program_id: "11111111111111111111111111111111".to_string(),
             instruction_name: "transfer".to_string(),
             protocol_name: "System Program".to_string(),
@@ -3107,6 +3307,7 @@ mod tests {
             timestamp: ts,
             audit_trail_id: "gr-b".to_string(),
             content_hash: "h2".to_string(),
+            transaction_sha256: None,
             program_id: "11111111111111111111111111111111".to_string(),
             instruction_name: "transfer".to_string(),
             protocol_name: "System Program".to_string(),
@@ -3136,6 +3337,7 @@ mod tests {
             timestamp: crate::durable::now_utc_rfc3339(),
             audit_trail_id: "gr-blocked".to_string(),
             content_hash: "h3".to_string(),
+            transaction_sha256: None,
             program_id: "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M".to_string(),
             instruction_name: "openDca".to_string(),
             protocol_name: "Jupiter DCA".to_string(),
@@ -3186,6 +3388,7 @@ mod tests {
                 timestamp: crate::durable::now_utc_rfc3339(),
                 audit_trail_id: format!("gr-top-{i}"),
                 content_hash: format!("h{i}"),
+                transaction_sha256: None,
                 program_id: "11111111111111111111111111111111".to_string(),
                 instruction_name: "transfer".to_string(),
                 protocol_name: "System Program".to_string(),
@@ -3665,6 +3868,7 @@ mod tests {
             timestamp: crate::durable::now_utc_rfc3339(),
             audit_trail_id: format!("gr-{hash}"),
             content_hash: hash.to_string(),
+            transaction_sha256: None,
             program_id: "11111111111111111111111111111111".to_string(),
             instruction_name: "transfer".to_string(),
             protocol_name: "System Program".to_string(),
@@ -3814,6 +4018,94 @@ mod tests {
         let (records, _, total, _) = log.read_tail_filtered(100, AuditSelector::All);
         assert_eq!(total, 4);
         assert_eq!(records.iter().filter(|r| r.approved).count(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Round 10: `verdict_on_record` resolves by the most exact key supplied,
+    /// never by a coarser one, and keys that contradict each other are a
+    /// refused attestation. A (approved) and B (blocked) share a
+    /// `content_hash`; A is the newer record.
+    #[tokio::test]
+    async fn lifecycle_verdict_resolves_by_the_most_exact_key_and_refuses_contradiction() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        let h = "aaaaaaaaaaaaaaaa";
+        let tx_a = "a".repeat(64);
+        let tx_b = "b".repeat(64);
+        let mut b = verification_row(h, false);
+        b.audit_trail_id = "gr-b".to_string();
+        b.transaction_sha256 = Some(tx_b.clone());
+        assert!(log.append(&b));
+        let mut a = verification_row(h, true);
+        a.audit_trail_id = "gr-a".to_string();
+        a.transaction_sha256 = Some(tx_a.clone());
+        assert!(log.append(&a));
+        let app = build_app(state, vec![]);
+        let post = |body: serde_json::Value| {
+            let app = app.clone();
+            async move { post_json(&app, "/audit/event", None, body).await }
+        };
+
+        // content_hash alone: the newest carrier of that instruction — A.
+        let (s, body) = post(serde_json::json!({"event_type": "signing", "content_hash": h})).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["verdict_on_record"], "approved");
+        assert_eq!(body["verdict_on_record_key"], "content_hash");
+
+        // transaction_sha256 of B: B's block, whatever content_hash says.
+        let (s, body) = post(serde_json::json!({"event_type": "signing", "content_hash": h, "transaction_sha256": tx_b})).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["verdict_on_record"], "blocked");
+        assert_eq!(body["verdict_on_record_key"], "transaction_sha256");
+
+        // audit_trail_id of B: the same, by the most exact key.
+        let (s, body) = post(serde_json::json!({"event_type": "signing", "content_hash": h, "audit_trail_id": "gr-b"})).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["verdict_on_record"], "blocked");
+        assert_eq!(body["verdict_on_record_key"], "audit_trail_id");
+
+        // Contradictions are refused, not resolved in the caller's favour.
+        let (s, body) = post(serde_json::json!({"event_type": "signing", "content_hash": h, "audit_trail_id": "gr-a", "transaction_sha256": tx_b})).await;
+        assert_eq!(s, axum::http::StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["error_type"], "InconsistentKeys");
+        let (s, body) = post(serde_json::json!({"event_type": "signing", "content_hash": "ffffffffffffffff", "audit_trail_id": "gr-a"})).await;
+        assert_eq!(s, axum::http::StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["error_type"], "InconsistentKeys");
+
+        // A spoofed id is not rescued by the real content_hash beside it.
+        let (s, body) = post(serde_json::json!({"event_type": "signing", "content_hash": h, "audit_trail_id": "gr-nope"})).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["verdict_on_record"], "not_found");
+        assert_eq!(body["verdict_on_record_key"], "audit_trail_id");
+
+        // Malformed digests are refused on both endpoints.
+        let (s, _) = post(serde_json::json!({"event_type": "signing", "content_hash": h, "transaction_sha256": "abc"})).await;
+        assert_eq!(s, axum::http::StatusCode::BAD_REQUEST);
+        let (s, _) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({"signature": "5xSig", "transaction_sha256": "ABC"}),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::BAD_REQUEST);
+
+        // The rows say which key resolved them.
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        assert!(
+            contents.contains("\"verdict_on_record_key\":\"transaction_sha256\""),
+            "{contents}"
+        );
+        assert!(
+            contents.contains("\"verdict_on_record_key\":\"audit_trail_id\""),
+            "{contents}"
+        );
+        assert_eq!(
+            contents
+                .matches("\"verdict_on_record\":\"blocked\"")
+                .count(),
+            2
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

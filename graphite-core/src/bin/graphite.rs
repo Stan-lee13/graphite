@@ -107,8 +107,15 @@ enum Commands {
         #[arg(long)]
         signature: String,
         /// content_hash of the verification this execution corresponds to
+        /// (instruction-level; names every transaction carrying that instruction)
         #[arg(long)]
         content_hash: Option<String>,
+        /// scope.transaction_sha256 of the verification: the exact transaction
+        #[arg(long)]
+        transaction_sha256: Option<String>,
+        /// audit_trail_id of the verification: the exact record
+        #[arg(long)]
+        audit_trail_id: Option<String>,
         /// RPC endpoint (default: GRAPHITE_RPC_URL)
         #[arg(long)]
         rpc_url: Option<String>,
@@ -558,11 +565,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             data_dir,
             signature,
             content_hash,
+            transaction_sha256,
+            audit_trail_id,
             rpc_url,
         } => graphite_core::cli::run(graphite_core::cli::CliCommand::Execution {
             data_dir,
             signature,
             content_hash,
+            transaction_sha256,
+            audit_trail_id,
             rpc_url,
         }),
         Commands::Evidence { action } => match action {
