@@ -234,6 +234,12 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
           r.caller_keys_disagree.join(" | "),
       );
     }
+    if (r.chain_bytes_rejected) {
+      log(
+        `[Graphite] ${label}: L8 REFUSED — the RPC returned bytes for ${signature} that are not bound to it: ` +
+          r.chain_bytes_rejected,
+      );
+    }
     if (r.discrepancy) {
       log(`[Graphite] ${label}: L8 DISCREPANCY on ${signature} — Graphite's decision did not govern`);
     }

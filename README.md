@@ -272,8 +272,12 @@ unauthenticated instance — and even then only on a loopback address.
 **Observability.** `GET /metrics` serves Prometheus text format (behind the API
 key, like every endpoint except `/health`): verification request/approve/block/
 error counts, auth failures, rate-limit rejections, audit-log write and
-rotation success/failure counters, active log size and archive count, and
-semantic-graph snapshot success/failure counters. `GET /health` is open for
+rotation success/failure counters, active log size and archive count,
+semantic-graph snapshot success/failure counters, lifecycle reports against
+blocked or unverified hashes, and the L8 counters — `graphite_execution_checks_total`,
+`graphite_execution_discrepancies_total` (a blocked transaction executed: page
+on this) and `graphite_execution_chain_bytes_rejected_total` (the RPC returned
+bytes that are not the signature's: a faulty or hostile RPC). `GET /health` is open for
 load balancers and reports `degraded` with a `degraded_reasons` list
 (`audit_writes_failed`, `audit_rotation_failed`, `audit_disabled`,
 `graph_snapshot_failed`) — a verdict that cannot be recorded is refused with
@@ -474,11 +478,16 @@ graphite execution --signature <base58 signature> --audit-trail-id <id> --transa
 ```
 
 With an RPC that serves `getTransaction`, L8 does not need the keys at all: it
-fetches the bytes behind the signature, zeroes the signature slots (which gives
-back exactly the artifact that was verified) and joins on their digest —
-`attribution: "chain"`. The keys are cross-checked against that and any
-disagreement is reported in `caller_keys_disagree`. Without the chain's bytes
-the most exact key you supplied decides, and `content_hash` alone is
+fetches the bytes behind the signature, checks that they are that signature's
+— the first slot holds it and it verifies (ed25519) over the message under the
+fee payer's key — zeroes the signature slots (which gives back exactly the
+artifact that was verified) and joins on their digest — `attribution:
+"chain"`. Bytes that fail that binding are refused: `chain_bytes_rejected`
+says why, the reconciliation is `Unavailable`, and the keys you supplied are
+*not* consulted in their place (an RPC that can substitute bytes must not also
+choose the join). The keys are cross-checked against the chain's answer and
+any disagreement is reported in `caller_keys_disagree`. Without the chain's
+bytes the most exact key you supplied decides, and `content_hash` alone is
 ambiguous by construction: it names every transaction carrying that
 instruction.
 
@@ -622,9 +631,9 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 | **The described instruction is located, or L2 fails** | An artifact without `instruction_data`, or one that does not parse, fails L2; `artifact_bound` never claims a comparison L2 did not make (Round 9: a 100 SOL transfer was approved under a 0.002 SOL description by omitting the optional field) |
 | **Residuals are gated at execution** | `scope.unobserved_codes` names each residual; the bridge's `ResidualPolicy` refuses any non-inherent one the operator has not accepted in `GRAPHITE_ACCEPT_UNOBSERVED` |
 | **Lifecycle on the trail** | The bridge records signing before it submits (and aborts if it cannot), submission after, and runs L8 at the end; every caller-reported row carries the server's `verdict_on_record` and is bounded on disk |
-| **L8 attribution is exact** | An execution is joined to the verification of *those bytes* — the chain's transaction with signature slots zeroed digests to `scope.transaction_sha256` — never to a same-instruction sibling by `content_hash` (Round 10: a blocked B executed after an approved A read as `ApprovedAndExecuted`) |
+| **L8 attribution is exact** | An execution is joined to the verification of *those bytes* — the chain's transaction with signature slots zeroed digests to `scope.transaction_sha256` — never to a same-instruction sibling by `content_hash` (Round 10: a blocked B executed after an approved A read as `ApprovedAndExecuted`). The bytes are the signature's, not merely the RPC's: first slot equal to it and verifying under the fee payer's key, or refused with nothing attributed (Round 11) |
 | **RPC evidence provenance** | Simulation writes/CPI hops derived only from canonical response fields; non-standard provider fields that disagree are reported as anomalies, never used |
-| **API auth** | Bearer API key required by default — the server refuses to start without one; `GRAPHITE_DEV_MODE=1` permits keyless on loopback only. Constant-time compared; `429` per-IP rate limiting; `503` load shedding; CORS allowlist (denied by default) |
+| **API auth** | Bearer API key required by default — the server refuses to start without one, or with one shorter than 32 characters; `GRAPHITE_DEV_MODE=1` permits keyless on loopback only. Constant-time compared; `429` per-IP rate limiting with `Retry-After`; `503` load shedding; refusals drain the request body so the status is readable, never a reset; CORS allowlist (denied by default) |
 | **Durability** | Every audit record `fdatasync`'d before the response; a verdict that cannot be recorded is refused with `503`; rotation is a rename, archives retained, and every reader (dashboard, L8) covers the whole trail; snapshot and rotation failures surface on `/health` as `degraded_reasons` |
 
 ---

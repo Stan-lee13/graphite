@@ -24,8 +24,10 @@
 //!
 //! # What it deliberately is not
 //!
-//! Not a `solana-sdk` replacement, and not a validator. It does not verify
-//! signatures, resolve address lookup tables, or interpret instruction data. It
+//! Not a `solana-sdk` replacement, and not a validator. It does not resolve
+//! address lookup tables or interpret instruction data, and it verifies a
+//! signature for exactly one purpose: binding the bytes an RPC returns for a
+//! signature to that signature (`bound_artifact_sha256`, L8). Otherwise it
 //! recovers the message's *structure* — account keys, privileges, fee payer,
 //! and the ordered list of instructions with their program and accounts — which
 //! is precisely the layer at which "is the instruction Graphite verified
@@ -81,6 +83,12 @@ pub enum ArtifactParseError {
     },
     #[error("{trailing} trailing bytes after the message")]
     TrailingBytes { trailing: usize },
+    /// The signature array and the header disagree about how many signers
+    /// there are. The runtime sanitizes a transaction only when they are
+    /// equal, so this frame can never execute — and a frame that cannot
+    /// execute is not one Graphite makes claims about.
+    #[error("{declared} signature slots but the header requires {required} signers; the runtime refuses the mismatch")]
+    SignatureCountMismatch { declared: usize, required: usize },
     /// Larger than the network will carry. Checked before anything else is
     /// read, so the cost of an oversized artifact is one comparison.
     #[error("artifact is {len} bytes; a Solana transaction is at most {max} (PACKET_DATA_SIZE) and the network refuses anything larger")]
@@ -298,7 +306,7 @@ impl<'a> Reader<'a> {
 ///
 /// Their contents do not matter here — Graphite verifies before signing, so an
 /// artifact legitimately arrives with placeholder signatures.
-fn skip_signatures(r: &mut Reader<'_>) -> Result<(), ArtifactParseError> {
+fn skip_signatures(r: &mut Reader<'_>) -> Result<usize, ArtifactParseError> {
     if r.bytes.is_empty() {
         return Err(ArtifactParseError::Empty);
     }
@@ -313,7 +321,7 @@ fn skip_signatures(r: &mut Reader<'_>) -> Result<(), ArtifactParseError> {
             })?,
         "signatures",
     )?;
-    Ok(())
+    Ok(sig_count)
 }
 
 /// The bytes Graphite was shown, recovered from a signed transaction: the
@@ -361,6 +369,83 @@ pub fn artifact_sha256_of_signed(bytes: &[u8]) -> Result<String, ArtifactParseEr
     Ok(hex::encode(Sha256::digest(unsigned_artifact(bytes)?)))
 }
 
+/// Why a signed transaction's bytes are not accepted as the execution of a
+/// given signature (Round 11).
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum SignatureBindingError {
+    #[error("{0}")]
+    Frame(#[from] ArtifactParseError),
+    #[error("signature {signature:?} is not base58 of 64 bytes")]
+    SignatureMalformed { signature: String },
+    #[error(
+        "the first signature slot holds a different signature: these are another transaction's bytes"
+    )]
+    FirstSlotDiffers,
+    #[error("fee payer {fee_payer} is not a valid ed25519 public key")]
+    FeePayerKeyInvalid { fee_payer: String },
+    #[error(
+        "the signature does not verify over the message under fee payer {fee_payer}: these bytes are not what was signed"
+    )]
+    SignatureDoesNotVerify { fee_payer: String },
+}
+
+/// The artifact digest of a signed transaction, accepted only once the bytes
+/// are bound to `signature` — the id the chain files them under.
+///
+/// A transaction's id is its first signature: the fee payer's, over the
+/// message bytes. So the bytes an RPC returns for `signature` are that
+/// transaction if, and only if, their first slot holds `signature` and it
+/// verifies (ed25519, strict — the runtime's own check) over their message
+/// under the fee payer's key. An RPC that returns some other transaction's
+/// bytes — by mistake, or to have an execution attributed to a verification
+/// of its choosing — fails this check, and forging it takes the fee payer's
+/// key. Without it, L8's "the chain decides" would have meant "the RPC
+/// decides".
+pub fn bound_artifact_sha256(
+    bytes: &[u8],
+    signature: &str,
+) -> Result<String, SignatureBindingError> {
+    use ed25519_dalek::{Signature, VerifyingKey};
+    let malformed = || SignatureBindingError::SignatureMalformed {
+        signature: signature.to_string(),
+    };
+    let decoded = bs58::decode(signature)
+        .into_vec()
+        .map_err(|_| malformed())?;
+    let expected: [u8; 64] = decoded.as_slice().try_into().map_err(|_| malformed())?;
+
+    // The frame must parse in full, which also guarantees that every declared
+    // signature slot is present.
+    let message = parse_transaction(bytes)?;
+    let signed_over = message_bytes(bytes)?;
+    // `parse_transaction` has already required the signature array to be as
+    // long as the header's signer count, and the header to name at least one
+    // writable signer, so a first slot exists.
+    let mut r = Reader::new(bytes);
+    let _ = r.compact_u16("signature count")?;
+    let first = r.take(64, "first signature")?;
+    if first != expected {
+        return Err(SignatureBindingError::FirstSlotDiffers);
+    }
+
+    let fee_payer = message.fee_payer.clone();
+    let key_bytes: [u8; 32] = bs58::decode(&fee_payer)
+        .into_vec()
+        .ok()
+        .and_then(|v| v.as_slice().try_into().ok())
+        .ok_or_else(|| SignatureBindingError::FeePayerKeyInvalid {
+            fee_payer: fee_payer.clone(),
+        })?;
+    let key = VerifyingKey::from_bytes(&key_bytes).map_err(|_| {
+        SignatureBindingError::FeePayerKeyInvalid {
+            fee_payer: fee_payer.clone(),
+        }
+    })?;
+    key.verify_strict(signed_over, &Signature::from_bytes(&expected))
+        .map_err(|_| SignatureBindingError::SignatureDoesNotVerify { fee_payer })?;
+    Ok(artifact_sha256_of_signed(bytes)?)
+}
+
 /// The message half of a serialized transaction: everything after the
 /// signature array.
 ///
@@ -395,7 +480,7 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
         });
     }
     let mut r = Reader::new(bytes);
-    skip_signatures(&mut r)?;
+    let sig_count = skip_signatures(&mut r)?;
 
     // Version prefix: the high bit of the first message byte marks a versioned
     // message. Legacy messages start with the header, whose first byte is a
@@ -424,8 +509,11 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
         static_keys.push(Pubkey::from_bytes(arr).to_base58());
     }
 
+    // The runtime's `Message::sanitize`: signers and readonly-unsigned keys
+    // must not overlap, and at least one signer must be writable — the fee
+    // payer. `num_readonly_signed >= num_required_signatures` leaves none.
     if num_required_signatures > key_count
-        || num_readonly_signed > num_required_signatures
+        || num_readonly_signed >= num_required_signatures
         || num_readonly_unsigned > key_count.saturating_sub(num_required_signatures)
         || key_count == 0
     {
@@ -433,6 +521,15 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
             signers: num_required_signatures,
             readonly_signed: num_readonly_signed,
             keys: key_count,
+        });
+    }
+    // The runtime's `VersionedTransaction::sanitize` accepts only a signature
+    // array exactly as long as the header's signer count. Fewer cannot be
+    // signed into validity; more is refused outright.
+    if sig_count != num_required_signatures {
+        return Err(ArtifactParseError::SignatureCountMismatch {
+            declared: sig_count,
+            required: num_required_signatures,
         });
     }
 

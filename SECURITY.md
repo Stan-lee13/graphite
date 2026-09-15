@@ -175,6 +175,21 @@ committed as a test and the fix reverted once to show the test fails without it:
   manifest digest; the toolchain is `1.98.1` in CI and in the container (tested compiler =
   shipped compiler); Go `1.22.12`, `cargo-audit 0.22.2`, and Python test dependencies are
   hash-locked.
+- **L8 took the RPC's word for the chain's bytes (Round 11, R11-01, P1).** Round 10 joined
+  on the digest of whatever `getTransaction` returned, so a faulty or hostile RPC could
+  answer B's signature with A's bytes and have a bypass read as `ApprovedAndExecuted` under
+  `attribution: chain` — or return garbage and hand attribution back to the caller's keys.
+  `bound_artifact_sha256` now accepts bytes only when their first slot holds the signature
+  asked about and that signature verifies (ed25519, strict) over the message under the fee
+  payer's key; rejected bytes yield `Unavailable`, `chain_bytes_rejected`, and no fallback.
+  Real devnet transactions pass the binding (`l8_real_chain_bytes_are_bound_to_their_signature`).
+  Also Round 11: the parser refuses a signature array that differs in length from the
+  header's signer count and a header with no writable signer (both refused by the runtime's
+  `sanitize`; 12 corpus mutations, web3.js agrees); `GRAPHITE_API_KEY` must be at least 32
+  characters; early refusals (401/429/503) drain the request body so clients read the status
+  rather than a reset; the request path no longer deep-copies the manifest registry four
+  times per request (`/health` 100 ms → 1 ms); L8 discrepancies and rejected chain bytes are
+  counted at `/metrics`; the TS SDK's live conformance suite runs in CI against the container.
 - **L8 and the lifecycle join were keyed on `content_hash` (Round 10, R10-01, P1).**
   `content_hash` is one instruction's projection and is shared by every transaction
   carrying that instruction; `last_verification_for(content_hash)` returned the newest
@@ -261,6 +276,8 @@ These are documented scope boundaries, not hidden vulnerabilities:
 - **Pre-signature verification has a window.** The chain moves between verification and execution; the blockhash bounds the window to roughly a minute for ordinary transactions. Nothing signed in advance can be verified against the state it will execute in.
 - **Single-tenant.** One API key, one wallet-profile pin, one audit trail and one semantic graph per process. Tenant isolation is process isolation; no document claims otherwise.
 - **Archive lookups are scans.** The L8 / lifecycle join is indexed for the active file only; a key older than the last rotation costs one pass over each archive, newest first.
+- **L8 trusts the RPC for inclusion, not for bytes.** `getSignatureStatuses` is taken at its word: an RPC can claim a signature landed when it did not (a false discrepancy) or that it did not when it did (a hidden bypass). The bytes it returns are bound to the signature and cannot be substituted without the fee payer's key (Round 11). A second, independent RPC or a light-client proof would close the inclusion gap; neither is built.
+- **A body over the 1 MiB limit may be answered with a reset.** The server answers 413 and closes without draining past the limit; a client still uploading may see a connection reset rather than the status. Refusals below the limit are drained and readable.
 - **Without the chain's bytes, L8 attribution is only as exact as the caller's keys.** An RPC that does not serve `getTransaction`, a pruned ledger, or no RPC leaves the join on `audit_trail_id` → `transaction_sha256` → `content_hash`; the last is ambiguous by construction and the response says `attribution: content_hash`. The bridge always supplies the first two.
 - **A permitted durable-nonce transaction has no clock.** With `GRAPHITE_ALLOW_DURABLE_NONCE=1`, a verified nonce transaction is executable as verified *if submitted before the nonce advances*; the missing expiry is the operator's recorded tradeoff, and the opt-in is process-wide.
 - **`fdatasync` proves the device acknowledged, not the platter.** A storage device with a lying write cache is outside what any userspace program can verify.

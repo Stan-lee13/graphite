@@ -141,6 +141,7 @@ fix reverted once to prove its test fails without it. Status of every guarantee:
 - [x] CI token read-only, actions pinned by SHA, base images pinned by digest (Round 9)
 - [x] L8 attribution joined on the chain's bytes (signature slots zeroed → `transaction_sha256`), caller keys most-exact-first without fallback; `verdict_on_record` resolved the same way (Round 10, P1)
 - [x] Tested compiler = shipped compiler (`1.98.1` in CI and the container); Go, cargo-audit and Python test deps pinned/hash-locked (Round 10)
+- [x] L8 chain bytes bound to the signature (first slot + ed25519 under the fee payer), refused otherwise with no fallback; request path no longer deep-copies state (`/health` 100 ms → 1 ms, 21 → 960 verifies/s); refusals readable; parser matches the runtime's signer-count rule; 32-character API keys; TS SDK live conformance in CI (Round 11)
 - [x] 1,422 Rust tests (301 featureless, 1,281 cli-only), 73 TypeScript, CI green on every commit since `f10e4ab`
 
 ## Phase 3 (Production) — what gates it

@@ -118,7 +118,7 @@ jobs:
       - name: Run container
         run: |
           docker run -d --name graphite-ci \
-            -e GRAPHITE_API_KEY=ci-smoke-test-key \
+            -e GRAPHITE_API_KEY=ci-smoke-test-key-0123456789abcdef \
             -p 7331:7331 graphite-core:ci
       - name: Wait for health
         run: |
@@ -142,6 +142,27 @@ jobs:
           if [ "$code" != "401" ]; then
             echo "FAIL: unauthenticated /verify returned $code, expected 401"
             docker logs graphite-ci; exit 1
+          fi
+      # The TypeScript SDK's real-server conformance tests skip when
+      # GRAPHITE_URL is unset, so until Round 11 they never ran anywhere in
+      # CI: the SDK and the server could disagree about a field name or a
+      # verdict's meaning with a fully green pipeline. The container is a
+      # live server; point the SDK at it.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - name: TypeScript SDK conformance against the live container
+        working-directory: sdk/typescript
+        env:
+          GRAPHITE_URL: http://localhost:7331
+          GRAPHITE_API_KEY: ci-smoke-test-key-0123456789abcdef
+        run: |
+          npm ci
+          npm test 2>&1 | tee sdk-live.log
+          # The live tests must have RUN, not been skipped: a wrong URL or an
+          # unset key would otherwise pass this step vacuously.
+          if grep -q "# SKIP" sdk-live.log; then
+            echo "::error::SDK live conformance tests were skipped"; exit 1
           fi
       - name: A keyless container must refuse to start
         run: |

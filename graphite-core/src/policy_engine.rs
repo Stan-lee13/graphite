@@ -47,7 +47,24 @@ pub enum WalletProfile {
     },
 }
 
+/// The weakest confidence bar any built-in profile accepts (Gaming). A
+/// `Custom` profile below it is not a policy — it is the confidence gate
+/// switched off. The server clamps caller-supplied profiles to it
+/// (`GRAPHITE_ALLOW_PERMISSIVE_PROFILES` opts out); the CLI, an operator's
+/// own tool, honours the operator's number but says so out loud.
+pub const WEAKEST_BUILTIN_MIN_CONFIDENCE: f64 = 0.55;
+
 impl WalletProfile {
+    /// Whether this profile's confidence bar is below every built-in one.
+    pub fn is_weaker_than_any_builtin(&self) -> bool {
+        match *self {
+            WalletProfile::Custom { min_confidence, .. } => {
+                !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE
+            }
+            _ => false,
+        }
+    }
+
     /// The `(min_confidence, min_trust_tier)` this profile requires.
     ///
     /// The single source of truth for the built-in thresholds. `evaluate_policy`

@@ -46,8 +46,9 @@ const MAX_SIGNATURE_CHARS: usize = 90;
 /// `audit_trail_id` (a `gr-<uuid>`) and `reported_by` (an operator-meaningful
 /// name) on `/audit/event`.
 const MAX_LIFECYCLE_ID_CHARS: usize = 128;
-/// Free-form `detail` on `/audit/event`: a slot, a failure reason.
-const MAX_LIFECYCLE_DETAIL_CHARS: usize = 1024;
+/// Free-form `detail` on `/audit/event`: a slot, a failure reason. The same
+/// bound the trail applies on disk.
+use crate::durable::MAX_LIFECYCLE_DETAIL_CHARS;
 
 /// The shape of a `transaction_sha256`: what `hex::encode(Sha256::digest(..))`
 /// produces, and nothing else.
@@ -94,14 +95,23 @@ const CONFIDENCE_SERIES_CAP: usize = 500;
 const VIOLATIONS_CAP: usize = 200;
 
 /// Shared application state.
+///
+/// Cloned by axum on every `State` extraction and by every
+/// `from_fn_with_state` middleware — four or more times per request. So the
+/// two large immutable members are behind `Arc` (Round 11): until then each
+/// clone deep-copied the whole manifest registry (every protocol manifest, a
+/// `BTreeMap` of nested structures) and the community registry engine, and a
+/// `/health` that computes in microseconds answered in ~100 ms on loopback.
+/// Measured in-process: 95 ms → 1 ms per request. Every handler uses `&self`
+/// methods; the mutable state inside `GraphiteCore` is already interior.
 #[derive(Clone)]
 struct AppState {
-    core: GraphiteCore,
+    core: Arc<GraphiteCore>,
     /// Bearer API key; `None` only under `GRAPHITE_DEV_MODE=1` on loopback.
     api_key: Option<Arc<String>>,
     audit: Option<AuditLog>,
     /// Community Manifest Registry engine (read-only dashboard view — P4).
-    registry_engine: crate::manifest_registry::ManifestRegistryEngine,
+    registry_engine: Arc<crate::manifest_registry::ManifestRegistryEngine>,
     rate: RateLimiter,
     /// Only honor `X-Forwarded-For` when behind a trusted proxy.
     trust_proxy_hops: u8,
@@ -145,6 +155,16 @@ struct Metrics {
     /// Lifecycle events reported against a content_hash with no
     /// verification on record anywhere in the trail.
     lifecycle_unverified: Arc<std::sync::atomic::AtomicU64>,
+    /// L8 reconciliations performed (`/verify/execution`).
+    execution_checks: Arc<std::sync::atomic::AtomicU64>,
+    /// L8 reconciliations that found a BLOCKED transaction executed on-chain:
+    /// the gate was bypassed. The one number an operator must alert on.
+    execution_discrepancies: Arc<std::sync::atomic::AtomicU64>,
+    /// L8 reconciliations where the RPC returned transaction bytes that are
+    /// not bound to the signature asked about (first slot differs, or the
+    /// signature does not verify under the fee payer). An RPC that does this
+    /// is faulty or hostile; the reconciliation is refused, not degraded.
+    execution_chain_bytes_rejected: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Metrics {
@@ -398,6 +418,15 @@ pub enum AuthPosture {
 /// Environment variable that permits an unauthenticated instance.
 pub const DEV_MODE_ENV: &str = "GRAPHITE_DEV_MODE";
 
+/// The shortest `GRAPHITE_API_KEY` the server will start with (Round 11).
+///
+/// The key is the only thing between the network and `/verify`, and the
+/// comparison is constant-time, so its strength is its length. 32 characters
+/// is what `openssl rand -hex 16` produces — 128 bits — and half of what the
+/// documentation recommends. A five-character key is a guessable key, and a
+/// gate that starts with one is not fail-closed.
+pub const MIN_API_KEY_CHARS: usize = 32;
+
 /// Decide the auth posture, refusing every combination that used to start.
 ///
 /// Default = authenticated. Until 2026-09-12 the default was the other way
@@ -417,6 +446,13 @@ pub fn auth_posture(
     dev_mode: bool,
 ) -> Result<AuthPosture, String> {
     if let Some(key) = api_key.map(str::trim).filter(|k| !k.is_empty()) {
+        let chars = key.chars().count();
+        if chars < MIN_API_KEY_CHARS {
+            return Err(format!(
+                "refusing to start: GRAPHITE_API_KEY is {chars} characters; at least \
+                 {MIN_API_KEY_CHARS} are required. Generate one with `openssl rand -hex 32`."
+            ));
+        }
         return Ok(AuthPosture::ApiKey(Arc::new(key.to_string())));
     }
     if !dev_mode {
@@ -717,10 +753,10 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         REQUEST_TIMEOUT.as_secs()
     ));
     let state = AppState {
-        core,
+        core: Arc::new(core),
         api_key: api_key.clone(),
         audit,
-        registry_engine,
+        registry_engine: Arc::new(registry_engine),
         rate: RateLimiter::new(rate_per_sec),
         trust_proxy_hops,
         metrics: Metrics::default(),
@@ -780,6 +816,14 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         }
     };
 
+    // TCP_NODELAY on every accepted connection (Round 11): a small response
+    // should not wait on the peer's delayed ACK.
+    use axum::serve::ListenerExt;
+    let listener = listener.tap_io(|tcp_stream| {
+        if let Err(e) = tcp_stream.set_nodelay(true) {
+            tracing::warn!("TCP_NODELAY could not be set on an accepted connection: {e}");
+        }
+    });
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -868,6 +912,25 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
 }
 
 /// API-key auth. `/health` stays open for load balancers.
+/// Answer a request that is being refused before its body was read — a 401,
+/// 429 or 503 from the middlewares — WITHOUT leaving that body unread.
+///
+/// Closing a connection with unread bytes in the socket makes the kernel
+/// send RST instead of FIN, and a client still writing its body sees a reset
+/// rather than the status: the SDK reports a network error where the server
+/// meant "rate limited, retry after 1 s". Found by the Round 11 live probe
+/// once the request path was fast enough to answer before the body landed.
+/// The body is already bounded by `RequestBodyLimitLayer` (outside these
+/// middlewares), so draining it costs at most `MAX_BODY_SIZE` of reads that
+/// the network had already delivered.
+async fn refuse_after_draining(
+    req: axum::http::Request<axum::body::Body>,
+    response: Response,
+) -> Response {
+    let _ = axum::body::to_bytes(req.into_body(), MAX_BODY_SIZE).await;
+    response
+}
+
 async fn auth_middleware(
     State(state): State<AppState>,
     req: axum::http::Request<axum::body::Body>,
@@ -885,7 +948,7 @@ async fn auth_middleware(
             .unwrap_or("");
         if !ct_eq(provided, key.as_str()) {
             Metrics::inc(&state.metrics.auth_failures);
-            return (
+            let refusal = (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
                     "error": "unauthorized",
@@ -893,6 +956,7 @@ async fn auth_middleware(
                 })),
             )
                 .into_response();
+            return refuse_after_draining(req, refusal).await;
         }
     }
     next.run(req).await
@@ -908,11 +972,13 @@ async fn rate_limit_middleware(
     let ip = client_ip(&req, addr, state.trust_proxy_hops);
     if !state.rate.check(ip) {
         Metrics::inc(&state.metrics.rate_limited);
-        return (
+        let refusal = (
             StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, "1")],
             Json(serde_json::json!({ "error": "rate limit exceeded" })),
         )
             .into_response();
+        return refuse_after_draining(req, refusal).await;
     }
     next.run(req).await
 }
@@ -943,7 +1009,7 @@ async fn concurrency_limit_middleware(
                 "at capacity: {} verifications already in flight, shedding",
                 state.inflight_limit
             ));
-            return (
+            let refusal = (
                 StatusCode::SERVICE_UNAVAILABLE,
                 // Retry-After is what makes this actionable rather than merely
                 // a refusal: the caller is told when to come back. A bare 408
@@ -957,6 +1023,7 @@ async fn concurrency_limit_middleware(
                 })),
             )
                 .into_response();
+            return refuse_after_draining(req, refusal).await;
         }
     };
     let response = next.run(req).await;
@@ -1113,10 +1180,7 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
     }
 }
 
-/// The weakest posture any built-in profile accepts (Gaming). A
-/// caller-supplied `Custom` profile weaker than this is not a policy — it is
-/// the gate switched off.
-const WEAKEST_BUILTIN_MIN_CONFIDENCE: f64 = 0.55;
+use crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE;
 
 /// Enforce the wallet policy profile at the network trust boundary.
 ///
@@ -1601,6 +1665,27 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
             .load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
+        "graphite_execution_checks_total",
+        "L8 reconciliations performed via /verify/execution.",
+        "counter",
+        m.execution_checks
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_execution_discrepancies_total",
+        "L8 reconciliations that found a transaction Graphite BLOCKED executed on-chain: the gate was bypassed. Page on this.",
+        "counter",
+        m.execution_discrepancies
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_execution_chain_bytes_rejected_total",
+        "L8 reconciliations refused because the RPC returned transaction bytes not bound to the signature (wrong first slot, or the signature does not verify under the fee payer). A faulty or hostile RPC.",
+        "counter",
+        m.execution_chain_bytes_rejected
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
         "graphite_audit_writes_ok_total",
         "Audit records successfully appended.",
         "counter",
@@ -1868,7 +1953,7 @@ async fn execution_handler(
             transaction_signature: Some(signature.clone()),
             reported_by: body.reported_by.clone(),
             detail: Some(format!(
-                "L8 reconciliation: {:?}; attribution: {:?}{}",
+                "L8 reconciliation: {:?}; attribution: {:?}{}{}",
                 result.reconciliation,
                 result.attribution,
                 if result.caller_keys_disagree.is_empty() {
@@ -1878,18 +1963,33 @@ async fn execution_handler(
                         "; caller keys disagree: {}",
                         result.caller_keys_disagree.join(" | ")
                     )
+                },
+                match &result.chain_bytes_rejected {
+                    Some(why) => format!("; chain bytes rejected: {why}"),
+                    None => String::new(),
                 }
             )),
         }),
         None => false,
     };
 
+    Metrics::inc(&state.metrics.execution_checks);
     if result.reconciliation.is_discrepancy() {
         // Loud on purpose. This is Graphite telling the operator that its own
         // decision did not govern the wallet.
+        Metrics::inc(&state.metrics.execution_discrepancies);
         tracing_server_error(&format!(
             "L8 DISCREPANCY: signature {} executed on-chain but Graphite BLOCKED it              (audit_trail_id {:?})",
             signature, result.recorded_audit_trail_id
+        ));
+    }
+    if let Some(why) = &result.chain_bytes_rejected {
+        // The RPC handed back bytes that are not this signature's. Nothing
+        // downstream of a substituting RPC can be trusted, so this is an
+        // operator-level alarm, not a client-level warning.
+        Metrics::inc(&state.metrics.execution_chain_bytes_rejected);
+        tracing_server_error(&format!(
+            "L8 CHAIN BYTES REJECTED for signature {signature}: {why}"
         ));
     }
 
@@ -1904,6 +2004,7 @@ async fn execution_handler(
         "attribution": result.attribution,
         "chain_transaction_sha256": result.chain_transaction_sha256,
         "caller_keys_disagree": result.caller_keys_disagree,
+        "chain_bytes_rejected": result.chain_bytes_rejected,
         "audit_recorded": recorded,
     });
     if !recorded && audit.is_some() {
@@ -2337,11 +2438,26 @@ async fn lifecycle_event_handler(
     })))
 }
 
-async fn manifests_handler(
-    State(state): State<AppState>,
-) -> Json<Vec<crate::manifest::ProtocolManifest>> {
-    let manifests: Vec<_> = state.core.list_manifests().into_iter().cloned().collect();
-    Json(manifests)
+async fn manifests_handler(State(state): State<AppState>) -> Response {
+    // Serialized straight from the registry's references into the response
+    // body: cloning every manifest per request, then serializing the copy,
+    // was most of this endpoint's cost.
+    match serde_json::to_vec(&state.core.list_manifests()) {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        Err(e) => {
+            tracing_server_error(&format!("manifests: serialization failed: {e}"));
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "manifests could not be serialized" })),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// Dashboard: Semantic Graph read-only snapshot (P4 — never mutates).
@@ -2779,7 +2895,7 @@ mod tests {
     /// Build an app state with a seeded core + an audit log in a temp dir.
     /// Each call gets a unique dir (parallel tests must never share the audit
     /// file — appends from one test would leak into another's readout).
-    fn test_state() -> (AppState, std::path::PathBuf) {
+    pub(super) fn test_state() -> (AppState, std::path::PathBuf) {
         use std::sync::atomic::{AtomicU64, Ordering};
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
@@ -2825,10 +2941,10 @@ mod tests {
         .unwrap();
         let audit = AuditLog::open(audit_path(&dir)).unwrap();
         let state = AppState {
-            core,
+            core: Arc::new(core),
             api_key: None,
             audit: Some(audit),
-            registry_engine: crate::manifest_registry::ManifestRegistryEngine::new(),
+            registry_engine: Arc::new(crate::manifest_registry::ManifestRegistryEngine::new()),
             rate: RateLimiter::new(1000.0),
             trust_proxy_hops: 0,
             metrics: Metrics::default(),
@@ -3145,10 +3261,12 @@ mod tests {
         let lan: SocketAddr = "192.168.1.10:7331".parse().unwrap();
 
         // A key wins everywhere, dev mode or not.
+        let key = "k3y-k3y-k3y-k3y-k3y-k3y-k3y-k3y-";
+        assert_eq!(key.len(), MIN_API_KEY_CHARS);
         for addr in [loopback, public, lan] {
             for dev in [false, true] {
-                match auth_posture(addr, Some("k3y"), dev) {
-                    Ok(AuthPosture::ApiKey(k)) => assert_eq!(k.as_str(), "k3y"),
+                match auth_posture(addr, Some(key), dev) {
+                    Ok(AuthPosture::ApiKey(k)) => assert_eq!(k.as_str(), key),
                     other => panic!("{addr} dev={dev}: expected ApiKey, got {other:?}"),
                 }
             }
@@ -3156,6 +3274,16 @@ mod tests {
         // Whitespace is not a key.
         assert!(auth_posture(loopback, Some("   "), false).is_err());
         assert!(auth_posture(loopback, Some(""), false).is_err());
+        // Round 11: a short key is refused, on every address, with or without
+        // dev mode — a weak key must not be rescued by a loopback bind.
+        for addr in [loopback, public, lan] {
+            for dev in [false, true] {
+                let err = auth_posture(addr, Some("k3y"), dev).unwrap_err();
+                assert!(err.contains("refusing to start"), "{err}");
+                assert!(err.contains("32"), "{err}");
+            }
+        }
+        assert!(auth_posture(loopback, Some(&key[..31]), false).is_err());
 
         // No key, no dev mode: refused on every address, including loopback —
         // the combination that used to start silently.
@@ -3418,7 +3546,7 @@ mod tests {
         let mut engine = crate::manifest_registry::ManifestRegistryEngine::new();
         engine.register_reviewer("reviewerPubkey1", 1000).unwrap();
         let mut state = state;
-        state.registry_engine = engine;
+        state.registry_engine = Arc::new(engine);
         let app = build_app(state, vec![]);
         let (status, json) = get_json(&app, "/api/registry").await;
         assert_eq!(status, axum::http::StatusCode::OK);
@@ -4548,5 +4676,176 @@ mod tests {
             axum::http::StatusCode::OK,
             "server must continue serving after a handler panic"
         );
+    }
+}
+
+#[cfg(test)]
+mod request_path_cost {
+    use super::*;
+
+    /// Round 11: `AppState` is cloned on every `State` extraction and by every
+    /// `from_fn_with_state` middleware. Until Round 11 that deep-copied the
+    /// whole manifest registry and the community registry engine — about
+    /// 15 ms per clone on the reference machine, four clones per request, so
+    /// `/health` answered in ~100 ms. The bound here is two orders of
+    /// magnitude above what `Arc` clones cost and two below what deep copies
+    /// cost, so it is not a timing flake: a thousand clones must stay under
+    /// a quarter of a second (deep copies took fifteen).
+    #[test]
+    fn app_state_clone_is_a_reference_count_not_a_deep_copy() {
+        let (state, dir) = tests::test_state();
+        let t = std::time::Instant::now();
+        let mut keep = Vec::with_capacity(1000);
+        for _ in 0..1000 {
+            keep.push(state.clone());
+        }
+        let elapsed = t.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "1000 AppState clones took {elapsed:?}; the request path is deep-copying state again"
+        );
+        assert_eq!(Arc::strong_count(&state.core), 1001);
+        drop(keep);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The same, end to end: a bound server answers `/health` in single-digit
+    /// milliseconds, sequentially, on loopback. Generous bound (50 ms) so
+    /// a loaded CI runner passes; the regression this guards was 100 ms.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn health_answers_in_milliseconds_on_loopback() {
+        let (state, dir) = tests::test_state();
+        let app = build_app(state, vec![]);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            .unwrap();
+        });
+        let client = reqwest::Client::new();
+        // Warm the connection, then time twenty sequential round trips.
+        let _ = client
+            .get(format!("http://{addr}/health"))
+            .send()
+            .await
+            .unwrap();
+        let t = std::time::Instant::now();
+        for _ in 0..20 {
+            let r = client
+                .get(format!("http://{addr}/health"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(r.status(), reqwest::StatusCode::OK);
+            let _ = r.bytes().await.unwrap();
+        }
+        let per_request = t.elapsed() / 20;
+        eprintln!("/health: {per_request:?} per sequential request");
+        assert!(
+            per_request < Duration::from_millis(50),
+            "/health took {per_request:?} per request; the request path has grown a per-request cost"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Round 11: a refusal issued before the body was read (401 here, and
+    /// 429 / 503 by the same helper) must still be READABLE by the client.
+    /// Without draining, the server closes with unread bytes in the socket,
+    /// the kernel answers with RST, and a client still writing its body sees
+    /// a reset instead of the status. The client here is a raw socket that
+    /// sends the headers and the first part of a 600 KB body, pauses, then
+    /// sends the rest — the shape of a real upload on a real network, and
+    /// exactly the interleaving a keep-alive client library cannot be made
+    /// to produce on demand. 600 KB is under the 1 MiB limit, so the body is
+    /// a legal one the server merely declined.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn early_refusals_drain_the_body_so_the_status_is_readable() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut state, dir) = tests::test_state();
+        state.api_key = Some(Arc::new("k3y-k3y-k3y-k3y-k3y-k3y-k3y-k3y-".to_string()));
+        state.rate = RateLimiter::with_capacity(16, 1.0);
+        let app = build_app(state, vec![]);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            .unwrap();
+        });
+
+        // One slow upload; returns the status line the client could read, or
+        // the error it got instead.
+        async fn slow_post(addr: SocketAddr, key: &str) -> Result<String, String> {
+            let body = format!("{{\"pad\":\"{}\"}}", "x".repeat(600 * 1024));
+            let head = format!(
+                "POST /verify HTTP/1.1
+Host: {addr}
+Authorization: Bearer {key}
+Content-Type: application/json
+Content-Length: {}
+Connection: close
+
+",
+                body.len()
+            );
+            let mut sock = tokio::net::TcpStream::connect(addr)
+                .await
+                .map_err(|e| format!("connect: {e}"))?;
+            sock.write_all(head.as_bytes())
+                .await
+                .map_err(|e| format!("head: {e}"))?;
+            sock.write_all(&body.as_bytes()[..64 * 1024])
+                .await
+                .map_err(|e| format!("first part: {e}"))?;
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            // The rest may or may not be accepted; what matters is what the
+            // client can READ afterwards.
+            let _ = sock.write_all(&body.as_bytes()[64 * 1024..]).await;
+            let mut out = Vec::new();
+            match tokio::time::timeout(Duration::from_secs(5), sock.read_to_end(&mut out)).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) if !out.is_empty() => {
+                    // A reset after the whole response arrived still counts as
+                    // readable; a reset before it does not.
+                    let _ = e;
+                }
+                Ok(Err(e)) => return Err(format!("read: {e}")),
+                Err(_) => return Err("read: timed out".to_string()),
+            }
+            let text = String::from_utf8_lossy(&out);
+            text.lines()
+                .next()
+                .map(str::to_string)
+                .ok_or_else(|| "read: empty response".to_string())
+        }
+
+        let status = slow_post(addr, "wrong-key-wrong-key-wrong-key-wrong")
+            .await
+            .unwrap_or_else(|e| panic!("the 401 must be readable, not a reset: {e}"));
+        assert!(status.starts_with("HTTP/1.1 401"), "{status}");
+
+        // The one token went to the 401 above; the next slow upload arrives
+        // before it refills and must read a 429, not a reset.
+        let mut saw_429 = false;
+        for attempt in 0..6 {
+            let status = slow_post(addr, "k3y-k3y-k3y-k3y-k3y-k3y-k3y-k3y-")
+                .await
+                .unwrap_or_else(|e| {
+                    panic!("attempt {attempt}: a refusal must be readable, not a reset: {e}")
+                });
+            if status.starts_with("HTTP/1.1 429") {
+                saw_429 = true;
+                break;
+            }
+        }
+        assert!(saw_429, "the bucket must have run out within six requests");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -487,6 +487,15 @@ export interface ExecutionCheckResult {
    * wrong; the reconciliation is against the resolved record.
    */
   caller_keys_disagree: string[];
+  /**
+   * Present when the RPC returned transaction bytes for the signature that
+   * are not bound to it — the first slot does not hold the signature, or the
+   * signature does not verify over the message under the fee payer's key.
+   * Those bytes were not used and the caller's keys were NOT consulted in
+   * their place; `reconciliation` is `Unavailable` with this reason. An RPC
+   * that does this is faulty or hostile.
+   */
+  chain_bytes_rejected?: string | null;
   /** Whether this reconciliation row reached the trail. */
   audit_recorded: boolean;
 }

@@ -292,6 +292,16 @@ fn mutate(raw: &[u8], m: &serde_json::Value) -> Vec<u8> {
             out.resize(to, 0);
             out
         }
+        // Replace the signature array with `count` zero slots, header
+        // untouched (Round 11): the signer count the runtime checks against.
+        "slots" => {
+            let count = m["count"].as_u64().unwrap() as usize;
+            let declared = raw[0] as usize;
+            let mut out = vec![count as u8];
+            out.resize(1 + 64 * count, 0);
+            out.extend_from_slice(&raw[1 + 64 * declared..]);
+            out
+        }
         other => panic!("unknown mutation op {other}"),
     }
 }
@@ -399,6 +409,9 @@ fn every_byte_level_mutation_is_read_the_same_way_on_both_sides() {
                     ArtifactParseError::UnsupportedVersion(_) => "unsupported version",
                     ArtifactParseError::Empty => "empty",
                     ArtifactParseError::TooLarge { .. } => "larger than a packet",
+                    ArtifactParseError::SignatureCountMismatch { .. } => {
+                        "signature count differs from the header"
+                    }
                 };
                 *graphite_stricter.entry(why).or_insert(0) += 1;
             }

@@ -3,6 +3,21 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 11 — the full run] — 2026-09-15
+
+Report: `docs/round11-full-run-2026-09-15.md`.
+
+- **L8 chain bytes not bound to the signature (P1, fixed)**: `tx_artifact::bound_artifact_sha256(bytes, signature)` — the first slot must hold the signature and it must verify (`ed25519_dalek::verify_strict`) over the message under the fee payer's key; `SignatureBindingError`. `audit_execution` refuses bytes that fail (`ExecutionAudit.chain_bytes_rejected`, reconciliation `Unavailable`, `attribution: none`, caller keys not consulted); the server counts (`graphite_execution_chain_bytes_rejected_total`), logs at ERROR and writes the reason on the trail row; the CLI prints `REJECTED`; the bridge logs `L8 REFUSED`. Live test against public devnet: real bytes bind, the same bytes refuse another signature.
+- **Request path deep-copied the state (P2, fixed)**: `AppState.core: Arc<GraphiteCore>`, `registry_engine: Arc<…>`; `/manifests` serializes from references. `/health` 100 ms → 1 ms; in-process storm 21 → 960 verifies/s. Regression tests `app_state_clone_is_a_reference_count_not_a_deep_copy`, `health_answers_in_milliseconds_on_loopback`.
+- **Early refusals reset the connection (P2, fixed)**: `refuse_after_draining` — 401/429/503 drain the (size-capped) body before answering; 429 carries `Retry-After: 1`. Test `early_refusals_drain_the_body_so_the_status_is_readable`.
+- **Parser accepted frames the runtime refuses (P2, fixed)**: `ArtifactParseError::SignatureCountMismatch` (signature array length ≠ header signer count); `ImpossibleHeader` when no signer is writable. Corpus `slots` mutation (12 cases, 1,659 total); web3.js agrees.
+- **Any-length API key (P2, fixed)**: `MIN_API_KEY_CHARS = 32`; shorter refuses to start.
+- **L8 trail rows truncated (P3, fixed)**: `durable::MAX_LIFECYCLE_DETAIL_CHARS = 1024` shared by the boundary and the disk.
+- **Metrics**: `graphite_execution_checks_total`, `graphite_execution_discrepancies_total`, `graphite_execution_chain_bytes_rejected_total`.
+- **CLI**: a `--profile custom` bar below the weakest built-in profile warns on stderr (`policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE`, `WalletProfile::is_weaker_than_any_builtin`).
+- **CI**: the container job runs the TypeScript SDK's live conformance tests against the container and fails if any was skipped; the smoke key is 34 characters.
+- **Supply chain**: `rustls` 0.23.43 → 0.23.45 (RUSTSEC-2026-0285).
+
 ## [Round 10 — exact execution attribution] — 2026-09-13
 
 Report: `docs/round10-exact-attribution-2026-09-13.md`.

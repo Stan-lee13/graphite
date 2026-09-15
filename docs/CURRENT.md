@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-09-13, after Round 10 (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-09-15, after Round 11 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -36,13 +36,17 @@ Token-2022 extensions:           classified, not modelled — semantics/authorit
 Input bounds:                    artifact ≤ 1232 bytes (PACKET_DATA_SIZE), ≤ 256 declared siblings, every
                                  audit-trail field bounded on the way to disk
 Audit trail durability:          fdatasync per record; whole-trail reads across rotated archives; indexed L8 join
-L8 execution attribution:        joined on the chain's bytes (signature slots zeroed → scope.transaction_sha256);
+L8 execution attribution:        joined on the chain's bytes (signature slots zeroed → scope.transaction_sha256),
+                                 accepted only when bound to the signature — first slot equal to it, verifying
+                                 under the fee payer's key — else refused with nothing attributed (Round 11);
                                  caller keys audit_trail_id → transaction_sha256 → content_hash, most exact first,
                                  cross-checked, never falling back (Round 10)
 Lifecycle on the trail:          the bridge records signing before submission and submission after it, and runs
                                  L8 at the end, with the exact keys; every lifecycle row carries verdict_on_record
                                  and the key that resolved it
-Server authentication:           required by default; GRAPHITE_DEV_MODE=1 permits keyless on loopback only
+Server authentication:           required by default, ≥ 32 characters; GRAPHITE_DEV_MODE=1 permits keyless on loopback only
+Request path:                    no per-request deep copy of state (/health ~1 ms; 960 verifies/s in-process with
+                                 fdatasync per record); refusals drain the body and are readable (Round 11)
 Repository integrity:            CI token read-only; actions pinned by commit SHA; base images pinned by digest;
                                  toolchain 1.98.1 in CI and in the container; Go, cargo-audit and Python (hash-locked) pinned
 Independent third-party audit:   NOT PERFORMED — every campaign report is internal engineering work
@@ -70,12 +74,19 @@ transaction under the stated threat model, and no external party has yet tried.
 | Durable-nonce transactions are refused unless verified | `tx_artifact::durable_nonce`, L2 gate | `tests/durable_nonce.rs`, `tests/durable_nonce_rpc.rs` |
 | Audit records are synced to the device before the response | `AuditLog::append_line` → `sync_data` | Established by code reading — no userspace test can observe it; `durable::tests::audit_append_syncs_the_device` measures the cost (1.2 ms vs 19 µs for the no-op it replaced) and asserts nothing |
 | L8 reconciliation sees the whole trail | `AuditLog::find_verification` by `audit_trail_id` / `transaction_sha256` / `content_hash`: indexed active file, archives newest-first | `durable::tests::read_path_covers_every_archive_after_rotation`, `last_verification_index_tracks_rotation_and_reopen`, `tests/round10_attribution.rs` |
-| An executed blocked transaction is attributed to ITS verification, not to a same-instruction approval | `audit_execution`: `getTransaction` bytes → `unsigned_artifact` → digest → `find_verification(TransactionSha256)`; caller keys most-exact-first with no fallback; `caller_keys_disagree` | `tests/round10_attribution.rs` (approved A newest, blocked B executed → `BlockedButExecuted`, attribution `chain`) |
+| An executed blocked transaction is attributed to ITS verification, not to a same-instruction approval | `audit_execution`: `getTransaction` bytes → `bound_artifact_sha256` → digest → `find_verification(TransactionSha256)`; caller keys most-exact-first with no fallback; `caller_keys_disagree` | `tests/round10_attribution.rs` (approved A newest, blocked B executed → `BlockedButExecuted`, attribution `chain`) |
+| The chain's bytes are the signature's, not merely the RPC's | `tx_artifact::bound_artifact_sha256`: first slot equals the signature; ed25519 `verify_strict` over the message under the fee payer's key; rejected bytes → `Unavailable`, `chain_bytes_rejected`, no fallback to caller keys | `tests/round10_attribution.rs::{chain_bytes_are_accepted_only_when_bound_to_the_signature, an_rpc_that_substitutes_bytes_cannot_attribute_the_execution}`; `tests/l8_live_mainnet.rs::l8_real_chain_bytes_are_bound_to_their_signature` (public devnet, ignored by default) |
+| A frame the runtime would not sanitize is not a transaction | `parse_transaction`: `SignatureCountMismatch`, `ImpossibleHeader` (no writable signer) | `tests/sak_bridge_corpus.rs` (`slots` mutations; web3.js agrees), `tests/round10_attribution.rs` |
+| The request path does not deep-copy state | `AppState.core: Arc<GraphiteCore>`, `registry_engine: Arc<…>` | `server::request_path_cost::{app_state_clone_is_a_reference_count_not_a_deep_copy, health_answers_in_milliseconds_on_loopback}` |
+| A refusal is readable, never a reset | `refuse_after_draining` on 401 / 429 / 503 | `server::request_path_cost::early_refusals_drain_the_body_so_the_status_is_readable` |
+| The API key is not guessable by length | `server::MIN_API_KEY_CHARS` = 32 in `auth_posture` | `server::tests::auth_is_required_unless_dev_mode_is_named_and_the_bind_is_loopback` |
+| The SDK and the server agree on the wire | `sdk/typescript/src/live-server.test.ts` against the CI container, failing if skipped | `.github/workflows/ci.yml` container job |
 | A lifecycle `verdict_on_record` is about the transaction the event names | `/audit/event` resolves by `audit_trail_id`, else `transaction_sha256`, else `content_hash`; contradicting keys → 400 | `server::tests::lifecycle_verdict_resolves_by_the_most_exact_key_and_refuses_contradiction` |
 | A compressed RPC response cannot outgrow the cap | `read_body_capped` bounds decompressed chunks | `tests/round10_rpc_decompression.rs` (65 KB → 64 MiB refused in 35 ms) |
 | Caller-reported lifecycle rows are bounded and carry what the trail knows | `LifecycleEventRecord::bounded`, `/audit/event` shape and length checks, `verdict_on_record` computed server-side | `durable::tests::lifecycle_event_fields_are_bounded_on_disk`, `server::tests::lifecycle_events_carry_the_verdict_on_record` |
 | The bridge's signing and submission are on the trail, in order | `executeBoundTransaction`: policy → sign → record signing (abort if not recorded or not `approved` on record) → submit → record submission → confirm → L8 | `execution-lifecycle.test.ts` |
 | Keyless server cannot start on a reachable address | `server::auth_posture` | `server::tests::auth_is_required_unless_dev_mode_is_named_and_the_bind_is_loopback` |
+| L8 rows on the trail carry the whole reconciliation detail | `durable::MAX_LIFECYCLE_DETAIL_CHARS` (1024) at the boundary and on disk | `durable::tests::lifecycle_event_fields_are_bounded_on_disk` |
 
 ## What is NOT enforced (documented limitations)
 
@@ -96,6 +107,12 @@ transaction under the stated threat model, and no external party has yet tried.
 - **Archive lookups are scans.** The L8 / lifecycle join is indexed for the
   active file; a key older than the last rotation costs one pass over each
   archive.
+- **L8 trusts the RPC for inclusion, not for bytes.** `getSignatureStatuses`
+  can lie about whether a signature landed; the bytes behind it can no longer
+  be substituted without the fee payer's key. A second RPC or a light-client
+  proof would close the inclusion gap; neither is built.
+- **A body over the 1 MiB limit may be answered with a reset** rather than a
+  readable 413; refusals below the limit are drained and readable.
 - **Without the chain's bytes, L8 is only as exact as the caller's keys.** An
   RPC without `getTransaction`, a pruned ledger, or no RPC leaves attribution
   on `audit_trail_id` → `transaction_sha256` → `content_hash`; the last names
@@ -126,15 +143,18 @@ transaction under the stated threat model, and no external party has yet tried.
 | Runtime-decoder oracle over the mutation corpus; continuous fuzzing of `parse_transaction` | Open | Engineering |
 | Persisted archive index for the L8 / lifecycle join | Open | Engineering |
 | Shared rate limiter for a horizontally deployed Graphite (single-instance today; 452 ns/check at one million buckets) | Open | Engineering |
+| Second-source inclusion check for L8 (independent RPC or light-client proof) | Open | Engineering |
 
 ## Numbers (as of this page's commit)
 
-1,455 Rust tests passing (1,465 total; 10 network-dependent ignored); 305 in
-the featureless library build; 1,293 in the cli-only build; 96 TypeScript
-tests in the SAK integration; 13 in the TypeScript SDK (4 live-server tests
-skip without a server); 27 Python. Clippy `-D warnings` and fmt clean on
-rustc 1.98.1. Reproduced from `cargo test` / `npm test` output in the Round 10
-report, not estimated. CI for the
+1,460 Rust tests passing in the default build (11 network-dependent
+ignored, all of which were run against public devnet for Round 11); 305 in
+the featureless library build; 1,293 in the cli-only build; 97 TypeScript
+tests in the SAK integration; 17 in the TypeScript SDK (13 hermetic, 4 against a
+live server — run in the Round 11 probe and in CI's container job); 20 Go; 27
+Python; 73 live-probe checks of the release binary. Clippy `-D warnings` and
+fmt clean on rustc 1.98.1. Reproduced from `cargo test` / `npm test` output in
+the Round 11 report, not estimated. CI for the
 commit is the GitHub Actions run for that SHA — the runs endpoint, not the
 combined-status endpoint.
 
@@ -142,6 +162,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-09-15 | [round11-full-run-2026-09-15.md](round11-full-run-2026-09-15.md) | The full run: L8 chain bytes unbound to the signature (R11-01, P1) fixed; request path deep-copying state (100 ms → 1 ms); refusals reset the connection; parser signer-count rule; 32-character keys; L8 metrics; SDK live conformance in CI |
 | 2026-09-13 | [round10-exact-attribution-2026-09-13.md](round10-exact-attribution-2026-09-13.md) | L8 and lifecycle joined on `content_hash` (R10-01, P1): now joined on the chain's bytes / exact keys; supply-chain pins; decompression and limiter measured |
 | 2026-09-12 | [round9-next-surface-2026-09-12.md](round9-next-surface-2026-09-12.md) | Artifact without data bound uncompared (R9-01, P1); unparseable artifact fails L2; residual codes and the bridge's residual policy; packet-size bound; lifecycle bounds, `verdict_on_record`, the bridge's lifecycle reporting; CI/image pinning |
 | 2026-09-12 | [round8-remaining-assumptions-2026-09-12.md](round8-remaining-assumptions-2026-09-12.md) | Audit durability, archive visibility, durable nonces, auth default, byte-level parser corpus |

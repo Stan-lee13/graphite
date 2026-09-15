@@ -23,12 +23,22 @@
 //! A is the corpus's own transfer (approved). B is the same transfer on the
 //! same keys with an undeclared 100 SOL sibling to a fourth key (blocked at
 //! L2). Their `content_hash` is identical; their digests are not.
+//!
+//! Round 11: the chain's bytes are accepted only once bound to the signature
+//! they were fetched under — first slot equal to it, verifying (ed25519)
+//! over the message under the fee payer's key. So the fee payer here is a
+//! key the test holds, and "signed" means signed, not filled with a pattern.
+//! An RPC that returns another transaction's bytes gets nothing attributed,
+//! and the caller's keys do not stand in for the rejected bytes.
 
 use graphite_core::durable::{audit_path, AuditLog, VerificationKey};
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
 use graphite_core::semantic_graph_store::BehaviorEvidence;
-use graphite_core::tx_artifact::{artifact_sha256_of_signed, unsigned_artifact};
+use graphite_core::tx_artifact::{
+    artifact_sha256_of_signed, bound_artifact_sha256, message_bytes, unsigned_artifact,
+    ArtifactParseError, SignatureBindingError,
+};
 use graphite_core::verification::{
     ExecutionAttribution, ExecutionKeys, ExecutionReconciliation, GraphiteCore, LayerStatus,
     ProposedIntent, VerificationInput, VerificationResult, VerificationScope,
@@ -38,7 +48,33 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 
 const SYSTEM: &str = "11111111111111111111111111111111";
+/// A signature the cluster confirms but holds no bytes for.
 const SIG: &str = "5sigAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+/// The fee payer: a key this test holds, so the chain's bytes can carry a
+/// signature that actually verifies.
+fn payer() -> ed25519_dalek::SigningKey {
+    ed25519_dalek::SigningKey::from_bytes(&[0x42u8; 32])
+}
+
+fn payer_b58() -> String {
+    bs58::encode(payer().verifying_key().to_bytes()).into_string()
+}
+
+/// The corpus transfer's fee payer is a fixed public key; swap it for ours
+/// wherever it appears so the same bytes can be signed.
+fn with_payer(raw: Vec<u8>) -> Vec<u8> {
+    let keys = strings(&corpus_entry("legacy_single_transfer")["static_keys"]);
+    let old = bs58::decode(&keys[0]).into_vec().unwrap();
+    let new = payer().verifying_key().to_bytes();
+    let pos = raw
+        .windows(32)
+        .position(|w| w == old.as_slice())
+        .expect("the corpus fee payer is in the frame");
+    let mut out = raw;
+    out[pos..pos + 32].copy_from_slice(&new);
+    out
+}
 
 fn corpus_entry(name: &str) -> serde_json::Value {
     let raw: serde_json::Value =
@@ -87,9 +123,10 @@ fn transfer_data(lamports: u64) -> Vec<u8> {
     d
 }
 
-/// A: the corpus's `legacy_single_transfer`, unsigned, as web3.js serialized it.
+/// A: the corpus's `legacy_single_transfer`, unsigned, as web3.js serialized
+/// it, under the test's fee payer.
 fn tx_a() -> Vec<u8> {
-    bytes(&corpus_entry("legacy_single_transfer")["raw"])
+    with_payer(bytes(&corpus_entry("legacy_single_transfer")["raw"]))
 }
 
 /// B: the same transfer on the same keys, then an undeclared 100 SOL transfer
@@ -102,7 +139,7 @@ fn tx_b() -> Vec<u8> {
     out.extend_from_slice(&[0u8; 64]);
     out.extend_from_slice(&[1, 0, 1]);
     compact_u16(4, &mut out);
-    out.extend_from_slice(&bs58::decode(&keys[0]).into_vec().unwrap());
+    out.extend_from_slice(&payer().verifying_key().to_bytes());
     out.extend_from_slice(&bs58::decode(&keys[1]).into_vec().unwrap());
     out.extend_from_slice(&attacker);
     out.extend_from_slice(&bs58::decode(SYSTEM).into_vec().unwrap());
@@ -119,14 +156,19 @@ fn tx_b() -> Vec<u8> {
     out
 }
 
-/// What the chain holds: the same frame with a real-looking signature in the
-/// slot the artifact left empty.
+/// What the chain holds: the same frame with the fee payer's real signature
+/// over the message in the slot the artifact left empty.
 fn signed(unsigned: &[u8]) -> Vec<u8> {
+    use ed25519_dalek::Signer;
+    let sig = payer().sign(message_bytes(unsigned).unwrap());
     let mut s = unsigned.to_vec();
-    for (i, b) in s[1..65].iter_mut().enumerate() {
-        *b = (i as u8).wrapping_mul(37).wrapping_add(11);
-    }
+    s[1..65].copy_from_slice(&sig.to_bytes());
     s
+}
+
+/// The id the chain files a signed frame under: its first signature.
+fn sig_of(signed: &[u8]) -> String {
+    bs58::encode(&signed[1..65]).into_string()
 }
 
 fn account(lamports: u64) -> String {
@@ -237,7 +279,7 @@ fn describe(artifact: Vec<u8>) -> VerificationInput {
         program_id: SYSTEM.to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: "02000000".to_string(),
-        account_addresses: vec![keys[0].clone(), keys[1].clone()],
+        account_addresses: vec![payer_b58(), keys[1].clone()],
         instruction_data: Some(transfer_data(2_000_000)),
         cpi_targets: vec![],
         wallet_profile: WalletProfile::Gaming,
@@ -359,9 +401,9 @@ async fn the_same_instruction_in_different_transactions_shares_a_content_hash_bu
     assert_ne!(a.audit_trail_id, b.audit_trail_id);
 
     let other = core
-        .verify_async(&describe(bytes(
+        .verify_async(&describe(with_payer(bytes(
             &corpus_entry("legacy_other_blockhash")["raw"],
-        )))
+        ))))
         .await
         .unwrap();
     assert_eq!(
@@ -410,11 +452,12 @@ async fn an_executed_blocked_transaction_is_attributed_by_the_chain_not_by_its_c
     let chain: ChainBytes = Arc::new(Mutex::new(None));
     let core = core_at(&cluster(Arc::clone(&chain)));
     let (log, dir, a, b) = a_then_b(&core).await;
-    *chain.lock().unwrap() = Some(signed(&tx_b()));
+    let signed_b = signed(&tx_b());
+    *chain.lock().unwrap() = Some(signed_b.clone());
 
     let audit = core
         .audit_execution(
-            SIG,
+            &sig_of(&signed_b),
             ExecutionKeys {
                 content_hash: Some(&a.content_hash),
                 ..Default::default()
@@ -422,6 +465,7 @@ async fn an_executed_blocked_transaction_is_attributed_by_the_chain_not_by_its_c
             Some(&log),
         )
         .await;
+    assert_eq!(audit.chain_bytes_rejected, None);
     assert_eq!(audit.attribution, ExecutionAttribution::Chain);
     assert_eq!(
         audit.chain_transaction_sha256.as_deref(),
@@ -443,9 +487,10 @@ async fn an_executed_blocked_transaction_is_attributed_by_the_chain_not_by_its_c
     );
 
     // And A's own execution is A's approval, by the same route.
-    *chain.lock().unwrap() = Some(signed(&tx_a()));
+    let signed_a = signed(&tx_a());
+    *chain.lock().unwrap() = Some(signed_a.clone());
     let audit = core
-        .audit_execution(SIG, ExecutionKeys::default(), Some(&log))
+        .audit_execution(&sig_of(&signed_a), ExecutionKeys::default(), Some(&log))
         .await;
     assert_eq!(audit.attribution, ExecutionAttribution::Chain);
     assert_eq!(
@@ -466,11 +511,12 @@ async fn caller_keys_that_name_a_different_verification_are_reported_not_believe
     let chain: ChainBytes = Arc::new(Mutex::new(None));
     let core = core_at(&cluster(Arc::clone(&chain)));
     let (log, dir, a, b) = a_then_b(&core).await;
-    *chain.lock().unwrap() = Some(signed(&tx_b()));
+    let signed_b = signed(&tx_b());
+    *chain.lock().unwrap() = Some(signed_b.clone());
     let a_digest = digest(&a);
     let audit = core
         .audit_execution(
-            SIG,
+            &sig_of(&signed_b),
             ExecutionKeys {
                 content_hash: Some(&a.content_hash),
                 transaction_sha256: Some(&a_digest),
@@ -512,12 +558,13 @@ async fn an_execution_of_unverified_bytes_is_not_attributed_to_a_sibling_verific
     let chain: ChainBytes = Arc::new(Mutex::new(None));
     let core = core_at(&cluster(Arc::clone(&chain)));
     let (log, dir, a, _b) = a_then_b(&core).await;
-    *chain.lock().unwrap() = Some(signed(&bytes(
+    let signed_other = signed(&with_payer(bytes(
         &corpus_entry("legacy_other_blockhash")["raw"],
     )));
+    *chain.lock().unwrap() = Some(signed_other.clone());
     let audit = core
         .audit_execution(
-            SIG,
+            &sig_of(&signed_other),
             ExecutionKeys {
                 content_hash: Some(&a.content_hash),
                 ..Default::default()
@@ -711,4 +758,197 @@ async fn every_key_is_exact_across_rotation_and_concurrency() {
     drop(log);
     check(&AuditLog::open_with_rotation(audit_path(&d), 2_000, 0).unwrap());
     std::fs::remove_dir_all(&d).ok();
+}
+
+// ─── Round 11: the chain's bytes must be the signature's ────────────────────
+
+/// `bound_artifact_sha256` accepts a frame only when its first slot holds
+/// the signature asked about and that signature verifies over the message
+/// under the fee payer's key. Every other frame is named for what it is.
+#[test]
+fn chain_bytes_are_accepted_only_when_bound_to_the_signature() {
+    let signed_a = signed(&tx_a());
+    let signed_b = signed(&tx_b());
+    let sig_a = sig_of(&signed_a);
+    let sig_b = sig_of(&signed_b);
+    assert_ne!(sig_a, sig_b);
+
+    // Honest: the digest is the artifact's.
+    assert_eq!(
+        bound_artifact_sha256(&signed_b, &sig_b).unwrap(),
+        artifact_sha256_of_signed(&signed_b).unwrap()
+    );
+    assert_eq!(
+        bound_artifact_sha256(&signed_a, &sig_a).unwrap(),
+        artifact_sha256_of_signed(&signed_a).unwrap()
+    );
+
+    // Another transaction's bytes under this signature.
+    assert_eq!(
+        bound_artifact_sha256(&signed_a, &sig_b),
+        Err(SignatureBindingError::FirstSlotDiffers)
+    );
+    // Not a signature at all.
+    assert!(matches!(
+        bound_artifact_sha256(&signed_a, "not-base58-0OIl"),
+        Err(SignatureBindingError::SignatureMalformed { .. })
+    ));
+    assert!(matches!(
+        bound_artifact_sha256(&signed_a, SIG),
+        Err(SignatureBindingError::SignatureMalformed { .. })
+            | Err(SignatureBindingError::FirstSlotDiffers)
+    ));
+    // The slot holds the signature, but the message is not what was signed:
+    // one byte of the recipient changed after signing.
+    let mut tampered = signed_a.clone();
+    tampered[1 + 64 + 3 + 1 + 32 + 5] ^= 0x01;
+    assert!(matches!(
+        bound_artifact_sha256(&tampered, &sig_a),
+        Err(SignatureBindingError::SignatureDoesNotVerify { .. })
+    ));
+    // The slot holds the signature, but under a different fee payer: B's
+    // frame with A's signature pasted in, asked about under A's id.
+    let mut pasted = signed_b.clone();
+    pasted[1..65].copy_from_slice(&signed_a[1..65]);
+    assert!(matches!(
+        bound_artifact_sha256(&pasted, &sig_a),
+        Err(SignatureBindingError::SignatureDoesNotVerify { .. })
+    ));
+    // A frame with no signature slot is not a transaction the runtime would
+    // sanitize (the header requires one signer), so the parser refuses it
+    // before any binding is attempted.
+    let no_slot: Vec<u8> = std::iter::once(0u8)
+        .chain(tx_a()[65..].iter().copied())
+        .collect();
+    assert_eq!(
+        bound_artifact_sha256(&no_slot, &sig_a),
+        Err(SignatureBindingError::Frame(
+            ArtifactParseError::SignatureCountMismatch {
+                declared: 0,
+                required: 1
+            }
+        ))
+    );
+    // Two slots under a one-signer header: refused the same way, not signed
+    // into validity by a matching first slot.
+    let mut two_slots = vec![2u8];
+    two_slots.extend_from_slice(&signed_a[1..65]);
+    two_slots.extend_from_slice(&[0u8; 64]);
+    two_slots.extend_from_slice(&signed_a[65..]);
+    assert_eq!(
+        bound_artifact_sha256(&two_slots, &sig_a),
+        Err(SignatureBindingError::Frame(
+            ArtifactParseError::SignatureCountMismatch {
+                declared: 2,
+                required: 1
+            }
+        ))
+    );
+    // A header whose only signer is readonly names no fee payer.
+    let mut no_payer = signed_a.clone();
+    no_payer[66] = 1;
+    assert!(matches!(
+        bound_artifact_sha256(&no_payer, &sig_a),
+        Err(SignatureBindingError::Frame(
+            ArtifactParseError::ImpossibleHeader { .. }
+        ))
+    ));
+    // The packet bound and the frame parser still apply first.
+    assert!(matches!(
+        bound_artifact_sha256(&[1u8; 1233], &sig_a),
+        Err(SignatureBindingError::Frame(_))
+    ));
+}
+
+/// An RPC that answers `getTransaction` for B's signature with A's bytes —
+/// by fault or by design — gets nothing attributed: not A's approval (the
+/// bytes are rejected), and not whatever the caller's keys would have
+/// resolved to (they are not consulted in place of rejected bytes). The
+/// reconciliation says why, and the answer is `Unavailable`, never a pass.
+#[tokio::test]
+async fn an_rpc_that_substitutes_bytes_cannot_attribute_the_execution() {
+    let chain: ChainBytes = Arc::new(Mutex::new(None));
+    let core = core_at(&cluster(Arc::clone(&chain)));
+    let (log, dir, a, b) = a_then_b(&core).await;
+    let signed_a = signed(&tx_a());
+    let signed_b = signed(&tx_b());
+
+    // B executed; the RPC serves A's bytes for B's signature.
+    *chain.lock().unwrap() = Some(signed_a.clone());
+    let audit = core
+        .audit_execution(
+            &sig_of(&signed_b),
+            ExecutionKeys {
+                content_hash: Some(&a.content_hash),
+                audit_trail_id: Some(&a.audit_trail_id),
+                ..Default::default()
+            },
+            Some(&log),
+        )
+        .await;
+    let why = audit
+        .chain_bytes_rejected
+        .as_deref()
+        .expect("the substitution must be named");
+    assert!(why.contains("another transaction"), "{why}");
+    assert_eq!(audit.attribution, ExecutionAttribution::None);
+    assert!(audit.recorded_audit_trail_id.is_none());
+    assert!(audit.recorded_approved.is_none());
+    assert!(audit.chain_transaction_sha256.is_none());
+    assert!(
+        matches!(&audit.reconciliation, ExecutionReconciliation::Unavailable { reason } if reason.contains("not bound")),
+        "{:?}",
+        audit.reconciliation
+    );
+    assert!(!audit.reconciliation.is_discrepancy());
+    assert!(audit.caller_keys_disagree.is_empty());
+
+    // The RPC serves B's bytes with the slot rewritten to the signature
+    // asked about: the slot matches, the signature does not verify.
+    let mut forged = signed_b.clone();
+    forged[1..65].copy_from_slice(&signed_a[1..65]);
+    *chain.lock().unwrap() = Some(forged);
+    let audit = core
+        .audit_execution(
+            &sig_of(&signed_a),
+            ExecutionKeys {
+                audit_trail_id: Some(&a.audit_trail_id),
+                ..Default::default()
+            },
+            Some(&log),
+        )
+        .await;
+    let why = audit.chain_bytes_rejected.as_deref().unwrap();
+    assert!(why.contains("does not verify"), "{why}");
+    assert_eq!(audit.attribution, ExecutionAttribution::None);
+    assert!(audit.recorded_audit_trail_id.is_none());
+    assert!(matches!(
+        audit.reconciliation,
+        ExecutionReconciliation::Unavailable { .. }
+    ));
+
+    // Control: the honest bytes for the same signature resolve to B's block.
+    *chain.lock().unwrap() = Some(signed_b.clone());
+    let audit = core
+        .audit_execution(
+            &sig_of(&signed_b),
+            ExecutionKeys {
+                audit_trail_id: Some(&a.audit_trail_id),
+                ..Default::default()
+            },
+            Some(&log),
+        )
+        .await;
+    assert_eq!(audit.chain_bytes_rejected, None);
+    assert_eq!(audit.attribution, ExecutionAttribution::Chain);
+    assert_eq!(
+        audit.recorded_audit_trail_id.as_deref(),
+        Some(b.audit_trail_id.as_str())
+    );
+    assert_eq!(
+        audit.reconciliation,
+        ExecutionReconciliation::BlockedButExecuted
+    );
+    assert_eq!(audit.caller_keys_disagree.len(), 1);
+    std::fs::remove_dir_all(&dir).ok();
 }

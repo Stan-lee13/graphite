@@ -800,6 +800,15 @@ pub struct ExecutionAudit {
     /// this execution belongs to is wrong; the reconciliation above is
     /// against the chain's answer, not the caller's.
     pub caller_keys_disagree: Vec<String>,
+    /// The RPC returned bytes for this signature that are not bound to it:
+    /// the first slot does not hold the signature, or the signature does not
+    /// verify over the message under the fee payer's key (Round 11). Such
+    /// bytes are not used, and the caller's keys are NOT consulted in their
+    /// place — an RPC that can substitute bytes must not also be able to
+    /// choose which verification the execution is attributed to. The
+    /// reconciliation is `Unavailable` with this reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_bytes_rejected: Option<String>,
 }
 
 /// The join key an L8 reconciliation actually used, most authoritative
@@ -1871,14 +1880,27 @@ impl GraphiteCore {
         // Graphite was shown, and their digest is the exact key. Fetched
         // whenever the signature is on-chain; a fetch that fails leaves the
         // caller's keys to fall back on, and says so in `attribution`.
+        //
+        // The bytes are accepted only once bound to the signature — first slot
+        // equal to it, and verifying over the message under the fee payer's
+        // key — so that "the chain decides" never degrades to "the RPC
+        // decides". Bytes that fail that binding are rejected, and nothing
+        // stands in for them: an RPC able to substitute bytes must not also
+        // be able to hand attribution back to the caller's keys.
+        let mut chain_bytes_rejected: Option<String> = None;
         let chain_transaction_sha256 = match (&chain_status, &self.rpc_client) {
             (ExecutionVerification::Confirmed { .. }, Some(client)) => {
                 match client.get_transaction_bytes(signature).await {
                     Ok(Some(bytes)) => {
-                        match crate::tx_artifact::artifact_sha256_of_signed(&bytes) {
+                        match crate::tx_artifact::bound_artifact_sha256(&bytes, signature) {
                             Ok(digest) => Some(digest),
                             Err(e) => {
-                                tracing::warn!("L8: chain bytes for {signature} do not frame as a transaction: {e}");
+                                tracing::warn!(
+                                    "L8: chain bytes for {signature} are not bound to it: {e}"
+                                );
+                                chain_bytes_rejected = Some(format!(
+                                    "the RPC returned bytes for {signature} that are not bound to it: {e}"
+                                ));
                                 None
                             }
                         }
@@ -1901,6 +1923,7 @@ impl GraphiteCore {
         // execution is attributed to.
         let (recorded, attribution) = match audit {
             None => (None, ExecutionAttribution::None),
+            Some(_) if chain_bytes_rejected.is_some() => (None, ExecutionAttribution::None),
             Some(log) => {
                 if let Some(digest) = &chain_transaction_sha256 {
                     (
@@ -1980,6 +2003,11 @@ impl GraphiteCore {
                     reason: reason.clone(),
                 }
             }
+            _ if chain_bytes_rejected.is_some() => ExecutionReconciliation::Unavailable {
+                reason: chain_bytes_rejected
+                    .clone()
+                    .unwrap_or_default(),
+            },
             (_, None) if no_keys && chain_transaction_sha256.is_none() => {
                 ExecutionReconciliation::Unavailable {
                     reason: "no content_hash, transaction_sha256 or audit_trail_id supplied and the chain's bytes were not available — nothing to reconcile against".to_string(),
@@ -2024,6 +2052,7 @@ impl GraphiteCore {
             attribution,
             chain_transaction_sha256,
             caller_keys_disagree,
+            chain_bytes_rejected,
         }
     }
 

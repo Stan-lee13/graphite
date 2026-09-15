@@ -258,7 +258,13 @@ type MutationOp =
   | { op: "prefix"; bytes: number[] }
   | { op: "append"; bytes: number[] }
   /** Zero-pad to exactly `to` bytes: the packet-size bound, from both sides. */
-  | { op: "pad"; to: number };
+  | { op: "pad"; to: number }
+  /**
+   * Replace the signature array with `count` zero slots, header untouched
+   * (Round 11). The runtime sanitizes a transaction only when the array is
+   * exactly as long as the header's signer count.
+   */
+  | { op: "slots"; count: number };
 
 interface Mutation {
   base: string;
@@ -290,6 +296,11 @@ function applyMutation(raw: Uint8Array, m: MutationOp): Uint8Array {
       const out = new Uint8Array(m.to);
       out.set(raw);
       return out;
+    }
+    case "slots": {
+      // Every base entry's signature count is one byte (asserted below).
+      const declared = raw[0];
+      return Uint8Array.from([m.count, ...new Uint8Array(64 * m.count), ...raw.slice(1 + 64 * declared)]);
     }
   }
 }
@@ -344,6 +355,9 @@ for (const baseName of ["legacy_single_transfer", "legacy_two_signers", "v0_real
   // messageOf, which only strips signatures), 1233 is refused by both sides
   // before anything is read.
   for (const to of [MAX_TRANSACTION_BYTES, MAX_TRANSACTION_BYTES + 1]) mutations.push(observe(baseName, raw, { op: "pad", to }));
+  // Signature slots against the header's signer count: none, one fewer, one
+  // more, and (for the two-signer base) exactly right.
+  for (const count of [0, 1, 2, 3]) mutations.push(observe(baseName, raw, { op: "slots", count }));
 }
 
 // Digests must be pairwise distinct: the corpus exists partly to show that the

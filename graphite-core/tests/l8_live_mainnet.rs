@@ -165,3 +165,42 @@ async fn l8_unreachable_rpc_is_unavailable_not_confirmed() {
     );
     eprintln!("L8 unreachable-RPC outcome: {outcome:?}");
 }
+
+/// Round 11: the bytes a real cluster returns for a real signature pass the
+/// binding L8 now requires — first slot equal to the signature, verifying
+/// (ed25519, strict) over the message under the fee payer's key. This is the
+/// check that `bound_artifact_sha256` speaks the runtime's own signature
+/// language, against transactions nobody in this repository produced.
+#[tokio::test]
+#[ignore = "network test — run explicitly"]
+async fn l8_real_chain_bytes_are_bound_to_their_signature() {
+    let Some(sig) = fetch_a_confirmed_success_signature().await else {
+        eprintln!("[l8 live] could not fetch a confirmed signature — skipping");
+        return;
+    };
+    let client = mainnet_client(env_endpoint().as_deref());
+    let bytes = match client.get_transaction_bytes(&sig).await {
+        Ok(Some(b)) => b,
+        Ok(None) => {
+            eprintln!("[l8 live] the cluster holds no bytes for {sig} — skipping");
+            return;
+        }
+        Err(e) => {
+            eprintln!("[l8 live] getTransaction failed: {e} — skipping");
+            return;
+        }
+    };
+    let digest = graphite_core::tx_artifact::bound_artifact_sha256(&bytes, &sig)
+        .unwrap_or_else(|e| panic!("real chain bytes for {sig} must bind to it: {e}"));
+    assert_eq!(
+        digest,
+        graphite_core::tx_artifact::artifact_sha256_of_signed(&bytes).unwrap()
+    );
+    // And the same bytes under a different real signature are refused.
+    let other = format!("{}{}", &sig[1..], &sig[..1]);
+    assert!(
+        graphite_core::tx_artifact::bound_artifact_sha256(&bytes, &other).is_err(),
+        "bytes must not bind to a signature they do not carry"
+    );
+    eprintln!("[l8 live] {sig}: bound, artifact digest {digest}");
+}

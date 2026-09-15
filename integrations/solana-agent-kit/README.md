@@ -70,7 +70,9 @@ submitted — and nothing is signed under a residual the operator has not accept
   resolved by any key other than `audit_trail_id`, aborts *before* submission; after
   submission every failure is reported on `outcome.lifecycle` and none is hidden. L8's
   `reconciliation` comes with `attribution` (`chain` when Graphite joined on the bytes
-  behind the signature itself) and `caller_keys_disagree`.
+  behind the signature itself, checked to be that signature's) and
+  `caller_keys_disagree`; a `chain_bytes_rejected` answer is logged as `L8 REFUSED`
+  and is never read as a pass.
 - `bound.signApproved(scope.transaction_sha256, [wallet])` is the only signing path: it
   recomputes the digest of the exact bytes, derives the required signer set from the
   compiled message, refuses any mismatch, and returns the only bytes that go to

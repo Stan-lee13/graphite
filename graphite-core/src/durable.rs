@@ -527,6 +527,22 @@ pub struct AuditErrorRecord {
 /// the audit trail into storage the caller controls.
 const MAX_AUDIT_FIELD_CHARS: usize = 256;
 
+/// The longest a lifecycle event's free-form `detail` may be, at the
+/// boundary (`/audit/event`) and on disk alike. One constant on purpose:
+/// until Round 11 the boundary accepted 1024 characters and the disk kept
+/// 256, so the server's own L8 detail — the reconciliation, the attribution,
+/// a rejected-bytes reason — was cut off before the part an investigator
+/// needs.
+pub const MAX_LIFECYCLE_DETAIL_CHARS: usize = 1024;
+
+fn bound_detail(value: &str) -> String {
+    if value.chars().count() <= MAX_LIFECYCLE_DETAIL_CHARS {
+        return value.to_string();
+    }
+    let kept: String = value.chars().take(MAX_LIFECYCLE_DETAIL_CHARS).collect();
+    format!("{kept}… [truncated, {} chars total]", value.chars().count())
+}
+
 fn bound_field(value: &str) -> String {
     if value.chars().count() <= MAX_AUDIT_FIELD_CHARS {
         return value.to_string();
@@ -538,8 +554,9 @@ fn bound_field(value: &str) -> String {
 }
 
 impl LifecycleEventRecord {
-    /// Every caller-supplied field bounded to `MAX_AUDIT_FIELD_CHARS`, with
-    /// truncation recorded. Defence in depth behind the length checks in
+    /// Every caller-supplied field bounded to `MAX_AUDIT_FIELD_CHARS`
+    /// (`detail` to `MAX_LIFECYCLE_DETAIL_CHARS`), with truncation recorded.
+    /// Defence in depth behind the length checks in
     /// `lifecycle_event_handler`; see `AuditErrorRecord::bounded`.
     fn bounded(&self) -> LifecycleEventRecord {
         LifecycleEventRecord {
@@ -552,7 +569,7 @@ impl LifecycleEventRecord {
             audit_trail_id: self.audit_trail_id.as_deref().map(bound_field),
             transaction_signature: self.transaction_signature.as_deref().map(bound_field),
             reported_by: self.reported_by.as_deref().map(bound_field),
-            detail: self.detail.as_deref().map(bound_field),
+            detail: self.detail.as_deref().map(bound_detail),
         }
     }
 }
@@ -2030,6 +2047,32 @@ mod tests {
             line.contains("\"verdict_on_record\":\"not_found\""),
             "{line}"
         );
+
+        // Round 11: a detail within the boundary's bound lands whole. The
+        // server's own L8 detail runs past 256 characters when it carries a
+        // rejected-bytes reason, and the marker an investigator greps for
+        // sits at the end of it.
+        let long_detail = format!(
+            "L8 reconciliation: Unavailable {{ reason: \"{}\" }}; attribution: None; chain bytes rejected: yes",
+            "r".repeat(600)
+        );
+        assert!(long_detail.chars().count() <= MAX_LIFECYCLE_DETAIL_CHARS);
+        assert!(log.append_lifecycle(&LifecycleEventRecord {
+            event_type: LifecycleEvent::Confirmation,
+            timestamp: now_utc_rfc3339(),
+            content_hash: "0123456789abcdef".to_string(),
+            verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: None,
+            audit_trail_id: None,
+            transaction_signature: None,
+            reported_by: None,
+            detail: Some(long_detail.clone()),
+        }));
+        let text = std::fs::read_to_string(&path).unwrap();
+        let last = text.lines().last().unwrap();
+        let row: serde_json::Value = serde_json::from_str(last).unwrap();
+        assert_eq!(row["detail"].as_str(), Some(long_detail.as_str()));
         std::fs::remove_dir_all(&dir).ok();
     }
 

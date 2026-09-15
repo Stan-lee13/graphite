@@ -89,6 +89,7 @@ class Fakes implements SubmitConnection, LifecycleReporter {
   failConfirm = false;
   failReconcile = false;
   discrepancy = false;
+  chainBytesRejected: string | null = null;
 
   async sendRawTransaction(raw: Uint8Array): Promise<string> {
     this.calls.push("send");
@@ -118,6 +119,24 @@ class Fakes implements SubmitConnection, LifecycleReporter {
     this.calls.push(`l8:${input.signature}`);
     this.l8Inputs.push(input);
     if (this.failReconcile) throw new Error("rpc unavailable");
+    if (this.chainBytesRejected) {
+      // What the server returns when the RPC's bytes are not the
+      // signature's: nothing attributed, nothing resolved, and why.
+      return {
+        signature: input.signature,
+        chain_status: { Confirmed: { slot: 1, success: true } },
+        recorded_approved: null,
+        recorded_audit_trail_id: null,
+        recorded_transaction_sha256: null,
+        reconciliation: { Unavailable: { reason: this.chainBytesRejected } },
+        discrepancy: false,
+        attribution: "none",
+        chain_transaction_sha256: null,
+        caller_keys_disagree: [],
+        chain_bytes_rejected: this.chainBytesRejected,
+        audit_recorded: true,
+      };
+    }
     return {
       signature: input.signature,
       chain_status: { Confirmed: { slot: 1, success: true } },
@@ -295,6 +314,32 @@ test("an L8 discrepancy is carried through verbatim", async () => {
   const lc = await run(fakes, bound, verdict(bound));
   assert.equal(lc.reconciliation?.discrepancy, true);
   assert.equal(lc.reconciliation?.reconciliation, "BlockedButExecuted");
+});
+
+test("an L8 refusal of the RPC's bytes is carried through and named, never read as a pass", async () => {
+  const fakes = new Fakes();
+  fakes.chainBytesRejected =
+    "the RPC returned bytes for 5xSignature that are not bound to it: the first signature slot holds a different signature";
+  const bound = build();
+  const logs: string[] = [];
+  const lc = await executeBoundTransaction({
+    bound,
+    verification: verdict(bound),
+    signers: [payer],
+    connection: fakes,
+    graphite: fakes,
+    policy: new ResidualPolicy(),
+    reportedBy: "test-bridge",
+    label: "t",
+    log: (m) => logs.push(m),
+  });
+  assert.equal(lc.reconciliation?.attribution, "none");
+  assert.equal(lc.reconciliation?.discrepancy, false);
+  assert.equal(lc.reconciliation?.recorded_approved, null);
+  assert.deepEqual(lc.reconciliation?.reconciliation, {
+    Unavailable: { reason: fakes.chainBytesRejected },
+  });
+  assert.ok(logs.some((l) => l.includes("L8 REFUSED") && l.includes("not bound to it")), logs.join(" / "));
 });
 
 test("a server without residual codes is refused before signing", async () => {

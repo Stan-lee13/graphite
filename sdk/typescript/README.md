@@ -60,6 +60,10 @@ recorded, if the verdict on record is not `approved`, or if it was not resolved 
 `audit_trail_id`. `verifyExecution({ signature, content_hash, transaction_sha256,
 audit_trail_id })` runs L8 after submission and returns the reconciliation with
 `attribution` (`chain` when L8 joined on the bytes behind the signature) and
-`caller_keys_disagree`; `discrepancy: true` is `BlockedButExecuted`. The
+`caller_keys_disagree`; `discrepancy: true` is `BlockedButExecuted`;
+`chain_bytes_rejected` (Round 11) is set when the RPC returned bytes for the
+signature that are not bound to it — nothing was attributed and your keys were
+not consulted in their place, so treat it as "the RPC is wrong", not as a
+verdict. The
 reference sequence is `executeBoundTransaction` in
 `integrations/solana-agent-kit/execution-lifecycle.ts`.

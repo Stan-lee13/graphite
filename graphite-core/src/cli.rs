@@ -42,7 +42,7 @@ pub fn resolve_profile(arg: &ProfileArg) -> Result<Option<WalletProfile>, String
             return Err("--min-confidence/--min-trust-tier require --profile custom".to_string());
         }
     };
-    match name.as_str() {
+    let resolved = match name.as_str() {
         "treasury" => Ok(Some(WalletProfile::Treasury)),
         "trading" | "tradingbot" => Ok(Some(WalletProfile::TradingBot)),
         "gaming" => Ok(Some(WalletProfile::Gaming)),
@@ -88,7 +88,21 @@ pub fn resolve_profile(arg: &ProfileArg) -> Result<Option<WalletProfile>, String
         other => Err(format!(
             "unknown profile '{other}' (expected treasury|trading|gaming|enterprise|custom)"
         )),
+    };
+    // The CLI is the operator's own tool, so the operator's number stands —
+    // but never silently. A custom bar below the weakest built-in profile
+    // has switched the confidence gate off for this run, and the transcript
+    // must say so where the verdict is read.
+    if let Ok(Some(p)) = &resolved {
+        if p.is_weaker_than_any_builtin() {
+            let (bar, _) = p.thresholds();
+            eprintln!(
+                "WARNING: --profile custom --min-confidence {bar} is below the weakest built-in                  profile ({}); the confidence gate is effectively disabled for this run. The                  server clamps a caller-supplied profile to that floor; this tool does not.",
+                crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE
+            );
+        }
     }
+    resolved
 }
 
 pub enum CliCommand {
@@ -1256,6 +1270,9 @@ fn run_execution(
     }
     for d in &result.caller_keys_disagree {
         println!("WARNING     {d}");
+    }
+    if let Some(why) = &result.chain_bytes_rejected {
+        println!("REJECTED    {why}");
     }
     println!("verdict     {:?}", result.reconciliation);
     println!();
