@@ -1,7 +1,7 @@
 # Round 11 — The full run: holes Graphite made for itself
 
 > **Historical record.** This report describes the codebase at commit
-> `__COMMIT__` on 2026-09-15. For the current state of Graphite see
+> `b75ce57` on 2026-09-15. For the current state of Graphite see
 > [`CURRENT.md`](CURRENT.md).
 
 **Scope.** Not a review round. The owner asked for Graphite to be run in full —
@@ -223,4 +223,4 @@ and is reverted. A break the tests do not catch is reported as such.
 
 ## Evidence
 
-CI for this commit: __CI__
+CI for this commit: GitHub Actions run 35035499644 for `b75ce57` — all seven jobs (Rust core, CVE audit, Container incl. the new SDK live-conformance step, TypeScript SDK + SAK, Go, Dashboard, Python) completed with `success`. "Certified" here means exactly that and nothing more.
