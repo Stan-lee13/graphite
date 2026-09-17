@@ -1,7 +1,7 @@
 # Round 12 — Runtime truth and the trust boundary around one RPC
 
 > **Historical record.** This report describes the codebase at commit
-> `__COMMIT__` on 2026-09-16. For the current state of Graphite see
+> `1e521ba` on 2026-09-16. For the current state of Graphite see
 > [`CURRENT.md`](CURRENT.md).
 
 **Scope.** The owner's fresh audit after Round 11 named where the remaining
