@@ -67,9 +67,15 @@ export interface ExecutionLifecycle {
   signingRecorded: true;
   /** What the trail said about the content_hash when signing was reported. */
   verdictOnRecordAtSigning: VerdictOnRecord;
-  /** Whether the `submission` event reached the trail; the error when it did not. */
+  /**
+   * Whether the `submission` event reached the trail; the error when it did
+   * not, after every attempt. A retry the server had already recorded comes
+   * back as a `duplicate` anomaly and counts as recorded.
+   */
   submissionRecorded: boolean;
   submissionRecordError?: string;
+  /** How many times the submission report was attempted. */
+  submissionRecordAttempts: number;
   /** Whether the RPC confirmed the signature inside its blockhash window. */
   confirmed: boolean;
   confirmationError?: string;
@@ -89,10 +95,23 @@ export interface ExecuteParams {
   reportedBy: string;
   label: string;
   log?: (line: string) => void;
+  /**
+   * How many times to try recording the submission before giving up
+   * (default 3), and the pause between tries in milliseconds (default 500,
+   * doubling). The signature is already on the network by then, so the
+   * retries cost nothing but the wait; the server names a repeat of a
+   * report it already took as `duplicate`, so retrying is safe.
+   */
+  submissionRecordAttempts?: number;
+  submissionRecordBackoffMs?: number;
 }
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -180,23 +199,51 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
     signingRecorded: true,
     verdictOnRecordAtSigning: signing.verdict_on_record,
     submissionRecorded: false,
+    submissionRecordAttempts: 0,
     confirmed: false,
   };
 
-  // 5. Submission on the trail, with the signature.
-  try {
-    await p.graphite.recordLifecycleEvent({
-      event_type: "submission",
-      content_hash: verification.content_hash,
-      audit_trail_id: verification.audit_trail_id,
-      transaction_sha256: scope.transaction_sha256,
-      transaction_signature: signature,
-      reported_by: p.reportedBy,
-    });
-    lifecycle.submissionRecorded = true;
-  } catch (e) {
-    lifecycle.submissionRecordError = message(e);
-    log(`[Graphite] ${label}: WARNING — submission of ${signature} was NOT recorded: ${message(e)}`);
+  // 5. Submission on the trail, with the signature. Retried (Round 12): a
+  //    submission the trail never hears of is a signature L8 cannot join
+  //    until the reconciliation row itself lands, and one lost answer used
+  //    to be the end of it. The server treats a repeat as a duplicate, so a
+  //    retry after a lost answer is harmless.
+  const attempts = Math.max(1, p.submissionRecordAttempts ?? 3);
+  let backoff = Math.max(0, p.submissionRecordBackoffMs ?? 500);
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    lifecycle.submissionRecordAttempts = attempt;
+    try {
+      const receipt = await p.graphite.recordLifecycleEvent({
+        event_type: "submission",
+        content_hash: verification.content_hash,
+        audit_trail_id: verification.audit_trail_id,
+        transaction_sha256: scope.transaction_sha256,
+        transaction_signature: signature,
+        reported_by: p.reportedBy,
+      });
+      lifecycle.submissionRecorded = true;
+      lifecycle.submissionRecordError = undefined;
+      const anomalies = receipt.sequence_anomalies ?? [];
+      const serious = anomalies.filter((a) => !a.startsWith("duplicate"));
+      if (serious.length > 0) {
+        log(`[Graphite] ${label}: the trail flagged this submission report: ${serious.join(" | ")}`);
+      }
+      break;
+    } catch (e) {
+      lifecycle.submissionRecordError = message(e);
+      if (attempt < attempts) {
+        log(
+          `[Graphite] ${label}: submission of ${signature} not yet recorded (attempt ${attempt}/${attempts}): ${message(e)} — retrying`,
+        );
+        await pause(backoff);
+        backoff *= 2;
+      } else {
+        log(
+          `[Graphite] ${label}: WARNING — submission of ${signature} was NOT recorded after ${attempts} attempt(s): ${message(e)}. ` +
+            "The L8 reconciliation below carries the signature and is the recovery path.",
+        );
+      }
+    }
   }
 
   // 6. Confirmation, bounded by the blockhash the transaction was built on.
@@ -239,6 +286,15 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
         `[Graphite] ${label}: L8 REFUSED — the RPC returned bytes for ${signature} that are not bound to it: ` +
           r.chain_bytes_rejected,
       );
+    }
+    if (r.chain_bytes_unavailable) {
+      log(`[Graphite] ${label}: L8 attributed by this process's keys, not the chain's bytes: ${r.chain_bytes_unavailable}`);
+    }
+    if (r.chain_inconsistent) {
+      log(`[Graphite] ${label}: L8 — the RPC contradicts itself about ${signature}: ${r.chain_inconsistent}`);
+    }
+    if (r.inclusion_witness && !r.inclusion_witness.agrees) {
+      log(`[Graphite] ${label}: L8 — the inclusion witness disagrees: ${r.inclusion_witness.detail}`);
     }
     if (r.discrepancy) {
       log(`[Graphite] ${label}: L8 DISCREPANCY on ${signature} — Graphite's decision did not govern`);

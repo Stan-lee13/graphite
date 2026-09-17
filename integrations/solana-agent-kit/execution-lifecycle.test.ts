@@ -86,6 +86,7 @@ class Fakes implements SubmitConnection, LifecycleReporter {
   verdictKey: VerificationKeyKind = "audit_trail_id";
   failSigningRecord = false;
   failSubmissionRecord = false;
+  failSubmissionRecordTimes = 0;
   failConfirm = false;
   failReconcile = false;
   discrepancy = false;
@@ -105,6 +106,13 @@ class Fakes implements SubmitConnection, LifecycleReporter {
     this.calls.push(`record:${event.event_type}`);
     if (event.event_type === "signing" && this.failSigningRecord) throw new Error("503 NOT recorded");
     if (event.event_type === "submission" && this.failSubmissionRecord) throw new Error("503 NOT recorded");
+    if (event.event_type === "submission" && this.failSubmissionRecordTimes > 0) {
+      this.failSubmissionRecordTimes -= 1;
+      throw new Error("503 NOT recorded");
+    }
+    const duplicate = this.events.some(
+      (e) => e.event_type === event.event_type && e.transaction_signature === event.transaction_signature,
+    );
     this.events.push(event);
     return {
       recorded: true,
@@ -112,6 +120,8 @@ class Fakes implements SubmitConnection, LifecycleReporter {
       content_hash: event.content_hash,
       verdict_on_record: this.verdictOnRecord,
       verdict_on_record_key: this.verdictKey,
+      sequence_anomalies: duplicate ? [`duplicate: ${event.event_type} was already reported`] : [],
+      prior_events_on_record: this.events.length - 1,
     };
   }
   l8Inputs: Array<{ signature: string; content_hash?: string; transaction_sha256?: string; audit_trail_id?: string }> = [];
@@ -164,6 +174,8 @@ function run(fakes: Fakes, bound: BoundTransaction, v: VerificationResult, polic
     reportedBy: "test-bridge",
     label: "t",
     log: () => {},
+    // Tests do not wait on the retry backoff.
+    submissionRecordBackoffMs: 0,
   });
 }
 
@@ -281,9 +293,53 @@ test("after submission, a failed submission record is reported, not hidden, and 
   const lc = await run(fakes, bound, verdict(bound));
   assert.equal(lc.submissionRecorded, false);
   assert.match(lc.submissionRecordError ?? "", /NOT recorded/);
+  // Three attempts by default (Round 12), then the path continues.
+  assert.equal(lc.submissionRecordAttempts, 3);
   assert.equal(lc.confirmed, true);
   assert.ok(lc.reconciliation);
-  assert.deepEqual(fakes.calls.slice(0, 3), ["record:signing", "send", "record:submission"]);
+  assert.deepEqual(fakes.calls.slice(0, 5), [
+    "record:signing",
+    "send",
+    "record:submission",
+    "record:submission",
+    "record:submission",
+  ]);
+});
+
+test("a submission record that fails once is retried and lands (Round 12)", async () => {
+  const fakes = new Fakes();
+  fakes.failSubmissionRecordTimes = 1;
+  const bound = build();
+  const lc = await run(fakes, bound, verdict(bound));
+  assert.equal(lc.submissionRecorded, true);
+  assert.equal(lc.submissionRecordError, undefined);
+  assert.equal(lc.submissionRecordAttempts, 2);
+  assert.equal(fakes.events.filter((e) => e.event_type === "submission").length, 1);
+  // The signature the trail holds is the one that went out.
+  assert.equal(fakes.events.find((e) => e.event_type === "submission")?.transaction_signature, lc.signature);
+});
+
+test("a retry after a lost answer is a duplicate on the trail, and counts as recorded", async () => {
+  // The first report reached the trail but its answer was lost: the fake
+  // records the event and then throws, as a dropped connection would.
+  const fakes = new Fakes();
+  const original = fakes.recordLifecycleEvent.bind(fakes);
+  let lost = true;
+  fakes.recordLifecycleEvent = async (event) => {
+    const receipt = await original(event);
+    if (event.event_type === "submission" && lost) {
+      lost = false;
+      throw new Error("socket hang up");
+    }
+    return receipt;
+  };
+  const bound = build();
+  const lc = await run(fakes, bound, verdict(bound));
+  assert.equal(lc.submissionRecorded, true);
+  assert.equal(lc.submissionRecordAttempts, 2);
+  // Two rows on the (fake) trail, the second named a duplicate — never a
+  // second submission.
+  assert.equal(fakes.events.filter((e) => e.event_type === "submission").length, 2);
 });
 
 test("a confirmation that does not complete still runs L8, and says so", async () => {

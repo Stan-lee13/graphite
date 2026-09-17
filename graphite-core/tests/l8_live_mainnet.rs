@@ -107,6 +107,7 @@ async fn l8_confirmed_success_signature_reports_confirmed_success() {
             slot,
             success,
             error,
+            commitment,
         } => {
             assert!(
                 *success,
@@ -114,7 +115,13 @@ async fn l8_confirmed_success_signature_reports_confirmed_success() {
             );
             assert!(signature.starts_with(&sig[..10]));
             assert!(*slot > 0, "confirmed signature must carry a slot");
-            eprintln!("L8 CONFIRMED: slot={slot} success={success}");
+            // A signature fetched from a recent block is at least confirmed
+            // by the time it is asked about again (Round 12).
+            assert!(
+                commitment.is_cluster_backed(),
+                "a fetched signature must be cluster-backed, got {commitment}"
+            );
+            eprintln!("L8 CONFIRMED: slot={slot} success={success} commitment={commitment}");
         }
         ExecutionVerification::UnknownSignature(s) => {
             // A signature we JUST fetched from the cluster being unknown would

@@ -52,6 +52,19 @@ use crate::durable::MAX_LIFECYCLE_DETAIL_CHARS;
 
 /// The shape of a `transaction_sha256`: what `hex::encode(Sha256::digest(..))`
 /// produces, and nothing else.
+/// A Solana transaction signature is 64 bytes, base58: 86 to 88 characters
+/// of the base58 alphabet that decode to exactly 64 bytes.
+fn signature_shape(s: &str) -> Result<(), String> {
+    match bs58::decode(s).into_vec() {
+        Ok(bytes) if bytes.len() == 64 => Ok(()),
+        Ok(bytes) => Err(format!(
+            "signature decodes to {} bytes; a Solana signature is 64",
+            bytes.len()
+        )),
+        Err(_) => Err("signature is not base58".to_string()),
+    }
+}
+
 fn is_sha256_hex(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
@@ -165,6 +178,17 @@ struct Metrics {
     /// signature does not verify under the fee payer). An RPC that does this
     /// is faulty or hostile; the reconciliation is refused, not degraded.
     execution_chain_bytes_rejected: Arc<std::sync::atomic::AtomicU64>,
+    /// L8 reconciliations where the primary RPC contradicted itself about a
+    /// signature (slot or outcome differ between `getSignatureStatuses` and
+    /// `getTransaction`) (Round 12).
+    execution_chain_inconsistent: Arc<std::sync::atomic::AtomicU64>,
+    /// L8 reconciliations where the inclusion witness disagreed with the
+    /// primary RPC, or could not be consulted (Round 12).
+    execution_witness_disagreements: Arc<std::sync::atomic::AtomicU64>,
+    /// Lifecycle reports that sat wrongly against the rows already on
+    /// record for their transaction: a duplicate, an out-of-order or
+    /// unpreceded stage, or a conflicting signature (Round 12).
+    lifecycle_sequence_anomalies: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Metrics {
@@ -352,6 +376,42 @@ fn client_ip(
 /// condition (response 5), not a degrade-and-continue one — so this returns
 /// an error and the server refuses to start, loudly, with a message naming
 /// the likely cause.
+/// The name of the lock file one server holds on its data directory.
+pub const DATA_DIR_LOCK: &str = "graphite.lock";
+
+/// Take the data directory for this process, exclusively.
+///
+/// Two servers on one data directory do not share a trail: each holds its
+/// own in-memory index of the active audit file, built at open and
+/// maintained by its own appends, so a verification one process records is
+/// invisible to the other's L8 and lifecycle lookups — `NoVerificationOnRecord`
+/// for a transaction that was verified — and both rewrite the semantic-graph
+/// snapshot over each other. Nothing failed loudly; the second process
+/// simply reconciled against half a trail (Round 12). An advisory exclusive
+/// lock on `graphite.lock`, held for the life of the process and released by
+/// the OS on any exit, makes the second start refuse instead.
+fn lock_data_dir(dir: &std::path::Path) -> Result<std::fs::File, Box<dyn std::error::Error>> {
+    let path = dir.join(DATA_DIR_LOCK);
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(std::fs::TryLockError::WouldBlock) => Err(format!(
+            "data directory {} is held by another Graphite process ({DATA_DIR_LOCK} is locked).              Two servers on one data directory keep two disjoint views of the audit trail and              overwrite each other's semantic-graph snapshot; give each its own GRAPHITE_DATA_DIR              or stop the other process.",
+            dir.display()
+        )
+        .into()),
+        Err(std::fs::TryLockError::Error(e)) => Err(format!(
+            "data directory {} could not be locked ({DATA_DIR_LOCK}): {e}",
+            dir.display()
+        )
+        .into()),
+    }
+}
+
 fn probe_data_dir_writable(dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     let probe = dir.join(".graphite-write-probe");
     match std::fs::write(&probe, b"graphite") {
@@ -507,6 +567,8 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // the audit trail is a P9 guarantee, not a nice-to-have, so probe it now
     // and refuse to start rather than serve traffic with no audit trail.
     probe_data_dir_writable(&data_dir)?;
+    // Held until the process exits; see `lock_data_dir`.
+    let _data_dir_lock = lock_data_dir(&data_dir)?;
 
     let mut core = GraphiteCore::with_data_dir(data_dir.clone());
 
@@ -550,8 +612,31 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         }
     }
 
+    // The endpoints are validated before a client is built on them. An
+    // unusable URL used to start the server with "live L3/L4 enabled" in
+    // the log and every simulation Inconclusive (Round 12). Nothing about
+    // the URL beyond its scheme and whether it is loopback is logged: a
+    // managed provider's URL carries the operator's key.
+    let rpc_facts = |name: &str,
+                     endpoint: &str|
+     -> Result<crate::rpc_client::EndpointFacts, String> {
+        let facts = crate::rpc_client::validate_endpoint(endpoint)
+            .map_err(|e| format!("{name} is unusable: {e}"))?;
+        if facts.scheme == "http" && !facts.loopback {
+            tracing_log(&format!(
+                "WARNING: {name} is plaintext http to a non-loopback host; every RPC answer L3/L4/L8 rely on can be altered in transit. Use https, or a loopback proxy that terminates TLS"
+            ));
+        }
+        if facts.has_userinfo {
+            tracing_log(&format!(
+                "{name} carries credentials in the URL; they are never logged"
+            ));
+        }
+        Ok(facts)
+    };
     if let Ok(endpoint) = std::env::var("GRAPHITE_RPC_URL") {
         if !endpoint.is_empty() {
+            let facts = rpc_facts("GRAPHITE_RPC_URL", &endpoint)?;
             // The RPC budget has to fit INSIDE the request timeout, and until
             // 2026-09-08 it did not: this used `RpcConfig::default()`, a
             // 30-second per-call timeout with 3 retries, behind a 10-second
@@ -582,13 +667,48 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             core.attach_rpc_client(client);
             core.set_rpc_budget(crate::verification::DEFAULT_RPC_BUDGET);
             tracing_log(&format!(
-                "RPC client attached — live L3/L4 enabled (GRAPHITE_RPC_URL); per-call timeout {}s, {} retry, total budget {}s inside a {}s request timeout",
+                "RPC client attached — live L3/L4 enabled (GRAPHITE_RPC_URL, {}{}); per-call timeout {}s, {} retry, total budget {}s inside a {}s request timeout; redirects not followed",
+                facts.scheme,
+                if facts.loopback { ", loopback" } else { "" },
                 PER_CALL.as_secs(),
                 RETRIES,
                 crate::verification::DEFAULT_RPC_BUDGET.as_secs(),
                 REQUEST_TIMEOUT.as_secs()
             ));
+
+            // A second, independent RPC for L8's inclusion question
+            // (Round 12). Optional; without it L8 says so in every
+            // reconciliation's `inclusion_witness: null`.
+            if let Ok(witness) = std::env::var("GRAPHITE_RPC_WITNESS_URL") {
+                if !witness.is_empty() {
+                    let wfacts = rpc_facts("GRAPHITE_RPC_WITNESS_URL", &witness)?;
+                    let client =
+                        crate::rpc_client::SolanaRpcClient::new(crate::rpc_client::RpcConfig {
+                            endpoint: witness,
+                            timeout: PER_CALL,
+                            max_retries: RETRIES,
+                            ..Default::default()
+                        });
+                    core.attach_inclusion_witness(client)
+                        .map_err(|e| format!("GRAPHITE_RPC_WITNESS_URL: {e}"))?;
+                    tracing_log(&format!(
+                        "inclusion witness attached — L8 asks a second RPC about every signature (GRAPHITE_RPC_WITNESS_URL, {}{})",
+                        wfacts.scheme,
+                        if wfacts.loopback { ", loopback" } else { "" }
+                    ));
+                }
+            }
+        } else if std::env::var("GRAPHITE_RPC_WITNESS_URL").is_ok_and(|w| !w.is_empty()) {
+            return Err(
+                "GRAPHITE_RPC_WITNESS_URL is set but GRAPHITE_RPC_URL is not; a witness needs a primary to witness"
+                    .into(),
+            );
         }
+    } else if std::env::var("GRAPHITE_RPC_WITNESS_URL").is_ok_and(|w| !w.is_empty()) {
+        return Err(
+            "GRAPHITE_RPC_WITNESS_URL is set but GRAPHITE_RPC_URL is not; a witness needs a primary to witness"
+                .into(),
+        );
     }
 
     let api_key = match &posture {
@@ -1582,6 +1702,9 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
             None => serde_json::json!({ "enabled": false }),
         },
         "graph_persistence": persistence,
+        // Whether L8 has a second, independent source for inclusion
+        // (Round 12). `false` means every reconciliation rests on one RPC.
+        "inclusion_witness": state.core.has_inclusion_witness(),
     }))
 }
 
@@ -1683,6 +1806,27 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "L8 reconciliations refused because the RPC returned transaction bytes not bound to the signature (wrong first slot, or the signature does not verify under the fee payer). A faulty or hostile RPC.",
         "counter",
         m.execution_chain_bytes_rejected
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_execution_chain_inconsistent_total",
+        "L8 reconciliations where the primary RPC gave two accounts of one signature (slot or outcome differ between getSignatureStatuses and getTransaction). No positive conclusion is drawn from such an RPC.",
+        "counter",
+        m.execution_chain_inconsistent
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_execution_witness_disagreements_total",
+        "L8 reconciliations where the inclusion witness disagreed with the primary RPC about a signature, or could not be consulted. Sustained disagreement means one of the two endpoints is wrong about the chain.",
+        "counter",
+        m.execution_witness_disagreements
+            .load(std::sync::atomic::Ordering::Relaxed),
+    );
+    push(
+        "graphite_lifecycle_sequence_anomalies_total",
+        "Lifecycle reports that sat wrongly against the rows already on record for their transaction: a duplicate, an out-of-order or unpreceded stage, or a signature that differs from the one already attached. The last of these means one report is false.",
+        "counter",
+        m.lifecycle_sequence_anomalies
             .load(std::sync::atomic::Ordering::Relaxed),
     );
     push(
@@ -1867,6 +2011,15 @@ async fn execution_handler(
             })),
         ));
     }
+    if let Err(why) = signature_shape(&signature) {
+        // Refused here rather than sent to the RPC: a value that is not a
+        // signature cannot have executed, and forwarding it spends an RPC
+        // call — two with a witness — per junk request (Round 12).
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": why })),
+        ));
+    }
     if let Some(h) = body.content_hash.as_deref() {
         let h = h.trim();
         if h.len() != 16 || !h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
@@ -1933,6 +2086,12 @@ async fn execution_handler(
     // P9: the reconciliation is a lifecycle-grade fact about a transaction
     // Graphite verified, and a discrepancy is the single most important thing
     // this system can record. It goes on the same append-only trail.
+    let exact_attribution = matches!(
+        result.attribution,
+        crate::verification::ExecutionAttribution::Chain
+            | crate::verification::ExecutionAttribution::AuditTrailId
+            | crate::verification::ExecutionAttribution::TransactionSha256
+    );
     let recorded = match audit {
         Some(log) => log.append_lifecycle(&LifecycleEventRecord {
             event_type: LifecycleEvent::Confirmation,
@@ -1944,12 +2103,28 @@ async fn execution_handler(
                 .unwrap_or_default(),
             verdict_on_record: None,
             verdict_on_record_key: None,
+            // The exact keys go on this signature's row only when the
+            // attribution IS exact. A `content_hash` attribution names *a*
+            // transaction carrying the instruction; writing that record's
+            // id and digest here would state, on a row keyed by this
+            // signature, that this signature is that transaction — a link
+            // the trail then reports as a conflict against a truthful
+            // report (found by the Round 12 probe). The detail still says
+            // what was resolved and by which key.
             transaction_sha256: result
                 .chain_transaction_sha256
                 .clone()
-                .or_else(|| result.recorded_transaction_sha256.clone())
+                .or_else(|| {
+                    exact_attribution
+                        .then(|| result.recorded_transaction_sha256.clone())
+                        .flatten()
+                })
                 .or_else(|| body.transaction_sha256.clone()),
-            audit_trail_id: result.recorded_audit_trail_id.clone(),
+            audit_trail_id: if exact_attribution {
+                result.recorded_audit_trail_id.clone()
+            } else {
+                body.audit_trail_id.clone()
+            },
             transaction_signature: Some(signature.clone()),
             reported_by: body.reported_by.clone(),
             detail: Some(format!(
@@ -1964,11 +2139,34 @@ async fn execution_handler(
                         result.caller_keys_disagree.join(" | ")
                     )
                 },
-                match &result.chain_bytes_rejected {
-                    Some(why) => format!("; chain bytes rejected: {why}"),
-                    None => String::new(),
+                match (
+                    &result.chain_bytes_rejected,
+                    &result.chain_bytes_unavailable,
+                    &result.chain_inconsistent,
+                    &result.inclusion_witness,
+                ) {
+                    (Some(why), _, _, _) => format!("; chain bytes rejected: {why}"),
+                    (None, unavailable, inconsistent, witness) => {
+                        let mut tail = String::new();
+                        if let Some(why) = unavailable {
+                            tail.push_str(&format!("; chain bytes unavailable: {why}"));
+                        }
+                        if let Some(why) = inconsistent {
+                            tail.push_str(&format!("; RPC inconsistent: {why}"));
+                        }
+                        if let Some(w) = witness {
+                            tail.push_str(&format!(
+                                "; witness {}: {}",
+                                if w.agrees { "agrees" } else { "DISAGREES" },
+                                w.detail
+                            ));
+                        }
+                        tail
+                    }
                 }
             )),
+            observed_by_graphite: true,
+            sequence_anomalies: Vec::new(),
         }),
         None => false,
     };
@@ -1992,6 +2190,21 @@ async fn execution_handler(
             "L8 CHAIN BYTES REJECTED for signature {signature}: {why}"
         ));
     }
+    if let Some(why) = &result.chain_inconsistent {
+        Metrics::inc(&state.metrics.execution_chain_inconsistent);
+        tracing_server_error(&format!(
+            "L8 RPC INCONSISTENT about signature {signature}: {why}"
+        ));
+    }
+    if let Some(w) = &result.inclusion_witness {
+        if !w.agrees {
+            Metrics::inc(&state.metrics.execution_witness_disagreements);
+            tracing_server_error(&format!(
+                "L8 WITNESS DISAGREES about signature {signature}: {}",
+                w.detail
+            ));
+        }
+    }
 
     let outcome = serde_json::json!({
         "signature": result.signature,
@@ -2005,6 +2218,9 @@ async fn execution_handler(
         "chain_transaction_sha256": result.chain_transaction_sha256,
         "caller_keys_disagree": result.caller_keys_disagree,
         "chain_bytes_rejected": result.chain_bytes_rejected,
+        "chain_bytes_unavailable": result.chain_bytes_unavailable,
+        "chain_inconsistent": result.chain_inconsistent,
+        "inclusion_witness": result.inclusion_witness,
         "audit_recorded": recorded,
     });
     if !recorded && audit.is_some() {
@@ -2143,6 +2359,8 @@ async fn quarantine_handler(
                     body.reason.as_deref().unwrap_or("").trim()
                 )
             }),
+            observed_by_graphite: true,
+            sequence_anomalies: Vec::new(),
         })
     } else {
         false
@@ -2283,6 +2501,41 @@ async fn lifecycle_event_handler(
         }
     }
 
+    // A signature, when given, has to be one; and from submission onward
+    // an attestation without one names no execution at all (Round 12).
+    let transaction_signature = body
+        .transaction_signature
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    if let Some(sig) = &transaction_signature {
+        if let Err(why) = signature_shape(sig) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": format!("transaction_signature: {why}") })),
+            ));
+        }
+    }
+    if transaction_signature.is_none()
+        && matches!(
+            body.event_type,
+            LifecycleEvent::Submission
+                | LifecycleEvent::Confirmation
+                | LifecycleEvent::Finalization
+        )
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "a {:?} event needs transaction_signature: from submission onward the signature is the execution's identity, and an attestation without it can never be reconciled by L8",
+                    body.event_type
+                ),
+            })),
+        ));
+    }
+
     let Some(log) = &state.audit else {
         // Durability is a P9 guarantee; accepting an event we cannot persist
         // would silently lose it.
@@ -2399,6 +2652,42 @@ async fn lifecycle_event_handler(
         VerdictOnRecord::Approved => {}
     }
 
+    // The rows already on record for this transaction, and how this one
+    // sits against them (Round 12). Computed by Graphite from its own trail;
+    // recorded on the row and returned, never used to refuse — a report out
+    // of order is still a report — except that the two findings that mean a
+    // report is FALSE are logged as loudly as a discrepancy, because one of
+    // the two reports must be.
+    let history = log.lifecycle_history(crate::durable::LifecycleKey {
+        audit_trail_id: audit_trail_id.as_deref(),
+        transaction_sha256: transaction_sha256.as_deref(),
+        transaction_signature: transaction_signature.as_deref(),
+    });
+    let sequence_anomalies =
+        lifecycle_sequence_anomalies(body.event_type, transaction_signature.as_deref(), &history);
+    if !sequence_anomalies.is_empty() {
+        Metrics::inc(&state.metrics.lifecycle_sequence_anomalies);
+        let loud = sequence_anomalies
+            .iter()
+            .any(|a| a.starts_with("signature conflict"));
+        let line = format!(
+            "LIFECYCLE SEQUENCE: {:?} reported by {:?} for {} — {}",
+            body.event_type,
+            body.reported_by.as_deref().unwrap_or("<unnamed>"),
+            audit_trail_id
+                .as_deref()
+                .or(transaction_sha256.as_deref())
+                .or(transaction_signature.as_deref())
+                .unwrap_or(&content_hash),
+            sequence_anomalies.join("; ")
+        );
+        if loud {
+            tracing_server_error(&line);
+        } else {
+            tracing_log(&line);
+        }
+    }
+
     let record = LifecycleEventRecord {
         event_type: body.event_type,
         timestamp: crate::durable::now_utc_rfc3339(),
@@ -2407,9 +2696,11 @@ async fn lifecycle_event_handler(
         verdict_on_record_key: Some(verdict_on_record_key),
         transaction_sha256,
         audit_trail_id,
-        transaction_signature: body.transaction_signature,
+        transaction_signature,
         reported_by: body.reported_by,
         detail: body.detail,
+        observed_by_graphite: false,
+        sequence_anomalies,
     };
     if !log.append_lifecycle(&record) {
         // `recorded: true` is the one thing this endpoint promises. When the
@@ -2435,7 +2726,107 @@ async fn lifecycle_event_handler(
         "content_hash": record.content_hash,
         "verdict_on_record": verdict_on_record,
         "verdict_on_record_key": verdict_on_record_key,
+        "sequence_anomalies": record.sequence_anomalies,
+        "prior_events_on_record": history.len(),
     })))
+}
+
+/// The lifecycle order a transaction's caller-reported events follow.
+fn lifecycle_rank(event: LifecycleEvent) -> Option<u8> {
+    match event {
+        LifecycleEvent::Signing => Some(1),
+        LifecycleEvent::Submission => Some(2),
+        LifecycleEvent::Confirmation => Some(3),
+        LifecycleEvent::Finalization => Some(4),
+        _ => None,
+    }
+}
+
+/// How a new lifecycle report sits against the rows already on record for
+/// the same transaction (Round 12).
+///
+/// Four findings, each a sentence a reader can act on:
+///
+/// - `duplicate`: the same stage was already reported with the same
+///   signature. Expected from a retry — a bridge that did not hear the
+///   first answer reports again — and harmless on the trail; named so a
+///   reader does not count two submissions.
+/// - `out of order`: a stage reported after a later one is already on
+///   record (a signing after the submission, a submission after the
+///   confirmation).
+/// - `unpreceded`: a stage whose predecessor was never reported (a
+///   confirmation with no submission on record). Attestations are
+///   independent, so this is not refused; it is a gap in the account.
+/// - `signature conflict`: a different signature is already attached to
+///   this transaction. The exact artifact under the same signer set has
+///   exactly one ed25519 signature, so one of the two reports is not
+///   about this transaction. Logged as loudly as an L8 discrepancy.
+///
+/// Graphite's own L8 rows count for ordering (a confirmation Graphite
+/// observed is a confirmation) but never as a duplicate of a caller's
+/// report.
+fn lifecycle_sequence_anomalies(
+    event: LifecycleEvent,
+    signature: Option<&str>,
+    history: &[LifecycleEventRecord],
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(rank) = lifecycle_rank(event) else {
+        return out;
+    };
+    if let Some(sig) = signature {
+        if let Some(prior) = history.iter().find(|r| {
+            r.transaction_signature
+                .as_deref()
+                .is_some_and(|s| !s.is_empty() && s != sig)
+        }) {
+            out.push(format!(
+                "signature conflict: {} is already on record for this transaction ({:?} at {}); a transaction has one signature, so one of the two reports is not about it",
+                prior.transaction_signature.as_deref().unwrap_or(""),
+                prior.event_type,
+                prior.timestamp
+            ));
+        }
+    }
+    if let Some(prior) = history.iter().find(|r| {
+        !r.observed_by_graphite
+            && r.event_type == event
+            && r.transaction_signature.as_deref() == signature
+    }) {
+        out.push(format!(
+            "duplicate: {:?} was already reported at {} by {}",
+            event,
+            prior.timestamp,
+            prior.reported_by.as_deref().unwrap_or("<unnamed>")
+        ));
+    }
+    let later = history
+        .iter()
+        .filter(|r| lifecycle_rank(r.event_type).is_some_and(|k| k > rank))
+        .min_by_key(|r| lifecycle_rank(r.event_type));
+    if let Some(prior) = later {
+        out.push(format!(
+            "out of order: {:?} reported after a {:?} was already on record at {}",
+            event, prior.event_type, prior.timestamp
+        ));
+    }
+    if rank > 1 {
+        let has_predecessor = history
+            .iter()
+            .any(|r| lifecycle_rank(r.event_type).is_some_and(|k| k == rank - 1));
+        if !has_predecessor {
+            let predecessor = match event {
+                LifecycleEvent::Submission => "signing",
+                LifecycleEvent::Confirmation => "submission",
+                _ => "confirmation",
+            };
+            out.push(format!(
+                "unpreceded: {:?} reported with no {predecessor} on record for this transaction",
+                event
+            ));
+        }
+    }
+    out
 }
 
 async fn manifests_handler(State(state): State<AppState>) -> Response {
@@ -3961,13 +4352,15 @@ mod tests {
         let app = build_app(state, vec![]);
         use tower::ServiceExt;
 
+        // A signature has to be one (Round 12): 64 bytes, base58.
+        let signature = bs58::encode([0x11u8; 64]).into_string();
         for ev in ["signing", "submission", "confirmation", "finalization"] {
             let resp = app
                 .clone()
                 .oneshot(lifecycle_request(serde_json::json!({
                     "event_type": ev,
                     "content_hash": "afb61d8865b4cb68",
-                    "transaction_signature": "5xSig",
+                    "transaction_signature": signature,
                     "reported_by": "wallet-bridge",
                 })))
                 .await
@@ -4676,6 +5069,389 @@ mod tests {
             axum::http::StatusCode::OK,
             "server must continue serving after a handler panic"
         );
+    }
+
+    /// Round 12: a second process on the same data directory is refused
+    /// while the first holds it, and admitted once it lets go.
+    #[test]
+    fn a_data_directory_is_held_by_one_process() {
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-lock-{}-{}",
+            std::process::id(),
+            crate::durable::now_utc_rfc3339().replace([':', '.'], "-")
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = lock_data_dir(&dir).expect("the first holder");
+        let err = lock_data_dir(&dir).expect_err("a second holder is refused");
+        assert!(
+            err.to_string().contains("another Graphite process"),
+            "{err}"
+        );
+        drop(first);
+        let _again = lock_data_dir(&dir).expect("free once released");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Round 12: an L8 row attributed by `content_hash` names *a*
+    /// transaction carrying the instruction, so the resolved record's exact
+    /// keys must not be written onto this signature's row — the trail would
+    /// then hold "this signature is that transaction", a link the sequence
+    /// check later reports as a conflict against a truthful report.
+    #[tokio::test]
+    async fn an_l8_row_attributed_by_content_hash_carries_no_exact_keys() {
+        use std::io::{Read, Write};
+        // A cluster that confirms every signature and holds no bytes.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            while let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = vec![0u8; 65536];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let body = if req.contains("getSignatureStatuses") {
+                    r#"{"jsonrpc":"2.0","id":1,"result":{"context":{"slot":2},"value":[{"slot":12345,"confirmations":10,"confirmationStatus":"finalized","err":null,"status":{"Ok":null}}]}}"#
+                } else {
+                    r#"{"jsonrpc":"2.0","id":1,"result":null}"#
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: {}
+Connection: close
+
+{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+            }
+        });
+        let (mut state, dir) = test_state();
+        Arc::get_mut(&mut state.core)
+            .expect("fresh state has one owner")
+            .attach_rpc_client(crate::rpc_client::SolanaRpcClient::new(
+                crate::rpc_client::RpcConfig {
+                    endpoint: format!("http://{addr}"),
+                    timeout: std::time::Duration::from_secs(5),
+                    max_retries: 0,
+                    ..Default::default()
+                },
+            ));
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&verification_row("aaaaaaaaaaaaaaaa", true)));
+        let app = build_app(state, vec![]);
+        let signature = bs58::encode([0x21u8; 64]).into_string();
+        let (s, body) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({ "signature": signature, "content_hash": "aaaaaaaaaaaaaaaa" }),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["attribution"], "content_hash", "{body}");
+        assert_eq!(body["recorded_audit_trail_id"], "gr-aaaaaaaaaaaaaaaa");
+        assert!(
+            body["chain_bytes_unavailable"]
+                .as_str()
+                .unwrap()
+                .contains("null"),
+            "{body}"
+        );
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        let row: serde_json::Value =
+            serde_json::from_str(contents.lines().last().unwrap()).unwrap();
+        assert_eq!(row["event_type"], "confirmation");
+        assert_eq!(row["observed_by_graphite"], true);
+        assert_eq!(row["transaction_signature"], signature);
+        assert!(
+            row.get("audit_trail_id").is_none_or(|v| v.is_null()),
+            "{row}"
+        );
+        assert!(
+            row.get("transaction_sha256").is_none_or(|v| v.is_null()),
+            "{row}"
+        );
+        assert!(
+            row["detail"]
+                .as_str()
+                .unwrap()
+                .contains("attribution: ContentHash"),
+            "{row}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── Round 12: the lifecycle sequence ────────────────────────────────────
+    //
+    // Every caller-reported event is an attestation, recorded as reported.
+    // What Graphite can add is how the report sits against the rows already
+    // on record for the same transaction: a duplicate (a retry), a stage out
+    // of order, a stage with no predecessor, or — the one that means a
+    // report is false — a signature that differs from the one already
+    // attached. Named on the row, returned, counted; never refused.
+
+    fn sig(byte: u8) -> String {
+        bs58::encode([byte; 64]).into_string()
+    }
+
+    /// The happy path carries no anomaly at any stage, and a retry of the
+    /// submission (the bridge did not hear the first answer) is named as the
+    /// duplicate it is rather than counted as a second submission.
+    #[tokio::test]
+    async fn lifecycle_reports_in_order_carry_no_anomaly_and_a_retry_is_a_duplicate() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&verification_row("aaaaaaaaaaaaaaaa", true)));
+        let metrics = state.metrics.clone();
+        let app = build_app(state, vec![]);
+        let id = "gr-aaaaaaaaaaaaaaaa";
+        let post = |ev: &'static str, signature: Option<String>| {
+            let app = app.clone();
+            async move {
+                post_json(
+                    &app,
+                    "/audit/event",
+                    None,
+                    serde_json::json!({
+                        "event_type": ev,
+                        "content_hash": "aaaaaaaaaaaaaaaa",
+                        "audit_trail_id": id,
+                        "transaction_signature": signature,
+                        "reported_by": "bridge",
+                    }),
+                )
+                .await
+            }
+        };
+        let (s, body) = post("signing", None).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["sequence_anomalies"], serde_json::json!([]));
+        assert_eq!(body["prior_events_on_record"], 0);
+        let (s, body) = post("submission", Some(sig(7))).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["sequence_anomalies"], serde_json::json!([]), "{body}");
+        assert_eq!(body["prior_events_on_record"], 1);
+        // The retry.
+        let (s, body) = post("submission", Some(sig(7))).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let anomalies = body["sequence_anomalies"].as_array().unwrap();
+        assert_eq!(anomalies.len(), 1, "{body}");
+        assert!(
+            anomalies[0]
+                .as_str()
+                .unwrap()
+                .starts_with("duplicate: Submission"),
+            "{body}"
+        );
+        let (s, body) = post("confirmation", Some(sig(7))).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["sequence_anomalies"], serde_json::json!([]), "{body}");
+        let (s, body) = post("finalization", Some(sig(7))).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        assert_eq!(body["sequence_anomalies"], serde_json::json!([]), "{body}");
+        assert_eq!(
+            metrics
+                .lifecycle_sequence_anomalies
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        // The rows carry what the responses said.
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        assert_eq!(
+            contents.matches("\"sequence_anomalies\"").count(),
+            1,
+            "{contents}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Out of order, unpreceded, and the signature conflict.
+    #[tokio::test]
+    async fn lifecycle_reports_out_of_sequence_are_named_and_a_second_signature_is_loud() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&verification_row("aaaaaaaaaaaaaaaa", true)));
+        let metrics = state.metrics.clone();
+        let app = build_app(state, vec![]);
+        let id = "gr-aaaaaaaaaaaaaaaa";
+        let post = |ev: &'static str, signature: Option<String>| {
+            let app = app.clone();
+            async move {
+                post_json(
+                    &app,
+                    "/audit/event",
+                    None,
+                    serde_json::json!({
+                        "event_type": ev,
+                        "content_hash": "aaaaaaaaaaaaaaaa",
+                        "audit_trail_id": id,
+                        "transaction_signature": signature,
+                    }),
+                )
+                .await
+            }
+        };
+        // A confirmation first: unpreceded (no submission on record).
+        let (s, body) = post("confirmation", Some(sig(1))).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let a = body["sequence_anomalies"].as_array().unwrap().clone();
+        assert_eq!(a.len(), 1, "{body}");
+        assert!(
+            a[0].as_str()
+                .unwrap()
+                .starts_with("unpreceded: Confirmation"),
+            "{body}"
+        );
+        // Then a signing: out of order (a confirmation is already on record).
+        let (s, body) = post("signing", None).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let a = body["sequence_anomalies"].as_array().unwrap().clone();
+        assert_eq!(a.len(), 1, "{body}");
+        assert!(
+            a[0].as_str().unwrap().starts_with("out of order: Signing"),
+            "{body}"
+        );
+        // Then a submission under a DIFFERENT signature: the conflict, plus
+        // out of order.
+        let (s, body) = post("submission", Some(sig(2))).await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let a: Vec<String> = body["sequence_anomalies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(
+            a.iter().any(|x| x.starts_with("signature conflict")),
+            "{a:?}"
+        );
+        assert!(
+            a.iter().any(|x| x.starts_with("out of order: Submission")),
+            "{a:?}"
+        );
+        let conflict = a
+            .iter()
+            .find(|x| x.starts_with("signature conflict"))
+            .unwrap();
+        assert!(conflict.contains(&sig(1)), "{conflict}");
+        // Still recorded: the trail keeps what was reported, with the finding.
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        assert!(contents.contains("signature conflict"), "{contents}");
+        assert_eq!(
+            metrics
+                .lifecycle_sequence_anomalies
+                .load(std::sync::atomic::Ordering::Relaxed),
+            3
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// From submission onward the signature is required, and a signature
+    /// has to be one. Signing needs none: it precedes the signature.
+    #[tokio::test]
+    async fn submission_onward_requires_a_real_signature() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        for ev in ["submission", "confirmation", "finalization"] {
+            let (s, body) = post_json(
+                &app,
+                "/audit/event",
+                None,
+                serde_json::json!({ "event_type": ev, "content_hash": "afb61d8865b4cb68" }),
+            )
+            .await;
+            assert_eq!(s, axum::http::StatusCode::BAD_REQUEST, "{ev}: {body}");
+            assert!(
+                body["error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("transaction_signature"),
+                "{body}"
+            );
+        }
+        for bad in ["5xSig", "0OIl", &"1".repeat(88)] {
+            let (s, body) = post_json(
+                &app,
+                "/audit/event",
+                None,
+                serde_json::json!({
+                    "event_type": "submission",
+                    "content_hash": "afb61d8865b4cb68",
+                    "transaction_signature": bad,
+                }),
+            )
+            .await;
+            assert_eq!(s, axum::http::StatusCode::BAD_REQUEST, "{bad}: {body}");
+            let (s, body) = post_json(
+                &app,
+                "/verify/execution",
+                None,
+                serde_json::json!({ "signature": bad }),
+            )
+            .await;
+            assert_eq!(s, axum::http::StatusCode::BAD_REQUEST, "{bad}: {body}");
+        }
+        let (s, body) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({ "event_type": "signing", "content_hash": "afb61d8865b4cb68" }),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The L8 row Graphite writes is marked as its own observation and does
+    /// not make a later caller confirmation a duplicate.
+    #[tokio::test]
+    async fn graphite_observed_rows_are_marked_and_are_not_duplicates_of_reports() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&verification_row("aaaaaaaaaaaaaaaa", true)));
+        let signature = sig(9);
+        assert!(log.append_lifecycle(&LifecycleEventRecord {
+            event_type: LifecycleEvent::Confirmation,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            content_hash: "aaaaaaaaaaaaaaaa".to_string(),
+            verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: None,
+            audit_trail_id: Some("gr-aaaaaaaaaaaaaaaa".to_string()),
+            transaction_signature: Some(signature.clone()),
+            reported_by: None,
+            detail: Some("L8 reconciliation: ApprovedAndExecuted".to_string()),
+            observed_by_graphite: true,
+            sequence_anomalies: Vec::new(),
+        }));
+        let app = build_app(state, vec![]);
+        let (s, body) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({
+                "event_type": "confirmation",
+                "content_hash": "aaaaaaaaaaaaaaaa",
+                "audit_trail_id": "gr-aaaaaaaaaaaaaaaa",
+                "transaction_signature": signature,
+            }),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let a: Vec<String> = body["sequence_anomalies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(!a.iter().any(|x| x.starts_with("duplicate")), "{a:?}");
+        // The row on disk says who observed it.
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        assert!(
+            contents.contains("\"observed_by_graphite\":true"),
+            "{contents}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
 

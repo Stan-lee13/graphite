@@ -45,8 +45,8 @@ fn mock_rpc(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
     (format!("http://{addr}"), handle)
 }
 
-const CONFIRMED_OK: &str = r#"{"jsonrpc":"2.0","result":{"context":{"slot":2},"value":[{"slot":12345,"confirmations":0,"err":null,"status":{"Ok":null}}]},"id":1}"#;
-const CONFIRMED_FAILED: &str = r#"{"jsonrpc":"2.0","result":{"context":{"slot":2},"value":[{"slot":12345,"confirmations":0,"err":{"InstructionError":[0,"Custom"]},"status":{"Err":"x"}}]},"id":1}"#;
+const CONFIRMED_OK: &str = r#"{"jsonrpc":"2.0","result":{"context":{"slot":2},"value":[{"slot":12345,"confirmations":0,"confirmationStatus":"confirmed","err":null,"status":{"Ok":null}}]},"id":1}"#;
+const CONFIRMED_FAILED: &str = r#"{"jsonrpc":"2.0","result":{"context":{"slot":2},"value":[{"slot":12345,"confirmations":0,"confirmationStatus":"confirmed","err":{"InstructionError":[0,"Custom"]},"status":{"Err":"x"}}]},"id":1}"#;
 const NOT_FOUND: &str =
     r#"{"jsonrpc":"2.0","result":{"context":{"slot":2},"value":[null]},"id":1}"#;
 

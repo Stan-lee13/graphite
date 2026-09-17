@@ -412,6 +412,11 @@ fn every_byte_level_mutation_is_read_the_same_way_on_both_sides() {
                     ArtifactParseError::SignatureCountMismatch { .. } => {
                         "signature count differs from the header"
                     }
+                    // Round 12: the runtime's own sanitize rules, which
+                    // web3.js does not apply.
+                    ArtifactParseError::ProgramIsFeePayer { .. } => "program is the fee payer",
+                    ArtifactParseError::EmptyLookup { .. } => "empty lookup",
+                    ArtifactParseError::TooManyAccounts { .. } => "more than 256 accounts",
                 };
                 *graphite_stricter.entry(why).or_insert(0) += 1;
             }

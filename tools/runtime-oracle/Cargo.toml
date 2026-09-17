@@ -1,0 +1,28 @@
+[package]
+name = "graphite-runtime-oracle"
+version = "0.1.0"
+edition = "2021"
+description = "Runs Graphite's transaction parser against the Solana runtime's own decoder and sanitizer, and fails on any byte string Graphite accepts that the runtime refuses"
+license = "MIT"
+publish = false
+
+# Its own workspace and lockfile on purpose: the agave crates are the oracle,
+# not a dependency of the gate, and their dependency tree must never reach
+# the shipped binary or the audited `graphite-core/Cargo.lock`.
+[workspace]
+
+[dependencies]
+graphite-core = { path = "../../graphite-core", default-features = false }
+# The runtime's wire decoder and sanitizer, from the agave crates themselves.
+solana-transaction = { version = "5.0.0", features = ["serde"] }
+solana-message = { version = "5.0.0", features = ["serde"] }
+solana-sanitize = "3.0.1"
+# The runtime's packet decoder is bincode 1 with fixint encoding, a 1232-byte
+# limit and trailing bytes rejected (`solana_packet::Packet::deserialize_slice`).
+bincode = "1.3.3"
+serde_json = "1.0"
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
+bs58 = "0.5"
+
+[profile.release]
+opt-level = 3

@@ -453,10 +453,46 @@ pub struct AccountState {
     pub data: Vec<u8>,
 }
 
+/// How far the cluster has committed to a transaction, as
+/// `getSignatureStatuses` reports it in `confirmationStatus`.
+///
+/// `processed` is ONE node's view: the transaction is in a block that node
+/// has seen, which the cluster may still discard (a minority fork). It is not
+/// inclusion. `confirmed` means a supermajority voted on the block;
+/// `finalized` means it is rooted. Until Round 12 the field was not read and
+/// every non-null status was treated alike, so an L8 conclusion could rest
+/// on a block that later vanished — and one node, or one RPC, could be the
+/// only party that ever saw the transaction at all.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum InclusionCommitment {
+    Processed,
+    Confirmed,
+    Finalized,
+}
+
+impl InclusionCommitment {
+    /// True once a supermajority has voted on the block: the level at and
+    /// above which the cluster, not one node, stands behind the inclusion.
+    pub fn is_cluster_backed(self) -> bool {
+        self >= InclusionCommitment::Confirmed
+    }
+}
+
+impl std::fmt::Display for InclusionCommitment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            InclusionCommitment::Processed => "processed",
+            InclusionCommitment::Confirmed => "confirmed",
+            InclusionCommitment::Finalized => "finalized",
+        })
+    }
+}
+
 /// On-chain status of a submitted transaction (getSignatureStatuses).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SignatureStatus {
-    /// Slot the transaction was included in (0 if unknown).
+    /// Slot the transaction was included in.
     pub slot: u64,
     /// Remaining confirmations; None once finalized.
     pub confirmations: Option<u64>,
@@ -464,6 +500,24 @@ pub struct SignatureStatus {
     pub success: bool,
     /// RPC error payload when the transaction failed (status Err).
     pub error: Option<String>,
+    /// The commitment level the RPC reports the inclusion at.
+    pub commitment: InclusionCommitment,
+}
+
+/// One transaction as the chain holds it (`getTransaction`): the bytes, and
+/// the facts about them the RPC states alongside — kept so they can be
+/// checked against what `getSignatureStatuses` said. One RPC answering two
+/// questions about one signature differently is one RPC not to draw a
+/// conclusion from (Round 12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainTransaction {
+    /// The serialized transaction, signatures included.
+    pub bytes: Vec<u8>,
+    /// The slot the response places it in, when stated.
+    pub slot: Option<u64>,
+    /// Whether the response's `meta.err` is null: `Some(true)` succeeded,
+    /// `Some(false)` failed, `None` when `meta` was absent.
+    pub succeeded: Option<bool>,
 }
 
 /// Simulation result
@@ -646,6 +700,74 @@ async fn read_body_capped(mut res: reqwest::Response) -> Result<Vec<u8>, RpcErro
     Ok(body)
 }
 
+/// Why an RPC endpoint string cannot be used.
+///
+/// Reported without the endpoint itself: a managed provider's URL carries
+/// the operator's key, and a refusal that echoes it back is a leak.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum EndpointError {
+    #[error("the RPC endpoint is not a URL ({0})")]
+    NotAUrl(String),
+    #[error("the RPC endpoint scheme is {0:?}; only http and https reach a Solana RPC")]
+    Scheme(String),
+    #[error("the RPC endpoint has no host")]
+    NoHost,
+    #[error("the RPC endpoint carries a fragment; a JSON-RPC URL has none")]
+    Fragment,
+}
+
+/// What an endpoint string is, once validated. Nothing here identifies the
+/// endpoint beyond what an operator log line may safely say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EndpointFacts {
+    /// `https` or `http`.
+    pub scheme: String,
+    /// The host is loopback (`localhost`, `127.0.0.0/8`, `::1`).
+    pub loopback: bool,
+    /// The URL carries a username or password.
+    pub has_userinfo: bool,
+    /// The URL carries a query string — where most managed providers put the
+    /// API key.
+    pub has_query: bool,
+}
+
+/// Validate an RPC endpoint before a client is built on it.
+///
+/// A client on an unusable endpoint used to be built anyway and fail on its
+/// first call; the server then ran with "live L3/L4 enabled" in its startup
+/// log and every simulation Inconclusive — an operator who set the variable
+/// believed simulation was on. Refusing at construction makes the
+/// misconfiguration a startup failure instead of a silent downgrade. Only
+/// `http` and `https` are accepted: `reqwest` refuses other schemes at
+/// request time, but the point is to refuse them before the process claims
+/// to be simulating (Round 12).
+pub fn validate_endpoint(endpoint: &str) -> Result<EndpointFacts, EndpointError> {
+    let url =
+        reqwest::Url::parse(endpoint.trim()).map_err(|e| EndpointError::NotAUrl(e.to_string()))?;
+    let scheme = url.scheme().to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return Err(EndpointError::Scheme(scheme));
+    }
+    let Some(host) = url.host_str() else {
+        return Err(EndpointError::NoHost);
+    };
+    if url.fragment().is_some() {
+        return Err(EndpointError::Fragment);
+    }
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    let loopback = bare.eq_ignore_ascii_case("localhost")
+        || bare
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false);
+    Ok(EndpointFacts {
+        scheme,
+        loopback,
+        has_userinfo: !url.username().is_empty() || url.password().is_some(),
+        has_query: url.query().is_some(),
+    })
+}
+
 /// Configuration for RPC client
 #[derive(Debug, Clone)]
 pub struct RpcConfig {
@@ -678,11 +800,29 @@ impl SolanaRpcClient {
     pub fn new(config: RpcConfig) -> Self {
         // Build the HTTP client BEFORE moving `config` into the struct
         // (field init uses the value first — a use-after-move otherwise).
-        let http_client = HttpClient::builder().timeout(config.timeout).build().ok();
+        //
+        // Redirects are not followed. `reqwest` follows up to ten by
+        // default, which lets whoever answers on the RPC socket — a
+        // compromised provider, a hijacked record — send the request, and
+        // Graphite's trust in the answer, to an address of their choosing,
+        // including a plaintext one. A JSON-RPC endpoint that answers 3xx is
+        // an endpoint that is not answering, and that is what it is reported
+        // as (Round 12).
+        let http_client = HttpClient::builder()
+            .timeout(config.timeout)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .ok();
         Self {
             config,
             http_client,
         }
+    }
+
+    /// The endpoint this client posts to. Kept for equality checks between
+    /// clients — never for logging; see `validate_endpoint`.
+    pub fn endpoint(&self) -> &str {
+        &self.config.endpoint
     }
 
     /// Create client for Devnet
@@ -730,6 +870,12 @@ impl SolanaRpcClient {
                         last_err = RpcError::RequestFailed(format!("RPC server error: {}", status));
                         sleep_backoff(attempt).await;
                         continue;
+                    }
+                    if status.is_redirection() {
+                        return Err(RpcError::RequestFailed(format!(
+                            "RPC endpoint answered with a redirect (HTTP {}); redirects are not followed",
+                            status.as_u16()
+                        )));
                     }
                     if !status.is_success() {
                         return Err(RpcError::RequestFailed(format!(
@@ -1008,8 +1154,17 @@ impl SolanaRpcClient {
     /// Fetch a block's full transaction list as JSON (encoding: json, full
     /// transaction details, versioned transactions included). Used by the live
     /// real-transaction corpus tests and Phase-2 on-chain verification.
+    ///
+    /// `maxSupportedTransactionVersion: 1` (Round 12): devnet blocks carry
+    /// version-1 transactions since 2026-09 (block 499429420: 7 of 60), and
+    /// an RPC refuses the WHOLE block to a client that caps at 0 — so every
+    /// block with one v1 transaction in it was unreadable and the live corpus
+    /// found nothing. The v1 entries come back with `"version": 1` and are
+    /// skipped by `live_corpus::tx_to_input`; Graphite does not parse the
+    /// format yet and refuses it (`UnsupportedVersion`) wherever it meets
+    /// the bytes.
     pub async fn get_block(&self, slot: u64) -> Result<serde_json::Value, RpcError> {
-        let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getBlock","params":[slot,{"encoding":"json","transactionDetails":"full","maxSupportedTransactionVersion":0,"rewards":false}]});
+        let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getBlock","params":[slot,{"encoding":"json","transactionDetails":"full","maxSupportedTransactionVersion":1,"rewards":false}]});
         let result = self.post_rpc(body).await?;
         Ok(result)
     }
@@ -1046,16 +1201,30 @@ impl SolanaRpcClient {
     /// encoding: base64), or `None` when the cluster has no record of the
     /// signature.
     ///
+    /// Round 12: the slot and outcome the response states are returned too
+    /// (`ChainTransaction`) so L8 can hold them against the status call.
+    pub async fn get_transaction_bytes(
+        &self,
+        signature: &str,
+    ) -> Result<Option<Vec<u8>>, RpcError> {
+        Ok(self
+            .get_chain_transaction(signature)
+            .await?
+            .map(|t| t.bytes))
+    }
+
+    /// One transaction as the chain holds it: bytes, slot and outcome.
+    ///
     /// This is what lets L8 attribute an execution to a verification
     /// without believing the caller: the bytes come from the chain, the
     /// signature slots are zeroed, and the digest is looked up
     /// (`tx_artifact::artifact_sha256_of_signed`, Round 10). Anything but a
     /// `[base64, "base64"]` pair in `result.transaction` is an invalid
     /// response, never a silent `None`.
-    pub async fn get_transaction_bytes(
+    pub async fn get_chain_transaction(
         &self,
         signature: &str,
-    ) -> Result<Option<Vec<u8>>, RpcError> {
+    ) -> Result<Option<ChainTransaction>, RpcError> {
         let body = serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
             "params": [signature, {"encoding": "base64", "maxSupportedTransactionVersion": 0}]
@@ -1085,10 +1254,19 @@ impl SolanaRpcClient {
                 "getTransaction returned encoding {encoding:?}, base64 was requested"
             )));
         }
-        base64::engine::general_purpose::STANDARD
+        let bytes = base64::engine::general_purpose::STANDARD
             .decode(encoded)
-            .map(Some)
-            .map_err(|e| RpcError::InvalidResponse(format!("getTransaction base64: {e}")))
+            .map_err(|e| RpcError::InvalidResponse(format!("getTransaction base64: {e}")))?;
+        let slot = result.get("slot").and_then(|s| s.as_u64());
+        let succeeded = match result.get("meta") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(meta) => Some(meta.get("err").is_none_or(|e| e.is_null())),
+        };
+        Ok(Some(ChainTransaction {
+            bytes,
+            slot,
+            succeeded,
+        }))
     }
 
     /// Get recent blockhash
@@ -1139,7 +1317,13 @@ impl SolanaRpcClient {
         if value.is_null() {
             return Ok(None);
         }
-        let slot = value.get("slot").and_then(|s| s.as_u64()).unwrap_or(0);
+        // Every field a conclusion rests on must be present and well-formed.
+        // Until Round 12 a missing slot read as 0 and a status object with
+        // neither `Ok` nor `Err` read as "included and failed" — a malformed
+        // answer became an `ApprovedButFailedOnChain` conclusion.
+        let slot = value.get("slot").and_then(|s| s.as_u64()).ok_or_else(|| {
+            RpcError::InvalidResponse("getSignatureStatuses status has no slot".to_string())
+        })?;
         let confirmations = value.get("confirmations").and_then(|c| c.as_u64());
         let status = value.get("status").and_then(|s| s.as_object());
         let (err, success) = match status {
@@ -1150,13 +1334,37 @@ impl SolanaRpcClient {
                 }),
                 false,
             ),
-            _ => (None, false),
+            _ => {
+                return Err(RpcError::InvalidResponse(
+                    "getSignatureStatuses status is neither Ok nor Err".to_string(),
+                ))
+            }
+        };
+        let commitment = match value.get("confirmationStatus").and_then(|c| c.as_str()) {
+            Some("processed") => InclusionCommitment::Processed,
+            Some("confirmed") => InclusionCommitment::Confirmed,
+            Some("finalized") => InclusionCommitment::Finalized,
+            Some(other) => {
+                return Err(RpcError::InvalidResponse(format!(
+                    "getSignatureStatuses confirmationStatus is {:?}",
+                    bound_rpc_text(other)
+                )))
+            }
+            // The field has been in every release since v1.7 (2021). An
+            // answer without it does not state how far the cluster stands
+            // behind the inclusion, and L8 does not guess.
+            None => {
+                return Err(RpcError::InvalidResponse(
+                    "getSignatureStatuses status carries no confirmationStatus".to_string(),
+                ))
+            }
         };
         Ok(Some(SignatureStatus {
             slot,
             confirmations,
             success,
             error: err,
+            commitment,
         }))
     }
 }
@@ -1350,7 +1558,7 @@ mod tests {
     async fn test_get_signature_status_confirmed_success() {
         let (url, handle) = mock_rpc_server(vec![(
             200,
-            "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":100,\"confirmations\":0,\"err\":null,\"status\":{\"Ok\":null}}]},\"id\":1}",
+            "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":100,\"confirmations\":0,\"confirmationStatus\":\"confirmed\",\"err\":null,\"status\":{\"Ok\":null}}]},\"id\":1}",
         )]);
         let client = client_at(&url, 0);
         let st = client
@@ -1361,6 +1569,7 @@ mod tests {
         assert_eq!(st.slot, 100);
         assert!(st.success);
         assert_eq!(st.confirmations, Some(0));
+        assert_eq!(st.commitment, InclusionCommitment::Confirmed);
         assert!(st.error.is_none());
         handle.join().unwrap();
     }
@@ -1369,7 +1578,7 @@ mod tests {
     async fn test_get_signature_status_err_is_failure() {
         let (url, handle) = mock_rpc_server(vec![(
             200,
-            "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":101,\"confirmations\":null,\"err\":null,\"status\":{\"Err\":{\"InstructionError\":[0,{\"Custom\":1}]}}}]},\"id\":1}",
+            "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":101,\"confirmations\":null,\"confirmationStatus\":\"finalized\",\"err\":null,\"status\":{\"Err\":{\"InstructionError\":[0,{\"Custom\":1}]}}}]},\"id\":1}",
         )]);
         let client = client_at(&url, 0);
         let st = client
@@ -1379,6 +1588,8 @@ mod tests {
             .expect("signature must be known");
         assert!(!st.success, "Err status must not be success");
         assert!(st.error.is_some());
+        assert_eq!(st.commitment, InclusionCommitment::Finalized);
+        assert!(st.commitment.is_cluster_backed());
         handle.join().unwrap();
     }
 

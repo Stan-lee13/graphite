@@ -171,6 +171,13 @@ pub fn expand_account_keys(msg: &serde_json::Value) -> Option<Vec<String>> {
 }
 
 pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<VerificationInput> {
+    // A version-1 transaction (live on devnet since 2026-09) is a format
+    // Graphite does not parse yet; its JSON has a different message shape
+    // and an input built from it would describe a transaction the gate
+    // refuses. Skipped, not guessed (Round 12).
+    if tx.get("version").and_then(|v| v.as_u64()) == Some(1) {
+        return None;
+    }
     let msg = tx.get("transaction")?.get("message")?;
     let keys = expand_account_keys(msg)?;
     let ixs = msg.get("instructions")?.as_array()?;
@@ -960,5 +967,22 @@ mod tests {
             input.program_id,
             "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
         );
+    }
+
+    /// Round 12: a version-1 transaction (live on devnet since 2026-09) is
+    /// skipped rather than converted — the same fixture with `"version": 1`
+    /// yields nothing, and the unversioned original still converts.
+    #[test]
+    fn tx_to_input_skips_version_1_transactions() {
+        let mut tx = load_fixture("jup");
+        let jup = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+        assert!(tx_to_input(&tx, &[jup]).is_some());
+        tx["version"] = serde_json::json!(1);
+        assert!(
+            tx_to_input(&tx, &[jup]).is_none(),
+            "a v1 transaction must not be described as a legacy/v0 one"
+        );
+        tx["version"] = serde_json::json!(0);
+        assert!(tx_to_input(&tx, &[jup]).is_some());
     }
 }

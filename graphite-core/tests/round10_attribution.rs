@@ -227,7 +227,7 @@ fn cluster(chain: ChainBytes) -> String {
                     )
                 }
                 "getSignatureStatuses" => {
-                    r#"{"jsonrpc":"2.0","id":1,"result":{"context":{"slot":2},"value":[{"slot":12345,"confirmations":0,"err":null,"status":{"Ok":null}}]}}"#.to_string()
+                    r#"{"jsonrpc":"2.0","id":1,"result":{"context":{"slot":2},"value":[{"slot":12345,"confirmations":0,"confirmationStatus":"confirmed","err":null,"status":{"Ok":null}}]}}"#.to_string()
                 }
                 "getTransaction" => match chain.lock().unwrap().clone() {
                     Some(b) => {

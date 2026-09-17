@@ -61,7 +61,7 @@ pub enum ArtifactParseError {
         declared: usize,
         available: usize,
     },
-    #[error("message version {0} is not supported (only legacy and v0)")]
+    #[error("message version {0} is not supported (only legacy and v0; the v1 format seen on devnet since 2026-09 is not implemented yet and is refused)")]
     UnsupportedVersion(u8),
     #[error("header claims {signers} signers and {readonly_signed} readonly-signed of {keys} account keys")]
     ImpossibleHeader {
@@ -81,6 +81,20 @@ pub enum ArtifactParseError {
         account_index: usize,
         keys: usize,
     },
+    /// The instruction's program is static key 0, the fee payer. The runtime
+    /// refuses this at sanitization ("a program cannot be a payer"), so the
+    /// frame can never execute (Round 12, runtime oracle).
+    #[error("instruction {index} names the fee payer (key 0) as its program; the runtime refuses a payer program")]
+    ProgramIsFeePayer { index: usize },
+    /// A v0 lookup that loads nothing. The runtime requires every declared
+    /// table to load at least one address (Round 12, runtime oracle).
+    #[error("lookup table {table} loads no addresses; the runtime refuses an empty lookup")]
+    EmptyLookup { table: String },
+    /// Static keys plus lookup-loaded keys exceed the 256 an account index
+    /// can address. The runtime refuses the message (Round 12, runtime
+    /// oracle).
+    #[error("{total} account keys (static and loaded); the runtime addresses at most 256")]
+    TooManyAccounts { total: usize },
     #[error("{trailing} trailing bytes after the message")]
     TrailingBytes { trailing: usize },
     /// The signature array and the header disagree about how many signers
@@ -561,6 +575,12 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
                 keys: key_count,
             },
         )?;
+        // The runtime's `sanitize`: "a program cannot be a payer". Key 0 is
+        // the fee payer by position, so an instruction whose program index
+        // is 0 can never execute.
+        if program_index == 0 {
+            return Err(ArtifactParseError::ProgramIsFeePayer { index });
+        }
 
         instructions.push(ArtifactInstruction {
             program_id,
@@ -587,10 +607,45 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
             let writable_indexes = r.take(writable_len, "writable indexes")?.to_vec();
             let readonly_len = r.compact_u16("readonly index count")?;
             let readonly_indexes = r.take(readonly_len, "readonly indexes")?.to_vec();
-            lookups.push(AddressTableLookup {
+            let lookup = AddressTableLookup {
                 table: Pubkey::from_bytes(arr).to_base58(),
                 writable_indexes,
                 readonly_indexes,
+            };
+            // The runtime's v0 `sanitize`: every declared table loads at
+            // least one address.
+            if lookup.is_empty() {
+                return Err(ArtifactParseError::EmptyLookup {
+                    table: lookup.table,
+                });
+            }
+            lookups.push(lookup);
+        }
+    }
+
+    // The account universe an instruction may index: the static keys, then
+    // — for v0 — every loaded address in lookup order. The runtime's
+    // `sanitize` refuses any index at or past that, and refuses a universe
+    // that does not fit the u8 index space. Checked here rather than left
+    // to `resolve_lookups`, because a frame the runtime refuses is not a
+    // transaction and must not be bound, digested or reasoned about as one
+    // (Round 12, runtime oracle: 3,382 of 200,000 generated frames and 8 of
+    // the corpus's recorded mutations were parsed here and refused there).
+    let loaded: usize = lookups.iter().map(|l| l.len()).sum();
+    let total_keys = key_count + loaded;
+    if total_keys > 256 {
+        return Err(ArtifactParseError::TooManyAccounts { total: total_keys });
+    }
+    for (index, ix) in instructions.iter().enumerate() {
+        if let Some(&account_index) = ix
+            .account_indexes
+            .iter()
+            .find(|&&i| usize::from(i) >= total_keys)
+        {
+            return Err(ArtifactParseError::AccountIndexOutOfRange {
+                index,
+                account_index: usize::from(account_index),
+                keys: total_keys,
             });
         }
     }

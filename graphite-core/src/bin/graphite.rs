@@ -119,6 +119,11 @@ enum Commands {
         /// RPC endpoint (default: GRAPHITE_RPC_URL)
         #[arg(long)]
         rpc_url: Option<String>,
+        /// A second, independent RPC asked about inclusion (default:
+        /// GRAPHITE_RPC_WITNESS_URL). Without one every conclusion rests on
+        /// the primary RPC's word that the signature landed.
+        #[arg(long)]
+        witness_url: Option<String>,
     },
     /// Seed operator-asserted evidence or a simulation baseline
     ///
@@ -568,6 +573,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             transaction_sha256,
             audit_trail_id,
             rpc_url,
+            witness_url,
         } => graphite_core::cli::run(graphite_core::cli::CliCommand::Execution {
             data_dir,
             signature,
@@ -575,6 +581,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             transaction_sha256,
             audit_trail_id,
             rpc_url,
+            witness_url,
         }),
         Commands::Evidence { action } => match action {
             EvidenceAction::Seed {

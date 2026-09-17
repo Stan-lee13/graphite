@@ -426,6 +426,37 @@ export interface LifecycleEventReceipt {
   content_hash: string;
   verdict_on_record: VerdictOnRecord;
   verdict_on_record_key: VerificationKeyKind;
+  /**
+   * How this report sits against the rows already on record for the same
+   * transaction (Round 12): `duplicate: …` (a retry — harmless), `out of
+   * order: …`, `unpreceded: …`, or `signature conflict: …` (a different
+   * signature is already attached to this transaction; one of the two
+   * reports is not about it). Empty when the report is in order. Servers
+   * before Round 12 omit the field.
+   */
+  sequence_anomalies?: string[];
+  /** How many lifecycle rows were already on record for this transaction. */
+  prior_events_on_record?: number;
+}
+
+/**
+ * How far the cluster stands behind an inclusion, from
+ * `getSignatureStatuses`. `processed` is one node's view and can still be
+ * discarded; L8 draws no positive conclusion from it.
+ */
+export type InclusionCommitment = "processed" | "confirmed" | "finalized";
+
+/**
+ * A second RPC's account of the signature, held against the primary's
+ * (Round 12). Present when the server has `GRAPHITE_RPC_WITNESS_URL`.
+ */
+export interface InclusionWitness {
+  /** Both have no record, or both place it in the same slot with the same outcome. */
+  agrees: boolean;
+  /** Whether the witness has any record; `null` when it could not be reached. */
+  seen: boolean | null;
+  commitment?: InclusionCommitment | null;
+  detail: string;
 }
 
 /** Body of `POST /verify/execution` (L8). */
@@ -496,6 +527,20 @@ export interface ExecutionCheckResult {
    * that does this is faulty or hostile.
    */
   chain_bytes_rejected?: string | null;
+  /**
+   * Why the chain's bytes were not available although the status said the
+   * signature landed (the fetch failed, or the RPC answered `null`), so an
+   * attribution by caller keys is visibly not the chain's (Round 12).
+   */
+  chain_bytes_unavailable?: string | null;
+  /**
+   * The RPC contradicted itself about this signature — slot or outcome
+   * differ between `getSignatureStatuses` and `getTransaction`. No positive
+   * conclusion is drawn; `BlockedButExecuted` still fires (Round 12).
+   */
+  chain_inconsistent?: string | null;
+  /** The inclusion witness's account, when one is attached; `null` otherwise. */
+  inclusion_witness?: InclusionWitness | null;
   /** Whether this reconciliation row reached the trail. */
   audit_recorded: boolean;
 }

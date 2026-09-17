@@ -18,6 +18,7 @@ use crate::risk_engine::{assess_with_warnings, RiskAssessmentInput, RiskPattern,
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
+#[cfg(feature = "rpc")]
 use crate::state_diff::{AccountDelta, AccountSnapshot, DiffProvenance, StateDiff};
 use crate::transaction_builder::{build_transaction, BuiltTransaction, TransactionPlan};
 use crate::unknown_protocol_mode::apply_unknown_protocol_ceiling;
@@ -229,6 +230,7 @@ fn build_rpc_state_diff(
 }
 
 /// How many of these deltas moved lamports.
+#[cfg(feature = "rpc")]
 fn deltas_lamport_changed(deltas: &[AccountDelta]) -> usize {
     deltas.iter().filter(|d| d.lamport_delta() != 0).count()
 }
@@ -712,12 +714,17 @@ pub struct GraphEdge {
 #[cfg(feature = "rpc")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecutionVerification {
-    /// Transaction included in a slot; `success` is the on-chain status.
+    /// The RPC reports the signature in a slot; `success` is the on-chain
+    /// status. `commitment` is how far the cluster stands behind that
+    /// (Round 12): `processed` is one node's view and can still be
+    /// discarded, so no positive conclusion is drawn from it — only the
+    /// alarm, which fires on any sighting of a blocked transaction.
     Confirmed {
         signature: String,
         slot: u64,
         success: bool,
         error: Option<String>,
+        commitment: crate::rpc_client::InclusionCommitment,
     },
     /// The cluster has no record of this signature (pending or never sent).
     UnknownSignature(String),
@@ -809,6 +816,49 @@ pub struct ExecutionAudit {
     /// reconciliation is `Unavailable` with this reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chain_bytes_rejected: Option<String>,
+    /// Why the chain's bytes were not available when the status said the
+    /// signature landed — the fetch failed, or the RPC answered `null` —
+    /// so a reader can tell "the chain decided" from "the caller's keys
+    /// stood in, and here is why" (Round 12). Absent when the bytes were
+    /// fetched, rejected, or never needed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_bytes_unavailable: Option<String>,
+    /// The RPC contradicted itself about this signature: the slot or the
+    /// outcome in `getTransaction` differs from `getSignatureStatuses`
+    /// (Round 12). No positive conclusion is drawn from an RPC that gives
+    /// two answers; the alarm on a blocked verdict still fires.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_inconsistent: Option<String>,
+    /// What the inclusion witness — a second, independent RPC — said about
+    /// the signature, when one is attached (Round 12). `None` when no
+    /// witness is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inclusion_witness: Option<InclusionWitness>,
+}
+
+/// A second RPC's account of a signature, held against the primary's.
+///
+/// One RPC can misreport inclusion in either direction — a signature it
+/// alone saw, or one it claims not to have — and nothing inside a single
+/// answer can show it. Two independent endpoints agreeing is the evidence
+/// L8 asks for before it states that an approved transaction executed;
+/// either one reporting a BLOCKED transaction is enough to alarm. The
+/// witness is asked one question, `getSignatureStatuses`, so its cost is one
+/// call per reconciliation.
+#[cfg(feature = "rpc")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InclusionWitness {
+    /// The witness's account matches the primary's: both have no record, or
+    /// both place it in the same slot with the same outcome.
+    pub agrees: bool,
+    /// Whether the witness has any record of the signature. `None` when the
+    /// witness could not be reached.
+    pub seen: Option<bool>,
+    /// The commitment the witness reports, when it has a record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commitment: Option<crate::rpc_client::InclusionCommitment>,
+    /// The comparison, in words.
+    pub detail: String,
 }
 
 /// The join key an L8 reconciliation actually used, most authoritative
@@ -1478,6 +1528,10 @@ pub struct GraphiteCore {
     semantic_graph: Arc<Mutex<SemanticGraphStore>>,
     #[cfg(feature = "rpc")]
     rpc_client: Option<SolanaRpcClient>,
+    /// A second RPC that L8 asks about inclusion, independent of the first.
+    /// See `InclusionWitness`.
+    #[cfg(feature = "rpc")]
+    inclusion_witness: Option<SolanaRpcClient>,
     /// Optional durability directory (snapshots + audit trail).
     data_dir: Option<PathBuf>,
     /// Snapshot outcomes, shared across clones so /health sees every write.
@@ -1489,6 +1543,96 @@ pub struct GraphiteCore {
     /// Whether a durable-nonce transaction may pass L2 at all. Off by default;
     /// see `set_allow_durable_nonce`.
     allow_durable_nonce: bool,
+}
+
+/// Hold the witness's account of a signature against the primary's.
+#[cfg(feature = "rpc")]
+fn compare_witness(
+    primary: &ExecutionVerification,
+    witness: Option<&crate::rpc_client::SignatureStatus>,
+) -> InclusionWitness {
+    match (primary, witness) {
+        (ExecutionVerification::Unavailable(_), Some(w)) => InclusionWitness {
+            agrees: false,
+            seen: Some(true),
+            commitment: Some(w.commitment),
+            detail: format!(
+                "the primary RPC could not be consulted; the witness places the signature in slot {} at {} commitment",
+                w.slot, w.commitment
+            ),
+        },
+        (ExecutionVerification::Unavailable(_), None) => InclusionWitness {
+            agrees: false,
+            seen: Some(false),
+            commitment: None,
+            detail: "the primary RPC could not be consulted; the witness has no record of the signature".to_string(),
+        },
+        (ExecutionVerification::UnknownSignature(_), None) => InclusionWitness {
+            agrees: true,
+            seen: Some(false),
+            commitment: None,
+            detail: "neither the primary RPC nor the witness has a record of the signature".to_string(),
+        },
+        (ExecutionVerification::UnknownSignature(_), Some(w)) => InclusionWitness {
+            agrees: false,
+            seen: Some(true),
+            commitment: Some(w.commitment),
+            detail: format!(
+                "the primary RPC has no record of the signature; the witness places it in slot {} at {} commitment",
+                w.slot, w.commitment
+            ),
+        },
+        (ExecutionVerification::Confirmed { slot, .. }, None) => InclusionWitness {
+            agrees: false,
+            seen: Some(false),
+            commitment: None,
+            detail: format!(
+                "the primary RPC places the signature in slot {slot}; the witness has no record of it"
+            ),
+        },
+        (
+            ExecutionVerification::Confirmed {
+                slot,
+                success,
+                commitment,
+                ..
+            },
+            Some(w),
+        ) => {
+            if w.slot != *slot {
+                InclusionWitness {
+                    agrees: false,
+                    seen: Some(true),
+                    commitment: Some(w.commitment),
+                    detail: format!(
+                        "the primary RPC places the signature in slot {slot}; the witness places it in slot {}",
+                        w.slot
+                    ),
+                }
+            } else if w.success != *success {
+                InclusionWitness {
+                    agrees: false,
+                    seen: Some(true),
+                    commitment: Some(w.commitment),
+                    detail: format!(
+                        "both place the signature in slot {slot}, but the primary RPC reports it {} and the witness reports it {}",
+                        if *success { "succeeded" } else { "failed" },
+                        if w.success { "succeeded" } else { "failed" }
+                    ),
+                }
+            } else {
+                InclusionWitness {
+                    agrees: true,
+                    seen: Some(true),
+                    commitment: Some(w.commitment),
+                    detail: format!(
+                        "both place the signature in slot {slot} with the same outcome (primary at {commitment}, witness at {})",
+                        w.commitment
+                    ),
+                }
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for GraphiteCore {
@@ -1518,6 +1662,8 @@ impl GraphiteCore {
             semantic_graph: Arc::new(Mutex::new(SemanticGraphStore::new())),
             #[cfg(feature = "rpc")]
             rpc_client: None,
+            #[cfg(feature = "rpc")]
+            inclusion_witness: None,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             rpc_budget: DEFAULT_RPC_BUDGET,
@@ -1536,6 +1682,8 @@ impl GraphiteCore {
             semantic_graph: Arc::new(Mutex::new(SemanticGraphStore::new())),
             #[cfg(feature = "rpc")]
             rpc_client: None,
+            #[cfg(feature = "rpc")]
+            inclusion_witness: None,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             rpc_budget: DEFAULT_RPC_BUDGET,
@@ -1551,6 +1699,8 @@ impl GraphiteCore {
             semantic_graph: Arc::new(Mutex::new(SemanticGraphStore::new())),
             #[cfg(feature = "rpc")]
             rpc_client: None,
+            #[cfg(feature = "rpc")]
+            inclusion_witness: None,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
             rpc_budget: DEFAULT_RPC_BUDGET,
@@ -1762,6 +1912,31 @@ impl GraphiteCore {
         self.rpc_client = Some(client);
     }
 
+    /// Attach a second RPC as L8's inclusion witness (Round 12).
+    ///
+    /// Refused when it is the same endpoint as the primary: a witness that
+    /// is the party being witnessed adds a call and no evidence, and an
+    /// operator who set it believes they have a second source.
+    #[cfg(feature = "rpc")]
+    pub fn attach_inclusion_witness(&mut self, client: SolanaRpcClient) -> Result<(), String> {
+        if let Some(primary) = &self.rpc_client {
+            if primary.endpoint().trim() == client.endpoint().trim() {
+                return Err(
+                    "the inclusion witness is the same endpoint as the primary RPC; a witness must be an independent second source"
+                        .to_string(),
+                );
+            }
+        }
+        self.inclusion_witness = Some(client);
+        Ok(())
+    }
+
+    /// Whether an inclusion witness is attached.
+    #[cfg(feature = "rpc")]
+    pub fn has_inclusion_witness(&self) -> bool {
+        self.inclusion_witness.is_some()
+    }
+
     /// Set the total wall-clock budget one verification may spend on RPC.
     ///
     /// The caller owns this because only the caller knows its own deadline: a
@@ -1824,6 +1999,7 @@ impl GraphiteCore {
                 slot: status.slot,
                 success: status.success,
                 error: status.error,
+                commitment: status.commitment,
             }),
             Ok(None) => Ok(ExecutionVerification::UnknownSignature(
                 signature.to_string(),
@@ -1875,11 +2051,33 @@ impl GraphiteCore {
             Err(e) => ExecutionVerification::Unavailable(e.to_string()),
         };
 
+        // The witness's account, when one is attached (Round 12). Asked
+        // regardless of what the primary said: a primary that reports no
+        // record is exactly what a witness exists to contradict.
+        let mut witness_status: Option<crate::rpc_client::SignatureStatus> = None;
+        let inclusion_witness = match &self.inclusion_witness {
+            None => None,
+            Some(witness) => Some(match witness.get_signature_status(signature).await {
+                Err(e) => InclusionWitness {
+                    agrees: false,
+                    seen: None,
+                    commitment: None,
+                    detail: format!("the inclusion witness could not be consulted: {e}"),
+                },
+                Ok(status) => {
+                    let report = compare_witness(&chain_status, status.as_ref());
+                    witness_status = status;
+                    report
+                }
+            }),
+        };
+
         // The chain's own account of what executed: the bytes behind the
         // signature, with the signature slots zeroed, are the artifact
         // Graphite was shown, and their digest is the exact key. Fetched
         // whenever the signature is on-chain; a fetch that fails leaves the
-        // caller's keys to fall back on, and says so in `attribution`.
+        // caller's keys to fall back on, and says so in `attribution` and
+        // `chain_bytes_unavailable`.
         //
         // The bytes are accepted only once bound to the signature — first slot
         // equal to it, and verifying over the message under the fee payer's
@@ -1887,33 +2085,81 @@ impl GraphiteCore {
         // decides". Bytes that fail that binding are rejected, and nothing
         // stands in for them: an RPC able to substitute bytes must not also
         // be able to hand attribution back to the caller's keys.
+        //
+        // The slot and outcome `getTransaction` states are held against the
+        // status call (Round 12). One RPC giving two accounts of one
+        // signature is not one to conclude from.
+        //
+        // The bytes come from whichever endpoint reports the signature: the
+        // primary when it does, else the witness when it does. Binding is
+        // what makes them trustworthy, not which socket served them — and a
+        // BLOCKED transaction the primary cannot see must still be joined to
+        // its verdict so the alarm can name it.
         let mut chain_bytes_rejected: Option<String> = None;
-        let chain_transaction_sha256 = match (&chain_status, &self.rpc_client) {
-            (ExecutionVerification::Confirmed { .. }, Some(client)) => {
-                match client.get_transaction_bytes(signature).await {
-                    Ok(Some(bytes)) => {
-                        match crate::tx_artifact::bound_artifact_sha256(&bytes, signature) {
+        let mut chain_bytes_unavailable: Option<String> = None;
+        let mut chain_inconsistent: Option<String> = None;
+        let bytes_source: Option<(&SolanaRpcClient, u64, bool, &str)> = match &chain_status {
+            ExecutionVerification::Confirmed { slot, success, .. } => self
+                .rpc_client
+                .as_ref()
+                .map(|c| (c, *slot, *success, "the RPC")),
+            _ => match (&self.inclusion_witness, &witness_status) {
+                (Some(w), Some(status)) => Some((w, status.slot, status.success, "the witness")),
+                _ => None,
+            },
+        };
+        let chain_transaction_sha256 = match bytes_source {
+            Some((client, status_slot, status_success, who)) => {
+                match client.get_chain_transaction(signature).await {
+                    Ok(Some(tx)) => {
+                        if let Some(slot) = tx.slot {
+                            if slot != status_slot {
+                                chain_inconsistent = Some(format!(
+                                    "{who}'s getSignatureStatuses places {signature} in slot {status_slot}; its getTransaction places it in slot {slot}"
+                                ));
+                            }
+                        }
+                        if let Some(succeeded) = tx.succeeded {
+                            if succeeded != status_success && chain_inconsistent.is_none() {
+                                chain_inconsistent = Some(format!(
+                                    "{who}'s getSignatureStatuses reports {signature} as {}; its getTransaction reports it as {}",
+                                    if status_success { "succeeded" } else { "failed" },
+                                    if succeeded { "succeeded" } else { "failed" }
+                                ));
+                            }
+                        }
+                        match crate::tx_artifact::bound_artifact_sha256(&tx.bytes, signature) {
                             Ok(digest) => Some(digest),
                             Err(e) => {
                                 tracing::warn!(
                                     "L8: chain bytes for {signature} are not bound to it: {e}"
                                 );
                                 chain_bytes_rejected = Some(format!(
-                                    "the RPC returned bytes for {signature} that are not bound to it: {e}"
+                                    "{who} returned bytes for {signature} that are not bound to it: {e}"
                                 ));
                                 None
                             }
                         }
                     }
-                    Ok(None) => None,
+                    Ok(None) => {
+                        chain_bytes_unavailable = Some(format!(
+                            "{who}'s getSignatureStatuses reports {signature} as included but its getTransaction returned null for it"
+                        ));
+                        None
+                    }
                     Err(e) => {
                         tracing::warn!("L8: getTransaction for {signature} failed: {e}");
+                        chain_bytes_unavailable =
+                            Some(format!("{who}'s getTransaction failed: {e}"));
                         None
                     }
                 }
             }
-            _ => None,
+            None => None,
         };
+        if let Some(why) = &chain_inconsistent {
+            tracing::warn!("L8: the RPC contradicts itself about {signature}: {why}");
+        }
 
         // Find what Graphite decided for THIS transaction. The chain's digest
         // is authoritative and independent of the caller; without it, the
@@ -1997,6 +2243,13 @@ impl GraphiteCore {
         let no_keys = keys.content_hash.is_none()
             && keys.transaction_sha256.is_none()
             && keys.audit_trail_id.is_none();
+        // What the witness saw, for the two rules below: any sighting of a
+        // blocked transaction alarms; a positive conclusion about an
+        // approved one needs the witness to agree.
+        let witness_saw_it = inclusion_witness
+            .as_ref()
+            .is_some_and(|w| w.seen == Some(true));
+        let witness_dissents = inclusion_witness.as_ref().is_some_and(|w| !w.agrees);
         let reconciliation = match (&chain_status, &recorded) {
             (ExecutionVerification::Unavailable(reason), _) => {
                 ExecutionReconciliation::Unavailable {
@@ -2018,7 +2271,21 @@ impl GraphiteCore {
             },
             (_, None) => ExecutionReconciliation::NoVerificationOnRecord,
             (ExecutionVerification::UnknownSignature(_), Some(rec)) => {
-                if rec.approved {
+                if !rec.approved && witness_saw_it {
+                    // The primary has no record; the witness does. For a
+                    // blocked transaction one sighting is the alarm.
+                    ExecutionReconciliation::BlockedButExecuted
+                } else if rec.approved && witness_dissents {
+                    ExecutionReconciliation::Unavailable {
+                        reason: format!(
+                            "the inclusion sources disagree: {}",
+                            inclusion_witness
+                                .as_ref()
+                                .map(|w| w.detail.clone())
+                                .unwrap_or_default()
+                        ),
+                    }
+                } else if rec.approved {
                     // Approved and not (yet) on chain is ordinary: the caller
                     // may not have submitted, or it is still pending.
                     ExecutionReconciliation::NotFound
@@ -2026,9 +2293,39 @@ impl GraphiteCore {
                     ExecutionReconciliation::BlockedAndNotExecuted
                 }
             }
-            (ExecutionVerification::Confirmed { success, error, .. }, Some(rec)) => {
+            (
+                ExecutionVerification::Confirmed {
+                    success,
+                    error,
+                    commitment,
+                    ..
+                },
+                Some(rec),
+            ) => {
                 if !rec.approved {
+                    // Any sighting, at any commitment, from either source:
+                    // a blocked transaction in a block is the gate bypassed.
                     ExecutionReconciliation::BlockedButExecuted
+                } else if let Some(why) = &chain_inconsistent {
+                    ExecutionReconciliation::Unavailable {
+                        reason: format!("the RPC contradicts itself about this signature: {why}"),
+                    }
+                } else if witness_dissents {
+                    ExecutionReconciliation::Unavailable {
+                        reason: format!(
+                            "the inclusion sources disagree: {}",
+                            inclusion_witness
+                                .as_ref()
+                                .map(|w| w.detail.clone())
+                                .unwrap_or_default()
+                        ),
+                    }
+                } else if !commitment.is_cluster_backed() {
+                    ExecutionReconciliation::Unavailable {
+                        reason: format!(
+                            "the RPC reports {signature} at {commitment} commitment only — one node's view, which the cluster may still discard; re-check once confirmed"
+                        ),
+                    }
                 } else if *success {
                     ExecutionReconciliation::ApprovedAndExecuted
                 } else {
@@ -2053,6 +2350,9 @@ impl GraphiteCore {
             chain_transaction_sha256,
             caller_keys_disagree,
             chain_bytes_rejected,
+            chain_bytes_unavailable,
+            chain_inconsistent,
+            inclusion_witness,
         }
     }
 
@@ -6602,7 +6902,7 @@ mod tests {
         use std::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
-        let body = "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":12345,\"confirmations\":0,\"err\":null,\"status\":{\"Ok\":null}}]},\"id\":1}";
+        let body = "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"slot\":2},\"value\":[{\"slot\":12345,\"confirmations\":0,\"confirmationStatus\":\"confirmed\",\"err\":null,\"status\":{\"Ok\":null}}]},\"id\":1}";
         let handle = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut buf = [0u8; 4096];
@@ -6633,7 +6933,12 @@ mod tests {
                 slot,
                 success,
                 error,
+                commitment,
             } => {
+                assert_eq!(
+                    commitment,
+                    crate::rpc_client::InclusionCommitment::Confirmed
+                );
                 assert_eq!(slot, 12345);
                 assert!(success);
                 assert!(error.is_none());

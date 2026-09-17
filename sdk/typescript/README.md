@@ -64,6 +64,17 @@ audit_trail_id })` runs L8 after submission and returns the reconciliation with
 `chain_bytes_rejected` (Round 11) is set when the RPC returned bytes for the
 signature that are not bound to it — nothing was attributed and your keys were
 not consulted in their place, so treat it as "the RPC is wrong", not as a
-verdict. The
+verdict. Round 12 adds `chain_bytes_unavailable` (the status said "included"
+but no bytes came back, so the attribution is by your keys, not the chain's),
+`chain_inconsistent` (the RPC's two answers about the signature disagree; no
+positive conclusion), and `inclusion_witness` (a second RPC's account when the
+server has one; `agrees: false` withholds `ApprovedAndExecuted`). `chain_status`
+now carries `commitment`; a `processed`-only status is `Unavailable` for an
+approved transaction and still `BlockedButExecuted` for a blocked one.
+`recordLifecycleEvent` returns `sequence_anomalies` — a retried `submission`
+comes back as `duplicate: …` and is harmless; `signature conflict: …` means a
+different signature is already on record for that transaction. From
+`submission` onward, `transaction_signature` is required and must be a real
+signature. The
 reference sequence is `executeBoundTransaction` in
 `integrations/solana-agent-kit/execution-lifecycle.ts`.

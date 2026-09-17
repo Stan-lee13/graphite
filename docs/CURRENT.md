@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-09-15, after Round 11 (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-09-16, after Round 12 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -41,6 +41,15 @@ L8 execution attribution:        joined on the chain's bytes (signature slots ze
                                  under the fee payer's key — else refused with nothing attributed (Round 11);
                                  caller keys audit_trail_id → transaction_sha256 → content_hash, most exact first,
                                  cross-checked, never falling back (Round 10)
+L8 inclusion evidence:           commitment read (processed proves nothing); an RPC contradicting itself or answering
+                                 malformed draws no conclusion; redirects refused; optional independent witness
+                                 (GRAPHITE_RPC_WITNESS_URL) must agree before an approval is reported executed;
+                                 a blocked transaction sighted by either endpoint alarms (Round 12)
+Parser vs the runtime:           never looser than agave's decoder + sanitize, proven in CI over the corpus and
+                                 600,000 generated frames (tools/runtime-oracle, Round 12)
+Lifecycle sequence:              every report checked against the rows on record — duplicate / out of order /
+                                 unpreceded / signature conflict — recorded, never refused (Round 12)
+One server per data directory:   enforced by an exclusive lock on graphite.lock (Round 12)
 Lifecycle on the trail:          the bridge records signing before submission and submission after it, and runs
                                  L8 at the end, with the exact keys; every lifecycle row carries verdict_on_record
                                  and the key that resolved it
@@ -76,7 +85,15 @@ transaction under the stated threat model, and no external party has yet tried.
 | L8 reconciliation sees the whole trail | `AuditLog::find_verification` by `audit_trail_id` / `transaction_sha256` / `content_hash`: indexed active file, archives newest-first | `durable::tests::read_path_covers_every_archive_after_rotation`, `last_verification_index_tracks_rotation_and_reopen`, `tests/round10_attribution.rs` |
 | An executed blocked transaction is attributed to ITS verification, not to a same-instruction approval | `audit_execution`: `getTransaction` bytes → `bound_artifact_sha256` → digest → `find_verification(TransactionSha256)`; caller keys most-exact-first with no fallback; `caller_keys_disagree` | `tests/round10_attribution.rs` (approved A newest, blocked B executed → `BlockedButExecuted`, attribution `chain`) |
 | The chain's bytes are the signature's, not merely the RPC's | `tx_artifact::bound_artifact_sha256`: first slot equals the signature; ed25519 `verify_strict` over the message under the fee payer's key; rejected bytes → `Unavailable`, `chain_bytes_rejected`, no fallback to caller keys | `tests/round10_attribution.rs::{chain_bytes_are_accepted_only_when_bound_to_the_signature, an_rpc_that_substitutes_bytes_cannot_attribute_the_execution}`; `tests/l8_live_mainnet.rs::l8_real_chain_bytes_are_bound_to_their_signature` (public devnet, ignored by default) |
-| A frame the runtime would not sanitize is not a transaction | `parse_transaction`: `SignatureCountMismatch`, `ImpossibleHeader` (no writable signer) | `tests/sak_bridge_corpus.rs` (`slots` mutations; web3.js agrees), `tests/round10_attribution.rs` |
+| A frame the runtime would not sanitize is not a transaction | `parse_transaction`: `SignatureCountMismatch`, `ImpossibleHeader` (no writable signer), `ProgramIsFeePayer`, `AccountIndexOutOfRange` (legacy and v0), `EmptyLookup`, `TooManyAccounts` | `tests/round12_runtime_sanitize.rs`; `tests/sak_bridge_corpus.rs`; **`tools/runtime-oracle`** against agave's decoder + `sanitize` over the corpus and 600,000 generated frames, in CI (job `runtime-oracle`) |
+| L8 draws no positive conclusion from one node's view, a self-contradicting RPC, or a malformed status | `rpc_client::InclusionCommitment`; `get_signature_status` strict; `ChainTransaction` slot/outcome held against the status → `chain_inconsistent` | `tests/round12_rpc_equivocation.rs::{a_processed_status_is_not_a_positive_conclusion, an_rpc_that_contradicts_itself_gets_no_positive_conclusion, a_malformed_status_is_never_a_conclusion, a_status_without_bytes_is_disclosed_as_caller_attributed}` |
+| Redirects from an RPC are never followed | `SolanaRpcClient::new` → `Policy::none()` | `tests/round12_rpc_equivocation.rs::a_redirecting_rpc_is_not_followed` (the target records zero hits) |
+| An approval is reported executed only when two independent RPCs agree; a blocked transaction seen by either alarms | `GraphiteCore::attach_inclusion_witness`, `compare_witness`, `ExecutionAudit.inclusion_witness` | `tests/round12_rpc_equivocation.rs::{a_positive_conclusion_needs_the_witness_to_agree, either_endpoint_seeing_a_blocked_transaction_alarms, a_witness_that_is_the_primary_is_refused}`; the probe with a mock witness |
+| The RPC endpoint is validated before the process claims to simulate | `rpc_client::validate_endpoint` at server startup and in the CLI | `tests/round12_rpc_equivocation.rs::endpoints_are_validated_before_a_client_exists`; the probe's startup refusals |
+| One server per data directory | `server::lock_data_dir` (`graphite.lock`, exclusive advisory lock) | `server::tests::a_data_directory_is_held_by_one_process`; the probe (a second server refuses while the first runs) |
+| A lifecycle report is checked against the rows on record for its transaction | `AuditLog::lifecycle_history` (per-transaction index), `lifecycle_sequence_anomalies` | `server::tests::{lifecycle_reports_in_order_carry_no_anomaly_and_a_retry_is_a_duplicate, lifecycle_reports_out_of_sequence_are_named_and_a_second_signature_is_loud, graphite_observed_rows_are_marked_and_are_not_duplicates_of_reports, submission_onward_requires_a_real_signature}`; `durable::tests::lifecycle_history_*` |
+| An L8 row attributed by `content_hash` claims no exact identity | `execution_handler` writes exact keys only for exact attributions | `server::tests::an_l8_row_attributed_by_content_hash_carries_no_exact_keys` |
+| The bridge's submission report survives a lost answer | `executeBoundTransaction` retries (3 × doubling backoff); a repeat is a `duplicate` on the trail | `execution-lifecycle.test.ts` (fails once → recorded on the second try; lost answer → duplicate, counted as recorded) |
 | The request path does not deep-copy state | `AppState.core: Arc<GraphiteCore>`, `registry_engine: Arc<…>` | `server::request_path_cost::{app_state_clone_is_a_reference_count_not_a_deep_copy, health_answers_in_milliseconds_on_loopback}` |
 | A refusal is readable, never a reset | `refuse_after_draining` on 401 / 429 / 503 | `server::request_path_cost::early_refusals_drain_the_body_so_the_status_is_readable` |
 | The API key is not guessable by length | `server::MIN_API_KEY_CHARS` = 32 in `auth_posture` | `server::tests::auth_is_required_unless_dev_mode_is_named_and_the_bind_is_loopback` |
@@ -107,10 +124,25 @@ transaction under the stated threat model, and no external party has yet tried.
 - **Archive lookups are scans.** The L8 / lifecycle join is indexed for the
   active file; a key older than the last rotation costs one pass over each
   archive.
-- **L8 trusts the RPC for inclusion, not for bytes.** `getSignatureStatuses`
-  can lie about whether a signature landed; the bytes behind it can no longer
-  be substituted without the fee payer's key. A second RPC or a light-client
-  proof would close the inclusion gap; neither is built.
+- **L8's inclusion evidence is as independent as the RPCs it is given.** A
+  `processed` status, a self-contradicting RPC or a malformed status draws no
+  positive conclusion; with `GRAPHITE_RPC_WITNESS_URL` two independent
+  endpoints must agree before an approval is reported executed, and either
+  endpoint's sighting of a blocked transaction alarms (Round 12). Two RPCs
+  behind one provider are two views of one answer; a light-client inclusion
+  proof is not built. Without a witness the reconciliation says
+  `inclusion_witness: null`.
+- **The runtime oracle covers what it generates.** Agave's `wincode` decode
+  path is not a second oracle; the generator is seeded and structure-aware,
+  not coverage-guided.
+- **Version-1 transactions are refused, not understood.** They are live on
+  devnet (2026-09). The parser refuses them by name, L8 reports the RPC's
+  refusal as `Unavailable`, the live corpus skips them; nothing fails open,
+  and nothing v1 can be verified until the format is implemented.
+- **The lifecycle-sequence check sees the active file and the newest
+  archive.** A lifecycle across two rotations is checked against what it saw.
+- **One server per data directory, enforced by a lock.** Two servers on one
+  directory would each see half a trail; the second now refuses to start.
 - **A body over the 1 MiB limit may be answered with a reset** rather than a
   readable 413; refusals below the limit are drained and readable.
 - **Without the chain's bytes, L8 is only as exact as the caller's keys.** An
@@ -138,23 +170,26 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
 | Branch protection on `main` (required CI, no force-push) | Absent; conflicts with the standing push-to-main workflow | Owner |
+| **Version-1 transaction format** — live on devnet since 2026-09 (Round 12 found every sampled block carrying some); refused by name today; must be parsed, bound and simulated before it reaches mainnet or every v1-building agent is refused | **Open — time-sensitive** | Engineering |
 | Token-2022 `TransferFee` modelling | Open | Engineering |
 | `content_hash` → a name that says it is an instruction-level identifier | Open (it is the 64-bit AuditBind key, not the authoritative binding) | Engineering |
-| Runtime-decoder oracle over the mutation corpus; continuous fuzzing of `parse_transaction` | Open | Engineering |
+| Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | — |
+| Coverage-guided fuzzing of `parse_transaction`; a `wincode` second oracle; the V1 message format | Open | Engineering |
 | Persisted archive index for the L8 / lifecycle join | Open | Engineering |
 | Shared rate limiter for a horizontally deployed Graphite (single-instance today; 452 ns/check at one million buckets) | Open | Engineering |
-| Second-source inclusion check for L8 (independent RPC or light-client proof) | Open | Engineering |
+| Second-source inclusion check for L8 | Done for an independent RPC (Round 12: `GRAPHITE_RPC_WITNESS_URL`); light-client proof open | Engineering |
 
 ## Numbers (as of this page's commit)
 
-1,460 Rust tests passing in the default build (11 network-dependent
-ignored, all of which were run against public devnet for Round 11); 305 in
-the featureless library build; 1,293 in the cli-only build; 97 TypeScript
+1,486 Rust tests passing in the default build (11 network-dependent
+ignored, all of which were run against public devnet for Round 12); 308 in
+the featureless library build; 1,304 in the cli-only build; 99 TypeScript
 tests in the SAK integration; 17 in the TypeScript SDK (13 hermetic, 4 against a
-live server — run in the Round 11 probe and in CI's container job); 20 Go; 27
-Python; 73 live-probe checks of the release binary. Clippy `-D warnings` and
-fmt clean on rustc 1.98.1. Reproduced from `cargo test` / `npm test` output in
-the Round 11 report, not estimated. CI for the
+live server — run in the Round 12 probe and in CI's container job); 20 Go; 27
+Python; 110 live-probe checks of the release binary; the runtime oracle over
+the corpus, 1,659 mutations and 600,000 generated frames. Clippy `-D warnings`
+and fmt clean on rustc 1.98.1. Reproduced from `cargo test` / `npm test` output
+in the Round 12 report, not estimated. CI for the
 commit is the GitHub Actions run for that SHA — the runs endpoint, not the
 combined-status endpoint.
 
@@ -162,6 +197,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-09-16 | [round12-runtime-truth-2026-09-16.md](round12-runtime-truth-2026-09-16.md) | The runtime oracle (parser accepted five frame classes the runtime refuses, R12-01); L8 commitment, self-consistency, malformed statuses, redirects, the inclusion witness (R12-02…05); one server per data directory (R12-06); RPC URL validation (R12-07); lifecycle sequence findings and signature shape (R12-08…10); the bridge's submission-report retry (R12-11) |
 | 2026-09-15 | [round11-full-run-2026-09-15.md](round11-full-run-2026-09-15.md) | The full run: L8 chain bytes unbound to the signature (R11-01, P1) fixed; request path deep-copying state (100 ms → 1 ms); refusals reset the connection; parser signer-count rule; 32-character keys; L8 metrics; SDK live conformance in CI |
 | 2026-09-13 | [round10-exact-attribution-2026-09-13.md](round10-exact-attribution-2026-09-13.md) | L8 and lifecycle joined on `content_hash` (R10-01, P1): now joined on the chain's bytes / exact keys; supply-chain pins; decompression and limiter measured |
 | 2026-09-12 | [round9-next-surface-2026-09-12.md](round9-next-surface-2026-09-12.md) | Artifact without data bound uncompared (R9-01, P1); unparseable artifact fails L2; residual codes and the bridge's residual policy; packet-size bound; lifecycle bounds, `verdict_on_record`, the bridge's lifecycle reporting; CI/image pinning |

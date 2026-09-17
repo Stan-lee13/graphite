@@ -83,6 +83,15 @@ pub struct AuditLog {
     /// a 64 MB file, once per `/verify/execution` and per `/audit/event`,
     /// both caller-driven; 0.5 ms indexed).
     active_index: Arc<Mutex<HashMap<String, u64>>>,
+    /// `lc:id:<audit_trail_id>` / `lc:tx:<transaction_sha256>` /
+    /// `lc:sig:<signature>` → byte offsets of every lifecycle row under that
+    /// key in the ACTIVE file, in file order, at most
+    /// `MAX_LIFECYCLE_HISTORY` each. What lets `/audit/event` see the rows
+    /// already on record for the transaction it is about — a submission
+    /// already reported, a different signature already attached — without
+    /// scanning the file (Round 12). Built at open, maintained on append,
+    /// cleared on rotation like `active_index`.
+    lifecycle_index: Arc<Mutex<HashMap<String, Vec<u64>>>>,
     /// Rotations that could not happen. The record is still appended — an
     /// oversized log is strictly better than a dropped audit trail — but the
     /// failure used to be invisible, and it is retried on every subsequent
@@ -505,6 +514,88 @@ pub struct LifecycleEventRecord {
     /// Free-form detail (e.g. a confirmation slot, or a failure reason).
     #[serde(default)]
     pub detail: Option<String>,
+    /// True on rows Graphite wrote from its own observation — today the L8
+    /// reconciliation row — as opposed to a caller's attestation (Round 12).
+    /// Rows written before the field existed were all caller-reported.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub observed_by_graphite: bool,
+    /// How this row sits against the rows already on record for the same
+    /// transaction, computed by Graphite when it was written (Round 12): a
+    /// duplicate of an earlier report, an event out of the signing →
+    /// submission → confirmation → finalization order, an event whose
+    /// predecessor was never reported, or a signature that differs from
+    /// the one already attached to this transaction. Recorded, never
+    /// refused — the trail keeps what was reported — and empty when the
+    /// row is in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sequence_anomalies: Vec<String>,
+}
+
+/// The most lifecycle rows kept per key in the index and consulted for a
+/// sequence check. A transaction has a handful; a caller reporting hundreds
+/// for one key is itself the anomaly, and the memory it could otherwise
+/// size is bounded here.
+pub const MAX_LIFECYCLE_HISTORY: usize = 64;
+
+/// The keys by which a transaction's lifecycle rows are gathered: any one
+/// of them matching a row is a match, because a caller does not always hold
+/// all three.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LifecycleKey<'a> {
+    pub audit_trail_id: Option<&'a str>,
+    pub transaction_sha256: Option<&'a str>,
+    pub transaction_signature: Option<&'a str>,
+}
+
+impl LifecycleKey<'_> {
+    fn index_keys(&self) -> Vec<String> {
+        let mut keys = Vec::new();
+        if let Some(id) = self.audit_trail_id.map(str::trim).filter(|v| !v.is_empty()) {
+            keys.push(format!("lc:id:{id}"));
+        }
+        if let Some(tx) = self
+            .transaction_sha256
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            keys.push(format!("lc:tx:{tx}"));
+        }
+        if let Some(sig) = self
+            .transaction_signature
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            keys.push(format!("lc:sig:{sig}"));
+        }
+        keys
+    }
+    fn is_empty(&self) -> bool {
+        self.index_keys().is_empty()
+    }
+    fn matches(&self, r: &LifecycleEventRecord) -> bool {
+        let same = |a: Option<&str>, b: Option<&str>| match (a, b) {
+            (Some(a), Some(b)) => !a.trim().is_empty() && a.trim() == b.trim(),
+            _ => false,
+        };
+        same(self.audit_trail_id, r.audit_trail_id.as_deref())
+            || same(self.transaction_sha256, r.transaction_sha256.as_deref())
+            || same(
+                self.transaction_signature,
+                r.transaction_signature.as_deref(),
+            )
+    }
+}
+
+impl LifecycleEventRecord {
+    /// The keys this row is indexed under.
+    fn lifecycle_keys(&self) -> Vec<String> {
+        LifecycleKey {
+            audit_trail_id: self.audit_trail_id.as_deref(),
+            transaction_sha256: self.transaction_sha256.as_deref(),
+            transaction_signature: self.transaction_signature.as_deref(),
+        }
+        .index_keys()
+    }
 }
 
 /// An audit record for a verification that FAILED before producing a result
@@ -570,6 +661,13 @@ impl LifecycleEventRecord {
             transaction_signature: self.transaction_signature.as_deref().map(bound_field),
             reported_by: self.reported_by.as_deref().map(bound_field),
             detail: self.detail.as_deref().map(bound_detail),
+            observed_by_graphite: self.observed_by_graphite,
+            sequence_anomalies: self
+                .sequence_anomalies
+                .iter()
+                .take(8)
+                .map(|a| bound_detail(a))
+                .collect(),
         }
     }
 }
@@ -599,13 +697,32 @@ impl AuditErrorRecord {
     }
 }
 
+/// A lifecycle row, as distinguished from a verification row sharing the
+/// same file: it deserializes as one AND its event is not the verification
+/// stage (a verification record also carries `event_type`, `timestamp` and
+/// `content_hash`, so it would otherwise read as a lifecycle row with every
+/// other field defaulted).
+fn lifecycle_row(line: &[u8]) -> Option<LifecycleEventRecord> {
+    serde_json::from_slice::<LifecycleEventRecord>(line)
+        .ok()
+        .filter(|r| r.event_type != LifecycleEvent::Verification)
+}
+
+fn push_lifecycle_offset(index: &mut HashMap<String, Vec<u64>>, key: String, offset: u64) {
+    let entry = index.entry(key).or_default();
+    if entry.len() < MAX_LIFECYCLE_HISTORY {
+        entry.push(offset);
+    }
+}
+
 /// One pass over the active file: the offset of the last verification line
-/// per `content_hash`. A torn final line, an error record and a lifecycle
-/// event are not verification records and are skipped.
-fn build_active_index(path: &Path) -> HashMap<String, u64> {
+/// per key, and the offsets of every lifecycle row per transaction key. A
+/// torn final line and an error record are neither and are skipped.
+fn build_indexes(path: &Path) -> (HashMap<String, u64>, HashMap<String, Vec<u64>>) {
     let mut index = HashMap::new();
+    let mut lifecycle = HashMap::new();
     let Ok(file) = File::open(path) else {
-        return index;
+        return (index, lifecycle);
     };
     let mut reader = BufReader::new(file);
     let mut offset: u64 = 0;
@@ -626,10 +743,14 @@ fn build_active_index(path: &Path) -> HashMap<String, u64> {
             for k in index_keys(&r) {
                 index.insert(k, offset);
             }
+        } else if let Some(r) = lifecycle_row(&line) {
+            for k in r.lifecycle_keys() {
+                push_lifecycle_offset(&mut lifecycle, k, offset);
+            }
         }
         offset += n as u64;
     }
-    index
+    (index, lifecycle)
 }
 
 impl AuditLog {
@@ -648,7 +769,7 @@ impl AuditLog {
     ) -> std::io::Result<Self> {
         let path = path.as_ref().to_path_buf();
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
-        let active_index = build_active_index(&path);
+        let (active_index, lifecycle_index) = build_indexes(&path);
         Ok(Self {
             file: std::sync::Arc::new(Mutex::new(file)),
             path: Arc::new(path),
@@ -661,6 +782,7 @@ impl AuditLog {
             rotations_failed: Arc::new(AtomicU64::new(0)),
             archive_stats: Arc::new(Mutex::new(HashMap::new())),
             active_index: Arc::new(Mutex::new(active_index)),
+            lifecycle_index: Arc::new(Mutex::new(lifecycle_index)),
         })
     }
 
@@ -874,6 +996,10 @@ impl AuditLog {
                 // The active file is empty now; every offset the index
                 // holds points into the archive.
                 match self.active_index.lock() {
+                    Ok(mut g) => g.clear(),
+                    Err(poisoned) => poisoned.into_inner().clear(),
+                }
+                match self.lifecycle_index.lock() {
                     Ok(mut g) => g.clear(),
                     Err(poisoned) => poisoned.into_inner().clear(),
                 }
@@ -1148,7 +1274,95 @@ impl AuditLog {
     /// the entry-point identifiers; this record type was added after it and
     /// was not covered.
     pub fn append_lifecycle(&self, record: &LifecycleEventRecord) -> bool {
-        self.append_line(&record.bounded())
+        let bounded = record.bounded();
+        let keys = bounded.lifecycle_keys();
+        self.append_line_with(&bounded, &[], &keys)
+    }
+
+    /// Every lifecycle row on record for a transaction, in file order:
+    /// the active file by index, and — when the active file holds none —
+    /// the newest archive, for a lifecycle that straddled a rotation.
+    ///
+    /// Bounded at `MAX_LIFECYCLE_HISTORY` rows. Older archives are not
+    /// consulted: a transaction's lifecycle spans seconds to minutes and an
+    /// archive spans 64 MB of records, so a lifecycle across two rotations
+    /// is not one this lookup claims to reconstruct — a documented limit,
+    /// not a silent one (Round 12).
+    pub fn lifecycle_history(&self, key: LifecycleKey<'_>) -> Vec<LifecycleEventRecord> {
+        if key.is_empty() {
+            return Vec::new();
+        }
+        let (rows, newest_archive) = {
+            let _guard = match self.file.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let mut offsets: Vec<u64> = {
+                let index = match self.lifecycle_index.lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                key.index_keys()
+                    .iter()
+                    .filter_map(|k| index.get(k))
+                    .flatten()
+                    .copied()
+                    .collect()
+            };
+            offsets.sort_unstable();
+            offsets.dedup();
+            offsets.truncate(MAX_LIFECYCLE_HISTORY);
+            let mut rows = Vec::with_capacity(offsets.len());
+            if !offsets.is_empty() {
+                if let Ok(mut file) = File::open(self.path.as_ref()) {
+                    use std::io::Seek;
+                    for offset in offsets {
+                        let mut line = String::new();
+                        if file.seek(std::io::SeekFrom::Start(offset)).is_err() {
+                            continue;
+                        }
+                        let mut reader = BufReader::new(&mut file);
+                        if reader.read_line(&mut line).is_err() {
+                            continue;
+                        }
+                        match lifecycle_row(line.trim_end().as_bytes()) {
+                            Some(r) if key.matches(&r) => rows.push(r),
+                            _ => tracing::error!(
+                                "audit lifecycle index: offset {offset} did not read back as a row for its key"
+                            ),
+                        }
+                    }
+                }
+            }
+            (rows, self.archives().last().cloned())
+        };
+        if !rows.is_empty() {
+            return rows;
+        }
+        let Some(archive) = newest_archive else {
+            return rows;
+        };
+        let Ok(file) = File::open(&archive) else {
+            return rows;
+        };
+        let mut found = Vec::new();
+        let mut reader = BufReader::new(file);
+        let mut line: Vec<u8> = Vec::new();
+        loop {
+            line.clear();
+            let Ok(n) = reader.read_until(b'\n', &mut line) else {
+                break;
+            };
+            if n == 0 || found.len() >= MAX_LIFECYCLE_HISTORY {
+                break;
+            }
+            if let Some(r) = lifecycle_row(&line) {
+                if key.matches(&r) {
+                    found.push(r);
+                }
+            }
+        }
+        found
     }
 
     /// Returns true when the line is written AND synced to the storage device.
@@ -1165,7 +1379,7 @@ impl AuditLog {
     /// audit record; `audit_append_syncs_the_device` measures it so the
     /// number in the report is observed, not assumed.
     fn append_line<T: serde::Serialize>(&self, record: &T) -> bool {
-        self.append_line_indexed(record, &[])
+        self.append_line_with(record, &[], &[])
     }
 
     /// `append_line`, recording every entry of `index_keys` → this line's
@@ -1173,6 +1387,17 @@ impl AuditLog {
     /// file's length before the write, read under the same lock the write
     /// holds, so no other writer can interleave between the two.
     fn append_line_indexed<T: serde::Serialize>(&self, record: &T, index_keys: &[String]) -> bool {
+        self.append_line_with(record, index_keys, &[])
+    }
+
+    /// `append_line_indexed` with the lifecycle keys this line is indexed
+    /// under as well (Round 12).
+    fn append_line_with<T: serde::Serialize>(
+        &self,
+        record: &T,
+        index_keys: &[String],
+        lifecycle_keys: &[String],
+    ) -> bool {
         let line = match serde_json::to_string(record) {
             Ok(l) => l,
             Err(e) => {
@@ -1186,7 +1411,7 @@ impl AuditLog {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let offset = if index_keys.is_empty() {
+        let offset = if index_keys.is_empty() && lifecycle_keys.is_empty() {
             None
         } else {
             file.metadata().ok().map(|m| m.len())
@@ -1209,6 +1434,16 @@ impl AuditLog {
             };
             for key in index_keys {
                 index.insert(key.clone(), offset);
+            }
+            drop(index);
+            if !lifecycle_keys.is_empty() {
+                let mut lifecycle = match self.lifecycle_index.lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                for key in lifecycle_keys {
+                    push_lifecycle_offset(&mut lifecycle, key.clone(), offset);
+                }
             }
         }
         // Rotate AFTER a successful append, while still holding the lock, so
@@ -2035,6 +2270,8 @@ mod tests {
             transaction_signature: Some(big.clone()),
             reported_by: Some(big.clone()),
             detail: Some(big.clone()),
+            observed_by_graphite: false,
+            sequence_anomalies: vec![big.clone()],
         }));
         let on_disk = std::fs::metadata(&path).unwrap().len();
         assert!(
@@ -2068,6 +2305,8 @@ mod tests {
             transaction_signature: None,
             reported_by: None,
             detail: Some(long_detail.clone()),
+            observed_by_graphite: true,
+            sequence_anomalies: Vec::new(),
         }));
         let text = std::fs::read_to_string(&path).unwrap();
         let last = text.lines().last().unwrap();
@@ -2301,6 +2540,131 @@ mod tests {
             "audit append: {per_append:?}; bare write+sync_data: {per_sync:?}; bare write+flush: {per_flush:?} ({n} each, {})",
             std::env::consts::OS
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── Round 12: the lifecycle index ───────────────────────────────────────
+
+    fn lifecycle(event: LifecycleEvent, id: &str, signature: Option<&str>) -> LifecycleEventRecord {
+        LifecycleEventRecord {
+            event_type: event,
+            timestamp: now_utc_rfc3339(),
+            content_hash: "0123456789abcdef".to_string(),
+            verdict_on_record: Some(VerdictOnRecord::Approved),
+            verdict_on_record_key: Some(VerificationKeyKind::AuditTrailId),
+            transaction_sha256: None,
+            audit_trail_id: Some(id.to_string()),
+            transaction_signature: signature.map(String::from),
+            reported_by: Some("bridge".to_string()),
+            detail: None,
+            observed_by_graphite: false,
+            sequence_anomalies: Vec::new(),
+        }
+    }
+
+    /// Rows are found by any of the three keys, in file order, from the
+    /// index maintained on append and rebuilt at open.
+    #[test]
+    fn lifecycle_history_is_indexed_on_append_and_rebuilt_at_open() {
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-lc-index-{}-{}",
+            std::process::id(),
+            now_utc_rfc3339().replace([':', '.'], "-")
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("audit.jsonl");
+        let log = AuditLog::open(&path).unwrap();
+        assert!(log.append_lifecycle(&lifecycle(LifecycleEvent::Signing, "gr-1", None)));
+        assert!(log.append_lifecycle(&lifecycle(
+            LifecycleEvent::Submission,
+            "gr-1",
+            Some("sigone")
+        )));
+        assert!(log.append_lifecycle(&lifecycle(LifecycleEvent::Signing, "gr-2", None)));
+        let by_id = log.lifecycle_history(LifecycleKey {
+            audit_trail_id: Some("gr-1"),
+            ..Default::default()
+        });
+        assert_eq!(by_id.len(), 2);
+        assert_eq!(by_id[0].event_type, LifecycleEvent::Signing);
+        assert_eq!(by_id[1].event_type, LifecycleEvent::Submission);
+        let by_sig = log.lifecycle_history(LifecycleKey {
+            transaction_signature: Some("sigone"),
+            ..Default::default()
+        });
+        assert_eq!(by_sig.len(), 1);
+        assert!(log
+            .lifecycle_history(LifecycleKey {
+                audit_trail_id: Some("gr-9"),
+                ..Default::default()
+            })
+            .is_empty());
+        assert!(log.lifecycle_history(LifecycleKey::default()).is_empty());
+
+        // A fresh handle rebuilds the index from the file.
+        drop(log);
+        let reopened = AuditLog::open(&path).unwrap();
+        let by_id = reopened.lifecycle_history(LifecycleKey {
+            audit_trail_id: Some("gr-1"),
+            ..Default::default()
+        });
+        assert_eq!(by_id.len(), 2);
+        // A verification row under the same id is not a lifecycle row.
+        assert!(by_id
+            .iter()
+            .all(|r| r.event_type != LifecycleEvent::Verification));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A lifecycle that straddles a rotation is still found (from the newest
+    /// archive), and the per-key history is bounded.
+    #[test]
+    fn lifecycle_history_survives_one_rotation_and_is_bounded() {
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-lc-rot-{}-{}",
+            std::process::id(),
+            now_utc_rfc3339().replace([':', '.'], "-")
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("audit.jsonl");
+        // Rotate at 4 KB: a handful of rows.
+        let log = AuditLog::open_with_rotation(&path, 4096, 0).unwrap();
+        assert!(log.append_lifecycle(&lifecycle(LifecycleEvent::Signing, "gr-r", None)));
+        assert!(log.append_lifecycle(&lifecycle(LifecycleEvent::Submission, "gr-r", Some("sigr"))));
+        // Push the file over the threshold with unrelated rows: exactly one
+        // rotation, which is the case this lookup covers.
+        let mut i = 0;
+        while log.health().rotations_ok == 0 {
+            assert!(log.append_lifecycle(&lifecycle(
+                LifecycleEvent::Signing,
+                &format!("gr-filler-{i}"),
+                None
+            )));
+            i += 1;
+            assert!(i < 100, "the file never rotated");
+        }
+        assert_eq!(log.health().rotations_ok, 1, "{:?}", log.health());
+        let history = log.lifecycle_history(LifecycleKey {
+            audit_trail_id: Some("gr-r"),
+            ..Default::default()
+        });
+        assert_eq!(history.len(), 2, "found in the newest archive");
+        assert_eq!(history[1].transaction_signature.as_deref(), Some("sigr"));
+
+        // Bounded: a key with more rows than the cap reports the cap.
+        let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+        for _ in 0..(MAX_LIFECYCLE_HISTORY + 20) {
+            assert!(log.append_lifecycle(&lifecycle(
+                LifecycleEvent::Confirmation,
+                "gr-many",
+                Some("sigmany")
+            )));
+        }
+        let history = log.lifecycle_history(LifecycleKey {
+            audit_trail_id: Some("gr-many"),
+            ..Default::default()
+        });
+        assert_eq!(history.len(), MAX_LIFECYCLE_HISTORY);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

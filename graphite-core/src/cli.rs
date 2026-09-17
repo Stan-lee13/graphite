@@ -171,6 +171,7 @@ pub enum CliCommand {
         transaction_sha256: Option<String>,
         audit_trail_id: Option<String>,
         rpc_url: Option<String>,
+        witness_url: Option<String>,
     },
     /// Seed operator-asserted evidence or a simulation baseline into the
     /// durable semantic graph.
@@ -539,6 +540,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             transaction_sha256,
             audit_trail_id,
             rpc_url,
+            witness_url,
         } => run_execution(
             data_dir,
             &signature,
@@ -548,6 +550,7 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
                 audit_trail_id: audit_trail_id.as_deref(),
             },
             rpc_url,
+            witness_url,
         ),
         CliCommand::ManifestVerify { path } => run_manifest_verify(&path),
         #[cfg(feature = "rpc")]
@@ -1230,6 +1233,7 @@ fn run_execution(
     signature: &str,
     keys: crate::verification::ExecutionKeys<'_>,
     rpc_url: Option<String>,
+    witness_url: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::verification::ExecutionReconciliation;
 
@@ -1237,6 +1241,8 @@ fn run_execution(
         .or_else(|| std::env::var("GRAPHITE_RPC_URL").ok())
         .filter(|u| !u.trim().is_empty())
         .ok_or("no RPC endpoint: pass --rpc-url or set GRAPHITE_RPC_URL")?;
+    // Validated before use, and reported without the URL (Round 12).
+    crate::rpc_client::validate_endpoint(&endpoint).map_err(|e| format!("--rpc-url: {e}"))?;
 
     let dir = data_dir_path(data_dir);
     let mut core = GraphiteCore::with_data_dir(dir.clone());
@@ -1246,6 +1252,20 @@ fn run_execution(
             ..Default::default()
         },
     ));
+    if let Some(witness) = witness_url
+        .or_else(|| std::env::var("GRAPHITE_RPC_WITNESS_URL").ok())
+        .filter(|u| !u.trim().is_empty())
+    {
+        crate::rpc_client::validate_endpoint(&witness)
+            .map_err(|e| format!("--witness-url: {e}"))?;
+        core.attach_inclusion_witness(crate::rpc_client::SolanaRpcClient::new(
+            crate::rpc_client::RpcConfig {
+                endpoint: witness,
+                ..Default::default()
+            },
+        ))
+        .map_err(|e| format!("--witness-url: {e}"))?;
+    }
 
     // Read the same audit trail the server writes, so the CLI reconciles
     // against the real record rather than a second source of truth.
@@ -1273,6 +1293,17 @@ fn run_execution(
     }
     if let Some(why) = &result.chain_bytes_rejected {
         println!("REJECTED    {why}");
+    }
+    if let Some(why) = &result.chain_bytes_unavailable {
+        println!("NOTE        {why}");
+    }
+    if let Some(why) = &result.chain_inconsistent {
+        println!("INCONSISTENT {why}");
+    }
+    match &result.inclusion_witness {
+        Some(w) if w.agrees => println!("witness     agrees: {}", w.detail),
+        Some(w) => println!("WITNESS     DISAGREES: {}", w.detail),
+        None => println!("witness     none attached (one RPC is the only source for inclusion)"),
     }
     println!("verdict     {:?}", result.reconciliation);
     println!();
