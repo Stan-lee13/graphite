@@ -324,5 +324,5 @@ and restores the file from a copy (never `git checkout`, after Round 11).
 
 ## Evidence
 
-CI for this commit: __CI__. "Certified" here means exactly that and nothing
+CI for this commit: GitHub Actions run 35226624158 for `97c1250` — all eight jobs (Rust core, CVE audit, Parser vs the Solana runtime decoder, Container incl. the SDK live-conformance step, TypeScript SDK + SAK, Go, Dashboard, Python) completed with `success`. "Certified" here means exactly that and nothing
 more.
