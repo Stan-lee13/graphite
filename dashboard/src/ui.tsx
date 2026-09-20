@@ -5,7 +5,8 @@
 // and copied. Inconsistency between screens is what makes an interface feel
 // assembled rather than designed.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { AlertTriangle, Check, Copy, Inbox, ServerCrash } from "lucide-react";
 
 /** Ordered low → high. Index is the tier's rank, which drives the scale. */
 const TIER_ORDER = [
@@ -54,13 +55,9 @@ export function TierBadge({ tier }: { tier: string }) {
   );
 }
 
-export function State({
-  kind,
-  children,
-}: {
-  kind: "pass" | "block" | "warn" | "idle";
-  children: React.ReactNode;
-}) {
+export type Tone = "pass" | "block" | "warn" | "idle";
+
+export function State({ kind, children }: { kind: Tone; children: ReactNode }) {
   return <span className={`state ${kind}`}>{children}</span>;
 }
 
@@ -97,6 +94,7 @@ export function CopyId({ value, short = true }: { value: string; short?: boolean
       }}
     >
       {copied ? "copied" : short ? shortId(value) : value}
+      {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </button>
   );
 }
@@ -133,9 +131,12 @@ export function TableSkeleton({ rows = 6, cols = 5 }: { rows?: number; cols?: nu
  * Empty state. Says what is absent and what would fill it — an empty table
  * with no explanation is indistinguishable from a broken one.
  */
-export function Empty({ title, hint }: { title: string; hint?: React.ReactNode }) {
+export function Empty({ title, hint }: { title: string; hint?: ReactNode }) {
   return (
     <div className="note">
+      <span className="note-icon" aria-hidden="true">
+        <Inbox />
+      </span>
       <strong>{title}</strong>
       {hint}
     </div>
@@ -146,6 +147,9 @@ export function Empty({ title, hint }: { title: string; hint?: React.ReactNode }
 export function ErrorState({ message }: { message: string }) {
   return (
     <div className="note error" role="alert">
+      <span className="note-icon" aria-hidden="true">
+        <ServerCrash />
+      </span>
       <strong>Cannot reach the Core</strong>
       {message}
       <div style={{ marginTop: 10 }}>
@@ -156,41 +160,63 @@ export function ErrorState({ message }: { message: string }) {
   );
 }
 
-/** One figure in the metric strip. */
+/** A warning callout inside a panel. */
+export function Callout({ children }: { children: ReactNode }) {
+  return (
+    <div className="note" style={{ padding: "18px 16px", textAlign: "left", alignItems: "flex-start", flexDirection: "row", gap: 12 }}>
+      <span className="note-icon" style={{ marginBottom: 0, flex: "none" }} aria-hidden="true">
+        <AlertTriangle />
+      </span>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+/** One figure in the stat row. */
 export function Metric({
   label,
   value,
   sub,
   tone,
+  icon,
 }: {
   label: string;
-  value: React.ReactNode;
+  value: ReactNode;
   sub?: string;
-  tone?: "pass" | "block" | "warn" | "idle";
+  tone?: Tone;
+  icon?: ReactNode;
 }) {
   return (
     <div className="metric">
-      <span className="metric-label">{label}</span>
+      <span className="metric-label">
+        {icon}
+        {label}
+      </span>
       <span className={tone ? `metric-value ${tone}` : "metric-value"}>{value}</span>
       {sub && <span className="metric-sub">{sub}</span>}
     </div>
   );
 }
 
-/** View header: title, optional note, and the metric strip beneath it. */
+/** View header: title, description, optional note, and the stat row. */
 export function ViewHead({
   title,
+  desc,
   note,
   children,
 }: {
   title: string;
-  note?: React.ReactNode;
-  children?: React.ReactNode;
+  desc?: ReactNode;
+  note?: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <header className="view-head">
       <div className="view-title">
-        <h2>{title}</h2>
+        <div>
+          <h2>{title}</h2>
+          {desc && <p className="view-desc">{desc}</p>}
+        </div>
         {note && <span className="view-note">{note}</span>}
       </div>
       {children && <div className="metrics">{children}</div>}
@@ -200,20 +226,25 @@ export function ViewHead({
 
 export function Panel({
   title,
+  icon,
   meta,
   children,
   flush,
 }: {
   title: string;
-  meta?: React.ReactNode;
-  children: React.ReactNode;
+  icon?: ReactNode;
+  meta?: ReactNode;
+  children: ReactNode;
   /** Tables sit flush to the panel edge; prose gets padding. */
   flush?: boolean;
 }) {
   return (
     <section className="panel">
       <div className="panel-head">
-        <h3>{title}</h3>
+        <h3>
+          {icon}
+          {title}
+        </h3>
         {meta && <span className="meta">{meta}</span>}
       </div>
       {flush ? <div className="table-wrap">{children}</div> : <div className="panel-body">{children}</div>}
