@@ -1,252 +1,351 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   BookMarked,
   Boxes,
-  ChevronRight,
-  Gauge,
-  KeyRound,
-  LayoutDashboard,
+  Cable,
+  Ellipsis,
+  LayoutGrid,
+  ListChecks,
+  Search,
   ShieldBan,
   Waypoints,
+  X,
 } from "lucide-react";
+import { api, getConnection, onConnectionChange, type Health } from "./api";
+import { hrefFor, navigate, useRoute, type View } from "./router";
+import { useLayout, usePolling } from "./usePolling";
+import { CommandPalette } from "./CommandPalette";
 import { OverviewView } from "./views/OverviewView";
+import { ProgramsView } from "./views/ProgramsView";
 import { GraphView } from "./views/GraphView";
-import { ProtocolsView } from "./views/ProtocolsView";
-import { ConfidenceView } from "./views/ConfidenceView";
-import { ViolationsView } from "./views/ViolationsView";
+import { VerificationsView } from "./views/VerificationsView";
+import { BlockedView } from "./views/BlockedView";
 import { RegistryView } from "./views/RegistryView";
-import { api, setApiKey } from "./api";
-import { usePolling } from "./usePolling";
-
-const KEY_STORAGE = "graphite_api_key";
-
-type Tab = "overview" | "protocols" | "graph" | "confidence" | "violations" | "registry";
+import { SystemView } from "./views/SystemView";
+import { ConnectView } from "./views/ConnectView";
 
 interface NavItem {
-  id: Tab;
+  id: View;
   label: string;
   icon: ReactNode;
 }
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
 
-/**
- * Grouped the way an operator thinks: what the gate knows, what it has done,
- * what it was told. Mirrors the reference console's sidebar rather than a
- * flat list of tabs.
- */
-const NAV: NavGroup[] = [
+/** Sidebar, grouped the way an operator asks questions. */
+const NAV: { label: string; items: NavItem[] }[] = [
   {
-    label: "Monitor",
+    label: "Gate",
     items: [
-      { id: "overview", label: "Overview", icon: <LayoutDashboard /> },
-      { id: "protocols", label: "Protocols", icon: <Boxes /> },
-      { id: "graph", label: "Semantic graph", icon: <Waypoints /> },
+      { id: "overview", label: "Overview", icon: <LayoutGrid /> },
+      { id: "programs", label: "Programs", icon: <Boxes /> },
+      { id: "graph", label: "Call graph", icon: <Waypoints /> },
     ],
   },
   {
-    label: "Audit trail",
+    label: "Trail",
     items: [
-      { id: "confidence", label: "Confidence", icon: <Gauge /> },
-      { id: "violations", label: "Blocked", icon: <ShieldBan /> },
+      { id: "verifications", label: "Verifications", icon: <ListChecks /> },
+      { id: "blocked", label: "Blocked", icon: <ShieldBan /> },
+      { id: "registry", label: "Registry", icon: <BookMarked /> },
     ],
   },
   {
-    label: "Registry",
-    items: [{ id: "registry", label: "Manifests", icon: <BookMarked /> }],
+    label: "Core",
+    items: [
+      { id: "system", label: "System", icon: <Activity /> },
+      { id: "connect", label: "Connection", icon: <Cable /> },
+    ],
   },
 ];
 
-const TITLE: Record<Tab, string> = {
+/** The five destinations that earn a thumb on a phone. Everything else is
+ *  one tap away under More. */
+const PHONE_TABS: NavItem[] = [
+  { id: "overview", label: "Overview", icon: <LayoutGrid /> },
+  { id: "programs", label: "Programs", icon: <Boxes /> },
+  { id: "verifications", label: "Trail", icon: <ListChecks /> },
+  { id: "blocked", label: "Blocked", icon: <ShieldBan /> },
+];
+const PHONE_MORE: NavItem[] = [
+  { id: "graph", label: "Call graph", icon: <Waypoints /> },
+  { id: "registry", label: "Registry", icon: <BookMarked /> },
+  { id: "system", label: "System", icon: <Activity /> },
+  { id: "connect", label: "Connection", icon: <Cable /> },
+];
+
+export const TITLE: Record<View, string> = {
   overview: "Overview",
-  protocols: "Protocols",
-  graph: "Semantic graph",
-  confidence: "Confidence",
-  violations: "Blocked",
-  registry: "Manifests",
+  programs: "Programs",
+  graph: "Call graph",
+  verifications: "Verifications",
+  blocked: "Blocked",
+  registry: "Registry",
+  system: "System",
+  connect: "Connection",
 };
 
-interface Health {
-  status: string;
-  service: string;
-  version: string;
-  degraded?: boolean;
-  audit?: { enabled: boolean; writes_failed?: number };
-}
+export type CoreState = "ok" | "degraded" | "unauthorized" | "down" | "connecting";
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("overview");
-  const [health, setHealth] = useState<Health | null>(null);
-  const [healthError, setHealthError] = useState<string | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState<string>(
-    () => localStorage.getItem(KEY_STORAGE) ?? "",
-  );
+  const route = useRoute();
+  const layout = useLayout();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [conn, setConn] = useState(getConnection);
+  useEffect(() => onConnectionChange(() => setConn(getConnection())), []);
 
-  // Surfaced in the sidebar so a blocked-transaction count is visible from
-  // every view — an operator should not have to navigate to discover
-  // something was rejected.
-  const violations = usePolling(() => api.policyViolations(), 5000);
-  const blockedCount = violations.data?.violations.length ?? 0;
+  // /health needs no key, so it separates "down" from "wrong key". The
+  // blocked list is the cheapest key-guarded poll, and its error kind is the
+  // verdict on the key from every view at once.
+  const health = usePolling<Health>(() => api.health(), 10000);
+  const blocked = usePolling(() => api.policyViolations(), 5000);
+  const blockedCount = blocked.data?.violations.length ?? 0;
+
+  const core: CoreState = health.error
+    ? "down"
+    : !health.data
+      ? "connecting"
+      : blocked.error?.kind === "unauthorized"
+        ? "unauthorized"
+        : health.data.degraded
+          ? "degraded"
+          : "ok";
+
+  // First run with nothing configured and nothing answering: go straight to
+  // the connection screen rather than to seven empty panels.
+  useEffect(() => {
+    if (core === "down" && !conn.base && route.view !== "connect" && !sessionStorage.getItem("graphite.sawConnect")) {
+      sessionStorage.setItem("graphite.sawConnect", "1");
+      navigate("connect");
+    }
+  }, [core, conn.base, route.view]);
 
   useEffect(() => {
-    let cancelled = false;
-    const check = async () => {
-      try {
-        const resp = await fetch("/health", {
-          headers: { Accept: "application/json" },
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const body = (await resp.json()) as Health;
-        if (!cancelled) {
-          setHealth(body);
-          setHealthError(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setHealthError(e instanceof Error ? e.message : String(e));
-          setHealth(null);
-        }
+    document.title = `${TITLE[route.view]} — Graphite`;
+  }, [route.view]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
       }
     };
-    void check();
-    const timer = setInterval(check, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Three distinct states, not two: reachable-and-healthy, reachable-but-
-  // degraded (the audit trail has failed writes — verification still works but
-  // durability does not), and unreachable.
-  const degraded = health?.degraded === true;
-  const dotClass = healthError ? "bad" : health ? (degraded ? "warn" : "ok") : "idle";
-  const healthLabel = healthError
-    ? "Core unreachable"
-    : health
-      ? degraded
-        ? "Degraded"
-        : "Operational"
-      : "Connecting";
-  const healthMeta = health
-    ? `v${health.version}${health.audit?.enabled === false ? " · no audit log" : ""}`
-    : healthError
-      ? "expected :7331"
-      : "…";
+  // Close the More sheet whenever the route moves on.
+  useEffect(() => setMoreOpen(false), [route.view]);
+
+  const page = useMemo(() => {
+    switch (route.view) {
+      case "overview":
+        return <OverviewView />;
+      case "programs":
+        return <ProgramsView selected={route.program} />;
+      case "graph":
+        return <GraphView selected={route.program} />;
+      case "verifications":
+        return <VerificationsView />;
+      case "blocked":
+        return <BlockedView />;
+      case "registry":
+        return <RegistryView />;
+      case "system":
+        return <SystemView />;
+      case "connect":
+        return <ConnectView core={core} />;
+    }
+  }, [route.view, route.program, core]);
+
+  const status = <CoreStatus core={core} health={health.data} base={conn.base} />;
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <img
-            className="brand-logo"
-            src="./graphite-logo.png"
-            alt=""
-            width={28}
-            height={28}
-            aria-hidden="true"
-          />
-          <div className="brand-text">
-            <h1 className="brand-name">Graphite</h1>
-            <span className="brand-sub">Verification gate</span>
-          </div>
-        </div>
+    <div className={`app ${layout}`}>
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
 
-        <nav className="nav" aria-label="Views">
-          {NAV.map((g) => (
-            <div key={g.label} style={{ display: "contents" }}>
-              <div className="nav-group">{g.label}</div>
-              {g.items.map((n) => (
-                <button
-                  key={n.id}
-                  className="nav-item"
-                  aria-current={tab === n.id}
-                  onClick={() => setTab(n.id)}
-                >
-                  {n.icon}
-                  <span>{n.label}</span>
-                  {n.id === "violations" && blockedCount > 0 && (
-                    <span className="nav-count alert">{blockedCount}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
-
-        <div className="sidebar-foot">
-          <div className="health" role="status">
-            <span className={`dot ${dotClass}`} aria-hidden="true" />
-            <div className="health-text">
-              <span className="health-label">{healthLabel}</span>
-              <span className="health-meta">{healthMeta}</span>
-            </div>
-          </div>
-
-          <div className="key-field">
-            <label htmlFor="apikey">
-              <KeyRound aria-hidden="true" />
-              API key
-            </label>
-            <div className="key-wrap">
-              <input
-                id="apikey"
-                type="password"
-                value={apiKeyInput}
-                placeholder="none (dev core)"
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(e) => {
-                  setApiKeyInput(e.target.value);
-                  setApiKey(e.target.value);
-                }}
-                title="Bearer key for a secured Core (GRAPHITE_API_KEY). Stored in this browser only."
-              />
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <div className="main">
-        <header className="topbar">
-          <div className="crumbs" aria-label="Breadcrumb">
-            <span>Graphite</span>
-            <ChevronRight aria-hidden="true" />
-            <span className="here">{TITLE[tab]}</span>
-          </div>
-          <div className="topbar-right">
-            {health && !healthError && (
-              <span className="live" title="Polling every 5s">
-                <span className="dot" aria-hidden="true" />
-                live
-              </span>
-            )}
-            <span className={`pill ${dotClass === "ok" ? "ok" : dotClass === "bad" ? "bad" : dotClass === "warn" ? "warn" : ""}`}>
-              <Activity aria-hidden="true" />
-              {healthLabel}
+      {layout === "phone" ? (
+        <header className="phone-bar">
+          <a className="brand" href={hrefFor("overview")} aria-label="Graphite, overview">
+            <span className="brand-tile" aria-hidden="true">
+              <img src="./graphite-logo.png" alt="" width={30} height={30} />
             </span>
-            {health && (
-              <span className="pill mono" title={health.service}>
-                v{health.version}
-              </span>
-            )}
+            <span className="brand-name">Graphite</span>
+          </a>
+          <div className="phone-bar-right">
+            <StatusDot core={core} />
+            <button type="button" className="icon-btn" aria-label="Search" onClick={() => setPaletteOpen(true)}>
+              <Search aria-hidden="true" />
+            </button>
           </div>
         </header>
+      ) : (
+        <aside className="sidebar" aria-label="Navigation">
+          <a className="brand" href={hrefFor("overview")} aria-label="Graphite, overview">
+            <span className="brand-tile" aria-hidden="true">
+              <img src="./graphite-logo.png" alt="" width={36} height={36} />
+            </span>
+            <span className="brand-text">
+              <span className="brand-name">Graphite</span>
+              <span className="brand-sub">Console</span>
+            </span>
+          </a>
 
-        <main className="content">
-          {tab === "overview" && <OverviewView onNavigate={(t) => setTab(t)} />}
-          {tab === "protocols" && <ProtocolsView />}
-          {tab === "graph" && <GraphView />}
-          {tab === "confidence" && <ConfidenceView />}
-          {tab === "violations" && <ViolationsView />}
-          {tab === "registry" && <RegistryView />}
+          <button type="button" className="search-btn" aria-label="Search" onClick={() => setPaletteOpen(true)}>
+            <Search aria-hidden="true" />
+            <span>Search</span>
+            <kbd aria-hidden="true">{isMac() ? "⌘" : "Ctrl"} K</kbd>
+          </button>
+
+          <nav className="nav">
+            {NAV.map((g) => (
+              <div className="nav-group" key={g.label}>
+                <div className="nav-group-label">{g.label}</div>
+                {g.items.map((n) => (
+                  <a
+                    key={n.id}
+                    href={hrefFor(n.id)}
+                    className="nav-item"
+                    aria-current={route.view === n.id ? "page" : undefined}
+                    title={n.label}
+                  >
+                    {n.icon}
+                    <span className="nav-label">{n.label}</span>
+                    {n.id === "blocked" && blockedCount > 0 && (
+                      <span className="nav-count">{blockedCount}</span>
+                    )}
+                  </a>
+                ))}
+              </div>
+            ))}
+          </nav>
+
+          <div className="sidebar-foot">{status}</div>
+        </aside>
+      )}
+
+      <div className="main">
+        <main id="main" className="content" tabIndex={-1}>
+          {core === "unauthorized" && route.view !== "connect" && (
+            <div className="banner warn" role="status">
+              <span>The Core rejected the key stored in this browser. Every panel below will stay empty until it is fixed.</span>
+              <a className="btn small" href={hrefFor("connect")}>
+                Fix the key
+              </a>
+            </div>
+          )}
+          {page}
         </main>
       </div>
+
+      {layout === "phone" && (
+        <>
+          <nav className="tabbar" aria-label="Primary">
+            {PHONE_TABS.map((t) => (
+              <a
+                key={t.id}
+                href={hrefFor(t.id)}
+                className="tab"
+                aria-current={route.view === t.id ? "page" : undefined}
+              >
+                <span className="tab-icon">
+                  {t.icon}
+                  {t.id === "blocked" && blockedCount > 0 && <span className="tab-dot" aria-hidden="true" />}
+                </span>
+                <span>{t.label}</span>
+              </a>
+            ))}
+            <button
+              type="button"
+              className="tab"
+              aria-current={PHONE_MORE.some((m) => m.id === route.view) ? "page" : undefined}
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen(true)}
+            >
+              <span className="tab-icon">
+                <Ellipsis />
+              </span>
+              <span>More</span>
+            </button>
+          </nav>
+
+          {moreOpen && (
+            <>
+              <div className="scrim" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+              <div className="sheet" role="dialog" aria-label="More">
+                <div className="sheet-grab" aria-hidden="true" />
+                <div className="sheet-head">
+                  <span>More</span>
+                  <button type="button" className="icon-btn" aria-label="Close" onClick={() => setMoreOpen(false)}>
+                    <X aria-hidden="true" />
+                  </button>
+                </div>
+                <div className="sheet-list">
+                  {PHONE_MORE.map((m) => (
+                    <a key={m.id} href={hrefFor(m.id)} className="sheet-item" aria-current={route.view === m.id ? "page" : undefined}>
+                      {m.icon}
+                      <span>{m.label}</span>
+                    </a>
+                  ))}
+                </div>
+                <div className="sheet-foot">{status}</div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
   );
 }
 
-export type { Tab };
+function isMac(): boolean {
+  return /Mac|iPhone|iPad/.test(navigator.platform);
+}
+
+function StatusDot({ core }: { core: CoreState }) {
+  return <i className={`dot ${core}`} aria-label={coreLabel(core)} role="img" />;
+}
+
+export function coreLabel(core: CoreState): string {
+  switch (core) {
+    case "ok":
+      return "Core operational";
+    case "degraded":
+      return "Core degraded";
+    case "unauthorized":
+      return "Key rejected";
+    case "down":
+      return "Core unreachable";
+    case "connecting":
+      return "Connecting…";
+  }
+}
+
+/** The connection, as a small card that is also the way to the Connect screen. */
+function CoreStatus({ core, health, base }: { core: CoreState; health: Health | null; base: string }) {
+  const where = base ? base.replace(/^https?:\/\//, "") : "this origin";
+  const sub =
+    core === "ok" || core === "degraded"
+      ? `v${health?.version ?? "?"}, ${where}${health?.audit?.enabled === false ? ", no audit log" : ""}`
+      : core === "unauthorized"
+        ? "the key in this browser is wrong"
+        : core === "down"
+          ? where
+          : "…";
+  return (
+    <a className="core-status" href={hrefFor("connect")} title="Connection settings">
+      <StatusDot core={core} />
+      <span className="core-status-text">
+        <span className="core-status-label">{coreLabel(core)}</span>
+        <span className="core-status-sub" translate="no">
+          {sub}
+        </span>
+      </span>
+    </a>
+  );
+}
