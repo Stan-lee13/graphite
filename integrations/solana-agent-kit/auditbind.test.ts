@@ -112,6 +112,47 @@ test("projectionFromInstruction extracts discriminator from real data bytes", ()
   assert.deepEqual(proj.accountAddresses, [FROM, TO]);
 });
 
+test("an explicit discriminator that is not a prefix of the data is refused", () => {
+  // GFX-001 (2026-09-17 forensic audit). The Core used to judge the caller's
+  // LABEL for an instruction rather than the instruction: declaring an unknown
+  // discriminator over a real SetAuthority payload took the unknown-instruction
+  // soft pass and the known-risky table never fired. This path was shielded
+  // from that, but only by accident — `executeSwap` passes no discriminator,
+  // so the projection was rebuilt from the bytes and the recomputed hash
+  // diverged. A caller that DID pass a mismatched discriminator got a
+  // projection built around the label.
+  const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const setAuthority = new Uint8Array([0x06, 0x02, 0x01, ...new Array(32).fill(0xaa)]);
+  assert.throws(
+    () =>
+      AuditBind.projectionFromInstruction({
+        programId: SPL_TOKEN,
+        data: setAuthority,
+        accounts: [FROM, TO],
+        discriminator: "ff",
+      }),
+    /not a prefix of this instruction/,
+  );
+  // Case and an 0x prefix are normalised, not a reason to refuse.
+  const ok = AuditBind.projectionFromInstruction({
+    programId: SPL_TOKEN,
+    data: setAuthority,
+    accounts: [FROM, TO],
+    discriminator: "0x06",
+  });
+  assert.equal(ok.instructionDiscriminator, "0x06");
+  // And the honest System-transfer case the doc comment describes still works:
+  // a 4-byte discriminator over 12 bytes of data is a prefix, so it passes.
+  const transfer = new Uint8Array([2, 0, 0, 0, 0xe8, 0x76, 0x48, 0x17, 0, 0, 0, 0]);
+  const sys = AuditBind.projectionFromInstruction({
+    programId: SYSTEM_PROGRAM,
+    data: transfer,
+    accounts: [FROM, TO],
+    discriminator: "02000000",
+  });
+  assert.equal(sys.instructionDiscriminator, "02000000");
+});
+
 test("verifyInstruction binds the exact instruction payload (swap TOCTOU closure)", () => {
   const data = new Uint8Array([2, 0, 0, 0, 0xe8, 0x76, 0x48, 0x17, 0x00, 0x00, 0x00, 0x00]);
   const hash = AuditBind.computeHash(

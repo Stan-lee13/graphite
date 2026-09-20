@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-09-16, after Round 12 (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-09-17, after Round 13 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -31,6 +31,19 @@ Residuals at execution:          gated — scope.unobserved_codes; the bridge re
                                  the operator has not accepted by code (GRAPHITE_ACCEPT_UNOBSERVED)
 ALT / v0 account identity:       enforced (runtime numbering rebuilt; all-or-nothing resolution; owner checked)
 Privilege source:                the transaction's header / tables, never the caller's description
+Instruction identity for risk:   the instruction's own leading bytes, never the caller's label — a hex
+                                 discriminator contradicting its instruction_data fails L2 for every protocol,
+                                 a non-hex one never reaches a verdict, and the known-risky table is keyed on
+                                 the bytes so a truncated but truthful label hides nothing (Round 13)
+Authority changes in the diff:   the SPL owner field, mint authority and freeze authority are each watched;
+                                 an undeclared change is Critical, so a hand-over that moves no value is seen
+Measured on real mainnet:        10,669 transactions from 8 finalized blocks, 189 programs, run artifact-bound:
+                                 0 parse failures, 0 false refusals from the L2 self-consistency check, and all
+                                 1,087 known-risky-table blocks verified against the named instruction's own
+                                 bytes. Round 13 changed 0 of 9,784 verdicts (`tools/mainnet-sample`)
+Manifest coverage of the chain:  92.5% of sampled mainnet transactions call a program with NO manifest; the
+                                 drainer heuristic blocks them (>=3 accounts, no declared state changes), which
+                                 is the fail-closed posture meeting the coverage boundary, not a bug
 Durable-nonce transactions:      refused at L2 by default; opt-in requires on-chain nonce verification
 Token-2022 extensions:           classified, not modelled — semantics/authority/unknown/unreadable all block
 Input bounds:                    artifact ≤ 1232 bytes (PACKET_DATA_SIZE), ≤ 256 declared siblings, every
@@ -77,6 +90,13 @@ transaction under the stated threat model, and no external party has yet tried.
 | An artifact the network would refuse is refused before it is parsed | `MAX_TRANSACTION_BYTES` = 1232 at `/verify` entry, in `parse_transaction`, and in TS `messageOf`; `MAX_TRANSACTION_INSTRUCTIONS` = 256 | `tests/round9_resource_bounds.rs` (122 s → 1.6 ms) |
 | ALT accounts are identified, not counted | `runtime_account_list`, `resolve_lookups`, owner check | `tests/alt_real_v0.rs` (3 real mainnet v0 txs, `meta.loadedAddresses` ground truth), `tests/alt_privilege.rs` |
 | Privileges come from the bytes | `privileges_from_artifact` | `tests/privilege_from_artifact.rs` |
+| A risky instruction cannot hide behind the name it was given | L2's `declared_discriminator_contradicts_data` runs first, for every protocol, manifested or not; `transaction_builder` refuses a non-hex discriminator outright; **every manifest lookup — account resolution, the declared-effects lookup, the risk context, the plugin rules — is keyed on the instruction's own first eight bytes, not on the caller's label** | `tests/mislabelled_discriminator.rs` (16), `tests/truncated_discriminator.rs` (22) |
+| A label that is TRUE BUT SHORT cannot switch off the account checks | Round 14 (GFX-101): `discriminator_matches` is `input.starts_with(selector)`, so a label shorter than a selector missed the manifest, and the miss took `resolve_accounts` down the P12 path whose accounts carry `pda_mismatch`/`expected_address_mismatch`/`privilege_mismatch` all false. One `effective_discriminator`, derived from the bytes, now keys them all; an EMPTY label is covered too (GFX-108) | `tests/truncated_discriminator.rs` (Jupiter V6 route with an attacker program in the pinned token-program slot: full label and 4-byte label and empty label all produce the identity finding; the honest pinned account still clears) |
+| A declared sibling is judged on its own bytes, not its label | Round 14 (GFX-106): `sibling_coverage` records which artifact instruction each declaration matched and `siblings_keyed_on_their_bytes` rewrites the discriminator from that instruction's data before the Risk Engine sees it. A declaration matching nothing is left as written — L2 has already failed | `tests/truncated_discriminator.rs` (a real System `Assign` declared `01`/`0100`, a real SPL `SetAuthority` declared `0`, and a Raydium CPMM `close` declared at half length, all still block) |
+| A sibling's lookup-table accounts are compared, not assumed | Round 14 (GFX-107): the primary's comparison resolved ALT positions and a sibling's did not, so every lookup slot in a declared sibling accepted any address — and declared accounts widen the set `ArtifactAccountsNotDescribed` treats as named | `tests/sibling_lookup_accounts.rs` (mock RPC serving one table: the honest declaration is accepted, one naming a different address at the resolved position fails L2) |
+| A declaration too short to identify a risky instruction is refused | Round 14: `disc_matches` fires when the input is at least as long as the selector; a strict PREFIX of one sat in the gap. Reachable only in descriptive mode, where there are no bytes to re-derive from | `tests/truncated_discriminator.rs` (a descriptive `01` on System, and a descriptive `0` sibling on SPL Token, are both refused; a complete `03` still clears) |
+| The gate behaves the same on real traffic as on the fixtures | Whole finalized mainnet blocks, every transaction pushed through the full pipeline artifact-bound — real bytes, real data, accounts resolved from the block's own `loadedAddresses`, every sibling declared | `tests/mainnet_conformance.rs` + `tools/mainnet-sample` (10,669 transactions, 2026-09-17: 0 parse failures, 0 false refusals, 1,087/1,087 risky-table blocks confirmed against the real bytes, 0 verdicts changed by Round 13) |
+| An undeclared authority change is a finding, not silence | `state_diff::AccountDelta::{token_authority_change, mint_authority_change, freeze_authority_change}` — the SPL `owner` field is the authority, distinct from `owner_change`'s owning program | `state_diff::tests::{a_token_account_changing_hands_is_critical, a_mint_authority_changing_hands_is_critical, a_freeze_authority_appearing_from_nothing_is_critical}` plus four controls |
 | Wire-format bounds on both sides | `compact_u16` (Rust), `messageOf` / `readSignatureCount` (TS) | `tests/wire_format_bounds.rs`; 1,647-mutation cross-language corpus in `tests/sak_bridge_corpus.rs` |
 | Provider fields cannot override canonical evidence | `rpc_client.rs` derives writes/hops from canonical fields only | `tests/provider_field_precedence.rs` |
 | Token-2022 classification is fail-closed | `detect_token2022_extensions`, `ExtensionScan.malformed` | `tests/token2022_extensions.rs`, `tests/l4_state_diff_gate.rs` |
@@ -119,6 +139,15 @@ transaction under the stated threat model, and no external party has yet tried.
   verification and execution; the blockhash bounds that window to about a
   minute for ordinary transactions, and a permitted durable nonce removes the
   bound.
+- **The manifest set covers a small slice of the chain.** Measured
+  2026-09-17: 92.5% of mainnet transactions sampled call a program with no
+  manifest, and 189 distinct programs appeared in eight blocks against 33
+  shipped manifests. An unmanifested program declares no state changes, so
+  the drainer heuristic blocks every call to one that touches three or more
+  accounts. That is the intended fail-closed direction — it refuses rather
+  than guesses — but it means an agent working outside the manifested set
+  is refused, not merely scored lower, and the honest description of
+  today's coverage is "the protocols Graphite knows", not "Solana".
 - **Single-tenant.** One API key, one profile pin, one trail, one semantic
   graph per process. Tenant isolation is process isolation.
 - **Archive lookups are scans.** The L8 / lifecycle join is indexed for the
@@ -170,7 +199,7 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
 | Branch protection on `main` (required CI, no force-push) | Absent; conflicts with the standing push-to-main workflow | Owner |
-| **Version-1 transaction format** — live on devnet since 2026-09 (Round 12 found every sampled block carrying some); refused by name today; must be parsed, bound and simulated before it reaches mainnet or every v1-building agent is refused | **Open — time-sensitive** | Engineering |
+| **Version-1 transaction format** — **on MAINNET as of 2026-09-17**: 875 of 10,669 transactions (8.2%) across eight sampled finalized blocks, every block carrying some (`tools/mainnet-sample`). Refused by name today, so nothing fails open — but an agent building one is refused, and a client capped at `maxSupportedTransactionVersion: 0` is refused the WHOLE BLOCK (`-32015`), not just the v1 transactions in it. Must be parsed, bound and simulated | **Open — now overdue, not merely time-sensitive** | Engineering |
 | Token-2022 `TransferFee` modelling | Open | Engineering |
 | `content_hash` → a name that says it is an instruction-level identifier | Open (it is the 64-bit AuditBind key, not the authoritative binding) | Engineering |
 | Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | — |
@@ -197,6 +226,8 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-09-20 | [round14-the-prefix-and-the-pin-2026-09-20.md](round14-the-prefix-and-the-pin-2026-09-20.md) | A forensic re-audit of Round 13 found that re-keying the Risk Engine on the instruction's bytes while leaving every OTHER manifest lookup on the caller's label was itself a bypass (GFX-101, HIGH): a truthful four-byte PREFIX of a discriminator switched off PDA re-derivation, the fixed-address comparison and the privilege comparison together, taking an attacker's program in Jupiter route's pinned slot from Blocked to `approved: true, artifact_bound, inherent residuals only`. Four more of the same shape: the declared-effects lookup (GFX-102), declared siblings judged on their labels (GFX-106), sibling lookup-table positions as wildcards (GFX-107), and the empty-label spelling of the first fix (GFX-108). One `effective_discriminator` now keys every manifest lookup; 5 of 5 deliberate breaks caught |
+| 2026-09-17 | [round13-the-label-and-the-bytes-2026-09-17.md](round13-the-label-and-the-bytes-2026-09-17.md) | The Risk Engine judged the caller's label rather than the instruction (GFX-001, HIGH): a real SetAuthority declared `ff` was approved where the same bytes declared `06` were Blocked; the self-consistency check now runs first for every protocol and the table is keyed on the instruction's own bytes, which also closes the truthful-but-truncated variant. L4 was blind to the SPL `owner` field, so a token account changing hands produced no findings (GFX-002, MEDIUM); three authority fields now watched. AuditBind refuses a mismatched declaration by rule rather than by accident |
 | 2026-09-16 | [round12-runtime-truth-2026-09-16.md](round12-runtime-truth-2026-09-16.md) | The runtime oracle (parser accepted five frame classes the runtime refuses, R12-01); L8 commitment, self-consistency, malformed statuses, redirects, the inclusion witness (R12-02…05); one server per data directory (R12-06); RPC URL validation (R12-07); lifecycle sequence findings and signature shape (R12-08…10); the bridge's submission-report retry (R12-11) |
 | 2026-09-15 | [round11-full-run-2026-09-15.md](round11-full-run-2026-09-15.md) | The full run: L8 chain bytes unbound to the signature (R11-01, P1) fixed; request path deep-copying state (100 ms → 1 ms); refusals reset the connection; parser signer-count rule; 32-character keys; L8 metrics; SDK live conformance in CI |
 | 2026-09-13 | [round10-exact-attribution-2026-09-13.md](round10-exact-attribution-2026-09-13.md) | L8 and lifecycle joined on `content_hash` (R10-01, P1): now joined on the chain's bytes / exact keys; supply-chain pins; decompression and limiter measured |

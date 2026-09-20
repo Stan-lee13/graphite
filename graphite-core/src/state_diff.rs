@@ -172,6 +172,15 @@ impl AccountSnapshot {
     }
 }
 
+/// How an authority that may or may not exist is written in a finding.
+///
+/// `None` is a real on-chain state — a revoked mint authority, a mint that
+/// can never be frozen — and printing it as an empty string would read as a
+/// missing value rather than as the fact it is.
+fn authority_label(key: &Option<String>) -> &str {
+    key.as_deref().unwrap_or("none")
+}
+
 fn pubkey_at(data: &[u8], offset: usize) -> Option<String> {
     let bytes = data.get(offset..offset + 32)?;
     Some(bs58::encode(bytes).into_string())
@@ -536,6 +545,56 @@ impl AccountDelta {
             .map(|t| t.is_frozen())
             .unwrap_or(false);
         after_frozen && !before_frozen
+    }
+    /// The token account's AUTHORITY before and after, when both sides decode
+    /// as initialized token accounts and it changed.
+    ///
+    /// This is the SPL `owner` field — who may move the balance — and it is
+    /// not the account's owning program, which `owner_change` reports. Two
+    /// different facts share a word, and only one of them was being watched:
+    /// `SetAuthority(AccountOwner)` leaves the owning program (the Token
+    /// program) exactly where it was, so an account could change hands under a
+    /// diff that reported nothing at all (GFX-002, 2026-09-17 forensic audit).
+    ///
+    /// Both sides must decode, which means both must be initialized —
+    /// `decode_token_account` refuses state 0 — so initializing a
+    /// pre-allocated account is not reported here. It is a creation, and the
+    /// creation checks own it.
+    pub fn token_authority_change(&self) -> Option<(String, String)> {
+        let b = self.before.as_ref()?.token.as_ref()?;
+        let a = self.after.as_ref()?.token.as_ref()?;
+        if b.owner == a.owner {
+            None
+        } else {
+            Some((b.owner.clone(), a.owner.clone()))
+        }
+    }
+    /// The mint authority before and after, when both sides decode as mints
+    /// and it changed.
+    ///
+    /// Compared as `Option`s rather than as keys, because absence is a value
+    /// here: a mint whose authority was revoked and a mint that just acquired
+    /// one are both changes, and requiring a key on both sides would report
+    /// neither.
+    pub fn mint_authority_change(&self) -> Option<(Option<String>, Option<String>)> {
+        let b = self.before.as_ref()?.mint.as_ref()?;
+        let a = self.after.as_ref()?.mint.as_ref()?;
+        if b.mint_authority == a.mint_authority {
+            None
+        } else {
+            Some((b.mint_authority.clone(), a.mint_authority.clone()))
+        }
+    }
+    /// The freeze authority before and after, when both sides decode as mints
+    /// and it changed. Same `Option` comparison, for the same reason.
+    pub fn freeze_authority_change(&self) -> Option<(Option<String>, Option<String>)> {
+        let b = self.before.as_ref()?.mint.as_ref()?;
+        let a = self.after.as_ref()?.mint.as_ref()?;
+        if b.freeze_authority == a.freeze_authority {
+            None
+        } else {
+            Some((b.freeze_authority.clone(), a.freeze_authority.clone()))
+        }
     }
     /// True when nothing this module can observe actually changed.
     pub fn is_noop(&self) -> bool {
@@ -1222,6 +1281,55 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 "token account frozen; the manifest declares no freeze",
             ));
         }
+        // The SPL authority fields. `owner_change` above watches the owning
+        // PROGRAM; these watch who controls the account inside it, and a
+        // SetAuthority never touches the former. Until GFX-002 that left the
+        // single most direct takeover on Solana — hand the token account to
+        // somebody else and leave the balance where it is — producing a diff
+        // with no findings in it: no lamports move, no delegate appears, no
+        // close authority appears, nothing freezes, no supply changes, and the
+        // Token program still owns the account. The layer reported clean
+        // because it was not looking at the field that changed.
+        if let Some((from, to)) = d.token_authority_change() {
+            if !declared.authority {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredTokenAuthorityChange",
+                    acct,
+                    format!(
+                        "token account authority changed from {from} to {to}; the manifest declares no authority change. Whoever holds it can move the entire balance after this transaction ends"
+                    ),
+                ));
+            }
+        }
+        if let Some((from, to)) = d.mint_authority_change() {
+            if !declared.authority {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredMintAuthorityChange",
+                    acct,
+                    format!(
+                        "mint authority changed from {} to {}; the manifest declares no authority change. Whoever holds it can mint against this mint at will",
+                        authority_label(&from),
+                        authority_label(&to)
+                    ),
+                ));
+            }
+        }
+        if let Some((from, to)) = d.freeze_authority_change() {
+            // A freeze authority change is an authority change; it is also the
+            // thing that decides whether a freeze can ever happen, so a
+            // manifest that declares freezing has accounted for it too.
+            if !declared.authority && !declared.freeze {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredFreezeAuthorityChange",
+                    acct,
+                    format!(
+                        "freeze authority changed from {} to {}; the manifest declares no authority change and no freeze. Whoever holds it can freeze every account of this mint",
+                        authority_label(&from),
+                        authority_label(&to)
+                    ),
+                ));
+            }
+        }
 
         // Mint supply.
         match d.supply_delta() {
@@ -1379,6 +1487,27 @@ mod tests {
         d[36..44].copy_from_slice(&supply.to_le_bytes());
         d[44] = decimals;
         d[45] = 1; // is_initialized
+        d
+    }
+
+    /// The same layout with its two authorities filled in. `mint_authority` is
+    /// a `COption<Pubkey>` at offset 0 and `freeze_authority` one at offset 46;
+    /// `None` leaves the tag at zero, which is how a revoked authority is
+    /// written on chain.
+    fn mint_bytes_with_authorities(
+        supply: u64,
+        mint_authority: Option<&[u8; 32]>,
+        freeze_authority: Option<&[u8; 32]>,
+    ) -> Vec<u8> {
+        let mut d = mint_bytes(supply, 6);
+        if let Some(a) = mint_authority {
+            d[0..4].copy_from_slice(&1u32.to_le_bytes());
+            d[4..36].copy_from_slice(a);
+        }
+        if let Some(a) = freeze_authority {
+            d[46..50].copy_from_slice(&1u32.to_le_bytes());
+            d[50..82].copy_from_slice(a);
+        }
         d
     }
 
@@ -1671,6 +1800,217 @@ mod tests {
             &["assign new authority to the account".to_string()],
         );
         assert!(!codes(&report).contains(&"UndeclaredOwnerReassignment"));
+    }
+
+    // ── GFX-002: the authority fields ───────────────────────────────────────
+    //
+    // `owner_change` above watches the account's owning PROGRAM. The SPL
+    // `owner` field — who may move the balance — is a different field with
+    // the same word for it, and nothing was watching it. A
+    // `SetAuthority(AccountOwner)` leaves the Token program exactly where it
+    // was, moves no lamports, grants no delegate, sets no close authority,
+    // freezes nothing and changes no supply: every check this module had came
+    // back empty on the most direct account takeover there is. Confirmed
+    // against `eaee998` — a diff whose only change was the token account's
+    // owner returned `findings: []`, `blocked: false`, under both generic and
+    // transfer prose.
+
+    #[test]
+    fn a_token_account_changing_hands_is_critical() {
+        let before = token_account_bytes(&[1u8; 32], &[2u8; 32], 1_000, None, 1, None);
+        // Same mint, same balance, same everything — except who owns it.
+        let after = token_account_bytes(&[1u8; 32], &[66u8; 32], 1_000, None, 1, None);
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: ALICE.to_string(),
+                before: Some(token_snapshot(ALICE, 2_039_280, &before)),
+                after: Some(token_snapshot(ALICE, 2_039_280, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+        };
+        let accounts = [account(ALICE, true)];
+        let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
+        assert!(
+            report.blocked,
+            "the account changed hands and the diff reported: {:?}",
+            report.findings
+        );
+        assert!(codes(&report).contains(&"UndeclaredTokenAuthorityChange"));
+    }
+
+    /// The same change under a manifest that says it is coming is not a
+    /// finding. Without this, "block everything" would pass the test above.
+    #[test]
+    fn a_declared_authority_change_may_move_a_token_account() {
+        let before = token_account_bytes(&[1u8; 32], &[2u8; 32], 1_000, None, 1, None);
+        let after = token_account_bytes(&[1u8; 32], &[66u8; 32], 1_000, None, 1, None);
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: ALICE.to_string(),
+                before: Some(token_snapshot(ALICE, 2_039_280, &before)),
+                after: Some(token_snapshot(ALICE, 2_039_280, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+        };
+        let accounts = [account(ALICE, true)];
+        let report = check(
+            &diff,
+            &accounts,
+            &["changes authority (owner, mint_authority, freeze_authority) of accounts.account_or_mint".to_string()],
+        );
+        assert!(!codes(&report).contains(&"UndeclaredTokenAuthorityChange"));
+    }
+
+    /// An ordinary transfer moves the balance and nothing else. The new check
+    /// must not fire on it.
+    #[test]
+    fn an_ordinary_transfer_is_not_an_authority_change() {
+        let before = token_account_bytes(&[1u8; 32], &[2u8; 32], 1_000, None, 1, None);
+        let after = token_account_bytes(&[1u8; 32], &[2u8; 32], 400, None, 1, None);
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: ALICE.to_string(),
+                before: Some(token_snapshot(ALICE, 2_039_280, &before)),
+                after: Some(token_snapshot(ALICE, 2_039_280, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+        };
+        let accounts = [account(ALICE, true)];
+        let report = check(
+            &diff,
+            &accounts,
+            &["debits accounts.source token balance".to_string()],
+        );
+        assert!(!codes(&report).contains(&"UndeclaredTokenAuthorityChange"));
+    }
+
+    /// Initializing a pre-allocated account is a creation, not a hand-over.
+    /// `decode_token_account` refuses state 0, so the "before" side does not
+    /// decode and there is no authority to have changed.
+    #[test]
+    fn initializing_an_account_is_not_an_authority_change() {
+        let before = token_account_bytes(&[0u8; 32], &[0u8; 32], 0, None, 0, None);
+        let after = token_account_bytes(&[1u8; 32], &[2u8; 32], 0, None, 1, None);
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: ALICE.to_string(),
+                before: Some(token_snapshot(ALICE, 2_039_280, &before)),
+                after: Some(token_snapshot(ALICE, 2_039_280, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+        };
+        let accounts = [account(ALICE, true)];
+        let report = check(
+            &diff,
+            &accounts,
+            &["initializes accounts.account".to_string()],
+        );
+        assert!(!codes(&report).contains(&"UndeclaredTokenAuthorityChange"));
+    }
+
+    #[test]
+    fn a_mint_authority_changing_hands_is_critical() {
+        let before = mint_bytes_with_authorities(1_000_000, Some(&[2u8; 32]), None);
+        let after = mint_bytes_with_authorities(1_000_000, Some(&[66u8; 32]), None);
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: BOB.to_string(),
+                before: Some(token_snapshot(BOB, 1_461_600, &before)),
+                after: Some(token_snapshot(BOB, 1_461_600, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+        };
+        let accounts = [account(BOB, true)];
+        let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
+        assert!(
+            report.blocked,
+            "the mint changed hands and the diff reported: {:?}",
+            report.findings
+        );
+        assert!(codes(&report).contains(&"UndeclaredMintAuthorityChange"));
+    }
+
+    /// Absence is a value. A mint that gains a freeze authority it did not
+    /// have gains the ability to freeze every account of that mint, and a
+    /// comparison that required a key on both sides would report nothing.
+    #[test]
+    fn a_freeze_authority_appearing_from_nothing_is_critical() {
+        let before = mint_bytes_with_authorities(1_000_000, Some(&[2u8; 32]), None);
+        let after = mint_bytes_with_authorities(1_000_000, Some(&[2u8; 32]), Some(&[66u8; 32]));
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: BOB.to_string(),
+                before: Some(token_snapshot(BOB, 1_461_600, &before)),
+                after: Some(token_snapshot(BOB, 1_461_600, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+        };
+        let accounts = [account(BOB, true)];
+        let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
+        assert!(report.blocked, "{:?}", report.findings);
+        assert!(codes(&report).contains(&"UndeclaredFreezeAuthorityChange"));
+    }
+
+    /// A mint whose authorities are untouched produces no authority finding,
+    /// however much its supply moves.
+    #[test]
+    fn a_declared_mint_is_not_an_authority_change() {
+        let before = mint_bytes_with_authorities(1_000_000, Some(&[2u8; 32]), None);
+        let after = mint_bytes_with_authorities(1_500_000, Some(&[2u8; 32]), None);
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: BOB.to_string(),
+                before: Some(token_snapshot(BOB, 1_461_600, &before)),
+                after: Some(token_snapshot(BOB, 1_461_600, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+        };
+        let accounts = [account(BOB, true)];
+        let report = check(
+            &diff,
+            &accounts,
+            &[
+                "credits accounts.account token balance by data.amount".to_string(),
+                "updates mint supply by data.amount".to_string(),
+            ],
+        );
+        assert!(!codes(&report).contains(&"UndeclaredMintAuthorityChange"));
+        assert!(!codes(&report).contains(&"UndeclaredFreezeAuthorityChange"));
     }
 
     #[test]

@@ -102,9 +102,30 @@ export class AuditBind {
     discriminator?: string;
   }): AuditBindTransactionParams {
     const dataBytes = input.data ?? new Uint8Array(0);
-    const discriminator =
-      input.discriminator ??
-      Buffer.from(dataBytes.subarray(0, 8)).toString("hex");
+    const derived = Buffer.from(dataBytes.subarray(0, 8)).toString("hex");
+    // GFX-001 (2026-09-17 forensic audit). A discriminator that is not a
+    // prefix of the data it claims to describe is a projection of an
+    // instruction other than this one.
+    //
+    // The swap path was already shielded from the Core-side bypass, but only
+    // incidentally: `executeSwap` calls `verifyInstruction` WITHOUT a
+    // discriminator, so this function re-derived it from the bytes and the
+    // recomputed hash diverged from the one Graphite returned. Nothing made
+    // that a rule — a caller passing an explicit, mismatched discriminator
+    // got a projection built around the label. It is a rule now, on both
+    // sides of the boundary: the Core fails L2 on the same contradiction.
+    if (input.discriminator !== undefined) {
+      const declared = input.discriminator.replace(/^0x/i, "").toLowerCase();
+      const actual = Buffer.from(dataBytes).toString("hex");
+      if (declared.length > 0 && !actual.startsWith(declared)) {
+        throw new Error(
+          `AuditBind FAILED: declared discriminator ${declared} is not a prefix of this ` +
+            `instruction's data (${actual.slice(0, 32)}${actual.length > 32 ? "\u2026" : ""}). ` +
+            `The label and the bytes describe different instructions — ABORTING.`
+        );
+      }
+    }
+    const discriminator = input.discriminator ?? derived;
     return {
       programId: input.programId,
       instructionDiscriminator: discriminator,

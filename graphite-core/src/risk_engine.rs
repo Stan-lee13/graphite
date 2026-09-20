@@ -358,6 +358,44 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                     ),
                 });
             }
+            // A declaration too SHORT to tell this instruction from a safe one.
+            //
+            // `disc_matches` fires when the input is at least as long as the
+            // selector. The gap is the other direction: a declared
+            // discriminator that is a strict PREFIX of a risky selector could
+            // be that instruction and could be something else, and nothing
+            // downstream ever decides which. `03` (Transfer) and `06`
+            // (SetAuthority) are both SPL Token instructions and both begin
+            // with `0`; System `Assign` is `01000000`, so `01`, `0100` and
+            // `010000` are each consistent with it.
+            //
+            // An ARTIFACT-BOUND request never reaches this: the discriminator
+            // handed to the Risk Engine is re-derived from the instruction's
+            // own bytes, so it is never shorter than a selector. A DESCRIPTIVE
+            // request has no bytes to re-derive from, and that is exactly the
+            // case this covers — measured before it existed, a declared
+            // SetAuthority sibling written `0` drew a Clear verdict.
+            //
+            // Refusing rather than guessing, for the same reason the empty
+            // arm above refuses: a declaration that cannot identify the
+            // instruction is not a declaration (P12 fail-closed).
+            if !input.instruction_discriminator.is_empty() {
+                let declared = input.instruction_discriminator.to_lowercase();
+                let selector = pattern.discriminator.to_lowercase();
+                if declared.len() < selector.len() && selector.starts_with(&declared) {
+                    return Ok(RiskVerdict::Blocked {
+                        pattern: pattern.pattern,
+                        reason: format!(
+                            "{}: the declared discriminator '{}' is {} character(s) of this program's {}-character '{}' selector, so it cannot be told apart from it — a declaration too short to identify the instruction is not a declaration (P12 fail-closed)",
+                            pattern.description,
+                            declared,
+                            declared.len(),
+                            selector.len(),
+                            pattern.discriminator
+                        ),
+                    });
+                }
+            }
         }
     }
 

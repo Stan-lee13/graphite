@@ -446,6 +446,50 @@ fn compare_instruction_accounts(
     InstructionAccounts::Match { unresolved }
 }
 
+/// Whether a caller's declared discriminator contradicts the instruction data
+/// the same caller supplied for it, and if so, how.
+///
+/// The two fields describe one instruction, so they have to agree: either the
+/// data begins with the discriminator or the request has said two different
+/// things about the same call. `None` means there is no contradiction to
+/// report, which includes the cases where there is nothing to compare — no
+/// data, no discriminator, or a discriminator that is not hex at all and so
+/// names no bytes this comparison could check. A non-hex discriminator does
+/// not survive to a verdict anyway: `transaction_builder` refuses it with
+/// `InvalidDiscriminator` and the whole verification returns `Err`.
+///
+/// Data SHORTER than the declared discriminator counts as a contradiction. It
+/// is the padding move the Risk Engine's `disc_matches` comment already
+/// names — declare `0600000000000000` over a one-byte SetAuthority — read
+/// from the other side: bytes that cannot begin with the thing they are
+/// declared to begin with.
+fn declared_discriminator_contradicts_data(declared: &str, data: Option<&[u8]>) -> Option<String> {
+    let data = data?;
+    if data.is_empty() || declared.is_empty() {
+        return None;
+    }
+    let disc_bytes = hex::decode(declared.trim_start_matches("0x")).ok()?;
+    if disc_bytes.is_empty() {
+        return None;
+    }
+    if data.len() < disc_bytes.len() {
+        return Some(format!(
+            "the request declares discriminator {} ({} bytes) and supplies instruction_data of {} byte(s): data cannot begin with a discriminator longer than itself, so the label and the bytes describe different instructions",
+            hex::encode(&disc_bytes),
+            disc_bytes.len(),
+            data.len()
+        ));
+    }
+    if data[..disc_bytes.len()] != disc_bytes[..] {
+        return Some(format!(
+            "instruction_data begins with {} and the request declares discriminator {}: the bytes and the label describe different instructions, and a verdict reached through the label would be a verdict about the instruction the request named rather than the one it carries",
+            hex::encode(&data[..disc_bytes.len()]),
+            hex::encode(&disc_bytes)
+        ));
+    }
+    None
+}
+
 /// Whether a caller-declared instruction describes this one in the artifact.
 ///
 /// Program, then the discriminator as a prefix of the actual data, then the
@@ -459,6 +503,7 @@ fn compare_instruction_accounts(
 fn declaration_describes(
     declared: &crate::tx_pattern_analysis::TransactionInstruction,
     actual: &crate::tx_artifact::ArtifactInstruction,
+    actual_accounts: &[Option<String>],
 ) -> bool {
     if declared.instruction_discriminator.is_empty() || declared.program_id != actual.program_id {
         return false;
@@ -467,9 +512,38 @@ fn declaration_describes(
         return false;
     }
     matches!(
-        compare_instruction_accounts(&actual.accounts, &declared.account_addresses),
+        compare_instruction_accounts(actual_accounts, &declared.account_addresses),
         InstructionAccounts::Match { .. }
     )
+}
+
+/// One artifact instruction's accounts, with lookup-table positions resolved
+/// wherever the tables came back.
+///
+/// The PRIMARY instruction's comparison has resolved them since the identity
+/// work; a declared SIBLING's did not, and the difference was a hole. An
+/// unresolved position reads as neither a match nor a mismatch, so every
+/// lookup-table slot in a sibling was a WILDCARD: a caller could write any
+/// address it liked there and the declaration still "described" the
+/// instruction.
+///
+/// That is worse than a weak comparison. Declared accounts widen the set
+/// `ArtifactAccountsNotDescribed` treats as named, so a fabricated address at
+/// a lookup position could mask a real static key from a Critical finding —
+/// the padding that `SiblingCoverage`'s own doc comment says is closed, still
+/// open at exactly the positions a v0 transaction reaches without naming them.
+///
+/// Falls back to the unresolved list when the tables did not come back, which
+/// is the pre-existing behaviour and is disclosed by the
+/// `lookup_tables_unresolved` residual rather than papered over.
+fn instruction_accounts_for_comparison(
+    message: &crate::tx_artifact::ArtifactMessage,
+    instruction: &crate::tx_artifact::ArtifactInstruction,
+    lookups: Option<&crate::tx_artifact::ResolvedLookups>,
+) -> Vec<Option<String>> {
+    crate::tx_artifact::resolve_instruction_accounts(message, instruction, lookups)
+        .map(|r| r.into_iter().map(Some).collect())
+        .unwrap_or_else(|| instruction.accounts.clone())
 }
 
 /// Which instructions of the artifact nobody described, and which declarations
@@ -488,6 +562,12 @@ fn declaration_describes(
 struct SiblingCoverage {
     undescribed: Vec<(usize, String)>,
     unmatched_declarations: usize,
+    /// For each declaration, the artifact instruction it was matched to.
+    ///
+    /// Kept because a declaration that matched is a declaration whose real
+    /// bytes are known, and the Risk Engine has to judge those rather than the
+    /// name the caller gave them (GFX-106).
+    matched: Vec<Option<usize>>,
 }
 
 impl SiblingCoverage {
@@ -523,20 +603,24 @@ fn sibling_coverage(
     message: &crate::tx_artifact::ArtifactMessage,
     primary: usize,
     declared: &[crate::tx_pattern_analysis::TransactionInstruction],
+    lookups: Option<&crate::tx_artifact::ResolvedLookups>,
 ) -> SiblingCoverage {
     let mut spent = vec![false; declared.len()];
+    let mut matched: Vec<Option<usize>> = vec![None; declared.len()];
     let mut undescribed = Vec::new();
 
     for (i, actual) in message.instructions.iter().enumerate() {
         if i == primary {
             continue;
         }
-        match declared
-            .iter()
-            .enumerate()
-            .position(|(d, decl)| !spent[d] && declaration_describes(decl, actual))
-        {
-            Some(d) => spent[d] = true,
+        let actual_accounts = instruction_accounts_for_comparison(message, actual, lookups);
+        match declared.iter().enumerate().position(|(d, decl)| {
+            !spent[d] && declaration_describes(decl, actual, &actual_accounts)
+        }) {
+            Some(d) => {
+                spent[d] = true;
+                matched[d] = Some(i);
+            }
             None => undescribed.push((i, actual.program_id.clone())),
         }
     }
@@ -544,7 +628,70 @@ fn sibling_coverage(
     SiblingCoverage {
         undescribed,
         unmatched_declarations: spent.iter().filter(|used| !**used).count(),
+        matched,
     }
+}
+
+/// The declared siblings, each re-keyed on the bytes of the instruction it was
+/// actually matched to.
+///
+/// GFX-106. `assess_secondary_instructions` fed `ix.instruction_discriminator`
+/// — a caller-written label — straight into the Risk Engine, and
+/// `declaration_describes` only requires that label to be a hex-string PREFIX
+/// of the sibling's real data. The known-risky table matches
+/// `input.starts_with(selector)`, so a prefix shorter than the selector misses
+/// it, and so does every correlation rule in `tx_pattern_analysis`, which uses
+/// the same relation.
+///
+/// Measured against a running server, on an artifact carrying a real dangerous
+/// sibling beside an honest transfer:
+///
+/// | sibling | declared honestly | declared short |
+/// |---|---|---|
+/// | System `Assign` (`01000000`) | Blocked, AuthorityHijack | `01` → **Clear** |
+/// | SPL `SetAuthority` (`06`) | Blocked, AuthorityHijack | `0` → **Clear** |
+///
+/// A single hex nibble was enough, because the comparison is on the hex STRING
+/// rather than on bytes — so even a one-byte selector was evadable.
+///
+/// Substituting the real bytes cannot refuse anything that was not refused
+/// before, for the same reason the primary's substitution cannot: the
+/// declaration's discriminator is already required to be a prefix of this
+/// instruction's data, so every selector the label matched is also a prefix of
+/// these bytes. A declaration that matched nothing is left exactly as the
+/// caller wrote it — L2 has already failed the verification in that case
+/// (`unmatched_declarations`), and rewriting it would be inventing evidence.
+fn siblings_keyed_on_their_bytes(
+    message: &crate::tx_artifact::ArtifactMessage,
+    coverage: &SiblingCoverage,
+    declared: &[crate::tx_pattern_analysis::TransactionInstruction],
+) -> Vec<crate::tx_pattern_analysis::TransactionInstruction> {
+    declared
+        .iter()
+        .enumerate()
+        .map(|(d, decl)| {
+            let Some(actual) = coverage
+                .matched
+                .get(d)
+                .copied()
+                .flatten()
+                .and_then(|i| message.instructions.get(i))
+            else {
+                return decl.clone();
+            };
+            // An instruction with no data names no instruction; leaving the
+            // declaration alone keeps `assess_secondary_instructions`'
+            // empty-discriminator fail-closed arm reachable rather than
+            // quietly turning it into an empty string here.
+            if actual.data.is_empty() {
+                return decl.clone();
+            }
+            crate::tx_pattern_analysis::TransactionInstruction {
+                instruction_discriminator: hex::encode(&actual.data[..actual.data.len().min(8)]),
+                ..decl.clone()
+            }
+        })
+        .collect()
 }
 
 /// The wall-clock budget ONE verification may spend talking to an RPC.
@@ -2584,13 +2731,43 @@ impl GraphiteCore {
     }
 
     // L2: Instruction Verification
+    /// `effective_discriminator` is the instruction's own leading bytes — what
+    /// the manifest is looked up with (GFX-101). The CONTRADICTION check below
+    /// deliberately keeps using the caller's LABEL, because comparing the label
+    /// against the bytes is the entire point of that check.
     fn verify_instruction(
         &self,
         input: &VerificationInput,
+        effective_discriminator: &str,
         manifest: Option<&crate::manifest::ProtocolManifest>,
         resolution: &crate::account_resolution::AccountResolutionResult,
     ) -> PipelineLayerResult {
         let layer_name = "L2_InstructionVerification";
+
+        // GFX-001 (2026-09-17 forensic audit): a request must not contradict
+        // itself, and whether it does is not a question about the manifest.
+        //
+        // This comparison used to sit BELOW the manifest lookup, which meant
+        // it ran only after a manifest HIT. A discriminator matching no
+        // manifest entry returned the P12 soft pass from the `None` arm below
+        // before the data was ever compared to it — so declaring an unknown
+        // discriminator over a real SetAuthority, CloseAccount or Assign
+        // payload bought silence from the one layer whose job is to say what
+        // the instruction is, and every later layer, the Risk Engine included,
+        // then reasoned about the label instead of the bytes. Reproduced
+        // against this codebase with identical transaction bytes and identical
+        // instruction_data, varying only the declared discriminator: `06` was
+        // Blocked as an AuthorityHijack and `ff` was approved, artifact-bound,
+        // at confidence 0.640.
+        //
+        // The self-consistency of a request is a property of the request.
+        // It is checked first, for every protocol, known or not.
+        if let Some(detail) = declared_discriminator_contradicts_data(
+            &input.instruction_discriminator,
+            input.instruction_data.as_deref(),
+        ) {
+            return PipelineLayerResult::new(layer_name, LayerStatus::Failed, detail);
+        }
 
         let manifest = match manifest {
             Some(m) => m,
@@ -2610,10 +2787,7 @@ impl GraphiteCore {
         // 4-char prefix of a known discriminator, minting a false
         // InstructionMatch on a different instruction).
         let matching_ix = manifest.instructions.iter().find(|ix| {
-            crate::manifest::discriminator_matches(
-                &ix.discriminator,
-                &input.instruction_discriminator,
-            )
+            crate::manifest::discriminator_matches(&ix.discriminator, effective_discriminator)
         });
 
         let ix = match matching_ix {
@@ -2623,35 +2797,21 @@ impl GraphiteCore {
                 // The instruction is unknown but the protocol is trusted.
                 // Confidence will be lower (no InstructionMatch signal).
                 // Risk Engine still checks for malicious patterns.
+                //
+                // Reported by the BYTES, because that is what was looked up
+                // (GFX-101). Naming the caller's label here would tell an
+                // operator that the label was the reason nothing matched, when
+                // since GFX-101 the label is not consulted for this at all.
                 return PipelineLayerResult::new(
                     layer_name,
                     LayerStatus::Passed,
                     format!(
                         "Unknown instruction '{}' on known protocol {} — P12 soft pass (reduced confidence)",
-                        input.instruction_discriminator,
-                        manifest.protocol.name
+                        effective_discriminator, manifest.protocol.name
                     ),
                 );
             }
         };
-
-        // Verify instruction data (if provided) starts with the discriminator
-        if let Some(ref data) = input.instruction_data {
-            if !data.is_empty() {
-                let disc_hex = input.instruction_discriminator.trim_start_matches("0x");
-                if let Ok(disc_bytes) = hex::decode(disc_hex) {
-                    if data.len() >= disc_bytes.len()
-                        && &data[..disc_bytes.len()] != disc_bytes.as_slice()
-                    {
-                        return PipelineLayerResult::new(
-                            layer_name,
-                            LayerStatus::Failed,
-                            "Instruction data does not start with expected discriminator",
-                        );
-                    }
-                }
-            }
-        }
 
         // Verify account count matches manifest expectations
         // NOTE: Some protocols (e.g., Jupiter V6 aggregator) use variable-length
@@ -3619,6 +3779,60 @@ impl GraphiteCore {
             (None, _) => PrivilegeSource::Absent,
         };
 
+        // GFX-101: what EVERY manifest lookup is keyed on.
+        //
+        // Round 13 re-keyed the Risk Engine on the instruction's own leading
+        // bytes and left every other manifest lookup keyed on the caller's
+        // label. `manifest::discriminator_matches` is
+        // `input.starts_with(selector)`, so a label SHORTER than the manifest's
+        // selector misses it — and a short label is not a contradiction,
+        // because it really is a prefix of the data. The two lookups therefore
+        // disagreed for any request that truncated its own discriminator, and
+        // the half still keyed on the label was the half that checks account
+        // identity.
+        //
+        // On a miss `resolve_accounts` returns `InstructionNotFound`, whose P12
+        // arm below synthesises accounts with `pda_mismatch`,
+        // `expected_address_mismatch` and `privilege_mismatch` ALL FALSE. So
+        // declaring `e517cb97` instead of `e517cb977ae3ad2a` did not merely
+        // lower confidence: it switched off PDA re-derivation, the
+        // fixed-address comparison and the privilege comparison together, and a
+        // manifest-pinned slot could then hold anything. Measured against a
+        // running server: an attacker-controlled program in Jupiter V6 route's
+        // account 0 — the slot pinned to the two token programs — went from
+        // `Blocked / AccountIdentityMismatch` under the full label to
+        // `approved: true, risk: Clear, artifact_bound, inherent residuals
+        // only` under a four-byte one.
+        //
+        // Keyed on the bytes there is nothing to truncate, and the change
+        // cannot refuse anything that was not refused before: the label is
+        // required to be a prefix of the data (L2's contradiction check, which
+        // deliberately stays on the LABEL because comparing the label is its
+        // whole purpose), so every selector the label matched is also a prefix
+        // of these bytes. The lookup can only become MORE specific, never less
+        // — which is why this is a strictly-safe substitution rather than a
+        // trade.
+        //
+        // Eight bytes because that is the longest discriminator any manifest
+        // declares (Anchor's), and every consumer prefix-matches.
+        // Deliberately NOT gated on the label being non-empty. The Risk
+        // Engine's derivation is (see `risk_discriminator` below, which keeps
+        // that gate for a reason), and inheriting the gate here left the whole
+        // bypass intact for a caller who simply sent `""` instead of a short
+        // prefix: `discriminator_matches` refuses an empty input, so the lookup
+        // missed and the P12 arm suppressed the identity checks exactly as
+        // before. Measured on the first cut of this fix — Jupiter route with an
+        // attacker's program in the pinned slot: `e517cb97` blocked, `""` Clear.
+        //
+        // An empty label is a request that declined to say what it is calling.
+        // That is a reason to judge its RISK conservatively; it is not a reason
+        // to stop checking whether its accounts are the accounts the protocol
+        // requires.
+        let effective_discriminator = match input.instruction_data.as_deref() {
+            Some(data) if !data.is_empty() => hex::encode(&data[..data.len().min(8)]),
+            _ => input.instruction_discriminator.clone(),
+        };
+
         // Step 1: Account Resolution
         // Fail-closed (P12): If the manifest is found but the instruction discriminator
         // is not in the manifest, BLOCK the transaction instead of returning an error.
@@ -3627,7 +3841,9 @@ impl GraphiteCore {
         let resolution = match resolve_accounts(
             &AccountResolutionInput {
                 program_id: input.program_id.clone(),
-                instruction_discriminator: input.instruction_discriminator.clone(),
+                // The bytes, not the label (GFX-101). This is the lookup that
+                // decides whether PDA seeds and fixed addresses get checked.
+                instruction_discriminator: effective_discriminator.clone(),
                 account_addresses: input.account_addresses.clone(),
                 instruction_data: input.instruction_data.clone(),
                 real_account_metas: effective_metas.clone(),
@@ -3710,7 +3926,8 @@ impl GraphiteCore {
         let manifest = self.registry.get(&input.program_id);
 
         // L2: Instruction Verification
-        let l2_result = self.verify_instruction(input, manifest, &resolution);
+        let l2_result =
+            self.verify_instruction(input, &effective_discriminator, manifest, &resolution);
 
         // ...and, when an artifact was supplied, whether the instruction being
         // verified is actually IN it.
@@ -3727,6 +3944,13 @@ impl GraphiteCore {
         // `scope` reports it, so a consumer knows whether "artifact_bound"
         // rests on a located instruction or on a failed L2.
         let mut artifact_instruction_located = false;
+        // The declared siblings, re-keyed on the bytes they describe, once the
+        // artifact has said which instruction each one is (GFX-106). `None`
+        // means there was no readable artifact to key them on, in which case
+        // the declarations stand as written — and the verdict is Descriptive,
+        // which the execution boundary refuses.
+        let mut siblings_by_bytes: Option<Vec<crate::tx_pattern_analysis::TransactionInstruction>> =
+            None;
         let l2_result = match (&input.signed_transaction, &input.instruction_data) {
             (Some(artifact), data) if !artifact.is_empty() => {
                 // Every artifact goes through here. Until Round 9 this arm
@@ -3773,6 +3997,22 @@ impl GraphiteCore {
                         if c.matched_instruction.is_some() {
                             artifact_instruction_located = true;
                         }
+                        // GFX-106: the bytes each declaration actually names,
+                        // captured here because this is the only place that
+                        // knows which artifact instruction each one matched.
+                        if let Some(primary) = c.matched_instruction {
+                            let coverage = sibling_coverage(
+                                &message,
+                                primary,
+                                &input.transaction_instructions,
+                                resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
+                            );
+                            siblings_by_bytes = Some(siblings_keyed_on_their_bytes(
+                                &message,
+                                &coverage,
+                                &input.transaction_instructions,
+                            ));
+                        }
                         match c.matched_instruction {
                             None => PipelineLayerResult::new(
                                 "L2_InstructionVerification",
@@ -3806,6 +4046,7 @@ impl GraphiteCore {
                                     &message,
                                     idx,
                                     &input.transaction_instructions,
+                                    resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
                                 )
                                 .complete() =>
                             {
@@ -3818,7 +4059,8 @@ impl GraphiteCore {
                                         sibling_coverage(
                                             &message,
                                             idx,
-                                            &input.transaction_instructions
+                                            &input.transaction_instructions,
+                                            resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
                                         )
                                         .detail()
                                     ),
@@ -3948,10 +4190,19 @@ impl GraphiteCore {
         // manifest — this ensures known protocols have their CPI lists available.
         let (mut expected_state_changes, allowed_cpis) = match manifest {
             Some(m) => {
+                // GFX-102: keyed on the bytes. Keyed on the label, a truncated
+                // discriminator replaced the instruction's real declared
+                // effects with the generic "Protocol-level state changes",
+                // which `DeclaredEffects::parse` cannot interpret — and an
+                // uninterpretable declaration DOWNGRADES every undeclared
+                // value-movement finding in L4 from Critical to Warning. It
+                // also widened `allowed_cpis` to the union of every instruction
+                // in the protocol. Both were caller-selectable by shortening a
+                // string.
                 let ix = m.instructions.iter().find(|i| {
                     crate::manifest::discriminator_matches(
                         &i.discriminator,
-                        &input.instruction_discriminator,
+                        &effective_discriminator,
                     )
                 });
                 match ix {
@@ -3996,7 +4247,7 @@ impl GraphiteCore {
         if !manifest_found {
             let (plugin_rules, _plugin_cpis) = self
                 .plugins
-                .protocol_rules(&input.program_id, &input.instruction_discriminator);
+                .protocol_rules(&input.program_id, &effective_discriminator);
             expected_state_changes.extend(plugin_rules);
         }
 
@@ -4006,7 +4257,12 @@ impl GraphiteCore {
         let ctx = PluginContext {
             program_id: &input.program_id,
             protocol_name: &protocol_name,
-            instruction_discriminator: &input.instruction_discriminator,
+            // The bytes (GFX-101). A plugin can only Block or Note — never
+            // approve — so a more accurate discriminator can only sharpen what
+            // it finds, and showing it the caller's label would let the same
+            // truncation hide an instruction from a plugin that the core now
+            // sees perfectly well.
+            instruction_discriminator: &effective_discriminator,
             instruction_name: &instruction_name,
             proposed_intent: &input.proposed_intent,
             account_addresses: &input.account_addresses,
@@ -4039,13 +4295,61 @@ impl GraphiteCore {
         })
         .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
         // Step 3: Risk Assessment
+        //
+        // GFX-001: what the Risk Engine is given to judge.
+        //
+        // `instruction_discriminator` is a label the caller wrote. The leading
+        // bytes of `instruction_data` are what the runtime will dispatch on,
+        // and where an artifact was supplied they are more than a claim:
+        // `correspond` above located the described instruction by exact data
+        // equality, so those bytes are known to be in the transaction about to
+        // be signed. A known-risky table keyed on the label is keyed on the
+        // attacker's choice of words; keyed on the bytes it is keyed on the
+        // instruction.
+        //
+        // The L2 comparison above refuses a label that CONTRADICTS the data,
+        // and `transaction_builder` refuses one that is not hex at all. What
+        // neither of them refuses is a label that is TRUE BUT SHORT, and that
+        // is a bypass on its own: System `Assign` is `01000000`, and a request
+        // declaring `01` over `01 00 00 00 …` has told the truth as far as it
+        // goes. `01` is a prefix of the data, so nothing contradicts; and
+        // `"01".starts_with("01000000")` is false, so the known-risky table
+        // does not fire and the manifest lookup misses. One byte of honesty
+        // bought the same silence a lie used to.
+        //
+        // Keyed on the bytes there is nothing to truncate. Substituting them
+        // cannot cost a block the label would have earned, either:
+        //   • a hex label that disagrees fails L2 above, and a failed L2 is
+        //     an unconditional hard gate;
+        //   • a hex label that agrees is a prefix of what is substituted, and
+        //     every check downstream is a prefix match, so it fires as before;
+        //   • an EMPTY label is left exactly as it is, so Check 2's
+        //     fail-closed arm still sees a request that named no instruction.
+        //
+        // Eight bytes because that is the longest discriminator any manifest
+        // declares (Anchor's), and every consumer prefix-matches.
+        // The same bytes the manifest is looked up with (computed far above,
+        // because account resolution needs them too — GFX-101), with ONE
+        // deliberate difference: an EMPTY label stays empty.
+        //
+        // That is Check 2's fail-closed arm, and it is worth keeping. A request
+        // that names no instruction at all on a known-risky program is refused
+        // on those grounds alone, whatever its bytes turn out to say — deriving
+        // a discriminator for it would answer a question the caller declined to
+        // answer, and would turn an empty-label SPL Token call from "refused
+        // because you did not say" into "allowed because we worked it out".
+        // Verified against a running server: an empty label on SPL Token is
+        // Blocked before and after this change.
+        let risk_discriminator = if input.instruction_discriminator.is_empty() {
+            String::new()
+        } else {
+            effective_discriminator.clone()
+        };
+
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
                 let ix = m.instructions.iter().find(|i| {
-                    crate::manifest::discriminator_matches(
-                        &i.discriminator,
-                        &input.instruction_discriminator,
-                    )
+                    crate::manifest::discriminator_matches(&i.discriminator, &risk_discriminator)
                 });
                 match ix {
                     Some(i) => (
@@ -4065,7 +4369,7 @@ impl GraphiteCore {
             cpi_targets: input.cpi_targets.clone(),
             expected_state_changes: expected_state_changes.clone(),
             allowed_cpis: allowed_cpis.clone(),
-            instruction_discriminator: input.instruction_discriminator.clone(),
+            instruction_discriminator: risk_discriminator.clone(),
             expected_account_count,
             variable_accounts,
             proposed_intent_type: input.proposed_intent.intent_type.clone(),
@@ -4093,8 +4397,36 @@ impl GraphiteCore {
         if manifest_found && instruction_name == "unknown_instruction" {
             risk_warnings.push(format!(
                 "novel instruction discriminator '{}' on known protocol {} — not in manifest (confidence reduced, P6)",
-                input.instruction_discriminator, input.program_id
+                effective_discriminator, input.program_id
             ));
+        }
+
+        // A label that does not resolve to what the bytes resolve to (GFX-101).
+        //
+        // Since every manifest lookup is keyed on the bytes, a caller can no
+        // longer change which instruction gets checked by shortening its
+        // discriminator — but the fact that they described it as something the
+        // protocol does not have is still a statement about the request's
+        // reliability, and it is exactly the shape the bypass had. Disclosed,
+        // never penalized: a short-but-truthful label is not proof of harm
+        // (P12), and the checks it used to disable now run regardless.
+        if manifest_found
+            && !input.instruction_discriminator.is_empty()
+            && input.instruction_discriminator != effective_discriminator
+        {
+            let label_resolves = self
+                .registry
+                .find_instruction(&input.program_id, &input.instruction_discriminator)
+                .map(|i| i.name.clone());
+            if label_resolves.as_deref() != Some(instruction_name.as_str()) {
+                risk_warnings.push(format!(
+                    "the request declares discriminator '{}' and the instruction's own bytes begin '{}', which this protocol resolves to {} — the declaration names {}. The manifest lookup used the bytes",
+                    input.instruction_discriminator,
+                    effective_discriminator,
+                    instruction_name,
+                    label_resolves.as_deref().unwrap_or("no instruction it declares"),
+                ));
+            }
         }
 
         // P1 fix (2026-09-05 audit, "no real ALT/v0 transaction awareness"):
@@ -4339,7 +4671,13 @@ impl GraphiteCore {
             let mut v = Vec::with_capacity(input.transaction_instructions.len() + 1 + 8);
             v.push(crate::tx_pattern_analysis::TransactionInstruction {
                 program_id: input.program_id.clone(),
-                instruction_discriminator: input.instruction_discriminator.clone(),
+                // The bytes, not the label (GFX-101/GFX-106).
+                // `tx_pattern_analysis::disc_matches` is the same
+                // `disc.starts_with(needle)` relation the manifest uses, so a
+                // truncated label slipped past the correlation rules here too —
+                // an Approve+Transfer or SetAuthority+Transfer pair stopped
+                // being a pair when one half was declared short.
+                instruction_discriminator: effective_discriminator.clone(),
                 account_addresses: input.account_addresses.clone(),
                 cpi_targets: input.cpi_targets.clone(),
             });
@@ -4348,7 +4686,11 @@ impl GraphiteCore {
                 v.extend(crate::tx_pattern_analysis::flatten_cpi_trace(trace));
             }
             let trace_end = v.len();
-            v.extend(input.transaction_instructions.clone());
+            v.extend(
+                siblings_by_bytes
+                    .clone()
+                    .unwrap_or_else(|| input.transaction_instructions.clone()),
+            );
             (v, trace_start..trace_end)
         };
 
