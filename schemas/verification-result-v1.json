@@ -361,6 +361,7 @@
                 "enum": [
                   "not_simulated",
                   "no_state_diff",
+                  "simulation_failed",
                   "privileges_from_caller",
                   "privileges_absent",
                   "lookup_tables_unresolved",
@@ -410,6 +411,7 @@
                 "enum": [
                   "not_simulated",
                   "no_state_diff",
+                  "simulation_failed",
                   "privileges_from_caller",
                   "privileges_absent",
                   "lookup_tables_unresolved",

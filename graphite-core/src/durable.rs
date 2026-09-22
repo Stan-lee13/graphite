@@ -100,6 +100,12 @@ pub struct AuditLog {
     /// without delete-sharing (a log shipper, a scanner, `Get-Content -Wait`)
     /// or a read-only directory.
     rotations_failed: Arc<AtomicU64>,
+    /// When the active file last rotated. Round 17 (F-15-09): a lifecycle
+    /// that straddles a rotation has rows on both sides; the newest archive
+    /// is merged into `lifecycle_history` while the rotation is recent
+    /// enough for a lifecycle to have crossed it (`ROTATION_STRADDLE_WINDOW`),
+    /// instead of only when the active file holds no row at all.
+    last_rotation: Arc<Mutex<Option<std::time::Instant>>>,
     /// Per-archive statistics, computed once per archive.
     ///
     /// An archive is immutable by construction — rotation renames and never
@@ -531,6 +537,12 @@ pub struct LifecycleEventRecord {
     pub sequence_anomalies: Vec<String>,
 }
 
+/// How long after a rotation `lifecycle_history` keeps merging the newest
+/// archive with the active file (Round 17, F-15-09). A lifecycle — signing,
+/// submission, confirmation, reconciliation — spans seconds to a few
+/// minutes; ten covers a slow confirmation and a retried L8.
+pub const ROTATION_STRADDLE_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
+
 /// The most lifecycle rows kept per key in the index and consulted for a
 /// sequence check. A transaction has a handful; a caller reporting hundreds
 /// for one key is itself the anomaly, and the memory it could otherwise
@@ -783,6 +795,10 @@ impl AuditLog {
             archive_stats: Arc::new(Mutex::new(HashMap::new())),
             active_index: Arc::new(Mutex::new(active_index)),
             lifecycle_index: Arc::new(Mutex::new(lifecycle_index)),
+            // A freshly opened log may sit beside an archive written by the
+            // process that just exited; treat open as a rotation so that
+            // archive is consulted for the first window.
+            last_rotation: Arc::new(Mutex::new(Some(std::time::Instant::now()))),
         })
     }
 
@@ -1003,6 +1019,10 @@ impl AuditLog {
                     Ok(mut g) => g.clear(),
                     Err(poisoned) => poisoned.into_inner().clear(),
                 }
+                match self.last_rotation.lock() {
+                    Ok(mut g) => *g = Some(std::time::Instant::now()),
+                    Err(poisoned) => *poisoned.into_inner() = Some(std::time::Instant::now()),
+                }
                 // The rename and the new file are directory entries; make
                 // them durable so a crash right after rotation cannot lose
                 // the archive's NAME while its data survives.
@@ -1142,6 +1162,54 @@ impl AuditLog {
     /// instruction-level key and answers for whichever transaction carrying
     /// that instruction was verified last; callers that have a better key
     /// must use it (Round 10).
+    /// How many verifications the trail holds for `key`, split by verdict:
+    /// `(approved, refused)`. Whole trail — active file and every archive.
+    ///
+    /// Round 17 (F-16-11): `find_verification` answers with the LAST record
+    /// for a key, so the same artifact refused once and approved later
+    /// reconciled as approved with no sign that a refusal existed. L8 now
+    /// reports these counts beside the record it resolved.
+    pub fn count_verifications(&self, key: VerificationKey<'_>) -> (usize, usize) {
+        let wanted = key.value().trim();
+        if wanted.is_empty() {
+            return (0, 0);
+        }
+        let mut approved = 0usize;
+        let mut refused = 0usize;
+        let mut tally = |file: File| {
+            for line in BufReader::new(file).lines().map_while(Result::ok) {
+                if !line.contains(wanted) {
+                    continue;
+                }
+                if let Ok(r) = serde_json::from_str::<AuditRecord>(&line) {
+                    if key.matches(&r) {
+                        if r.approved {
+                            approved += 1;
+                        } else {
+                            refused += 1;
+                        }
+                    }
+                }
+            }
+        };
+        let archives = {
+            let _guard = match self.file.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if let Ok(file) = File::open(self.path.as_ref()) {
+                tally(file);
+            }
+            self.archives()
+        };
+        for archive in archives {
+            if let Ok(file) = File::open(archive) {
+                tally(file);
+            }
+        }
+        (approved, refused)
+    }
+
     pub fn find_verification(&self, key: VerificationKey<'_>) -> Option<AuditRecord> {
         let wanted = key.value().trim();
         if wanted.is_empty() {
@@ -1280,8 +1348,12 @@ impl AuditLog {
     }
 
     /// Every lifecycle row on record for a transaction, in file order:
-    /// the active file by index, and — when the active file holds none —
-    /// the newest archive, for a lifecycle that straddled a rotation.
+    /// the newest archive's rows first when the active file rotated within
+    /// `ROTATION_STRADDLE_WINDOW` (a lifecycle that straddled the rotation
+    /// has rows on both sides — Round 17, F-15-09; until then the archive
+    /// was consulted only when the active file held NO row, so a straddling
+    /// lifecycle was reconstructed from the active side alone and produced
+    /// false sequence anomalies), then the active file by index.
     ///
     /// Bounded at `MAX_LIFECYCLE_HISTORY` rows. Older archives are not
     /// consulted: a transaction's lifecycle spans seconds to minutes and an
@@ -1292,6 +1364,12 @@ impl AuditLog {
         if key.is_empty() {
             return Vec::new();
         }
+        let rotated_recently = match self.last_rotation.lock() {
+            Ok(g) => g.is_some_and(|t| t.elapsed() <= ROTATION_STRADDLE_WINDOW),
+            Err(poisoned) => poisoned
+                .into_inner()
+                .is_some_and(|t| t.elapsed() <= ROTATION_STRADDLE_WINDOW),
+        };
         let (rows, newest_archive) = {
             let _guard = match self.file.lock() {
                 Ok(g) => g,
@@ -1336,7 +1414,10 @@ impl AuditLog {
             }
             (rows, self.archives().last().cloned())
         };
-        if !rows.is_empty() {
+        // The archive is scanned when the active file holds nothing for the
+        // key (the pre-Round-17 rule) OR the rotation is recent enough that
+        // a lifecycle in progress may have rows on both sides of it.
+        if !rows.is_empty() && !rotated_recently {
             return rows;
         }
         let Some(archive) = newest_archive else {
@@ -1362,6 +1443,9 @@ impl AuditLog {
                 }
             }
         }
+        // Archive rows precede active rows in time; keep the bound.
+        found.extend(rows);
+        found.truncate(MAX_LIFECYCLE_HISTORY);
         found
     }
 

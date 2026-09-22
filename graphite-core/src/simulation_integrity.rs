@@ -38,6 +38,27 @@ pub const ROBUST_WINDOW: usize = 256;
 /// deviation larger than this from an identical-history mean is a real signal.
 const ZERO_VARIANCE_EPSILON: f64 = 1e-6;
 
+/// Round 17 (F-16-02): the smallest spread a baseline is allowed to claim,
+/// as a fraction of its centre. Ten identical early samples used to make
+/// `std == 0`, after which EVERY other value was a ">1000σ" divergence and the
+/// program's honest traffic was refused as `SimulationSpoofing` until an
+/// operator reseeded — a freeze any caller could cause with ten requests. A
+/// history that has only ever seen one value is treated as a band of
+/// ±25% around it rather than a point: with the 2σ threshold, a deviation
+/// beyond 50% of the centre still flags, a variation within it does not.
+pub const MIN_RELATIVE_SPREAD: f64 = 0.25;
+/// Absolute floor on the spread, for the small integer signals (writes,
+/// hops) whose centre may be 1 or 2: one write more or fewer than an
+/// identical history is a 1σ event, not a maximal one.
+pub const MIN_ABSOLUTE_SPREAD: f64 = 1.0;
+
+/// The spread a signal is judged against: the measured one, or the floor.
+fn effective_spread(centre: f64, measured: f64) -> f64 {
+    measured
+        .max(centre.abs() * MIN_RELATIVE_SPREAD)
+        .max(MIN_ABSOLUTE_SPREAD)
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SimulationIntegrityError {
     #[error("no baseline available for program {program_id}")]
@@ -91,6 +112,13 @@ pub struct ComputeBaseline {
     /// Bounded recent CPI-hop samples (C28 robust baseline)
     #[serde(default)]
     pub recent_cpi_hops: Vec<u32>,
+    /// The artifact digests of the most recent observations, bounded by
+    /// `ROBUST_WINDOW`. Round 17 (F-15-01): the same approved bytes
+    /// re-verified do not add a sample, so `sample_count` — and with it the
+    /// `SimulationMatch` confidence signal — counts distinct transactions
+    /// rather than calls.
+    #[serde(default)]
+    pub recent_observation_keys: Vec<String>,
 }
 
 /// Input for simulation integrity check.
@@ -305,23 +333,11 @@ fn mean_std_z(
     threshold: f64,
     label: &str,
 ) -> Option<SimulationIntegrityResult> {
-    if std == 0.0 {
-        // Zero variance: mean must be nonzero (degenerate baselines are
-        // rejected earlier by the caller for the compute signal; writes/hops
-        // with mean==0 are unobserved and skipped by the caller's gate).
-        let delta = (value - mean).abs();
-        if delta > ZERO_VARIANCE_EPSILON {
-            return Some(SimulationIntegrityResult {
-                flagged: true,
-                divergence_score: f64::MAX,
-                reason: Some(format!(
-                    "{} divergence from zero-variance baseline: {:.0} vs mean {:.0} (delta {:.0})",
-                    label, value, mean, delta
-                )),
-            });
-        }
-        return None;
-    }
+    // Round 17 (F-16-02): a zero or near-zero measured spread is judged
+    // against the floor, not treated as a point. The zero-variance BYPASS
+    // (skipping the check when std == 0) stays closed — the check still
+    // runs, with a spread that cannot be made arbitrarily small.
+    let std = effective_spread(mean, std);
     let z = (value - mean) / std;
     if z.is_nan() || z.is_infinite() {
         return Some(SimulationIntegrityResult {
@@ -364,22 +380,13 @@ fn robust_signal_z(
     }
     let m = median(samples)?;
     let d = mad(samples)?;
-    if d <= ZERO_VARIANCE_EPSILON {
-        // Zero-spread window: any deviation beyond noise is a max signal.
-        let delta = (value - m).abs();
-        if delta > ZERO_VARIANCE_EPSILON {
-            return Some(SimulationIntegrityResult {
-                flagged: true,
-                divergence_score: f64::MAX,
-                reason: Some(format!(
-                    "{label} robust median/MAD (zero-spread window): {:.0} vs median {:.0} (delta {:.0})",
-                    value, m, delta
-                )),
-            });
-        }
-        return None;
-    }
-    let z = robust_z(value, samples)?;
+    // Round 17 (F-16-02): the robust path gets the same floor as the
+    // mean/std path — a zero-spread window is a ±25% band, not a point.
+    let z = if d * 1.4826 < effective_spread(m, 0.0) {
+        (value - m) / effective_spread(m, 0.0)
+    } else {
+        robust_z(value, samples)?
+    };
     if z.abs() > threshold {
         return Some(SimulationIntegrityResult {
             flagged: true,
@@ -668,6 +675,57 @@ mod tests {
         update_baseline(&mut baseline, 1100, 10, 2);
         assert_ne!(baseline.mean_compute_units, old_mean);
         assert_eq!(baseline.sample_count, 101);
+    }
+
+    /// Round 17 (F-16-02): a one-value history is a band, not a point.
+    #[test]
+    fn test_zero_variance_baseline_is_a_band_not_a_point() {
+        let mut baseline = ComputeBaseline::default();
+        for _ in 0..(MIN_SAMPLES as usize) {
+            update_baseline(&mut baseline, 450, 2, 0);
+        }
+        assert_eq!(baseline.std_compute_units, 0.0);
+        let check = |cu: u64| {
+            check_simulation_integrity(&SimulationIntegrityInput {
+                program_id: "p".to_string(),
+                simulation_usage: ComputeUsage {
+                    compute_units: cu,
+                    account_writes: 2,
+                    cpi_hops: 0,
+                },
+                baseline: baseline.clone(),
+                divergence_threshold: 2.0,
+            })
+            .unwrap()
+        };
+        assert!(!check(450).flagged);
+        assert!(
+            !check(451).flagged,
+            "one unit off a uniform history is not a divergence"
+        );
+        assert!(
+            !check(600).flagged,
+            "a third more is within the ±25% band at 2σ"
+        );
+        assert!(check(1200).flagged, "a real divergence still flags");
+        assert!(check(100).flagged);
+        // The small integer signals get the absolute floor: one write more
+        // or fewer than a uniform history is a 1σ event.
+        let writes = |w: u32| {
+            check_simulation_integrity(&SimulationIntegrityInput {
+                program_id: "p".to_string(),
+                simulation_usage: ComputeUsage {
+                    compute_units: 450,
+                    account_writes: w,
+                    cpi_hops: 0,
+                },
+                baseline: baseline.clone(),
+                divergence_threshold: 2.0,
+            })
+            .unwrap()
+        };
+        assert!(!writes(3).flagged);
+        assert!(writes(6).flagged);
     }
 
     #[test]

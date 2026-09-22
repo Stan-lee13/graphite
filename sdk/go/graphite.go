@@ -31,6 +31,23 @@
 //	    return fmt.Errorf("verdict is not artifact-bound; unobserved: %v", result.Unobserved())
 //	}
 //
+//	// Refuse every residual you have not accepted BY NAME (Round 17). An
+//	// artifact-bound approval still lists what Graphite could have observed
+//	// and did not — a simulation that never ran, a lookup table it could
+//	// not resolve. Two codes are inherent to every such verdict and pass;
+//	// everything else is an observation that did not happen, and executing
+//	// on it is executing on what was not checked. `accepted` is the
+//	// deployment's own list (the bridge reads GRAPHITE_ACCEPT_UNOBSERVED).
+//	if codes, ok := result.NonInherentUnobserved(); !ok {
+//	    return fmt.Errorf("server reported residuals without codes; refusing")
+//	} else {
+//	    for _, c := range codes {
+//	        if !accepted[c] {
+//	            return fmt.Errorf("residual %q not accepted by this deployment; refusing to sign", c)
+//	        }
+//	    }
+//	}
+//
 //	// Bind what was verified to what you are about to submit. Graphite
 //	// verifies BEFORE signing, so without this the instruction can still be
 //	// mutated in between (compromised RPC proxy, malicious wallet adapter, a
@@ -307,8 +324,11 @@ type VerificationScope struct {
 // Mirrors UnobservedCode in graphite-core/src/verification.rs and the enum in
 // schemas/verification-result-v1.json.
 const (
-	UnobservedNotSimulated             = "not_simulated"
-	UnobservedNoStateDiff              = "no_state_diff"
+	UnobservedNotSimulated = "not_simulated"
+	UnobservedNoStateDiff  = "no_state_diff"
+	// Round 17: the simulator ran and reported an error; nothing it would do
+	// was measured and its compute usage is not evidence.
+	UnobservedSimulationFailed         = "simulation_failed"
 	UnobservedPrivilegesFromCaller     = "privileges_from_caller"
 	UnobservedPrivilegesAbsent         = "privileges_absent"
 	UnobservedLookupTablesUnresolved   = "lookup_tables_unresolved"

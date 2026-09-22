@@ -169,6 +169,22 @@ export function versionLabel(v: string): string {
   return /^\d/.test(v) ? `v${v}` : v;
 }
 
+/**
+ * A manifest URL the console will render as a link: http(s) only. The Core
+ * refuses other schemes at manifest load (Round 17, F-16-10); this is the
+ * same rule at the point of rendering, so a `javascript:` or `data:` value
+ * from any source is text at most, never an href.
+ */
+function httpUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const u = new URL(raw);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function ProgramDetail({
   node,
   observed,
@@ -194,15 +210,15 @@ export function ProgramDetail({
       </div>
       {node.quarantined && node.quarantine_reason && <p className="prose warn-text">{node.quarantine_reason}</p>}
 
-      {manifest && (manifest.protocol.website || manifest.protocol.github) && (
+      {manifest && (httpUrl(manifest.protocol.website) || httpUrl(manifest.protocol.github)) && (
         <div className="program-links">
-          {manifest.protocol.website && (
-            <a href={manifest.protocol.website} target="_blank" rel="noreferrer noopener">
+          {httpUrl(manifest.protocol.website) && (
+            <a href={httpUrl(manifest.protocol.website)} target="_blank" rel="noreferrer noopener">
               Website <ExternalLink aria-hidden="true" />
             </a>
           )}
-          {manifest.protocol.github && (
-            <a href={manifest.protocol.github} target="_blank" rel="noreferrer noopener">
+          {httpUrl(manifest.protocol.github) && (
+            <a href={httpUrl(manifest.protocol.github)} target="_blank" rel="noreferrer noopener">
               Source <ExternalLink aria-hidden="true" />
             </a>
           )}

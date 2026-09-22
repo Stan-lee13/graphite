@@ -33,8 +33,8 @@ test("content_hash matches the Rust reference vector (no data, no CPI)", () => {
     instructionDiscriminator: TRANSFER_DISCRIMINATOR,
     accountAddresses: [FROM, TO],
   });
-  // sha256(program || disc || from || to)[0..16]
-  assert.equal(hash, "afb61d8865b4cb68");
+  // framed v2: domain || len-prefixed program, disc, [from, to], empty data, no CPI
+  assert.equal(hash, "48c65c638aceb5de");
 });
 
 test("content_hash matches the Rust reference vector (with data and CPI)", () => {
@@ -45,8 +45,8 @@ test("content_hash matches the Rust reference vector (with data and CPI)", () =>
     instructionData: [1, 2, 3],
     cpiTargets: ["cpiA"],
   });
-  // sha256(program || disc || from || bytes(1,2,3) || "cpiA")[0..16]
-  assert.equal(hash, "87751f34a0f8a590");
+  // framed v2: domain || len-prefixed program, disc, [from], bytes(1,2,3), ["cpiA"]
+  assert.equal(hash, "dd8569c46af7e6c0");
 });
 
 test("verifyContentHash accepts the exact verified transaction", () => {

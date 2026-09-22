@@ -25,6 +25,7 @@ package graphite
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -54,26 +55,42 @@ type AuditBindParams struct {
 // ComputeContentHash reproduces the Rust core's deterministic content_hash
 // (graphite-core/src/verification.rs::generate_audit_id).
 //
-// SHA-256 over the concatenated UTF-8 bytes of
+// FRAMED encoding (Round 17, F-16-09): SHA-256 over
 //
-//	ProgramID || InstructionDiscriminator || each account address
-//	  || raw instruction data (if any) || each CPI target
+//	"graphite-content-hash-v2\x00"
+//	|| len(ProgramID) || ProgramID
+//	|| len(disc) || disc
+//	|| count(accounts) || (len(addr) || addr)...
+//	|| len(data) || data                  (absent data is length 0)
+//	|| count(CPITargets) || (len(t) || t)...
 //
-// truncated to the first 16 hex characters (the first 8 bytes of the digest).
-// Both sides must agree on the exact byte sequence or this check is worthless
-// — see auditbind_test.go for the pinned cross-language vectors.
+// every length a u32 little-endian, truncated to the first 16 hex characters.
+// The bare concatenation it replaces let [A, B] with no data and [A] with
+// data = bytes(B) hash identically. Both sides must agree on the exact byte
+// sequence or this check is worthless — see auditbind_test.go for the pinned
+// cross-language vectors.
 func ComputeContentHash(p AuditBindParams) string {
 	h := sha256.New()
-	h.Write([]byte(p.ProgramID))
-	h.Write([]byte(p.InstructionDiscriminator))
+	u32 := func(n int) {
+		var b [4]byte
+		binary.LittleEndian.PutUint32(b[:], uint32(n))
+		h.Write(b[:])
+	}
+	field := func(b []byte) {
+		u32(len(b))
+		h.Write(b)
+	}
+	h.Write([]byte("graphite-content-hash-v2\x00"))
+	field([]byte(p.ProgramID))
+	field([]byte(p.InstructionDiscriminator))
+	u32(len(p.AccountAddresses))
 	for _, addr := range p.AccountAddresses {
-		h.Write([]byte(addr))
+		field([]byte(addr))
 	}
-	if len(p.InstructionData) > 0 {
-		h.Write(p.InstructionData)
-	}
+	field(p.InstructionData)
+	u32(len(p.CPITargets))
 	for _, t := range p.CPITargets {
-		h.Write([]byte(t))
+		field([]byte(t))
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

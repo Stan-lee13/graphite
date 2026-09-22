@@ -205,7 +205,7 @@ fn record(log: &AuditLog, signed: &[u8], approved: bool) -> AuditRecord {
         event_type: LifecycleEvent::Verification,
         timestamp: graphite_core::durable::now_utc_rfc3339(),
         audit_trail_id: format!("gr-r12-{}", if approved { "approved" } else { "blocked" }),
-        content_hash: "afb61d8865b4cb68".to_string(),
+        content_hash: "48c65c638aceb5de".to_string(),
         transaction_sha256: Some(artifact_sha256_of_signed(signed).unwrap()),
         program_id: SYSTEM.to_string(),
         instruction_name: "Transfer".to_string(),

@@ -242,6 +242,16 @@ enum EvidenceAction {
         #[arg(long)]
         program: String,
     },
+    /// Replace a frozen simulation baseline with the clean executions it
+    /// refused (/health lists them under `frozen_baselines`)
+    PromoteShadow {
+        /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Program ID (base58)
+        #[arg(long)]
+        program: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -620,6 +630,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     mean_cpi_hops,
                 },
             }),
+            EvidenceAction::PromoteShadow { data_dir, program } => {
+                graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
+                    action: graphite_core::cli::EvidenceAction::PromoteShadow {
+                        data_dir,
+                        program_id: program,
+                    },
+                })
+            }
             EvidenceAction::Show { data_dir, program } => {
                 graphite_core::cli::run(graphite_core::cli::CliCommand::Evidence {
                     action: graphite_core::cli::EvidenceAction::Show {

@@ -49,26 +49,45 @@ export interface AuditBindTransactionParams {
  * Reproduce the Rust core's deterministic `content_hash`
  * (graphite-core/src/verification.rs::generate_audit_id).
  *
- * SHA-256 over the concatenated UTF-8 bytes of
- *   programId || instructionDiscriminator || each account address
- *   || raw instruction-data bytes (if any) || each CPI target
- * truncated to the first 16 hex characters (the first 8 bytes of the digest).
+ * FRAMED encoding (Round 17, F-16-09): SHA-256 over
+ *   "graphite-content-hash-v2\0"
+ *   || len(programId) || programId
+ *   || len(disc) || disc
+ *   || count(accounts) || (len(addr) || addr)…
+ *   || len(data) || data                 (absent data is length 0)
+ *   || count(cpiTargets) || (len(t) || t)…
+ * every length a u32 little-endian, truncated to the first 16 hex characters.
+ * The bare concatenation it replaces let `[A, B]` with no data and `[A]` with
+ * data = bytes(B) hash identically.
  *
  * Both sides must agree on the exact byte sequence or this check is worthless
  * — see `auditbind.test.ts` for the pinned cross-language vectors.
  */
+export const CONTENT_HASH_DOMAIN = "graphite-content-hash-v2\0";
+
 export function computeContentHash(params: AuditBindTransactionParams): string {
   const hasher = crypto.createHash("sha256");
-  hasher.update(params.programId, "utf8");
-  hasher.update(params.instructionDiscriminator, "utf8");
+  const u32 = (n: number): Buffer => {
+    const b = Buffer.alloc(4);
+    b.writeUInt32LE(n >>> 0, 0);
+    return b;
+  };
+  const field = (bytes: Buffer): void => {
+    hasher.update(u32(bytes.length));
+    hasher.update(bytes);
+  };
+  hasher.update(Buffer.from(CONTENT_HASH_DOMAIN, "utf8"));
+  field(Buffer.from(params.programId, "utf8"));
+  field(Buffer.from(params.instructionDiscriminator, "utf8"));
+  hasher.update(u32(params.accountAddresses.length));
   for (const addr of params.accountAddresses) {
-    hasher.update(addr, "utf8");
+    field(Buffer.from(addr, "utf8"));
   }
-  if (params.instructionData && params.instructionData.length > 0) {
-    hasher.update(Buffer.from(params.instructionData));
-  }
-  for (const target of params.cpiTargets ?? []) {
-    hasher.update(target, "utf8");
+  field(Buffer.from(params.instructionData ?? []));
+  const cpis = params.cpiTargets ?? [];
+  hasher.update(u32(cpis.length));
+  for (const target of cpis) {
+    field(Buffer.from(target, "utf8"));
   }
   return hasher.digest("hex").slice(0, 16);
 }

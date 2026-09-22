@@ -321,6 +321,12 @@ pub enum EvidenceAction {
         data_dir: Option<PathBuf>,
         program_id: String,
     },
+    /// Replace a frozen trusted baseline with the clean executions it refused
+    /// (the shadow accumulator), Round 17 F-16-02.
+    PromoteShadow {
+        data_dir: Option<PathBuf>,
+        program_id: String,
+    },
 }
 
 /// Protocol inspection action (dispatched by `CliCommand::Protocol`).
@@ -1340,6 +1346,34 @@ fn run_execution(
             );
             Ok(())
         }
+        ExecutionReconciliation::RecordedForDifferentBytes {
+            recorded_approved,
+            recorded_transaction_sha256,
+            chain_transaction_sha256,
+        } => {
+            println!(
+                "The audit_trail_id you supplied names a verification of DIFFERENT bytes\n\
+                 (recorded {} for {}, the chain's bytes digest to {}). Nothing on the trail\n\
+                 covers what actually executed under this signature.",
+                if *recorded_approved {
+                    "approved"
+                } else {
+                    "REFUSED"
+                },
+                recorded_transaction_sha256
+                    .as_deref()
+                    .unwrap_or("a descriptive verification"),
+                chain_transaction_sha256
+            );
+            if !recorded_approved {
+                println!(
+                    "DISCREPANCY: the cited verdict is a refusal and something carrying this\n\
+                     signature executed. Investigate before trusting the next one."
+                );
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -1518,6 +1552,31 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 None => println!("{program_id}\n  no behaviour record - nothing earned or seeded"),
             }
             println!("  graph        {}", dir.display());
+            Ok(())
+        }
+        EvidenceAction::PromoteShadow {
+            data_dir,
+            program_id,
+        } => {
+            if program_id.trim().is_empty() {
+                return Err("--program must not be empty".into());
+            }
+            let dir = data_dir_path(data_dir);
+            let core = GraphiteCore::with_data_dir(dir.clone());
+            let promoted = core.promote_shadow_baseline(&program_id)?;
+            println!("PROMOTED {program_id}");
+            println!(
+                "  baseline     {} samples, mean {:.0} CU (std {:.1}), {:.1} writes, {:.1} hops —                  the clean executions the frozen baseline had refused",
+                promoted.sample_count,
+                promoted.mean_compute_units,
+                promoted.std_compute_units,
+                promoted.mean_account_writes,
+                promoted.mean_cpi_hops
+            );
+            println!("  graph        {}", dir.display());
+            println!(
+                "A running server keeps its own copy in memory — restart it for the promotion to take effect."
+            );
             Ok(())
         }
     }

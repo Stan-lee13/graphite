@@ -376,6 +376,34 @@ pub fn unsigned_artifact(bytes: &[u8]) -> Result<Vec<u8>, ArtifactParseError> {
     Ok(out)
 }
 
+/// How many signature slots of this frame hold something other than 64 zero
+/// bytes.
+///
+/// Graphite verifies before signing, so the artifact it is shown must carry
+/// empty slots; a filled slot means the bytes were signed first (Round 17,
+/// F-16-01). Refuses what `unsigned_artifact` refuses about the frame.
+pub fn filled_signature_slots(bytes: &[u8]) -> Result<usize, ArtifactParseError> {
+    if bytes.len() > MAX_TRANSACTION_BYTES {
+        return Err(ArtifactParseError::TooLarge {
+            len: bytes.len(),
+            max: MAX_TRANSACTION_BYTES,
+        });
+    }
+    let mut r = Reader::new(bytes);
+    if r.bytes.is_empty() {
+        return Err(ArtifactParseError::Empty);
+    }
+    let sig_count = r.compact_u16("signature count")?;
+    let mut filled = 0;
+    for _ in 0..sig_count {
+        let slot = r.take(64, "signatures")?;
+        if slot.iter().any(|b| *b != 0) {
+            filled += 1;
+        }
+    }
+    Ok(filled)
+}
+
 /// SHA-256 of `unsigned_artifact(bytes)`, hex — what `scope.transaction_sha256`
 /// holds for the verification of these bytes.
 pub fn artifact_sha256_of_signed(bytes: &[u8]) -> Result<String, ArtifactParseError> {
@@ -794,7 +822,7 @@ pub enum LookupResolveError {
     TableTooShort { table: String, len: usize },
     #[error("lookup table {table} has {trailing} bytes after its address array, so it is not a well-formed table")]
     TableNotAligned { table: String, trailing: usize },
-    #[error("lookup table {table} is deactivating (deactivation_slot {slot})")]
+    #[error("lookup table {table} is deactivating (deactivation_slot {slot}): the runtime still honours it for up to ~512 slots after that, but a verdict about identities read from a table that is being retired would be true for minutes; Graphite refuses it (Round 17, F-15-05 — a deliberate, disclosed refusal, not a parse failure)")]
     TableDeactivating { table: String, slot: u64 },
     #[error(
         "lookup table {table} has {entries} addresses; this transaction asks for index {index}"

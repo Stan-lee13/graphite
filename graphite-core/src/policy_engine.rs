@@ -54,12 +54,24 @@ pub enum WalletProfile {
 /// own tool, honours the operator's number but says so out loud.
 pub const WEAKEST_BUILTIN_MIN_CONFIDENCE: f64 = 0.55;
 
+/// The weakest trust-tier bar any built-in profile accepts (Gaming's
+/// `HeuristicInferred`). Round 17 (F-15-07): the server's clamp raised the
+/// confidence axis and left `min_trust_tier: Unknown` alone — one axis of a
+/// two-axis gate. Both are clamped now.
+pub const WEAKEST_BUILTIN_MIN_TRUST_TIER: crate::confidence_engine::TrustTier =
+    crate::confidence_engine::TrustTier::HeuristicInferred;
+
 impl WalletProfile {
     /// Whether this profile's confidence bar is below every built-in one.
     pub fn is_weaker_than_any_builtin(&self) -> bool {
         match *self {
-            WalletProfile::Custom { min_confidence, .. } => {
-                !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE
+            WalletProfile::Custom {
+                min_confidence,
+                min_trust_tier,
+            } => {
+                !min_confidence.is_finite()
+                    || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE
+                    || min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER
             }
             _ => false,
         }

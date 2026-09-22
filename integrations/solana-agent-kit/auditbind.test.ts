@@ -30,7 +30,7 @@ test("content_hash matches Rust reference vector (no data, no CPI)", () => {
     accountAddresses: [FROM, TO],
   });
   // Pinned from the Rust algorithm: sha256(program||disc||from||to)[0..16]
-  assert.equal(hash, "afb61d8865b4cb68");
+  assert.equal(hash, "48c65c638aceb5de");
 });
 
 test("content_hash matches Rust reference vector (with data and CPI)", () => {
@@ -42,7 +42,7 @@ test("content_hash matches Rust reference vector (with data and CPI)", () => {
     cpiTargets: ["cpiA"],
   });
   // Pinned from the Rust algorithm: sha256(program||disc||from||bytes(1,2,3)||"cpiA")[0..16]
-  assert.equal(hash, "87751f34a0f8a590");
+  assert.equal(hash, "dd8569c46af7e6c0");
 });
 
 test("verify() accepts a matching content_hash", () => {

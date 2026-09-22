@@ -320,6 +320,23 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
 
     let account_writes = as_u32(derived_account_writes);
     let cpi_hops = as_u32(derived_cpi_hops);
+    // The callees themselves (Round 17, F-16-05). One unreadable index makes
+    // the whole set unknown, for the same reason one unreadable group makes
+    // the hop count unknown: an undercount is the direction that hides a call.
+    let inner_program_indexes: Option<Vec<u8>> = value
+        .get("innerInstructions")
+        .and_then(|v| v.as_array())
+        .and_then(|groups| {
+            let mut out = Vec::new();
+            for g in groups {
+                let ixs = g.get("instructions").and_then(|i| i.as_array())?;
+                for ix in ixs {
+                    let idx = ix.get("programIdIndex").and_then(|v| v.as_u64())?;
+                    out.push(u8::try_from(idx).ok()?);
+                }
+            }
+            Some(out)
+        });
 
     // Non-canonical fields, compared and reported — never adopted.
     //
@@ -429,6 +446,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         loaded_addresses,
         artifact_account_count,
         slot: None,
+        inner_program_indexes,
     })
 }
 
@@ -594,6 +612,20 @@ pub struct SimulationResult {
     /// balance diff — but it cannot be invisible here, because the account it
     /// touches has to be in the transaction to be touched.
     pub artifact_account_count: Option<usize>,
+    /// The `programIdIndex` of every inner instruction the simulator
+    /// executed, in order, across every top-level instruction — the CPI
+    /// callees, as indexes into the transaction's full account list (static
+    /// keys, then `loadedAddresses.writable`, then `loadedAddresses.readonly`).
+    ///
+    /// Round 17 (F-16-05): until this field existed the response's
+    /// `innerInstructions` were read only to COUNT hops, and the Risk Engine's
+    /// CPI checks consumed the caller's `cpi_targets` list — which a caller
+    /// disables by leaving it empty. The callees are in the same response;
+    /// `verify_async` maps these indexes through the parsed message and feeds
+    /// the observed set to the same checks. `None` when `innerInstructions`
+    /// was absent or any group was unreadable — unknown, never empty.
+    #[serde(default)]
+    pub inner_program_indexes: Option<Vec<u8>>,
 }
 
 /// The `loadedAddresses` half of a `simulateTransaction` response: the accounts

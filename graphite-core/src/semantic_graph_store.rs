@@ -149,6 +149,14 @@ pub struct SemanticGraphStore {
     /// (operator API). Raw request bodies can never write here.
     #[serde(default)]
     baselines: HashMap<String, ComputeBaseline>,
+    /// Round 17 (F-16-02): observations the simulator executed cleanly but
+    /// the integrity check FLAGGED against the trusted baseline. They never
+    /// influence a verdict. They exist so that a baseline frozen by a few
+    /// identical early samples is visible (`/health` lists programs whose
+    /// shadow has reached `MIN_SAMPLES`) and recoverable (`promote_shadow`,
+    /// an operator action) instead of permanent.
+    #[serde(default)]
+    shadow_baselines: HashMap<String, ComputeBaseline>,
 }
 
 impl SemanticGraphStore {
@@ -346,6 +354,89 @@ impl SemanticGraphStore {
 
     /// Record observed simulation usage for a program (Welford update).
     ///
+    /// Read-only view of the shadow accumulators (Round 17, F-16-02).
+    pub fn shadow_baselines(&self) -> &HashMap<String, ComputeBaseline> {
+        &self.shadow_baselines
+    }
+
+    /// Record a flagged-but-executed observation in the program's shadow
+    /// accumulator. Never consulted by any verdict.
+    pub fn record_shadow_simulation(
+        &mut self,
+        program_id: &str,
+        usage: &ComputeUsage,
+        observation_key: Option<&str>,
+    ) -> ComputeBaseline {
+        let entry = self
+            .shadow_baselines
+            .entry(program_id.to_string())
+            .or_default();
+        // Same identity rule as the trusted accumulator: one transaction
+        // flagged ten times is one refused observation, not a frozen
+        // baseline — otherwise a single request could raise the
+        // `simulation_baseline_frozen` signal on its own.
+        if let Some(key) = observation_key {
+            if entry.recent_observation_keys.iter().any(|k| k == key) {
+                return entry.clone();
+            }
+            entry.recent_observation_keys.push(key.to_string());
+            let cap = crate::simulation_integrity::ROBUST_WINDOW;
+            if entry.recent_observation_keys.len() > cap {
+                let excess = entry.recent_observation_keys.len() - cap;
+                entry.recent_observation_keys.drain(..excess);
+            }
+        }
+        crate::simulation_integrity::update_baseline(
+            entry,
+            usage.compute_units,
+            usage.account_writes,
+            usage.cpi_hops,
+        );
+        entry.clone()
+    }
+
+    /// Programs whose trusted baseline has refused at least `MIN_SAMPLES`
+    /// clean executions: the frozen-baseline signal an operator should see.
+    pub fn frozen_baselines(&self) -> Vec<(String, u64)> {
+        let mut out: Vec<(String, u64)> = self
+            .shadow_baselines
+            .iter()
+            .filter(|(_, b)| b.sample_count >= crate::simulation_integrity::MIN_SAMPLES)
+            .map(|(p, b)| (p.clone(), b.sample_count))
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// Operator action: replace the trusted baseline with the shadow one and
+    /// clear the shadow. Refuses when there is no shadow, or the shadow has
+    /// fewer than `MIN_SAMPLES` observations (a promotion from a handful of
+    /// samples would recreate the freeze it is meant to end).
+    pub fn promote_shadow_baseline(
+        &mut self,
+        program_id: &str,
+    ) -> Result<ComputeBaseline, SemanticGraphError> {
+        let key = program_id.trim();
+        let shadow = self.shadow_baselines.get(key).cloned().ok_or_else(|| {
+            SemanticGraphError::InvalidRecord {
+                reason: format!("program {key} has no shadow baseline to promote"),
+            }
+        })?;
+        if shadow.sample_count < crate::simulation_integrity::MIN_SAMPLES {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: format!(
+                    "program {key}: shadow baseline holds {} observation(s); at least {} are needed before it can replace the trusted one",
+                    shadow.sample_count,
+                    crate::simulation_integrity::MIN_SAMPLES
+                ),
+            });
+        }
+        validate_baseline(&shadow)?;
+        self.baselines.insert(key.to_string(), shadow.clone());
+        self.shadow_baselines.remove(key);
+        Ok(shadow)
+    }
+
     /// SECURITY: this is the ONLY trusted write path for baselines. Call it
     /// with RPC-verified usage (simulateTransaction results), never with
     /// raw request-body values — otherwise an attacker who controls the
@@ -353,7 +444,31 @@ impl SemanticGraphStore {
     ///
     /// Returns the updated baseline.
     pub fn record_simulation(&mut self, program_id: &str, usage: &ComputeUsage) -> ComputeBaseline {
+        self.record_simulation_keyed(program_id, usage, None)
+    }
+
+    /// `record_simulation` with the observation's identity. An
+    /// `observation_key` (the artifact digest) already among the baseline's
+    /// recent keys is the same transaction seen again: nothing is recorded,
+    /// because a call is not an observation (Round 17, F-15-01).
+    pub fn record_simulation_keyed(
+        &mut self,
+        program_id: &str,
+        usage: &ComputeUsage,
+        observation_key: Option<&str>,
+    ) -> ComputeBaseline {
         let entry = self.baselines.entry(program_id.to_string()).or_default();
+        if let Some(key) = observation_key {
+            if entry.recent_observation_keys.iter().any(|k| k == key) {
+                return entry.clone();
+            }
+            entry.recent_observation_keys.push(key.to_string());
+            let cap = crate::simulation_integrity::ROBUST_WINDOW;
+            if entry.recent_observation_keys.len() > cap {
+                let excess = entry.recent_observation_keys.len() - cap;
+                entry.recent_observation_keys.drain(..excess);
+            }
+        }
         crate::simulation_integrity::update_baseline(
             entry,
             usage.compute_units,
@@ -410,6 +525,9 @@ impl SemanticGraphStore {
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let mut store: SemanticGraphStore = serde_json::from_str(json)?;
         store.baselines.retain(|_, b| validate_baseline(b).is_ok());
+        store
+            .shadow_baselines
+            .retain(|_, b| validate_baseline(b).is_ok());
         Ok(store)
     }
 }

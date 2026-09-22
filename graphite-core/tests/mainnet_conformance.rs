@@ -363,7 +363,12 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
             compute_units: row["cu"].as_u64().unwrap_or(0),
             account_writes: 0,
             cpi_hops: 0,
-            signed_transaction: Some(bytes.clone()),
+            // The chain's bytes carry real signatures; Graphite is shown the
+            // frame BEFORE signing (Round 17 refuses filled slots), so replay
+            // the sample the way the bridge would have presented it.
+            signed_transaction: Some(
+                graphite_core::tx_artifact::unsigned_artifact(&bytes).unwrap_or(bytes.clone()),
+            ),
             transaction_instructions: siblings,
             cpi_trace: None,
             uses_versioned_transaction: message.version == Some(0),

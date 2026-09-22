@@ -3,9 +3,19 @@
  *
  * Tests two scenarios:
  *   1. TradingBot profile (80% threshold) → should BLOCK (confidence 0.50 < 0.80)
- *   2. Unrestricted profile (0% threshold) → should APPROVE → execute on devnet
+ *   2. Gaming profile (the weakest built-in, 0.55) → should APPROVE → execute
+ *      on devnet through the SAME path the bridge uses.
  *
- * This demonstrates the full verification gate: Graphite verifies, then gates execution.
+ * This is the file most likely to be copied, so it executes the way the
+ * bridge executes and in no other way (Round 17, F-16-12 / F-15-06):
+ *
+ *   approved → artifact_bound → ResidualPolicy.assertExecutable →
+ *   signApproved → `signing` on the trail (resolved by exact audit_trail_id,
+ *   approved) → sendRawTransaction → `submission` on the trail → confirm → L8.
+ *
+ * It no longer asks for a `Custom { min_confidence: 0.0 }` profile: the
+ * server clamps that to 0.55 anyway and discloses the override, and a demo
+ * that teaches switching the gate off is teaching the wrong thing.
  */
 
 import { Keypair, Connection, SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
@@ -14,11 +24,18 @@ import bs58 from "bs58";
 // `sendAndConfirmTransaction` on a Descriptive verdict is teaching the pattern
 // the bridge was changed to stop doing.
 import { BoundTransaction, declareSiblings, findPrimaryIndex } from "./artifact.js";
+import { executeBoundTransaction } from "./execution-lifecycle.js";
+import { ResidualPolicy } from "./residual-policy.js";
+import { GraphiteClient } from "../../sdk/typescript/src/client.js";
+
+const GRAPHITE_URL = process.env.GRAPHITE_URL ?? "http://localhost:7331";
 
 async function verifyThroughGraphite(payload: any): Promise<any> {
-  const res = await fetch("http://localhost:7331/verify", {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (process.env.GRAPHITE_API_KEY) headers.authorization = `Bearer ${process.env.GRAPHITE_API_KEY}`;
+  const res = await fetch(`${GRAPHITE_URL}/verify`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Graphite HTTP ${res.status}: ${await res.text()}`);
@@ -75,7 +92,7 @@ async function main() {
   console.log(`RPC:      ${rpcUrl.substring(0, 45)}...`);
 
   // Check Graphite Core
-  const healthRes = await fetch("http://localhost:7331/health");
+  const healthRes = await fetch(`${GRAPHITE_URL}/health`);
   const health = await healthRes.json() as any;
   console.log(`Graphite: ${health.status} v${health.version}\n`);
 
@@ -122,19 +139,19 @@ async function main() {
     console.log("   This demonstrates the verification gate working as designed.");
   }
 
-  // ── TEST 2: Unrestricted profile (should APPROVE → execute) ──
+  // ── TEST 2: Gaming profile (the weakest built-in; should APPROVE → execute) ──
   console.log("\n\n═══════════════════════════════════════════════════");
-  console.log("  TEST 2: Custom Profile (min_conf: 0.00, devnet test)");
+  console.log("  TEST 2: Gaming Profile (min_conf: 0.55, devnet test)");
   console.log("═══════════════════════════════════════════════════");
 
   const unVerification = await verifyThroughGraphite({
     ...basePayload,
-    wallet_profile: {"Custom": {"min_confidence": 0.0, "min_trust_tier": "Unknown"}},
+    wallet_profile: "Gaming",
   });
-  printVerification("Unrestricted Verification", unVerification);
+  printVerification("Gaming Verification (descriptive)", unVerification);
 
   if (!unVerification.approved) {
-    console.log("\n❌ Unexpected: Unrestricted blocked. Check policy engine.");
+    console.log("\n❌ Unexpected: Gaming blocked a plain transfer. Check policy engine.");
     process.exit(1);
   }
 
@@ -176,7 +193,7 @@ Transferring ${transferAmount} SOL to ${destination} on devnet...`);
   };
   const boundVerification = await verifyThroughGraphite({
     ...basePayload,
-    wallet_profile: { Custom: { min_confidence: 0.0, min_trust_tier: "Unknown" } },
+    wallet_profile: "Gaming",
     instruction_data: Array.from(transferIx.data),
     signed_transaction: bound.artifact(),
     transaction_instructions: declareSiblings(
@@ -208,19 +225,46 @@ Transferring ${transferAmount} SOL to ${destination} on devnet...`);
     console.log(`     • ${u}`);
   }
 
-  console.log("\nSigning and broadcasting the exact approved transaction...");
-  // One call: the digest is re-checked against the live object, the signer set
-  // is checked against the message, and only then is anything signed.
-  const raw = bound.signApproved(
-    boundVerification.scope.transaction_sha256,
-    [keyPair],
-  );
-  const signature = await connection.sendRawTransaction(raw);
-  await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight });
+  // The bridge's execution path, exactly. Every control the bridge applies
+  // is applied here, in the same order, by the same code:
+  //   ResidualPolicy — refuses any residual the operator has not accepted
+  //     by name (GRAPHITE_ACCEPT_UNOBSERVED); the two inherent ones pass.
+  //   signApproved   — the digest is re-checked against the live object and
+  //     the signer set against the message before anything is signed.
+  //   signing event  — on the trail before submission, resolved by the exact
+  //     audit_trail_id, and the verdict on record must be `approved`.
+  //   sendRawTransaction, submission event (retried), confirmation, L8.
+  console.log("\nExecuting through the bridge's own path (executeBoundTransaction)...");
+  const graphite = new GraphiteClient({
+    baseUrl: GRAPHITE_URL,
+    apiKey: process.env.GRAPHITE_API_KEY,
+  });
+  const lifecycle = await executeBoundTransaction({
+    bound,
+    verification: boundVerification,
+    signers: [keyPair],
+    connection,
+    graphite,
+    policy: ResidualPolicy.fromEnv(),
+    reportedBy: "devnet-test",
+    label: "devnet transfer",
+    log: (line) => console.log(line),
+  });
+  const signature = lifecycle.signature;
 
-  console.log(`\n✅ TRANSACTION CONFIRMED ON DEVNET!`);
+  console.log(`\n✅ TRANSACTION ${lifecycle.confirmed ? "CONFIRMED" : "SUBMITTED (confirmation pending)"} ON DEVNET!`);
   console.log(`Signature: ${signature}`);
   console.log(`Solscan:   https://solscan.io/tx/${signature}?cluster=devnet`);
+  console.log(`Signing on trail:    ${lifecycle.signingRecorded} (verdict on record: ${lifecycle.verdictOnRecordAtSigning})`);
+  console.log(`Submission on trail: ${lifecycle.submissionRecorded}`);
+  console.log(`Accepted residuals:  ${lifecycle.acceptedUnobserved.join(", ") || "none beyond the inherent two"}`);
+  if (lifecycle.reconciliation) {
+    console.log(`L8 reconciliation:   ${JSON.stringify(lifecycle.reconciliation.reconciliation)} (attribution: ${lifecycle.reconciliation.attribution})`);
+    if (lifecycle.reconciliation.discrepancy) {
+      console.log("❌ L8 DISCREPANCY — Graphite's decision did not govern. Investigate before trusting the next one.");
+      process.exit(1);
+    }
+  }
 
   const newBalance = await connection.getBalance(keyPair.publicKey);
   const feePaid = (balance - newBalance) / LAMPORTS_PER_SOL;
@@ -235,9 +279,10 @@ Transferring ${transferAmount} SOL to ${destination} on devnet...`);
   console.log("  ✓ Graphite Core running (Rust binary, HTTP API)");
   console.log("  ✓ 8-layer verification pipeline executed");
   console.log("  ✓ TradingBot profile correctly BLOCKED (confidence 0.50 < 0.80)");
-  console.log("  ✓ Unrestricted profile correctly APPROVED");
-  console.log("  ✓ Real transaction signed and broadcast to Solana devnet");
-  console.log("  ✓ Transaction confirmed on-chain");
+  console.log("  ✓ Gaming profile correctly APPROVED");
+  console.log("  ✓ Residual policy consulted, signing and submission on the audit trail");
+  console.log("  ✓ Real transaction signed and broadcast to Solana devnet via executeBoundTransaction");
+  console.log(`  ${lifecycle.confirmed ? "✓" : "○"} Transaction ${lifecycle.confirmed ? "confirmed on-chain" : "awaiting confirmation"}; L8 reconciled`);
   console.log(`  ✓ Tx: https://solscan.io/tx/${signature}?cluster=devnet`);
 }
 

@@ -35,7 +35,6 @@ use std::sync::{Arc, Mutex};
 
 const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
 const FROM: &str = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
-const TO: &str = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 /// The program a hostile diff hands the victim's account to.
 const ATTACKER: &str = "Atck111111111111111111111111111111111111111";
 
@@ -114,6 +113,70 @@ fn core_against(rpc: &HostileRpc) -> GraphiteCore {
 
 // ── The transaction under verification ──────────────────────────────────────
 
+// ── Round 17: a SOUND artifact, distinct per call ────────────────────────────
+//
+// These tests used to hand the Core `signed_transaction: Some(vec![1, 2, 3, 4])`
+// — an unparseable blob whose only job was to switch the simulation path on —
+// and earned a baseline by verifying it repeatedly. Round 17 changed what
+// counts as evidence: a request that fails L2 (an unreadable artifact does)
+// trains nothing, and the same bytes re-verified are ONE observation. So the
+// artifact is the SAK corpus's real `legacy_single_transfer`, described
+// exactly, and every call varies its recent blockhash — a distinct
+// transaction carrying the same instruction, which is what honest traffic
+// that earns a baseline looks like.
+fn corpus_transfer() -> (Vec<u8>, Vec<String>) {
+    let raw: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/artifacts/sak_bridge_corpus.json"))
+            .expect("corpus must parse");
+    let e = raw["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .find(|e| e["name"] == "legacy_single_transfer")
+        .expect("corpus entry")
+        .clone();
+    let bytes: Vec<u8> = e["raw"]
+        .as_array()
+        .expect("raw")
+        .iter()
+        .map(|n| n.as_u64().expect("byte") as u8)
+        .collect();
+    let keys: Vec<String> = e["static_keys"]
+        .as_array()
+        .expect("static_keys")
+        .iter()
+        .map(|s| s.as_str().expect("key").to_string())
+        .collect();
+    (bytes, keys)
+}
+
+static SOUND_ARTIFACT_VARIANT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The corpus transfer under a fresh recent blockhash: a distinct transaction
+/// every call.
+fn sound_artifact() -> Vec<u8> {
+    let (raw, _) = corpus_transfer();
+    let m = graphite_core::tx_artifact::parse_transaction(&raw).expect("frame parses");
+    let bh = bs58::decode(&m.recent_blockhash).into_vec().unwrap();
+    let msg = graphite_core::tx_artifact::message_bytes(&raw).expect("message");
+    let msg_start = raw.len() - msg.len();
+    let pos = msg
+        .windows(32)
+        .rposition(|w| w == bh.as_slice())
+        .expect("blockhash is in the message");
+    let i = SOUND_ARTIFACT_VARIANT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let mut out = raw;
+    out[msg_start + pos] ^= i.wrapping_add(1);
+    out[msg_start + pos + 1] ^= i >> 4;
+    out
+}
+
+fn sound_transfer_data() -> Vec<u8> {
+    let mut d = vec![2, 0, 0, 0];
+    d.extend_from_slice(&2_000_000u64.to_le_bytes());
+    d
+}
+
 /// A System-Program transfer with a signed blob attached, so the RPC-backed
 /// state-diff path actually runs. Permissive profile and strong evidence, so
 /// anything that goes wrong is attributable to the hostile RPC rather than to
@@ -129,8 +192,11 @@ fn signed_transfer(discriminator: &str, intent: &str) -> VerificationInput {
         program_id: SYSTEM_PROGRAM.to_string(),
         protocol_version: "1.0.0".to_string(),
         instruction_discriminator: discriminator.to_string(),
-        account_addresses: vec![FROM.to_string(), TO.to_string()],
-        instruction_data: None,
+        account_addresses: {
+            let (_, keys) = corpus_transfer();
+            vec![keys[0].clone(), keys[1].clone()]
+        },
+        instruction_data: Some(sound_transfer_data()),
         cpi_targets: vec![],
         wallet_profile: WalletProfile::Gaming,
         behavior_evidence: BehaviorEvidence {
@@ -142,9 +208,7 @@ fn signed_transfer(discriminator: &str, intent: &str) -> VerificationInput {
         compute_units: 300,
         account_writes: 2,
         cpi_hops: 0,
-        // Any non-empty blob: the mock never decodes it. What matters is that
-        // its presence is what switches on the state-diff path.
-        signed_transaction: Some(vec![1, 2, 3, 4]),
+        signed_transaction: Some(sound_artifact()),
         transaction_instructions: vec![],
         cpi_trace: None,
         uses_versioned_transaction: false,

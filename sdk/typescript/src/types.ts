@@ -270,6 +270,7 @@ export interface VerificationResult {
 export type UnobservedCode =
   | "not_simulated"
   | "no_state_diff"
+  | "simulation_failed"
   | "privileges_from_caller"
   | "privileges_absent"
   | "lookup_tables_unresolved"
@@ -287,6 +288,7 @@ export type UnobservedCode =
 export const UNOBSERVED_CODES: readonly UnobservedCode[] = [
   "not_simulated",
   "no_state_diff",
+  "simulation_failed",
   "privileges_from_caller",
   "privileges_absent",
   "lookup_tables_unresolved",

@@ -54,7 +54,7 @@ submitted — and nothing is signed under a residual the operator has not accept
 - **Residual policy (Round 9).** Every verdict names what Graphite did not observe as
   codes (`scope.unobserved_codes`). Two are inherent to every artifact-bound verdict
   (`program_semantics`, `inner_instructions`). Every other code — `no_state_diff`,
-  `not_simulated`, `privileges_from_caller`, `privileges_absent`,
+  `simulation_failed`, `not_simulated`, `privileges_from_caller`, `privileges_absent`,
   `lookup_tables_unresolved`, `artifact_unparsed`, `account_identity_unparsed`,
   `instruction_not_located` — **refuses execution** unless the operator names it in
   `GRAPHITE_ACCEPT_UNOBSERVED` (comma-separated) or `create({ acceptUnobserved })`. A

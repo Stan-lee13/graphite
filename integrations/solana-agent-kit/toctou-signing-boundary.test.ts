@@ -180,10 +180,11 @@ test("the live-instruction projection reproduces the Rust core's content_hash", 
   // The pinned cross-language vector. `projectionFromInstruction` used to
   // derive the discriminator from the first 8 bytes of the data, which for a
   // System transfer is `0200000040420f00` — the 4-byte discriminator plus half
-  // the lamport amount — hashing to 030424ed4db245eb instead of the core's
-  // 42bd6f2a33492dc2. The check could therefore never pass for a native
-  // program, which is why the bridge reconstructed literals and opened the
-  // window above. The discriminator is now passed explicitly.
+  // the lamport amount — hashing to a different value than the core's. The
+  // check could therefore never pass for a native program, which is why the
+  // bridge reconstructed literals and opened the window above. The
+  // discriminator is now passed explicitly. The vector is the Round 17
+  // framed encoding (domain tag, u32 LE length prefixes, list counts).
   const ix = buildTransfer(VICTIM_DEST, 1_000_000);
   const projected = AuditBind.projectionFromInstruction({
     programId: ix.programId.toBase58(),
@@ -198,9 +199,9 @@ test("the live-instruction projection reproduces the Rust core's content_hash", 
   );
   assert.equal(
     AuditBind.computeHash(projected),
-    "42bd6f2a33492dc2",
+    "6d302e018b2b91ce",
     "the live-instruction projection must reproduce the hash graphite-core computes for this " +
-      "transfer — verified against the running server on 2026-09-08",
+      "transfer — re-pinned with the framed encoding in Round 17 (2026-09-21)",
   );
 
   // And without it, the old behaviour is still visible: a different hash, so a
@@ -212,7 +213,7 @@ test("the live-instruction projection reproduces the Rust core's content_hash", 
   });
   assert.notEqual(
     AuditBind.computeHash(guessed),
-    "42bd6f2a33492dc2",
+    "6d302e018b2b91ce",
     "the 8-byte guess is wrong for native programs; if this ever matches, the fallback has " +
       "silently changed meaning",
   );

@@ -19,10 +19,15 @@
 //!    surface that could reorder or skip layers.
 //! 4. **The orchestrator is the sole caller.** Plugins are invoked only from
 //!    here; a plugin holds no handle to other plugins.
-//! 5. **Fault tolerance.** A panicking plugin is isolated with
-//!    `catch_unwind`: its verdict is dropped, an error note is recorded, and
-//!    the core verdict survives. A misbehaving plugin can neither wedge the
-//!    pipeline nor fabricate a block or a pass.
+//! 5. **Fault tolerance, fail-closed.** A panicking plugin is isolated with
+//!    `catch_unwind`, so it can never wedge the pipeline or fabricate a
+//!    pass. What its panic MEANS depends on what its verdict could have
+//!    done: a Risk or Verifier plugin — one that can block — becomes a
+//!    block attributed to the plugin by name (Round 17, F-16-07: reducing
+//!    it to a note was the fail-open direction, an input that crashed the
+//!    plugin lost its block), and so does a Policy plugin, whose Block is a
+//!    veto; a Simulation plugin, whose verdicts are report-only, becomes an
+//!    error note.
 //!
 //! # Plugin review gate
 //!
@@ -556,6 +561,32 @@ impl PluginOrchestrator {
             let name = kind.manifest().name.clone();
             let verdict = match catch_unwind(AssertUnwindSafe(|| kind.run(ctx))) {
                 Ok(v) => v,
+                // Round 17 (F-16-07): a panic in a plugin whose verdict can
+                // BLOCK is fail-closed. Reducing it to a Note meant an input
+                // that crashed a Risk or Verifier plugin lost that plugin's
+                // block and the layer passed on the core's verdict alone —
+                // the one direction a security plugin must not fail in. A
+                // Policy plugin's Block is a veto, so it is in the same set.
+                // A panic still cannot fabricate a PASS: Simulation-family
+                // plugins, whose verdicts are report-only, keep the Note so a
+                // crashing advisory plugin does not wedge traffic.
+                Err(_)
+                    if matches!(
+                        family,
+                        PluginFamily::Risk | PluginFamily::Verifier | PluginFamily::Policy
+                    ) =>
+                {
+                    tracing::error!(
+                        "plugin '{name}' panicked in layer {} — a blocking plugin that cannot run is a block (fail-closed)",
+                        layer.as_str()
+                    );
+                    PluginVerdict::Block {
+                        pattern: format!("{name}:panicked"),
+                        reason: format!(
+                            "plugin '{name}' panicked while assessing this request; a security plugin that cannot reach a verdict refuses rather than abstains (P12 fail-closed)"
+                        ),
+                    }
+                }
                 Err(_) => {
                     tracing::error!(
                         "plugin '{name}' panicked in layer {} — verdict isolated, core verdict preserved",
@@ -974,8 +1005,14 @@ mod tests {
         );
     }
 
+    /// Round 17 (F-16-07): a panicking BLOCKING plugin fails closed. The
+    /// previous assertion — "core verdict survives, panic is a note" — was
+    /// the fail-open direction: an input that crashed a Verifier or Risk
+    /// plugin lost that plugin's block. The pipeline is not wedged (the
+    /// panic is caught), the block is attributed to the plugin by name, and
+    /// advisory families keep the Note.
     #[test]
-    fn test_panicking_plugin_is_isolated_and_core_verdict_survives() {
+    fn test_panicking_blocking_plugin_fails_closed() {
         let mut orch = PluginOrchestrator::new();
         orch.register_plugin(PluginKind::Verifier(Arc::new(PanicPlugin {
             manifest: manifest("panic", LayerId::L2InstructionVerification),
@@ -983,10 +1020,14 @@ mod tests {
         let base =
             PipelineLayerResult::new("L2_InstructionVerification", LayerStatus::Passed, "core ok");
         let folded = orch.fold_verifier(LayerId::L2InstructionVerification, base, &ctx());
-        // Core verdict survives; the panic is surfaced as an honest note.
-        assert_eq!(folded.status, LayerStatus::Passed);
-        assert!(folded.reason.contains("panic"));
-        // And a panicking RISK plugin cannot fabricate a block.
+        assert_eq!(folded.status, LayerStatus::Failed);
+        assert!(!folded.passed);
+        assert!(
+            folded.reason.contains("panic:panicked"),
+            "{}",
+            folded.reason
+        );
+        // A panicking RISK plugin is a block, named as the plugin's failure.
         let mut orch2 = PluginOrchestrator::new();
         struct PanicRisk {
             m: PluginManifest,
@@ -1003,13 +1044,34 @@ mod tests {
             m: manifest("panic-risk", LayerId::L7RiskVerification),
         })));
         let outcome = orch2.risk_outcome(&ctx());
-        // A panic can NEVER fabricate a hard block — but the failure is
-        // surfaced honestly as a non-blocking warning finding (fail-open with
-        // explanation, P12-style observability).
-        assert!(!outcome.blocked);
+        assert!(outcome.blocked);
         assert_eq!(outcome.findings.len(), 1);
-        assert!(outcome.findings[0].pattern.ends_with(":warning"));
+        assert!(
+            outcome.findings[0].pattern.ends_with(":panicked"),
+            "{}",
+            outcome.findings[0].pattern
+        );
         assert!(outcome.findings[0].reason.contains("panic"));
+        // An ADVISORY family (Simulation) keeps the Note: a crashing advisory
+        // plugin must not wedge traffic, and its verdict never blocked anyway.
+        struct PanicSim {
+            m: PluginManifest,
+        }
+        impl SimulationPlugin for PanicSim {
+            fn manifest(&self) -> &PluginManifest {
+                &self.m
+            }
+            fn observe_simulation(&self, _ctx: &PluginContext) -> PluginVerdict {
+                panic!("sim boom");
+            }
+        }
+        let mut orch3 = PluginOrchestrator::new();
+        orch3.register_plugin(PluginKind::Simulation(Arc::new(PanicSim {
+            m: manifest("panic-sim", LayerId::L3SimulationVerification),
+        })));
+        let runs = orch3.simulation_verdicts(&ctx());
+        assert_eq!(runs.len(), 1);
+        assert!(matches!(runs[0].verdict, PluginVerdict::Note(_)));
     }
 
     #[test]

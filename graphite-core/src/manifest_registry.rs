@@ -394,6 +394,33 @@ impl ManifestRegistryEngine {
                 manifest.instructions.len()
             )));
         }
+        // Round 17 (F-16-06, F-16-10): the same grammar the verification
+        // registry enforces at load, refused here at submission so a reviewer
+        // never accepts what the gate would then refuse to load. URL fields
+        // are rendered as links by the console; only http(s) is a link.
+        for (field, value) in [
+            ("website", &manifest.protocol.website),
+            ("github", &manifest.protocol.github),
+        ] {
+            let v = value.trim();
+            if !v.is_empty() && !(v.starts_with("https://") || v.starts_with("http://")) {
+                return Err(RegistryError::InvalidManifest(format!(
+                    "protocol.{field} {v:?} is not an http(s) URL"
+                )));
+            }
+        }
+        for ix in &manifest.instructions {
+            for (slot, a) in ix.accounts.iter().enumerate() {
+                for seed in &a.pda_seeds {
+                    if let Err(reason) = crate::account_resolution::validate_seed_template(seed) {
+                        return Err(RegistryError::InvalidManifest(format!(
+                            "instruction '{}' account {slot} has an unsupported PDA seed template {seed:?}: {reason}",
+                            ix.name
+                        )));
+                    }
+                }
+            }
+        }
         // Discriminator-length decision (certification item): matching is
         // PREFIX-based (`input.starts_with(manifest_disc)`) because Solana
         // instruction selectors are the LEADING bytes of instruction data —

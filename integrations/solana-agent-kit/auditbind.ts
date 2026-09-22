@@ -33,17 +33,31 @@ export class AuditBind {
    * the cross-language pinned vectors.
    */
   static computeHash(params: AuditBindTransactionParams): string {
+    // FRAMED encoding (Round 17, F-16-09), byte for byte the Rust core's:
+    // domain tag, then every field u32-LE length-prefixed and every list
+    // preceded by its count. See sdk/typescript/src/auditbind.ts.
     const hasher = crypto.createHash("sha256");
-    hasher.update(params.programId, "utf8");
-    hasher.update(params.instructionDiscriminator, "utf8");
+    const u32 = (n: number): Buffer => {
+      const b = Buffer.alloc(4);
+      b.writeUInt32LE(n >>> 0, 0);
+      return b;
+    };
+    const field = (bytes: Buffer): void => {
+      hasher.update(u32(bytes.length));
+      hasher.update(bytes);
+    };
+    hasher.update(Buffer.from("graphite-content-hash-v2\0", "utf8"));
+    field(Buffer.from(params.programId, "utf8"));
+    field(Buffer.from(params.instructionDiscriminator, "utf8"));
+    hasher.update(u32(params.accountAddresses.length));
     for (const addr of params.accountAddresses) {
-      hasher.update(addr, "utf8");
+      field(Buffer.from(addr, "utf8"));
     }
-    if (params.instructionData && params.instructionData.length > 0) {
-      hasher.update(Buffer.from(params.instructionData));
-    }
-    for (const target of params.cpiTargets ?? []) {
-      hasher.update(target, "utf8");
+    field(Buffer.from(params.instructionData ?? []));
+    const cpis = params.cpiTargets ?? [];
+    hasher.update(u32(cpis.length));
+    for (const target of cpis) {
+      field(Buffer.from(target, "utf8"));
     }
     return hasher.digest("hex").slice(0, 16);
   }

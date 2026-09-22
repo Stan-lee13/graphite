@@ -148,6 +148,15 @@ pub struct AccountResolutionResult {
     /// finding (C57) instead of a hard error. The over-count resource guard
     /// (256-key protocol cap) remains a hard error upstream.
     pub account_count_shortfall: Option<(usize, usize)>,
+    /// Slots whose PDA seed template could not be resolved for THIS request
+    /// — the template reads instruction data or an account the request did
+    /// not supply — with the reason. Each such slot is also flagged
+    /// `pda_mismatch`: an identity that cannot be re-derived is not
+    /// established, and the verdict refuses rather than guesses (Round 17,
+    /// F-16-06). Unsupported SYNTAX never reaches here: it is refused at
+    /// manifest load.
+    #[serde(default)]
+    pub unresolvable_seed_templates: Vec<(usize, String)>,
 }
 
 /// Resolve accounts using a manifest registry.
@@ -198,8 +207,12 @@ pub fn resolve_accounts(
 
     let mut resolved = Vec::with_capacity(pubkeys.len());
     let mut order = Vec::with_capacity(pubkeys.len());
-    let mut pda_mismatches: Vec<String> = Vec::new();
-    let mut expected_address_mismatches: Vec<String> = Vec::new();
+    // Round 17 (F-16-14): mismatches are recorded by SLOT. Collected by
+    // address, a matching slot that shared an address with a mismatching one
+    // was also flagged — the safe direction, but a flag on the wrong slot.
+    let mut pda_mismatches: Vec<usize> = Vec::new();
+    let mut expected_address_mismatches: Vec<usize> = Vec::new();
+    let mut unresolvable_seed_templates: Vec<(usize, String)> = Vec::new();
     // P1 fix: a length mismatch means the caller's real-meta list doesn't
     // correspond to this account list at all — treat the WHOLE thing as not
     // supplied (never partially apply it to a prefix of positions, which
@@ -216,31 +229,52 @@ pub fn resolve_accounts(
                     // Verify PDA can be re-derived, supporting dynamic template vars.
                     let program_pk = Pubkey::from_base58(&input.program_id)
                         .map_err(|e| AccountResolutionError::InvalidAddress(e.to_string()))?;
-                    let resolved_seeds: Vec<Vec<u8>> = r
+                    let resolved_seeds: Result<Vec<Vec<u8>>, (String, String)> = r
                         .pda_seeds
                         .iter()
-                        .map(|s| resolve_pda_seed_template(s, input, &program_pk, &pubkeys))
+                        .map(|s| {
+                            resolve_pda_seed_template(s, input, &program_pk, &pubkeys)
+                                .map_err(|reason| (s.clone(), reason))
+                        })
                         .collect();
-                    let seed_refs: Vec<&[u8]> =
-                        resolved_seeds.iter().map(|s| s.as_slice()).collect();
-                    match solana_types::find_program_address(&seed_refs, &program_pk) {
-                        Ok((derived_pk, _bump)) => {
-                            if derived_pk != *pk {
-                                // PDA MISMATCH: the provided address does not match
-                                // the address derived from the manifest's seed template.
-                                // This is a security signal — flag it for the risk engine.
-                                // We do NOT hard-fail here because the verification pipeline
-                                // needs to complete to produce a full report, but the
-                                // mismatch MUST be surfaced as a Blocked risk finding.
-                                pda_mismatches.push(pk.to_base58());
-                            }
+                    match resolved_seeds {
+                        // The template is well-formed (load refused it otherwise)
+                        // but THIS request cannot satisfy it: no instruction
+                        // data, or too little, or too few accounts. The identity
+                        // was not established, so the slot is flagged exactly
+                        // like a PDA that derived to a different address, and the
+                        // reason travels with the result (Round 17, F-16-06). Until
+                        // this round the seed silently became empty or literal
+                        // and a PDA nobody authored was derived.
+                        Err((template, reason)) => {
+                            pda_mismatches.push(i);
+                            unresolvable_seed_templates
+                                .push((i, format!("seed template {template:?}: {reason}")));
                             r.pda_seeds.clone()
                         }
-                        Err(e) => {
-                            return Err(AccountResolutionError::PdaDerivationFailed {
-                                account: pk.to_base58(),
-                                reason: e.to_string(),
-                            })
+                        Ok(resolved_seeds) => {
+                            let seed_refs: Vec<&[u8]> =
+                                resolved_seeds.iter().map(|s| s.as_slice()).collect();
+                            match solana_types::find_program_address(&seed_refs, &program_pk) {
+                                Ok((derived_pk, _bump)) => {
+                                    if derived_pk != *pk {
+                                        // PDA MISMATCH: the provided address does not match
+                                        // the address derived from the manifest's seed template.
+                                        // This is a security signal — flag it for the risk engine.
+                                        // We do NOT hard-fail here because the verification pipeline
+                                        // needs to complete to produce a full report, but the
+                                        // mismatch MUST be surfaced as a Blocked risk finding.
+                                        pda_mismatches.push(i);
+                                    }
+                                    r.pda_seeds.clone()
+                                }
+                                Err(e) => {
+                                    return Err(AccountResolutionError::PdaDerivationFailed {
+                                        account: pk.to_base58(),
+                                        reason: e.to_string(),
+                                    })
+                                }
+                            }
                         }
                     }
                 } else {
@@ -262,7 +296,7 @@ pub fn resolve_accounts(
                         }
                     });
                     if !matches {
-                        expected_address_mismatches.push(pk.to_base58());
+                        expected_address_mismatches.push(i);
                     }
                 }
                 (
@@ -280,9 +314,9 @@ pub fn resolve_accounts(
             }
         };
 
-        let pda_mismatch = is_pda && pda_mismatches.contains(&pk.to_base58());
+        let pda_mismatch = is_pda && pda_mismatches.contains(&i);
         let expected_address_mismatch =
-            !expected_addrs.is_empty() && expected_address_mismatches.contains(&pk.to_base58());
+            !expected_addrs.is_empty() && expected_address_mismatches.contains(&i);
         let identity = if is_pda {
             AccountIdentity::Pda
         } else if !expected_addrs.is_empty() {
@@ -319,6 +353,7 @@ pub fn resolve_accounts(
         instruction_name: ix_def.name.clone(),
         manifest_found: true,
         account_count_shortfall,
+        unresolvable_seed_templates,
     })
 }
 
@@ -348,68 +383,159 @@ fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionRe
         instruction_name: "Unknown".to_string(),
         manifest_found: false,
         account_count_shortfall: None,
+        unresolvable_seed_templates: Vec::new(),
     }
 }
 
+/// Resolve one PDA seed template against this request.
+///
+/// The grammar, and nothing outside it (Round 17, F-16-06):
+///
+/// ```text
+/// {program_id}                         the instruction's program id
+/// {instruction_data}                   the whole instruction data
+/// {instruction_data:a}                 data[a..]
+/// {instruction_data:a:b}               data[a..b], a < b
+/// {account_N}                          the Nth account of the instruction
+/// {account_N:a}  {account_N:a:b}       a byte range of that account's key
+/// 0x<hex>                              literal bytes, even length
+/// <anything without braces>            a literal UTF-8 seed
+/// ```
+///
+/// Anything else is an error, and so is a template the request cannot
+/// satisfy — an account index past the list, a byte range past the data.
+/// Until this round `{account_99}` became the literal bytes `{account_99}`,
+/// `{instruction_data:8:10}` on short data became an empty seed, `0xZZ`
+/// became the literal `0xZZ`, and a reversed range became empty: every one
+/// of them derived a PDA nobody had authored. Unsupported security syntax is
+/// refused, not reinterpreted; `manifest.rs::validate` refuses the same
+/// grammar at load, so a shipped manifest can never reach the runtime arm.
 fn resolve_pda_seed_template(
     seed: &str,
     input: &AccountResolutionInput,
     program_pk: &Pubkey,
     pubkeys: &[Pubkey],
-) -> Vec<u8> {
-    if seed == "{program_id}" {
-        program_pk.as_bytes().to_vec()
-    } else if seed == "{instruction_data}" {
-        input.instruction_data.clone().unwrap_or_default()
-    } else if let Some(slice_spec) = seed
-        .strip_prefix("{instruction_data:")
-        .and_then(|s| s.strip_suffix("}"))
-    {
-        let data = input.instruction_data.clone().unwrap_or_default();
-        parse_slice_template(&data, slice_spec)
-    } else if let Some(slice_spec) = seed
-        .strip_prefix("{account_")
-        .and_then(|s| s.strip_suffix("}"))
-    {
-        if let Some((index_str, range_spec)) = slice_spec.split_once(':') {
-            if let Ok(index) = index_str.parse::<usize>() {
-                let account_bytes = pubkeys
-                    .get(index)
-                    .map(|pk| pk.as_bytes().to_vec())
-                    .unwrap_or_default();
-                return parse_slice_template(&account_bytes, range_spec);
-            }
-        } else if let Ok(index) = slice_spec.parse::<usize>() {
-            return pubkeys
-                .get(index)
-                .map(|pk| pk.as_bytes().to_vec())
-                .unwrap_or_else(|| seed.as_bytes().to_vec());
+) -> Result<Vec<u8>, String> {
+    if let Some(inner) = seed.strip_prefix('{') {
+        let Some(inner) = inner.strip_suffix('}') else {
+            return Err("template opens with '{' but does not close with '}'".to_string());
+        };
+        if inner.contains('{') || inner.contains('}') {
+            return Err("nested braces are not part of the template grammar".to_string());
         }
-        seed.as_bytes().to_vec()
-    } else if let Some(stripped) = seed.strip_prefix("0x") {
-        hex::decode(stripped).unwrap_or_else(|_| seed.as_bytes().to_vec())
-    } else {
-        seed.as_bytes().to_vec()
+        let mut parts = inner.split(':');
+        let head = parts.next().unwrap_or_default();
+        let range: Vec<&str> = parts.collect();
+        if range.len() > 2 {
+            return Err(format!(
+                "{} range component(s); a template takes at most a start and an end",
+                range.len()
+            ));
+        }
+        let source: Vec<u8> = match head {
+            "program_id" => {
+                if !range.is_empty() {
+                    return Err("{program_id} takes no byte range".to_string());
+                }
+                return Ok(program_pk.as_bytes().to_vec());
+            }
+            "instruction_data" => match input.instruction_data.as_deref() {
+                Some(d) if !d.is_empty() => d.to_vec(),
+                _ => {
+                    return Err(
+                        "the template reads instruction data and this request supplied none"
+                            .to_string(),
+                    )
+                }
+            },
+            other => match other.strip_prefix("account_") {
+                Some(idx) => {
+                    let index: usize = idx
+                        .parse()
+                        .map_err(|_| format!("account index {idx:?} is not an unsigned integer"))?;
+                    match pubkeys.get(index) {
+                        Some(pk) => pk.as_bytes().to_vec(),
+                        None => {
+                            return Err(format!(
+                                "the template reads account {index} and the instruction has {}",
+                                pubkeys.len()
+                            ))
+                        }
+                    }
+                }
+                None => return Err(format!("{{{head}}} is not a template this grammar defines")),
+            },
+        };
+        return slice_template(&source, &range);
+    }
+    if seed.contains('{') || seed.contains('}') {
+        return Err(
+            "a brace inside a literal seed is not part of the template grammar".to_string(),
+        );
+    }
+    if let Some(stripped) = seed.strip_prefix("0x") {
+        return hex::decode(stripped)
+            .map_err(|e| format!("0x-prefixed seed is not even-length hex: {e}"));
+    }
+    if seed.is_empty() {
+        return Err("empty seed".to_string());
+    }
+    Ok(seed.as_bytes().to_vec())
+}
+
+/// `source[a..]` or `source[a..b]` for a parsed range, refusing what the
+/// data cannot supply.
+fn slice_template(source: &[u8], range: &[&str]) -> Result<Vec<u8>, String> {
+    let parse = |v: &str, what: &str| -> Result<usize, String> {
+        v.parse::<usize>()
+            .map_err(|_| format!("range {what} {v:?} is not an unsigned integer"))
+    };
+    match range {
+        [] => Ok(source.to_vec()),
+        [start] => {
+            let a = parse(start, "start")?;
+            source.get(a..).map(|s| s.to_vec()).ok_or_else(|| {
+                format!(
+                    "range starts at {a} but the source is {} bytes",
+                    source.len()
+                )
+            })
+        }
+        [start, end] => {
+            let a = parse(start, "start")?;
+            let b = parse(end, "end")?;
+            if a >= b {
+                return Err(format!("range {a}..{b} is empty or reversed"));
+            }
+            source.get(a..b).map(|s| s.to_vec()).ok_or_else(|| {
+                format!(
+                    "range {a}..{b} runs past the source's {} bytes",
+                    source.len()
+                )
+            })
+        }
+        _ => Err("too many range components".to_string()),
     }
 }
 
-fn parse_slice_template(data: &[u8], slice_spec: &str) -> Vec<u8> {
-    let parts: Vec<&str> = slice_spec.split(':').collect();
-    match parts.as_slice() {
-        [start, end] => {
-            if let (Ok(start), Ok(end)) = (start.parse::<usize>(), end.parse::<usize>()) {
-                return data.get(start..end).map(|s| s.to_vec()).unwrap_or_default();
-            }
-            data.to_vec()
-        }
-        [start] => {
-            if let Ok(start) = start.parse::<usize>() {
-                return data.get(start..).map(|s| s.to_vec()).unwrap_or_default();
-            }
-            data.to_vec()
-        }
-        _ => data.to_vec(),
-    }
+/// Validate one seed template against the grammar alone, without a request.
+/// Used by `manifest.rs::validate` so a malformed template is refused at
+/// load rather than at the first verification that reaches it.
+pub fn validate_seed_template(seed: &str) -> Result<(), String> {
+    // A throwaway request that satisfies every index the grammar allows:
+    // 256 accounts and 1232 bytes of data (the packet bound). What survives
+    // this is well-formed; what a real request cannot satisfy is refused at
+    // verification time with the request's own numbers.
+    let program_pk = Pubkey::from_bytes([0u8; 32]);
+    let pubkeys = vec![program_pk; 256];
+    let input = AccountResolutionInput {
+        program_id: program_pk.to_base58(),
+        instruction_discriminator: String::new(),
+        account_addresses: vec![],
+        instruction_data: Some(vec![0u8; crate::tx_artifact::MAX_TRANSACTION_BYTES]),
+        real_account_metas: vec![],
+    };
+    resolve_pda_seed_template(seed, &input, &program_pk, &pubkeys).map(|_| ())
 }
 
 /// Derive a PDA from seeds (public API for external use).

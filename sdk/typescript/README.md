@@ -25,8 +25,10 @@ authoritative record of every verification.
 
 ## Send the bytes, require `artifact_bound`
 
-`VerificationInput.signed_transaction` carries the serialized transaction (signature
-slots empty). With it, the verdict's `scope.kind` is `artifact_bound` and
+`VerificationInput.signed_transaction` carries the serialized transaction with its
+signature slots EMPTY — the Core refuses an artifact whose slots already hold
+signatures (HTTP 400), because a transaction signed before it was shown is one
+whose verdict L8 could never join to the chain's bytes. With it, the verdict's `scope.kind` is `artifact_bound` and
 `scope.transaction_sha256` is the SHA-256 of those exact bytes; without it the verdict is
 `descriptive` and constrains nothing about what is signed. An executor must require
 `artifact_bound`, sign exactly the bytes it sent, and recompute the digest before

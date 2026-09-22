@@ -281,6 +281,21 @@ impl ManifestRegistry {
         if manifest.instructions.is_empty() {
             return Err(ManifestError::Invalid("no instructions defined".into()));
         }
+        // Round 17 (F-16-10): the console renders these as links. A scheme
+        // other than http(s) is refused at load, so a `javascript:` or
+        // `data:` URL can never reach an operator's browser through a
+        // community manifest.
+        for (field, value) in [
+            ("website", &manifest.protocol.website),
+            ("github", &manifest.protocol.github),
+        ] {
+            let v = value.trim();
+            if !v.is_empty() && !(v.starts_with("https://") || v.starts_with("http://")) {
+                return Err(ManifestError::Invalid(format!(
+                    "protocol.{field} {v:?} is not an http(s) URL"
+                )));
+            }
+        }
         for ix in &manifest.instructions {
             if ix.name.is_empty() {
                 return Err(ManifestError::Invalid("instruction with empty name".into()));
@@ -296,14 +311,46 @@ impl ManifestRegistry {
                     ))
                 })?;
             }
-            // Validate PDA seed templates when present. Support placeholder vars
-            // that can be resolved at runtime for dynamic PDA derivation.
-            for seed in ix.accounts.iter().flat_map(|a| a.pda_seeds.iter()) {
-                if seed.starts_with("{") && !seed.ends_with("}") {
-                    return Err(ManifestError::Invalid(format!(
-                        "instruction '{}' has malformed PDA seed template: {}",
-                        ix.name, seed
-                    )));
+            // PDA seed templates: the full grammar, at load (Round 17,
+            // F-16-06). Only `{`-without-`}` was refused here before, so
+            // `{account_99}`, `{foo}`, `0xZZ` and a reversed range loaded and
+            // derived PDAs nobody authored. An `{account_N}` index must also
+            // name a declared slot of the SAME instruction, and a byte range
+            // on an account key must fit in 32 bytes.
+            for (slot, a) in ix.accounts.iter().enumerate() {
+                for seed in &a.pda_seeds {
+                    if let Err(reason) = crate::account_resolution::validate_seed_template(seed) {
+                        return Err(ManifestError::Invalid(format!(
+                            "instruction '{}' account {slot} has an unsupported PDA seed template {seed:?}: {reason}",
+                            ix.name
+                        )));
+                    }
+                    if let Some(rest) = seed.strip_prefix("{account_") {
+                        let idx_str: String =
+                            rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                        if let Ok(idx) = idx_str.parse::<usize>() {
+                            if idx >= ix.accounts.len() {
+                                return Err(ManifestError::Invalid(format!(
+                                    "instruction '{}' account {slot} seed {seed:?} reads account {idx} but the instruction declares {} account(s)",
+                                    ix.name,
+                                    ix.accounts.len()
+                                )));
+                            }
+                            if let Some(range) =
+                                rest.strip_suffix('}').and_then(|r| r.split_once(':'))
+                            {
+                                let end = range.1.rsplit(':').next().unwrap_or_default();
+                                if let Ok(end) = end.parse::<usize>() {
+                                    if end > 32 {
+                                        return Err(ManifestError::Invalid(format!(
+                                            "instruction '{}' account {slot} seed {seed:?} reads past the 32 bytes of a public key",
+                                            ix.name
+                                        )));
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1599,6 +1646,86 @@ mod tests {
             registry.find_instruction(jup, "bb64fa").is_none(),
             "6-char prefix must NOT match"
         );
+    }
+
+    /// Round 17 (F-16-10): the console renders these as links.
+    #[test]
+    fn test_manifest_url_fields_must_be_http() {
+        let base = |website: &str| {
+            format!(
+                r#"{{"graphite_manifest_version":"1.0","protocol":{{"name":"T","program_id":"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi","website":"{website}","github":""}},"version":{{"label":"1.0","effective_from_slot":0,"previous_version_ref":null}},"instructions":[{{"name":"x","discriminator":"01","accounts":[],"expected_state_changes":[],"allowed_cpis":[],"risk_rules":[]}}],"trust_tier":"HeuristicInferred"}}"#
+            )
+        };
+        let mut registry = ManifestRegistry::new();
+        assert!(registry
+            .load_from_json(&base("https://example.org"))
+            .is_ok());
+        assert!(registry.load_from_json(&base("")).is_ok());
+        let mut registry = ManifestRegistry::new();
+        let err = registry
+            .load_from_json(&base("javascript:alert(document.domain)"))
+            .expect_err("a javascript: URL must be refused at load");
+        assert!(format!("{err}").contains("not an http(s) URL"), "{err}");
+        let mut registry = ManifestRegistry::new();
+        assert!(registry.load_from_json(&base("data:text/html,x")).is_err());
+    }
+
+    /// Round 17 (F-16-06): unsupported seed syntax is refused at load, not
+    /// reinterpreted as a literal, empty or whole-data seed at verify time.
+    #[test]
+    fn test_unsupported_seed_templates_are_refused_at_load() {
+        let with_seed = |seed: &str, accounts: usize| {
+            let accs: Vec<String> = (0..accounts)
+                .map(|i| {
+                    if i == 0 {
+                        format!(r#"{{"name":"pda","role":"pda","is_signer":false,"is_writable":false,"pda_seeds":["{seed}"]}}"#)
+                    } else {
+                        r#"{"name":"a","role":"a","is_signer":false,"is_writable":false,"pda_seeds":[]}"#.to_string()
+                    }
+                })
+                .collect();
+            format!(
+                r#"{{"graphite_manifest_version":"1.0","protocol":{{"name":"T","program_id":"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi","website":"","github":""}},"version":{{"label":"1.0","effective_from_slot":0,"previous_version_ref":null}},"instructions":[{{"name":"x","discriminator":"01","accounts":[{}],"expected_state_changes":[],"allowed_cpis":[],"risk_rules":[]}}],"trust_tier":"HeuristicInferred"}}"#,
+                accs.join(",")
+            )
+        };
+        for ok in [
+            "{program_id}",
+            "{instruction_data}",
+            "{instruction_data:8}",
+            "{instruction_data:8:16}",
+            "{account_1}",
+            "{account_1:0:8}",
+            "0x0102",
+            "literal",
+        ] {
+            let mut r = ManifestRegistry::new();
+            assert!(
+                r.load_from_json(&with_seed(ok, 2)).is_ok(),
+                "{ok} is in the grammar"
+            );
+        }
+        for bad in [
+            "{account_99}",
+            "{account_2}",
+            "{foo}",
+            "{",
+            "{instruction_data:9:2}",
+            "{instruction_data:8:8}",
+            "{instruction_data:a:b}",
+            "{account_1:0:40}",
+            "0xZZ",
+            "0x123",
+            "{program_id:0:4}",
+            "lit{eral",
+            "",
+        ] {
+            let mut r = ManifestRegistry::new();
+            assert!(
+                r.load_from_json(&with_seed(bad, 2)).is_err(),
+                "{bad:?} must be refused at load"
+            );
+        }
     }
 
     #[test]

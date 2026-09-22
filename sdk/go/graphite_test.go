@@ -623,7 +623,7 @@ func TestUnobservedCodesArePairedAndDecidable(t *testing.T) {
 	raw := `{
 		"approved": true, "confidence": 0.64, "breakdown": [], "trust_tier": "OfficialManifest",
 		"risk_verdict": {"status": "Clear", "findings": []}, "policy_verdict": "Approved",
-		"audit_trail_id": "gr-x", "content_hash": "afb61d8865b4cb68",
+		"audit_trail_id": "gr-x", "content_hash": "48c65c638aceb5de",
 		"transaction": {"instructions": [], "signers": [], "recent_blockhash": ""},
 		"resolved_accounts": [], "protocol_name": "System Program", "instruction_name": "Transfer",
 		"manifest_found": true, "unknown_protocol": false, "summary": "APPROVED",

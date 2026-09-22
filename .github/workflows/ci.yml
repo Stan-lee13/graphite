@@ -49,17 +49,20 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Library builds with no features (embedded-use contract)
         if: always()
-        run: cargo check --no-default-features
+        run: cargo check --locked --no-default-features
       - name: Library builds with cli feature only (no rpc/server)
         if: always()
-        run: cargo check --no-default-features --features cli
+        run: cargo check --locked --no-default-features --features cli
       - name: Clippy (all targets, all features — includes the rpc feature)
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Tests
         # `default = ["server", "cli"]` and `server` pulls `rpc`, so this IS the
         # all-features run for this crate; a separate `--all-features` job would
         # compile the same thing twice.
-        run: cargo test --release
+        # `--locked` (Round 17, F-16-13): a Cargo.lock that drifts from
+        # Cargo.toml fails here instead of being silently re-resolved, so the
+        # tests run against the dependency versions the image ships.
+        run: cargo test --locked --release
       # The two configurations below were COMPILED above and never run. That is
       # not the same gate: `cargo check --no-default-features` passed for months
       # while `cargo test --no-default-features` had 28 failures (review finding
@@ -73,10 +76,10 @@ jobs:
         # pure deterministic core — the parser, the state diff, the risk engine,
         # manifest handling, content_hash — plus one assertion that the stub
         # refuses instead of approving.
-        run: cargo test --release --no-default-features --lib
+        run: cargo test --locked --release --no-default-features --lib
       - name: Tests — cli feature only, no server or rpc
         if: always()
-        run: cargo test --release --no-default-features --features cli
+        run: cargo test --locked --release --no-default-features --features cli
 
   supply-chain:
     name: Dependency CVE audit

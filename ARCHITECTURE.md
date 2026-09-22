@@ -151,8 +151,8 @@ unsigned; readonly slot writable) fold into the hard-block `AccountIdentityMisma
 `artifact_bound { transaction_sha256, transaction_bytes, simulated, unobserved, unobserved_codes }`
 when bytes were supplied, `descriptive { unobserved, unobserved_codes }` otherwise.
 `unobserved` names, in words, what was not established; `unobserved_codes[i]` names
-`unobserved[i]` with one of fourteen stable `UnobservedCode`s (`not_simulated`,
-`no_state_diff`, `privileges_from_caller`, `privileges_absent`, `lookup_tables_unresolved`,
+`unobserved[i]` with one of fifteen stable `UnobservedCode`s (`not_simulated`,
+`no_state_diff`, `simulation_failed`, `privileges_from_caller`, `privileges_absent`, `lookup_tables_unresolved`,
 `program_semantics`, `inner_instructions`, `artifact_unparsed`, `account_identity_unparsed`,
 `instruction_not_located`, `no_artifact`, `other_instructions`, `fee_payer_blockhash_signers`,
 `no_real_effects`). Two are inherent to every artifact-bound verdict — `program_semantics`

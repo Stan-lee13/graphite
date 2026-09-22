@@ -27,8 +27,8 @@ func TestContentHashMatchesRustVectorNoDataNoCPI(t *testing.T) {
 		InstructionDiscriminator: transferDiscriminator,
 		AccountAddresses:         []string{fromAddr, toAddr},
 	})
-	// sha256(program || disc || from || to)[0..16]
-	if want := "afb61d8865b4cb68"; got != want {
+	// framed v2: domain || len-prefixed program, disc, [from, to], empty data, no CPI
+	if want := "48c65c638aceb5de"; got != want {
 		t.Fatalf("cross-language hash drift: got %s, want %s", got, want)
 	}
 }
@@ -41,8 +41,8 @@ func TestContentHashMatchesRustVectorWithDataAndCPI(t *testing.T) {
 		InstructionData:          []byte{1, 2, 3},
 		CPITargets:               []string{"cpiA"},
 	})
-	// sha256(program || disc || from || bytes(1,2,3) || "cpiA")[0..16]
-	if want := "87751f34a0f8a590"; got != want {
+	// framed v2: domain || len-prefixed program, disc, [from], bytes(1,2,3), ["cpiA"]
+	if want := "dd8569c46af7e6c0"; got != want {
 		t.Fatalf("cross-language hash drift: got %s, want %s", got, want)
 	}
 }

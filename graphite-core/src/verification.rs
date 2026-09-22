@@ -446,6 +446,35 @@ fn compare_instruction_accounts(
     InstructionAccounts::Match { unresolved }
 }
 
+/// The programs the simulator's inner instructions called, by address.
+///
+/// `programIdIndex` indexes the transaction's FULL account list as the
+/// runtime loaded it: static keys first, then the lookup-table addresses in
+/// `loadedAddresses` order (writable, then readonly). An index the list cannot
+/// place, or a message that could not be parsed, makes the set unknown rather
+/// than shorter (Round 17, F-16-05).
+#[cfg(feature = "rpc")]
+fn observed_cpi_callees(
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    loaded: Option<&crate::rpc_client::LoadedAddresses>,
+    indexes: Option<&[u8]>,
+) -> Option<Vec<String>> {
+    let message = message?;
+    let indexes = indexes?;
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = loaded {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    let mut out = Vec::with_capacity(indexes.len());
+    for i in indexes {
+        out.push((*keys.get(usize::from(*i))?).to_string());
+    }
+    out.sort();
+    out.dedup();
+    Some(out)
+}
+
 /// Whether a caller's declared discriminator contradicts the instruction data
 /// the same caller supplied for it, and if so, how.
 ///
@@ -562,6 +591,12 @@ fn instruction_accounts_for_comparison(
 struct SiblingCoverage {
     undescribed: Vec<(usize, String)>,
     unmatched_declarations: usize,
+    /// Sibling account positions that arrive through a lookup table the
+    /// pipeline could not resolve. Round 17 (F-15-05): these used to be
+    /// wildcards — a declaration "described" them whatever it wrote there —
+    /// and the verdict was `approved` with a residual. Approval is now
+    /// conditioned on resolution: an unresolved position fails L2.
+    unresolved_positions: usize,
     /// For each declaration, the artifact instruction it was matched to.
     ///
     /// Kept because a declaration that matched is a declaration whose real
@@ -572,7 +607,9 @@ struct SiblingCoverage {
 
 impl SiblingCoverage {
     fn complete(&self) -> bool {
-        self.undescribed.is_empty() && self.unmatched_declarations == 0
+        self.undescribed.is_empty()
+            && self.unmatched_declarations == 0
+            && self.unresolved_positions == 0
     }
 
     /// The disagreement, phrased for a caller who has to fix it.
@@ -595,6 +632,12 @@ impl SiblingCoverage {
                 self.unmatched_declarations
             ));
         }
+        if self.unresolved_positions > 0 {
+            parts.push(format!(
+                "{} sibling account position(s) arrive through address lookup tables that were not resolved, so their identity was not established and the declarations describing them could not be checked",
+                self.unresolved_positions
+            ));
+        }
         parts.join("; ")
     }
 }
@@ -608,12 +651,14 @@ fn sibling_coverage(
     let mut spent = vec![false; declared.len()];
     let mut matched: Vec<Option<usize>> = vec![None; declared.len()];
     let mut undescribed = Vec::new();
+    let mut unresolved_positions = 0usize;
 
     for (i, actual) in message.instructions.iter().enumerate() {
         if i == primary {
             continue;
         }
         let actual_accounts = instruction_accounts_for_comparison(message, actual, lookups);
+        unresolved_positions += actual_accounts.iter().filter(|a| a.is_none()).count();
         match declared.iter().enumerate().position(|(d, decl)| {
             !spent[d] && declaration_describes(decl, actual, &actual_accounts)
         }) {
@@ -628,6 +673,7 @@ fn sibling_coverage(
     SiblingCoverage {
         undescribed,
         unmatched_declarations: spent.iter().filter(|used| !**used).count(),
+        unresolved_positions,
         matched,
     }
 }
@@ -913,6 +959,18 @@ pub enum ExecutionReconciliation {
     /// Graphite has no verification on file for this transaction, so there is
     /// nothing to reconcile against. An execution it never saw.
     NoVerificationOnRecord,
+    /// The chain's bytes digest to something no verification was recorded
+    /// under, but the `audit_trail_id` the caller supplied names a
+    /// verification — of DIFFERENT bytes. The caller is presenting a verdict
+    /// about one transaction as the verdict for another. A discrepancy when
+    /// the cited verdict was a refusal: something carrying this signature
+    /// executed while the caller's own account of it is a refusal of
+    /// something else (Round 17, F-16-01).
+    RecordedForDifferentBytes {
+        recorded_approved: bool,
+        recorded_transaction_sha256: Option<String>,
+        chain_transaction_sha256: String,
+    },
     /// The comparison could not be made (no RPC, RPC failure, no audit log).
     /// Never a pass: an unavailable check states that it is unavailable.
     Unavailable { reason: String },
@@ -921,7 +979,14 @@ pub enum ExecutionReconciliation {
 impl ExecutionReconciliation {
     /// True when this outcome should page someone.
     pub fn is_discrepancy(&self) -> bool {
-        matches!(self, Self::BlockedButExecuted)
+        matches!(
+            self,
+            Self::BlockedButExecuted
+                | Self::RecordedForDifferentBytes {
+                    recorded_approved: false,
+                    ..
+                }
+        )
     }
 }
 
@@ -981,6 +1046,20 @@ pub struct ExecutionAudit {
     /// witness is configured.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inclusion_witness: Option<InclusionWitness>,
+    /// Every verdict the trail holds for the key the execution resolved by,
+    /// as `(approved, refused)` counts. The record above is the LAST one; an
+    /// artifact refused and then re-verified under a looser profile shows
+    /// `refused > 0` here (Round 17, F-16-11).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_verdicts: Option<RecordedVerdicts>,
+}
+
+/// How many times the trail decided about one key, by outcome.
+#[cfg(feature = "rpc")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RecordedVerdicts {
+    pub approved: usize,
+    pub refused: usize,
 }
 
 /// A second RPC's account of a signature, held against the primary's.
@@ -1084,6 +1163,11 @@ pub enum UnobservedCode {
     NotSimulated,
     /// Simulated, but no pre/post state diff was built.
     NoStateDiff,
+    /// The simulator executed the bytes and reported an error: the
+    /// transaction would not land as simulated, so nothing it would do was
+    /// measured — not its state changes, and not its compute usage, which
+    /// is not evidence about the program (Round 17, F-16-04).
+    SimulationFailed,
     /// Signer/writable flags came from the caller, not the message.
     PrivilegesFromCaller,
     /// No signer/writable flags at all.
@@ -1132,6 +1216,7 @@ impl UnobservedCode {
         match self {
             UnobservedCode::NotSimulated => "not_simulated",
             UnobservedCode::NoStateDiff => "no_state_diff",
+            UnobservedCode::SimulationFailed => "simulation_failed",
             UnobservedCode::PrivilegesFromCaller => "privileges_from_caller",
             UnobservedCode::PrivilegesAbsent => "privileges_absent",
             UnobservedCode::LookupTablesUnresolved => "lookup_tables_unresolved",
@@ -1149,9 +1234,10 @@ impl UnobservedCode {
 
     /// Every code, in declaration order — what the SDKs and the bridge's
     /// policy validate an operator's accepted list against.
-    pub const ALL: [UnobservedCode; 14] = [
+    pub const ALL: [UnobservedCode; 15] = [
         UnobservedCode::NotSimulated,
         UnobservedCode::NoStateDiff,
+        UnobservedCode::SimulationFailed,
         UnobservedCode::PrivilegesFromCaller,
         UnobservedCode::PrivilegesAbsent,
         UnobservedCode::LookupTablesUnresolved,
@@ -1258,6 +1344,7 @@ impl VerificationScope {
 fn verification_scope(
     input: &VerificationInput,
     simulated: bool,
+    simulation_error: Option<&str>,
     diff_built: bool,
     privileges: PrivilegeSource,
     lookups: Option<Result<usize, String>>,
@@ -1267,7 +1354,14 @@ fn verification_scope(
         Some(bytes) if !bytes.is_empty() => {
             use sha2::{Digest, Sha256};
             let mut r = Residuals::default();
-            if !simulated {
+            if let Some(err) = simulation_error {
+                r.push(
+                    UnobservedCode::SimulationFailed,
+                    format!(
+                        "the simulator executed these bytes and reported an error ({err}): the transaction would not land as simulated, so what it does was not measured — its state changes were not diffed and its compute usage is not evidence about this program"
+                    ),
+                );
+            } else if !simulated {
                 r.push(
                     UnobservedCode::NotSimulated,
                     "the transaction was supplied but never executed by a simulator, so its real effects are unknown — this verdict is the static analysis of the described instruction",
@@ -1352,7 +1446,7 @@ fn verification_scope(
                     );
                     r.push(
                         UnobservedCode::InnerInstructions,
-                        "inner instructions: only top-level instructions appear in a message, so anything a program invokes by CPI is visible to Graphite through simulation effects rather than through the artifact",
+                        "inner instructions: only top-level instructions appear in a message, so anything a program invokes by CPI is visible to Graphite through simulation rather than through the artifact — when a simulation ran, the programs it called were read from the response and judged like declared CPI targets; what those calls do inside remains unobserved",
                     );
                 }
                 Err(e) => {
@@ -1377,7 +1471,14 @@ fn verification_scope(
                 }
             }
             VerificationScope::ArtifactBound {
-                transaction_sha256: hex::encode(Sha256::digest(bytes)),
+                // The digest of the UNSIGNED frame — identical to the raw bytes
+                // now that filled slots are refused upstream, and the same
+                // function L8 applies to chain bytes, so the two can no longer
+                // disagree by construction (Round 17, F-16-01). An unreadable
+                // frame hashes as given; L2 has already failed it.
+                transaction_sha256: hex::encode(Sha256::digest(
+                    crate::tx_artifact::unsigned_artifact(bytes).unwrap_or_else(|_| bytes.clone()),
+                )),
                 transaction_bytes: bytes.len(),
                 simulated,
                 unobserved: r.prose,
@@ -2192,7 +2293,7 @@ impl GraphiteCore {
         keys: ExecutionKeys<'_>,
         audit: Option<&crate::durable::AuditLog>,
     ) -> ExecutionAudit {
-        use crate::durable::VerificationKey;
+        use crate::durable::{AuditRecord, VerificationKey};
         let chain_status = match self.verify_execution(signature).await {
             Ok(s) => s,
             Err(e) => ExecutionVerification::Unavailable(e.to_string()),
@@ -2314,15 +2415,31 @@ impl GraphiteCore {
         // consulted — a fallback from a spoofed or stale `audit_trail_id` to
         // a `content_hash` would let the caller pick which verification an
         // execution is attributed to.
+        // Round 17 (F-16-01): when the chain's digest resolves nothing and the
+        // caller cited an exact `audit_trail_id`, that record is fetched too —
+        // not to attribute the execution to it, but to say that the caller's
+        // verdict is about other bytes (`RecordedForDifferentBytes`).
+        let mut cited_for_other_bytes: Option<AuditRecord> = None;
+        let mut recorded_verdicts: Option<RecordedVerdicts> = None;
         let (recorded, attribution) = match audit {
             None => (None, ExecutionAttribution::None),
             Some(_) if chain_bytes_rejected.is_some() => (None, ExecutionAttribution::None),
             Some(log) => {
                 if let Some(digest) = &chain_transaction_sha256 {
-                    (
-                        log.find_verification(VerificationKey::TransactionSha256(digest)),
-                        ExecutionAttribution::Chain,
-                    )
+                    let found = log.find_verification(VerificationKey::TransactionSha256(digest));
+                    let (approved, refused) =
+                        log.count_verifications(VerificationKey::TransactionSha256(digest));
+                    if approved + refused > 0 {
+                        recorded_verdicts = Some(RecordedVerdicts { approved, refused });
+                    }
+                    if found.is_none() {
+                        if let Some(id) = keys.audit_trail_id {
+                            cited_for_other_bytes = log
+                                .find_verification(VerificationKey::AuditTrailId(id))
+                                .filter(|r| r.transaction_sha256.as_deref() != Some(digest));
+                        }
+                    }
+                    (found, ExecutionAttribution::Chain)
                 } else if let Some(id) = keys.audit_trail_id {
                     (
                         log.find_verification(VerificationKey::AuditTrailId(id)),
@@ -2416,6 +2533,16 @@ impl GraphiteCore {
             (_, None) if audit.is_none() => ExecutionReconciliation::Unavailable {
                 reason: "no audit log available to read the recorded verdict from".to_string(),
             },
+            (_, None) if cited_for_other_bytes.is_some() => {
+                let cited = cited_for_other_bytes.as_ref().expect("checked");
+                ExecutionReconciliation::RecordedForDifferentBytes {
+                    recorded_approved: cited.approved,
+                    recorded_transaction_sha256: cited.transaction_sha256.clone(),
+                    chain_transaction_sha256: chain_transaction_sha256
+                        .clone()
+                        .unwrap_or_default(),
+                }
+            }
             (_, None) => ExecutionReconciliation::NoVerificationOnRecord,
             (ExecutionVerification::UnknownSignature(_), Some(rec)) => {
                 if !rec.approved && witness_saw_it {
@@ -2500,6 +2627,7 @@ impl GraphiteCore {
             chain_bytes_unavailable,
             chain_inconsistent,
             inclusion_witness,
+            recorded_verdicts,
         }
     }
 
@@ -2728,6 +2856,48 @@ impl GraphiteCore {
             .map_err(VerificationError::SemanticGraph)?;
         self.persist_state();
         Ok(())
+    }
+
+    /// The trusted simulation baseline the graph holds for a program, if any.
+    /// Read-only; what `/api/graph` reports as `baseline_samples` comes from
+    /// the same store.
+    pub fn simulation_baseline(
+        &self,
+        program_id: &str,
+    ) -> Option<crate::simulation_integrity::ComputeBaseline> {
+        self.graph().get_simulation_baseline(program_id).cloned()
+    }
+
+    /// The shadow accumulator for a program — flagged-but-executed
+    /// observations the trusted baseline refused (Round 17, F-16-02).
+    pub fn shadow_baseline(
+        &self,
+        program_id: &str,
+    ) -> Option<crate::simulation_integrity::ComputeBaseline> {
+        self.graph().shadow_baselines().get(program_id).cloned()
+    }
+
+    /// Programs whose trusted baseline has refused at least `MIN_SAMPLES`
+    /// clean executions since the shadow accumulator last cleared: the
+    /// frozen-baseline signal `/health` reports (Round 17, F-16-02).
+    pub fn frozen_baselines(&self) -> Vec<(String, u64)> {
+        self.graph().frozen_baselines()
+    }
+
+    /// Trusted operator API: replace a program's trusted baseline with its
+    /// shadow accumulator — the clean executions the frozen baseline refused —
+    /// and clear the shadow. Refuses with fewer than `MIN_SAMPLES` shadow
+    /// observations (Round 17, F-16-02).
+    pub fn promote_shadow_baseline(
+        &self,
+        program_id: &str,
+    ) -> Result<crate::simulation_integrity::ComputeBaseline, VerificationError> {
+        let promoted = self
+            .graph()
+            .promote_shadow_baseline(program_id)
+            .map_err(VerificationError::SemanticGraph)?;
+        self.persist_state();
+        Ok(promoted)
     }
 
     // L2: Instruction Verification
@@ -3589,6 +3759,24 @@ impl GraphiteCore {
                     crate::tx_artifact::MAX_TRANSACTION_BYTES
                 )));
             }
+            // Round 17 (F-16-01): Graphite verifies BEFORE signing, and the
+            // digest it binds a verdict to is the digest of the unsigned
+            // frame — the same digest L8 recovers from the chain's bytes by
+            // zeroing the slots. An artifact that already carries signatures
+            // was signed before it was shown, and until this check it was
+            // accepted, approved as `artifact_bound`, and given a digest no
+            // chain evidence could ever reproduce: a refused pre-signed
+            // transaction that executed reconciled as `NoVerificationOnRecord`
+            // rather than `BlockedButExecuted`. The API contract the SDKs
+            // document ("signature slots empty") is now enforced. A frame too
+            // short to read its slots is left for the parser to refuse.
+            if let Ok(filled) = crate::tx_artifact::filled_signature_slots(artifact) {
+                if filled > 0 {
+                    return Err(VerificationError::InvalidInput(format!(
+                        "signed_transaction carries {filled} non-zero signature slot(s): Graphite verifies before signing, so the artifact must be serialized with empty signature slots (the bridge's BoundTransaction.artifact() does this); verify first, then sign the exact approved bytes"
+                    )));
+                }
+            }
         }
         if input.transaction_instructions.len() > MAX_TRANSACTION_INSTRUCTIONS {
             return Err(VerificationError::InvalidInput(format!(
@@ -3871,6 +4059,7 @@ impl GraphiteCore {
                     manifest_found: true,
                     resolution_order: (0..input.account_addresses.len()).collect(),
                     instruction_name: "unknown_instruction".to_string(),
+                    unresolvable_seed_templates: Vec::new(),
                     resolved_accounts: input
                         .account_addresses
                         .iter()
@@ -4094,22 +4283,31 @@ impl GraphiteCore {
                                         ),
                                     )
                                 }
-                                // Unresolved positions are lookup-table indexes.
-                                // They are not a mismatch and they are not a
-                                // match either, so the layer passes and says how
-                                // many of its accounts it could not compare —
-                                // failing here would reject a transaction whose
-                                // only fault is being a v0 one, and staying
-                                // silent would report a positional check that
-                                // did not cover every position.
+                                // Unresolved positions are lookup-table indexes
+                                // whose tables did not come back. Until Round 17
+                                // they were neither a match nor a mismatch and
+                                // the layer passed with a residual; the verdict
+                                // was `approved: true` about accounts whose
+                                // identity Graphite had not established, and
+                                // every consumer that did not refuse the
+                                // `lookup_tables_unresolved` residual executed
+                                // it (F-15-05). An identity check that did not
+                                // run is a failed check: the layer fails, and
+                                // says which positions and why. A v0 transaction
+                                // whose tables resolve is unaffected.
                                 InstructionAccounts::Match { unresolved: 0 } => l2_result,
                                 InstructionAccounts::Match { unresolved } => {
                                     PipelineLayerResult::new(
                                         "L2_InstructionVerification",
-                                        l2_result.status,
+                                        LayerStatus::Failed,
                                         format!(
-                                            "{}; {unresolved} of its account(s) arrive through address lookup tables and carry an index rather than an address here, so those positions were not compared",
-                                            l2_result.reason
+                                            "{}; {unresolved} of its account(s) arrive through address lookup tables that were not resolved ({}), so their identity was not established — approval is conditioned on every account of the instruction being identified",
+                                            l2_result.reason,
+                                            match resolved_lookups.as_ref() {
+                                                Some(Err(e)) => e.clone(),
+                                                Some(Ok(_)) => "the index is not covered by the fetched tables".to_string(),
+                                                None => "no RPC client is attached to fetch the tables".to_string(),
+                                            }
                                         ),
                                     )
                                 }
@@ -4346,10 +4544,22 @@ impl GraphiteCore {
             effective_discriminator.clone()
         };
 
+        // Round 17 (F-15-03): the manifest's risk METADATA — expected account
+        // count, variable-accounts flag and above all `risk_class` — is keyed
+        // on the instruction's own bytes, like every other manifest lookup.
+        // Keying it on `risk_discriminator` meant an empty label emptied the
+        // risk class, and Check 10 (high-risk class with no declared intent)
+        // and Check 3b switched off for every manifested non-native program:
+        // measured, the full label was Blocked and the empty label Clear on
+        // the same bytes. Only Check 2's empty-label arm still reads the
+        // label, and that arm refuses.
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
                 let ix = m.instructions.iter().find(|i| {
-                    crate::manifest::discriminator_matches(&i.discriminator, &risk_discriminator)
+                    crate::manifest::discriminator_matches(
+                        &i.discriminator,
+                        &effective_discriminator,
+                    )
                 });
                 match ix {
                     Some(i) => (
@@ -4378,7 +4588,7 @@ impl GraphiteCore {
                 .extracted_parameters
                 .as_ref()
                 .and_then(|p| p.output_token.clone()),
-            manifest_risk_class,
+            manifest_risk_class: manifest_risk_class.clone(),
         })?;
         // `assess_with_warnings` returns non-blocking warnings (e.g. an
         // out-of-manifest CPI on a known protocol) alongside the binary verdict.
@@ -4567,8 +4777,27 @@ impl GraphiteCore {
             .filter(|a| a.pda_mismatch || a.expected_address_mismatch || a.privilege_mismatch)
             .collect();
         let risk_verdict = if !identity_mismatches.is_empty() {
+            let unresolvable = if resolution.unresolvable_seed_templates.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " | identity could not be re-derived for {}: {}",
+                    resolution
+                        .unresolvable_seed_templates
+                        .iter()
+                        .map(|(i, _)| format!("account {i}"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    resolution
+                        .unresolvable_seed_templates
+                        .iter()
+                        .map(|(_, why)| why.clone())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                )
+            };
             let mismatch_reason = format!(
-                "Account identity mismatch: {} account(s) do not match manifest-declared identity: {}",
+                "Account identity mismatch: {} account(s) do not match manifest-declared identity: {}{unresolvable}",
                 identity_mismatches.len(),
                 identity_mismatches
                     .iter()
@@ -4891,6 +5120,22 @@ impl GraphiteCore {
         // caller-controlled numbers, so we record NOTHING.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut rpc_sim_ok = false;
+        // The simulator's own verdict on the transaction, when it ran. Round
+        // 17: a simulation that errored describes a transaction that would not
+        // land, so its compute numbers are not an observation of anything this
+        // program does — they never enter the baseline, never certify L3
+        // "clean", and the verdict names the failure as its own residual
+        // (`UnobservedCode::SimulationFailed`) instead of folding it into
+        // `no_state_diff` (F-15-02, F-16-03, F-16-04).
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut sim_err: Option<String> = None;
+        // The CPI callees the simulator actually executed, mapped from the
+        // response's `innerInstructions[*].programIdIndex` through the
+        // transaction's full account list (Round 17, F-16-05). `None` when
+        // there was no simulation, no readable message, no `innerInstructions`
+        // or an index the account list cannot place — unknown, never empty.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        let mut observed_cpi_programs: Option<Vec<String>> = None;
         // Graphite's OWN state diff, built from RPC. When this is Some it takes
         // precedence over anything the caller supplied — measured evidence
         // outranks a claim about evidence (P5).
@@ -5066,7 +5311,22 @@ impl GraphiteCore {
                         }
                         // Only a COMPLETE RPC result may enter the accumulator:
                         // nonzero units AND both derived fields present.
+                        sim_err = sim_res.err.clone();
+                        if sim_res.err.is_none() {
+                            observed_cpi_programs = observed_cpi_callees(
+                                artifact_message.as_ref(),
+                                sim_res.loaded_addresses.as_ref(),
+                                sim_res.inner_program_indexes.as_deref(),
+                            );
+                        }
+                        // Round 17: `err == null` is part of completeness. A
+                        // failed execution reports real-looking compute units
+                        // (the runtime charges for the work done up to the
+                        // failure), and until this line those units were
+                        // recorded as trusted evidence and certified L3
+                        // "clean (RPC-verified)" (F-15-02).
                         if !implausible_units
+                            && sim_res.err.is_none()
                             && sim_res.units_consumed > 0
                             && sim_res.account_writes.is_some()
                             && sim_res.cpi_hops.is_some()
@@ -5441,11 +5701,17 @@ impl GraphiteCore {
         // Until MIN_SAMPLES is reached the layer grants NO clean verdict
         // (sim_flagged stays None), so a poisoned bootstrap cannot certify
         // anything — it can only fail to flag, which is the pre-fix status quo.
-        #[cfg(feature = "rpc")]
-        if rpc_sim_ok && sim_flagged != Some(true) {
-            self.graph().record_simulation(&input.program_id, &usage);
-            self.persist_state_async().await;
-        }
+        // Round 17 (F-16-03): recording moved below the approval decision.
+        // `rpc_sim_ok && sim_flagged != Some(true)` used to be the whole gate,
+        // so a request refused at L2 (a declared sibling that matched nothing,
+        // a wrong label), a request the Risk Engine blocked, and a request
+        // whose simulation errored all trained the baseline — measured: three
+        // L2-refused calls read "3 of 10 samples needed". Only the observation
+        // of a transaction this verification APPROVED is evidence now; see
+        // `record_simulation_if_eligible` after `approved` is computed. A
+        // flagged observation that the simulator executed cleanly goes to the
+        // shadow accumulator instead, so a frozen baseline is visible and
+        // recoverable (F-16-02).
 
         // If simulation is flagged, add it as a risk finding
         let risk_summary = if sim_flagged == Some(true) {
@@ -5463,6 +5729,77 @@ impl GraphiteCore {
             }
         } else {
             risk_summary
+        };
+
+        // Round 17 (F-16-05): the CPI targets the simulator OBSERVED, judged by
+        // the same Risk Engine rules as the ones the caller declared. Check 1
+        // (unexpected CPI on a program with no manifest → Blocked) and Check
+        // 1b (token-program CPI from an untrusted root, not in `allowed_cpis`
+        // → Blocked) used to consume `input.cpi_targets` alone, so a caller
+        // switched both off by declaring nothing. The callees are in the
+        // simulation response; here they are fed to `assess_with_warnings`
+        // exactly as a declaration would be, and anything observed that the
+        // caller did not declare is named in the warnings.
+        #[cfg(feature = "rpc")]
+        let (risk_summary, risk_warnings) = match &observed_cpi_programs {
+            Some(observed) if !observed.is_empty() => {
+                let mut undeclared: Vec<String> = observed
+                    .iter()
+                    .filter(|p| **p != input.program_id)
+                    .filter(|p| !input.cpi_targets.contains(*p))
+                    .cloned()
+                    .collect();
+                undeclared.sort();
+                undeclared.dedup();
+                if undeclared.is_empty() {
+                    (risk_summary, risk_warnings)
+                } else {
+                    let detail = assess_with_warnings(&RiskAssessmentInput {
+                        program_id: input.program_id.clone(),
+                        accounts: input.account_addresses.clone(),
+                        cpi_targets: undeclared.clone(),
+                        expected_state_changes: expected_state_changes.clone(),
+                        allowed_cpis: allowed_cpis.clone(),
+                        instruction_discriminator: risk_discriminator.clone(),
+                        expected_account_count,
+                        variable_accounts,
+                        proposed_intent_type: input.proposed_intent.intent_type.clone(),
+                        extracted_output_token: input
+                            .proposed_intent
+                            .extracted_parameters
+                            .as_ref()
+                            .and_then(|p| p.output_token.clone()),
+                        manifest_risk_class: manifest_risk_class.clone(),
+                    })?;
+                    risk_warnings.push(format!(
+                        "the simulator observed CPI target(s) the request did not declare: {} — judged by the same rules as a declaration",
+                        undeclared.join(", ")
+                    ));
+                    for w in detail.warnings {
+                        risk_warnings.push(format!("observed CPI: {w}"));
+                    }
+                    match detail.verdict {
+                        RiskVerdict::Blocked { pattern, reason } => {
+                            (
+                                RiskVerdictSummary {
+                                    status: "Blocked".to_string(),
+                                    findings: {
+                                        let mut f = risk_summary.findings.clone();
+                                        f.push(RiskFinding {
+                                        pattern: format!("{pattern:?}"),
+                                        reason: format!("observed CPI (not declared by the caller): {reason}"),
+                                    });
+                                        f
+                                    },
+                                },
+                                risk_warnings,
+                            )
+                        }
+                        RiskVerdict::Passed => (risk_summary, risk_warnings),
+                    }
+                }
+            }
+            _ => (risk_summary, risk_warnings),
         };
 
         // A quarantined program is a hard block, not merely a tier downgrade.
@@ -5850,6 +6187,65 @@ impl GraphiteCore {
         // Determine if approved
         let approved = l6_passed && risk_summary.status == "Clear";
 
+        // Round 17 (F-16-03 / F-16-02): what becomes evidence.
+        //
+        // An observation enters the trusted accumulator only when it is an
+        // observation of a SOUND transaction of this program: RPC-complete
+        // (`rpc_sim_ok`, which now includes `err == null`), not flagged, no
+        // structural layer failed (L2/L4/L5) and the Risk Engine found
+        // nothing. A request refused at L2 — a declared sibling that matched
+        // nothing, a wrong label — or blocked by the Risk Engine is not an
+        // observation of what this program does when it is used honestly; it
+        // is what an attacker's request looked like, and it used to train the
+        // baseline exactly as well as honest traffic did.
+        //
+        // A request refused ONLY by the policy threshold (confidence or
+        // tier) does train: that is the bootstrap. A program with a manifest
+        // and no history sits at 0.44, below every built-in floor, and the
+        // floor is meant to be crossed by evidence — each observation here
+        // is a structurally sound, risk-clear, successfully simulated
+        // transaction of that program. What closed F-15-01 is the identity
+        // rule below: the SAME bytes re-verified are one observation, so the
+        // identical refused request can no longer become approved by being
+        // asked again.
+        //
+        // A FLAGGED observation that the simulator nevertheless executed
+        // cleanly is kept in the shadow accumulator. It never influences a
+        // verdict. It exists so that a baseline frozen by ten identical early
+        // samples is visible (`/health` reports programs whose shadow has
+        // reached MIN_SAMPLES) and recoverable (`graphite graph promote-shadow`)
+        // rather than permanent.
+        #[cfg(feature = "rpc")]
+        if rpc_sim_ok {
+            // Keyed on the artifact digest (F-15-01): the same bytes seen
+            // twice are one observation, not two.
+            let observation_key = input
+                .signed_transaction
+                .as_deref()
+                .filter(|b| !b.is_empty())
+                .map(|b| {
+                    use sha2::{Digest, Sha256};
+                    hex::encode(Sha256::digest(
+                        crate::tx_artifact::unsigned_artifact(b).unwrap_or_else(|_| b.to_vec()),
+                    ))
+                });
+            if sim_flagged == Some(true) {
+                self.graph().record_shadow_simulation(
+                    &input.program_id,
+                    &usage,
+                    observation_key.as_deref(),
+                );
+                self.persist_state_async().await;
+            } else if !structural_layer_failed && risk_summary.status == "Clear" {
+                self.graph().record_simulation_keyed(
+                    &input.program_id,
+                    &usage,
+                    observation_key.as_deref(),
+                );
+                self.persist_state_async().await;
+            }
+        }
+
         // Generate summary
         let mut summary = generate_summary(
             approved,
@@ -5949,7 +6345,20 @@ impl GraphiteCore {
                 None => LayerStatus::Inconclusive,
             },
             {
+                #[cfg(feature = "rpc")]
+                let failed_simulation = sim_err.as_deref();
+                #[cfg(not(feature = "rpc"))]
+                let failed_simulation: Option<&str> = None;
                 let base = match (sim_flagged, sim_divergence) {
+                    // Round 17 (F-16-04): a simulation that errored is neither
+                    // "clean" nor "not RPC-verified" — it ran, and it said
+                    // the transaction would not land. `rpc_sim_ok` is false
+                    // for it, so `sim_flagged` is None here unless the
+                    // caller-supplied numbers flagged.
+                    (None, _) if failed_simulation.is_some() => format!(
+                        "Simulation FAILED: the simulator executed these bytes and reported {} — the transaction would not land as simulated; its compute usage is not evidence and did not enter the baseline",
+                        failed_simulation.unwrap_or("an error")
+                    ),
                     (Some(true), _) => {
                         // Clamp the DISPLAYED divergence: zero-variance
                         // and degenerate paths report f64::MAX (JSON-safe
@@ -6107,9 +6516,14 @@ impl GraphiteCore {
                 let simulated = rpc_sim_ok;
                 #[cfg(not(feature = "rpc"))]
                 let simulated = false;
+                #[cfg(feature = "rpc")]
+                let simulation_error = sim_err.as_deref();
+                #[cfg(not(feature = "rpc"))]
+                let simulation_error: Option<&str> = None;
                 verification_scope(
                     input,
                     simulated,
+                    simulation_error,
                     observed_diff.is_some(),
                     privilege_source,
                     resolved_lookups
@@ -6388,6 +6802,12 @@ fn build_signals(
     ]
 }
 
+/// Domain tag for the framed `content_hash` (Round 17, F-16-09). Changing the
+/// encoding means changing this tag, and re-pinning the vectors in
+/// `sdk/typescript/src/auditbind.test.ts`, `integrations/solana-agent-kit/
+/// auditbind.test.ts` and `sdk/go/auditbind_test.go` together.
+pub const CONTENT_HASH_DOMAIN: &[u8] = b"graphite-content-hash-v2\0";
+
 fn generate_audit_id(
     program_id: &str,
     discriminator: &str,
@@ -6402,21 +6822,33 @@ fn generate_audit_id(
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
     let seq = COUNTER.fetch_add(1, Ordering::SeqCst);
+    // Round 17 (F-16-09): FRAMED. The hash used to be the bare concatenation
+    // `program || disc || addr… || data || cpi…`, so `[A, B]` with no data
+    // and `[A]` with data = bytes(B) hashed identically — a boundary-shift
+    // collision on the key L8 falls back to and AuditBind compares. Every
+    // field is now length-prefixed (u32 LE), every list carries its count,
+    // and a domain tag separates this encoding from anything else that
+    // hashes the same strings. The three SDK reimplementations (TS SDK, SAK
+    // AuditBind, Go) mirror this byte for byte and pin the same vectors.
     let mut hasher = Sha256::new();
-    hasher.update(program_id.as_bytes());
-    hasher.update(discriminator.as_bytes());
+    fn field(h: &mut Sha256, bytes: &[u8]) {
+        h.update((bytes.len() as u32).to_le_bytes());
+        h.update(bytes);
+    }
+    hasher.update(CONTENT_HASH_DOMAIN);
+    field(&mut hasher, program_id.as_bytes());
+    field(&mut hasher, discriminator.as_bytes());
     // Bind audit trail to specific accounts — mitigates TOCTOU by making
     // the audit ID unique per transaction configuration.
+    hasher.update((account_addresses.len() as u32).to_le_bytes());
     for addr in account_addresses {
-        hasher.update(addr.as_bytes());
+        field(&mut hasher, addr.as_bytes());
     }
-    // Include instruction data if present
-    if let Some(data) = instruction_data {
-        hasher.update(data);
-    }
-    // Include CPI targets
+    // Instruction data: absent and empty are the same (no bytes).
+    field(&mut hasher, instruction_data.as_deref().unwrap_or(&[]));
+    hasher.update((cpi_targets.len() as u32).to_le_bytes());
     for target in cpi_targets {
-        hasher.update(target.as_bytes());
+        field(&mut hasher, target.as_bytes());
     }
     // SECURITY FIX: content_hash covers ONLY transaction inputs (deterministic,
     // reproducible by the client). audit_trail_id adds confidence + risk + seq
@@ -6814,7 +7246,7 @@ mod tests {
         assert_eq!(result.simulation_divergence, Some(0.0));
         // Signed-transaction-bearing input must not corrupt the deterministic
         // content hash (the blob is not part of the verification identity).
-        assert_eq!(result.content_hash, "afb61d8865b4cb68");
+        assert_eq!(result.content_hash, "48c65c638aceb5de");
     }
 
     #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
@@ -7085,13 +7517,71 @@ mod tests {
         assert_eq!(result.manifest_version, None);
     }
 
+    /// Round 17 (F-16-09): the framed encoding cannot be shifted across a
+    /// field boundary. `[A, B]` with no data and `[A]` with data = bytes(B)
+    /// hashed identically under the bare concatenation.
+    #[test]
+    fn test_content_hash_is_injective_across_field_boundaries() {
+        let risk = RiskVerdictSummary {
+            status: "Clear".to_string(),
+            findings: vec![],
+        };
+        let a = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string();
+        let b = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR".to_string();
+        let (_, two_accounts) = generate_audit_id(
+            "11111111111111111111111111111111",
+            "02000000",
+            &[a.clone(), b.clone()],
+            &None,
+            &[],
+            0.5,
+            &risk,
+        );
+        let (_, one_account_with_data) = generate_audit_id(
+            "11111111111111111111111111111111",
+            "02000000",
+            std::slice::from_ref(&a),
+            &Some(b.as_bytes().to_vec()),
+            &[],
+            0.5,
+            &risk,
+        );
+        assert_ne!(two_accounts, one_account_with_data);
+        // Discriminator/program boundary.
+        let (_, x) = generate_audit_id("1111", "02000000", &[], &None, &[], 0.5, &risk);
+        let (_, y) = generate_audit_id("111102", "000000", &[], &None, &[], 0.5, &risk);
+        assert_ne!(x, y);
+        // Data/CPI boundary.
+        let (_, p) = generate_audit_id("p", "", &[], &Some(b"cpiA".to_vec()), &[], 0.5, &risk);
+        let (_, q) = generate_audit_id("p", "", &[], &None, &["cpiA".to_string()], 0.5, &risk);
+        assert_ne!(p, q);
+        // Absent and empty data are the same thing.
+        let (_, m) = generate_audit_id("p", "", &[], &Some(vec![]), &[], 0.5, &risk);
+        let (_, n) = generate_audit_id("p", "", &[], &None, &[], 0.5, &risk);
+        assert_eq!(m, n);
+        // The second cross-language vector (with data and a CPI target).
+        let (_, v2) = generate_audit_id(
+            "11111111111111111111111111111111",
+            "02000000",
+            &[a],
+            &Some(vec![1, 2, 3]),
+            &["cpiA".to_string()],
+            0.5,
+            &risk,
+        );
+        assert_eq!(v2, "dd8569c46af7e6c0");
+    }
+
     #[test]
     fn test_content_hash_matches_ts_auditbind_reference_vector() {
         // Cross-language contract lock: the TS AuditBind tests
-        // (integrations/solana-agent-kit/auditbind.test.ts) pin the same value —
-        // sha256(program||disc||from||to)[0..16] = "afb61d8865b4cb68". If either
-        // side changes the hashed field set or ordering, BOTH pinned tests must
-        // be regenerated together or the TOCTOU check silently breaks.
+        // (integrations/solana-agent-kit/auditbind.test.ts, sdk/typescript) and
+        // the Go SDK pin the same value — the Round 17 framed encoding
+        // (domain tag, u32 LE length prefixes, list counts) of
+        // program, disc, [from, to], no data, no CPI = "48c65c638aceb5de".
+        // If either side changes the hashed field set or ordering, EVERY
+        // pinned test must be regenerated together or the TOCTOU check
+        // silently breaks.
         let risk = RiskVerdictSummary {
             status: "Clear".to_string(),
             findings: vec![],
@@ -7108,7 +7598,7 @@ mod tests {
             0.44,
             &risk,
         );
-        assert_eq!(content_hash, "afb61d8865b4cb68");
+        assert_eq!(content_hash, "48c65c638aceb5de");
     }
 
     #[test]

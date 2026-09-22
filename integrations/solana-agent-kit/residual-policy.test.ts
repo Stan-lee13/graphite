@@ -36,7 +36,7 @@ test("the inherent residuals are exactly the two the core marks inherent", () =>
   assert.deepEqual([...INHERENT_UNOBSERVED].sort(), [...INHERENT].sort());
   // And they are in the code list, as is everything else the core emits.
   for (const c of INHERENT) assert.ok(UNOBSERVED_CODES.includes(c));
-  assert.equal(UNOBSERVED_CODES.length, 14);
+  assert.equal(UNOBSERVED_CODES.length, 15);
 });
 
 test("a fully observed artifact-bound verdict passes the default policy", () => {

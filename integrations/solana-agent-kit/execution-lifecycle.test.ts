@@ -58,7 +58,7 @@ function verdict(bound: BoundTransaction, codes: UnobservedCode[] = INHERENT, ap
     risk_verdict: { status: "Clear", findings: [] },
     policy_verdict: "Approved",
     audit_trail_id: "gr-test",
-    content_hash: "afb61d8865b4cb68",
+    content_hash: "48c65c638aceb5de",
     transaction: { instructions: [], signers: [], recent_blockhash: BLOCKHASH } as unknown as VerificationResult["transaction"],
     resolved_accounts: [],
     protocol_name: "System Program",
@@ -200,7 +200,7 @@ test("the honest path: policy, sign, record signing, send, record submission, co
   assert.equal(lc.reconciliation?.discrepancy, false);
   // The events carry every join key — the exact ones, not only the
   // instruction-level content_hash — and the reporter.
-  assert.equal(fakes.events[0].content_hash, "afb61d8865b4cb68");
+  assert.equal(fakes.events[0].content_hash, "48c65c638aceb5de");
   assert.equal(fakes.events[0].audit_trail_id, "gr-test");
   const digest = (v.scope as { transaction_sha256: string }).transaction_sha256;
   assert.equal(fakes.events[0].transaction_sha256, digest);

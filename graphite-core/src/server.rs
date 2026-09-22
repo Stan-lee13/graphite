@@ -596,7 +596,16 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
                     "plugins: {} registered, {} pending (skipped), {} rejected (skipped) from {}",
                     summary.registered, summary.skipped_pending, summary.skipped_rejected, dir
                 )),
-                Err(e) => tracing_log(&format!("plugins: FAILED to load {}: {}", dir, e)),
+                // Round 17 (F-16-07): an operator who configured a plugin
+                // directory expects those plugins to be running. Starting
+                // without them was a silent removal of every check they
+                // carry; it is a startup error now.
+                Err(e) => {
+                    return Err(format!(
+                        "plugins: FAILED to load {dir} (GRAPHITE_PLUGINS_DIR): {e} — refusing to start without the plugins the operator configured"
+                    )
+                    .into())
+                }
             }
         }
     }
@@ -716,10 +725,21 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         AuthPosture::DevModeLoopback => None,
     };
 
-    let rate_per_sec = std::env::var("GRAPHITE_RATE_LIMIT")
-        .ok()
-        .and_then(|v| v.parse::<f64>().ok())
-        .unwrap_or(30.0);
+    // Round 17 (F-16-15): `inf` disabled the limiter and `NaN` collapsed it
+    // to the 0.1 req/s floor. A non-finite or non-positive value is a
+    // configuration error the operator must see.
+    let rate_per_sec = match std::env::var("GRAPHITE_RATE_LIMIT") {
+        Ok(v) if !v.trim().is_empty() => match v.trim().parse::<f64>() {
+            Ok(n) if n.is_finite() && n > 0.0 => n,
+            _ => {
+                return Err(format!(
+                    "invalid GRAPHITE_RATE_LIMIT {v:?}: must be a finite number of requests per second greater than 0"
+                )
+                .into())
+            }
+        },
+        _ => 30.0,
+    };
 
     let cors_origins: Vec<HeaderValue> = std::env::var("GRAPHITE_CORS_ORIGINS")
         .ok()
@@ -1277,6 +1297,7 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
         AccountResolution(NoManifest(program_id)) => {
             VerificationHttpError::Internal(format!("No manifest found for program {}", program_id))
         }
+
         // Server errors (500) - internal failures
         AccountResolution(AccountResolutionError::PdaDerivationFailed { account, reason }) => {
             VerificationHttpError::Internal(format!(
@@ -1333,43 +1354,84 @@ fn enforce_wallet_profile(
     requested: crate::policy_engine::WalletProfile,
     pinned: Option<crate::policy_engine::WalletProfile>,
     allow_permissive: bool,
-) -> (crate::policy_engine::WalletProfile, Option<String>) {
-    use crate::policy_engine::WalletProfile;
+) -> Result<(crate::policy_engine::WalletProfile, Option<String>), String> {
+    use crate::policy_engine::{WalletProfile, WEAKEST_BUILTIN_MIN_TRUST_TIER};
+
+    // Round 17 (F-16-08): a confidence bar above 1.0 can never be met and is
+    // not a policy; it used to travel through the whole pipeline and come
+    // back as a 500 from the policy engine. Malformed input is a 400, and
+    // it is refused before anything is simulated or recorded.
+    if let WalletProfile::Custom { min_confidence, .. } = requested {
+        if min_confidence.is_finite() && min_confidence > 1.0 {
+            return Err(format!(
+                "wallet_profile.Custom.min_confidence must be within [0.0, 1.0], got {min_confidence}"
+            ));
+        }
+    }
 
     if let Some(p) = pinned {
         if p != requested {
-            return (
+            return Ok((
                 p,
                 Some(
                     "wallet profile is pinned server-side (GRAPHITE_WALLET_PROFILE); the \
                      profile supplied in the request was ignored"
                         .to_string(),
                 ),
-            );
+            ));
         }
-        return (p, None);
+        return Ok((p, None));
     }
     if allow_permissive {
-        return (requested, None);
+        return Ok((requested, None));
     }
     match requested {
         WalletProfile::Custom {
             min_confidence,
             min_trust_tier,
-        } if !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE => (
-            WalletProfile::Custom {
-                min_confidence: WEAKEST_BUILTIN_MIN_CONFIDENCE,
-                min_trust_tier,
-            },
-            Some(format!(
-                "requested custom profile min_confidence ({min_confidence}) is weaker than any \
-                 built-in profile and was raised to {WEAKEST_BUILTIN_MIN_CONFIDENCE} — a \
-                 caller-supplied threshold cannot disable the confidence gate (set \
-                 GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 to allow, or pin the profile with \
-                 GRAPHITE_WALLET_PROFILE)"
-            )),
-        ),
-        other => (other, None),
+        } if !min_confidence.is_finite()
+            || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE
+            || min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER =>
+        {
+            // Both axes (F-15-07): the confidence floor AND the tier floor of
+            // the weakest built-in profile. Each override is disclosed.
+            let confidence_raised =
+                !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE;
+            let tier_raised = min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER;
+            let mut notes = Vec::new();
+            if confidence_raised {
+                notes.push(format!(
+                    "min_confidence ({min_confidence}) was raised to {WEAKEST_BUILTIN_MIN_CONFIDENCE}"
+                ));
+            }
+            if tier_raised {
+                notes.push(format!(
+                    "min_trust_tier ({min_trust_tier:?}) was raised to {WEAKEST_BUILTIN_MIN_TRUST_TIER:?}"
+                ));
+            }
+            Ok((
+                WalletProfile::Custom {
+                    min_confidence: if confidence_raised {
+                        WEAKEST_BUILTIN_MIN_CONFIDENCE
+                    } else {
+                        min_confidence
+                    },
+                    min_trust_tier: if tier_raised {
+                        WEAKEST_BUILTIN_MIN_TRUST_TIER
+                    } else {
+                        min_trust_tier
+                    },
+                },
+                Some(format!(
+                    "requested custom profile is weaker than any built-in profile: {} — a \
+                     caller-supplied threshold cannot disable the confidence/trust-tier gate (set \
+                     GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 to allow, or pin the profile with \
+                     GRAPHITE_WALLET_PROFILE)",
+                    notes.join("; ")
+                )),
+            ))
+        }
+        other => Ok((other, None)),
     }
 }
 
@@ -1463,11 +1525,24 @@ async fn verify_handler(
     // Enforce the wallet policy profile at the trust boundary BEFORE
     // verification: the profile arrives in the same attacker-influenced body
     // as everything else. See `enforce_wallet_profile`.
-    let (effective_profile, profile_note) = enforce_wallet_profile(
+    let (effective_profile, profile_note) = match enforce_wallet_profile(
         input.wallet_profile,
         state.pinned_profile,
         state.allow_permissive_profiles,
-    );
+    ) {
+        Ok(v) => v,
+        Err(msg) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": msg,
+                    "error_type": "InvalidInput",
+                    "status": StatusCode::BAD_REQUEST.as_u16(),
+                    "hint": "Fix the request input and retry",
+                })),
+            ));
+        }
+    };
     let mut input = input;
     input.wallet_profile = effective_profile;
     let input = input;
@@ -1680,6 +1755,15 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
         // exist only in memory and vanish on restart.
         reasons.push("graph_snapshot_failed");
     }
+    // Round 17 (F-16-02): a trusted baseline that has refused MIN_SAMPLES
+    // clean executions is frozen — every honest transaction of that program
+    // at a different shape is being refused as `SimulationSpoofing`. That is
+    // an operator's decision to make (`graphite graph promote-shadow`), and
+    // it cannot be made if nothing reports it.
+    let frozen = state.core.frozen_baselines();
+    if !frozen.is_empty() {
+        reasons.push("simulation_baseline_frozen");
+    }
     Json(serde_json::json!({
         // `status` stays "ok" while the service can serve traffic so load
         // balancers don't pull a working node; `degraded` is the operator
@@ -1702,6 +1786,12 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
             None => serde_json::json!({ "enabled": false }),
         },
         "graph_persistence": persistence,
+        // Programs whose trusted baseline has refused at least MIN_SAMPLES
+        // clean executions, with the count (Round 17, F-16-02).
+        "frozen_baselines": frozen.iter().map(|(p, n)| serde_json::json!({
+            "program_id": p,
+            "refused_clean_executions": n,
+        })).collect::<Vec<_>>(),
         // Whether L8 has a second, independent source for inclusion
         // (Round 12). `false` means every reconciliation rests on one RPC.
         "inclusion_witness": state.core.has_inclusion_witness(),
@@ -2221,6 +2311,7 @@ async fn execution_handler(
         "chain_bytes_unavailable": result.chain_bytes_unavailable,
         "chain_inconsistent": result.chain_inconsistent,
         "inclusion_witness": result.inclusion_witness,
+        "recorded_verdicts": result.recorded_verdicts,
         "audit_recorded": recorded,
     });
     if !recorded && audit.is_some() {
@@ -3737,7 +3828,7 @@ mod tests {
             None,
             serde_json::json!({
                 "event_type": "signing",
-                "content_hash": "afb61d8865b4cb68",
+                "content_hash": "48c65c638aceb5de",
                 "reported_by": "test",
             }),
         )
@@ -4196,12 +4287,22 @@ mod tests {
             min_confidence: 0.0,
             min_trust_tier: TrustTier::Unknown,
         };
-        let (effective, note) = enforce_wallet_profile(attack, None, false);
+        let (effective, note) = enforce_wallet_profile(attack, None, false).unwrap();
         match effective {
-            WalletProfile::Custom { min_confidence, .. } => assert!(
-                min_confidence >= WEAKEST_BUILTIN_MIN_CONFIDENCE,
-                "a caller-chosen threshold below every built-in profile must be raised, got {min_confidence}"
-            ),
+            WalletProfile::Custom {
+                min_confidence,
+                min_trust_tier,
+            } => {
+                assert!(
+                    min_confidence >= WEAKEST_BUILTIN_MIN_CONFIDENCE,
+                    "a caller-chosen threshold below every built-in profile must be raised, got {min_confidence}"
+                );
+                // Round 17 (F-15-07): the tier axis is clamped too.
+                assert!(
+                    min_trust_tier >= crate::policy_engine::WEAKEST_BUILTIN_MIN_TRUST_TIER,
+                    "the tier floor must be raised as well, got {min_trust_tier:?}"
+                );
+            }
             other => panic!("expected a clamped Custom profile, got {other:?}"),
         }
         assert!(
@@ -4221,7 +4322,8 @@ mod tests {
                 },
                 None,
                 false,
-            );
+            )
+            .unwrap();
             match effective {
                 WalletProfile::Custom { min_confidence, .. } => assert!(
                     min_confidence >= WEAKEST_BUILTIN_MIN_CONFIDENCE,
@@ -4241,7 +4343,7 @@ mod tests {
             min_confidence: 0.97,
             min_trust_tier: TrustTier::BattleTested,
         };
-        let (effective, note) = enforce_wallet_profile(strict, None, false);
+        let (effective, note) = enforce_wallet_profile(strict, None, false).unwrap();
         assert_eq!(effective, strict);
         assert!(
             note.is_none(),
@@ -4258,10 +4360,81 @@ mod tests {
             WalletProfile::Gaming,
             WalletProfile::Enterprise,
         ] {
-            let (effective, note) = enforce_wallet_profile(p, None, false);
+            let (effective, note) = enforce_wallet_profile(p, None, false).unwrap();
             assert_eq!(effective, p);
             assert!(note.is_none());
         }
+    }
+
+    /// Round 17 (F-16-08): a bar above 1.0 is malformed input, refused before
+    /// the pipeline runs — whatever the pin or opt-out says.
+    #[test]
+    fn min_confidence_above_one_is_refused_up_front() {
+        for permissive in [false, true] {
+            let r = enforce_wallet_profile(
+                WalletProfile::Custom {
+                    min_confidence: 1.0000001,
+                    min_trust_tier: TrustTier::Unknown,
+                },
+                None,
+                permissive,
+            );
+            assert!(r.is_err(), "permissive={permissive}: {r:?}");
+        }
+        let r = enforce_wallet_profile(
+            WalletProfile::Custom {
+                min_confidence: 2.0,
+                min_trust_tier: TrustTier::Unknown,
+            },
+            Some(WalletProfile::Treasury),
+            false,
+        );
+        assert!(r.is_err(), "a pin does not launder malformed input: {r:?}");
+        // Exactly 1.0 is the strictest legal bar and passes through.
+        let (effective, note) = enforce_wallet_profile(
+            WalletProfile::Custom {
+                min_confidence: 1.0,
+                min_trust_tier: TrustTier::BattleTested,
+            },
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            effective,
+            WalletProfile::Custom {
+                min_confidence: 1.0,
+                min_trust_tier: TrustTier::BattleTested,
+            }
+        );
+        assert!(note.is_none());
+    }
+
+    /// Round 17 (F-15-07): a legal confidence bar with an `Unknown` tier
+    /// floor is still weaker than Gaming on one axis, and that axis is
+    /// clamped and disclosed.
+    #[test]
+    fn unknown_tier_floor_is_raised_to_the_weakest_builtin() {
+        let (effective, note) = enforce_wallet_profile(
+            WalletProfile::Custom {
+                min_confidence: 0.9,
+                min_trust_tier: TrustTier::Unknown,
+            },
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            effective,
+            WalletProfile::Custom {
+                min_confidence: 0.9,
+                min_trust_tier: crate::policy_engine::WEAKEST_BUILTIN_MIN_TRUST_TIER,
+            }
+        );
+        assert!(note
+            .as_deref()
+            .unwrap_or_default()
+            .contains("min_trust_tier"));
     }
 
     /// Pinning wins outright: the operator's configured policy replaces
@@ -4277,7 +4450,8 @@ mod tests {
             Some(WalletProfile::Treasury),
             // Even with the permissive opt-out, a pin still wins.
             true,
-        );
+        )
+        .unwrap();
         assert_eq!(effective, WalletProfile::Treasury);
         assert!(
             note.is_some(),
@@ -4292,7 +4466,7 @@ mod tests {
             min_confidence: 0.0,
             min_trust_tier: TrustTier::Unknown,
         };
-        let (effective, _) = enforce_wallet_profile(weak, None, true);
+        let (effective, _) = enforce_wallet_profile(weak, None, true).unwrap();
         assert_eq!(effective, weak);
     }
 
@@ -4359,7 +4533,7 @@ mod tests {
                 .clone()
                 .oneshot(lifecycle_request(serde_json::json!({
                     "event_type": ev,
-                    "content_hash": "afb61d8865b4cb68",
+                    "content_hash": "48c65c638aceb5de",
                     "transaction_signature": signature,
                     "reported_by": "wallet-bridge",
                 })))
@@ -4428,7 +4602,7 @@ mod tests {
                 None,
                 serde_json::json!({
                     "event_type": "signing",
-                    "content_hash": "afb61d8865b4cb68",
+                    "content_hash": "48c65c638aceb5de",
                     field: value,
                 }),
             )
@@ -4449,7 +4623,7 @@ mod tests {
         for bad in [
             "abc123",
             "AFB61D8865B4CB68",
-            "afb61d8865b4cb68ff",
+            "48c65c638aceb5deff",
             "zzzzzzzzzzzzzzzz",
         ] {
             let (status, body) = post_json(
@@ -4644,7 +4818,7 @@ mod tests {
                 .clone()
                 .oneshot(lifecycle_request(serde_json::json!({
                     "event_type": ev,
-                    "content_hash": "afb61d8865b4cb68",
+                    "content_hash": "48c65c638aceb5de",
                 })))
                 .await
                 .unwrap();
@@ -4689,7 +4863,7 @@ mod tests {
         let resp = app
             .oneshot(lifecycle_request(serde_json::json!({
                 "event_type": "signing",
-                "content_hash": "afb61d8865b4cb68",
+                "content_hash": "48c65c638aceb5de",
             })))
             .await
             .unwrap();
@@ -5357,7 +5531,7 @@ Connection: close
                 &app,
                 "/audit/event",
                 None,
-                serde_json::json!({ "event_type": ev, "content_hash": "afb61d8865b4cb68" }),
+                serde_json::json!({ "event_type": ev, "content_hash": "48c65c638aceb5de" }),
             )
             .await;
             assert_eq!(s, axum::http::StatusCode::BAD_REQUEST, "{ev}: {body}");
@@ -5376,7 +5550,7 @@ Connection: close
                 None,
                 serde_json::json!({
                     "event_type": "submission",
-                    "content_hash": "afb61d8865b4cb68",
+                    "content_hash": "48c65c638aceb5de",
                     "transaction_signature": bad,
                 }),
             )
@@ -5395,7 +5569,7 @@ Connection: close
             &app,
             "/audit/event",
             None,
-            serde_json::json!({ "event_type": "signing", "content_hash": "afb61d8865b4cb68" }),
+            serde_json::json!({ "event_type": "signing", "content_hash": "48c65c638aceb5de" }),
         )
         .await;
         assert_eq!(s, axum::http::StatusCode::OK, "{body}");

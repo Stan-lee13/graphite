@@ -565,7 +565,7 @@ fn test_protocol_plugin_enables_l4_for_unknown_program() {
 // ─── Fault tolerance ─────────────────────────────────────────────────────────
 
 #[test]
-fn test_panicking_plugin_never_wedges_verification() {
+fn test_panicking_plugin_never_wedges_verification_and_fails_closed() {
     let mut core = GraphiteCore::new_without_plugins();
     core.register_plugin(PluginKind::Verifier(Arc::new(PanicVerifier {
         manifest: PluginManifest {
@@ -577,21 +577,25 @@ fn test_panicking_plugin_never_wedges_verification() {
             description: String::new(),
         },
     })));
-    // verify() completes, the core's L4 verdict survives, and the panic is
-    // surfaced as an honest note — the pipeline is never wedged.
+    // verify() completes — the pipeline is never wedged — and the panic of
+    // a BLOCKING plugin is a block attributed to it by name (Round 17,
+    // F-16-07). Until then the panic became a note and the layer passed on
+    // the core's verdict alone: an input that crashed a Verifier plugin lost
+    // that plugin's block, which is the one direction a security plugin must
+    // not fail in.
     let r = core
         .verify(&plain_transfer())
         .expect("verify must not propagate plugin panic");
-    assert!(r.approved);
+    assert!(!r.approved, "a panicking blocking plugin must fail closed");
     let l4 = r
         .layers
         .iter()
         .find(|l| l.layer == "L4_StateVerification")
         .unwrap();
-    assert_eq!(l4.status, LayerStatus::Passed);
+    assert_eq!(l4.status, LayerStatus::Failed);
     assert!(
-        l4.reason.contains("panic"),
-        "panic must be reported: {}",
+        l4.reason.contains("bomb:panicked"),
+        "the block must be attributed to the plugin: {}",
         l4.reason
     );
 }
