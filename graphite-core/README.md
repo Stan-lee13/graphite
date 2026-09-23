@@ -27,7 +27,7 @@ The Rust verification engine — the heart of Graphite.
 | `state_diff` | Pre/post account diff; SPL Token / Token-2022 decoding; Token-2022 extension classification (fail-closed on unreadable regions) | L4 |
 | `solana_types` | PDA derivation, base58, 32-byte pubkeys — no `solana-sdk` dependency | — |
 | `live_corpus` | Pinned real on-chain transaction corpus for regression testing | — |
-| `manifest` | Runtime manifest loader (compile-time include_str! baking) | — |
+| `manifest` | Seed manifest loader (one compile-time `include_str!` list) + the trust-tier evidence gate | — |
 | `rpc_client` | Solana RPC client for live L3/L8 verification | — |
 | `tx_pattern_analysis` | Multi-instruction + CPI trace analysis (C29) | — |
 
@@ -35,9 +35,9 @@ The Rust verification engine — the heart of Graphite.
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 1,455 tests (0 failures, 10 network-dependent ignored)
-cargo test --release --no-default-features --lib            # 301 — the featureless library
-cargo test --release --no-default-features --features cli   # 1,281 — cli without the server
+cargo test --release     # 1,562 tests (0 failures, 12 network-dependent ignored)
+cargo test --release --no-default-features --lib            # 320 — the featureless library
+cargo test --release --no-default-features --features cli   # 1,366 — cli without the server
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 
@@ -56,9 +56,25 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-33 JSON manifests in `protocols/` covering all major Solana programs. Each contains the program ID, trust tier, instructions with discriminators, expected accounts, and allowed CPI targets. 803 instructions total.
+129 JSON manifests in `protocols/`, 3,186 instructions. Each carries the program
+ID, trust tier, instructions with discriminators, expected accounts and allowed
+CPI targets. Ninety-six of them were generated in Round 18 from each program's
+**own on-chain Anchor IDL** — the account the program itself owns — after the
+programs were ranked by real usage over a sample of finalized mainnet blocks.
 
-All program IDs verified against official on-chain sources (pinned by `test_all_seed_manifest_program_ids_are_canonical`). See `CONTRIBUTING.md` for how to add a new manifest.
+All program IDs are verified against on-chain sources and pinned in both
+directions by `test_all_seed_manifest_program_ids_are_canonical`;
+`test_every_protocol_file_is_a_seed_manifest` additionally fails if a file in
+`protocols/` is never loaded.
+
+`protocols/battle_tested_evidence.json` holds a mainnet measurement for every
+manifest — executable account, successful-transaction count over a stated
+window, and the share of really-observed instructions the manifest can name.
+**A manifest may not award itself a tier**: `load_seed_manifests` lowers a
+declared `BattleTested` to `OfficialManifest` unless that record clears the bar
+in `manifest::battle_tested_bar`. Reproduce the measurements with
+`scripts/battle_tested_census.py`; see `docs/protocol-coverage.md` for the
+rendered table and `CONTRIBUTING.md` for how to add a manifest.
 
 ## Server Features
 

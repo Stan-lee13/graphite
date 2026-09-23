@@ -216,6 +216,13 @@ struct Row {
     l2: String,
     risk: String,
     approved: bool,
+    /// Why the risk engine blocked, in its own words. Not part of the
+    /// six-column verdict diff (that format is what Round 13 was measured
+    /// with and stays stable); written separately by
+    /// `GRAPHITE_MAINNET_REASONS`, because "917 identity mismatches" is a
+    /// number you cannot act on until you can see which slot in which
+    /// instruction did not match, and why.
+    reason: String,
 }
 
 #[test]
@@ -486,6 +493,13 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
             l2: l2_label,
             risk: risk_label,
             approved: result.approved,
+            reason: result
+                .risk_verdict
+                .findings
+                .iter()
+                .map(|f| f.reason.clone())
+                .collect::<Vec<_>>()
+                .join(" ;; "),
         });
     }
 
@@ -540,6 +554,19 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
     println!("  programs seen: {} distinct; top:", t.programs.len());
     for (p, n) in top.iter().take(12) {
         println!("    {n:>6}  {p}");
+    }
+
+    if let Ok(path) = std::env::var("GRAPHITE_MAINNET_REASONS") {
+        let (nl, tab) = (char::from(10u8), char::from(9u8));
+        let mut out = String::new();
+        for r in verdicts.iter().filter(|r| !r.reason.is_empty()) {
+            let reason = r.reason.replace([nl, tab], " ");
+            out.push_str(&format!(
+                "{}{tab}{}{tab}{}{tab}{}{nl}",
+                r.slot, r.program, r.disc, reason
+            ));
+        }
+        let _ = std::fs::write(path, out);
     }
 
     // Machine-readable, for the old-vs-new differential.

@@ -1,0 +1,80 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Pyth Push Oracle (pythWSns)",
+  "program_id": "pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT",
+  "website": "",
+  "github": "",
+  "category": "oracle"
+ },
+ "version": {
+  "label": "0.1.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "updatePriceFeed",
+   "discriminator": "1c095d965699bc73",
+   "accounts": [
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "pythSolanaReceiver",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "encodedVaa",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "config",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "treasury",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "priceFeedAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: payer, treasury, priceFeedAccount",
+    "updates protocol accounting state"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": ""
+  }
+ ],
+ "trust_tier": "BattleTested"
+}

@@ -1,5 +1,9 @@
 # Round 17 — what counts as evidence
 
+> **Historical record.** This report describes the codebase at commit
+> `453dd01` on 2026-09-22, and the fixes made on top of `e95857d`. For the
+> current state of Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-09-22
 **Trigger:** "fix every single issue mentioned" — every finding of the Round 15
 (`round15-earned-by-asking-2026-09-20.md`) and Round 16

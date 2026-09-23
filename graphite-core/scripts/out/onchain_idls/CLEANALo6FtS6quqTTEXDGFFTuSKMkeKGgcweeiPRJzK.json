@@ -1,0 +1,148 @@
+{
+ "address": "CLEANALo6FtS6quqTTEXDGFFTuSKMkeKGgcweeiPRJzK",
+ "metadata": {
+  "name": "safecinerator",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "token_2022_close",
+   "discriminator": [
+    98,
+    227,
+    85,
+    117,
+    140,
+    235,
+    120,
+    207
+   ],
+   "accounts": [
+    {
+     "name": "user",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "account",
+     "writable": true
+    },
+    {
+     "name": "mint",
+     "docs": [
+      "longer exist when Token-2022's mint-close extension was used. It is only",
+      "read by Token-2022 itself when withheld transfer fees must be harvested."
+     ],
+     "writable": true
+    },
+    {
+     "name": "fee_account",
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "partner_fee_account",
+     "writable": true,
+     "optional": true
+    }
+   ],
+   "args": [
+    {
+     "name": "partner_fee_rate_bps",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "token_close",
+   "discriminator": [
+    182,
+    24,
+    138,
+    46,
+    213,
+    225,
+    221,
+    135
+   ],
+   "accounts": [
+    {
+     "name": "user",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "account",
+     "writable": true
+    },
+    {
+     "name": "fee_account",
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "partner_fee_account",
+     "writable": true,
+     "optional": true
+    }
+   ],
+   "args": [
+    {
+     "name": "partner_fee_rate_bps",
+     "type": "u64"
+    }
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "AccountNotEmpty",
+   "msg": "Token account is not empty"
+  },
+  {
+   "code": 6001,
+   "name": "Unauthorized",
+   "msg": "Unauthorized - you don't own this token account"
+  },
+  {
+   "code": 6002,
+   "name": "InvalidTokenProgram",
+   "msg": "Invalid token program for this instruction"
+  },
+  {
+   "code": 6003,
+   "name": "InvalidFeeAccount",
+   "msg": "Invalid fee account"
+  },
+  {
+   "code": 6008,
+   "name": "PartnerFeeExceedsMax",
+   "msg": "Partner fee rate exceeds maximum - total fees (platform + partner) cannot exceed 100%"
+  },
+  {
+   "code": 6009,
+   "name": "FeeCalculationOverflow",
+   "msg": "Fee calculation overflow"
+  },
+  {
+   "code": 6010,
+   "name": "InvalidMint",
+   "msg": "Mint does not match the token account"
+  }
+ ]
+}

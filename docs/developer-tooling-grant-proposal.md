@@ -1,5 +1,10 @@
 # Graphite — Solana Foundation Developer Tooling Grant Proposal
 
+> **Living document, last revised 2026-09-23.** The figures below are the
+> project's current ones as of that date. For anything that has moved since,
+> [`CURRENT.md`](CURRENT.md) is authoritative and this page is not.
+
+
 ## 1. Applicant Information
 
 **Project / Tool Name:** Graphite
@@ -12,10 +17,10 @@
 
 **Relevant Experience & Track Record:**
 
-Graphite is a Rust transaction-verification engine that has been built iteratively through 1,014 tests, two independent adversarial security audits (findings C33–C44), and live validation against real Solana mainnet and devnet transactions. The codebase has grown from a Phase 1 MVP (account resolution + risk engine) through a Phase 2 expansion (multi-instruction pattern analysis, CPI trace analysis, live corpus collection, regression engine) to a Phase 3 production-ready system with an HTTP server, TypeScript/Go SDKs, Python advisory layer, React dashboard, Dockerfile, and a SolanaAgentKit integration verified end-to-end on devnet with 5 finalized transactions.
+Graphite is a Rust transaction-verification engine that has been built iteratively through 1,562 tests and eighteen adversarial hardening rounds, each driven by a review of the previous commit (the reports are in `docs/`; every one of them is internal engineering work, and none is an independent third-party audit), and live validation against real Solana mainnet and devnet transactions. The codebase has grown from a Phase 1 MVP (account resolution + risk engine) through a Phase 2 expansion (multi-instruction pattern analysis, CPI trace analysis, live corpus collection, regression engine) to a Phase 3 production-ready system with an HTTP server, TypeScript/Go SDKs, Python advisory layer, React dashboard, Dockerfile, and a SolanaAgentKit integration verified end-to-end on devnet with 5 finalized transactions.
 
 Key technical artifacts delivered:
-- 33 protocol manifests covering 803 verified instructions across Solana's core programs (System, SPL Token, Token-2022, Stake), DeFi (Jupiter V6, Orca Whirlpools, Raydium AMM/CLMM/CPMM, Meteora DLMM, Phoenix, OpenBook, Squads, Drift, Kamino, Solend, MarginFi), NFT infrastructure (Metaplex), oracle (Switchboard), memecoin (Pump.fun), and bridging (Wormhole)
+- 129 protocol manifests covering 3,186 verified instructions across Solana's core programs (System, SPL Token, Token-2022, Stake), DeFi (Jupiter V6, Orca Whirlpools, Raydium AMM/CLMM/CPMM, Meteora DLMM, Phoenix, OpenBook, Squads, Drift, Kamino, Solend, MarginFi), NFT infrastructure (Metaplex), oracle (Switchboard), memecoin (Pump.fun), and bridging (Wormhole)
 - A 2,747-fixture regression corpus with 0 false negatives on a holdout of 38 independently labeled real mainnet exploit signatures (from the peer-reviewed SolPhishHunter dataset arXiv:2505.04094) plus pinned real transactions
 - A deterministic P10 promotion gate: no protocol version may be promoted without ≥99.5% of non-deprecated regression fixtures passing
 - A community Manifest Registry with signed submissions, reviewer attestation, reputation tracking, and seed-wins policy (compile-time seed manifests are never overridden)
@@ -28,7 +33,7 @@ Graphite is a security verification layer that sits between an AI agent's intent
 
 The problem it solves is concrete and measured: $494M was stolen by wallet drainers in 2024 (Scam Sniffer), $2.17B across crypto in H1 2025 (Chainalysis), and the first AI-package-drainer attacks on Solana wallets were observed in mid-2025. Solana phishing specifically "exploits weaknesses in transaction simulations" (Scam Sniffer). AI agents that hold signing keys are the exact attack surface these drainers target — an agent will approve whatever it is instructed to approve.
 
-Graphite is not a wallet UI or a simulation tool. It is a deterministic verification gate: if Graphite blocks, the transaction is not submitted. The system is fully open-source (MIT), has no token, no fee, no rent extraction. Every component — the Rust core, 33 protocol manifests, TypeScript SDK, Go SDK, Python advisory layer, React dashboard — is public.
+Graphite is not a wallet UI or a simulation tool. It is a deterministic verification gate: if Graphite blocks, the transaction is not submitted. The system is fully open-source (MIT), has no token, no fee, no rent extraction. Every component — the Rust core, 129 protocol manifests, TypeScript SDK, Go SDK, Python advisory layer, React dashboard — is public.
 
 ### Specific benefits to Solana developers
 
@@ -114,7 +119,7 @@ Key architectural decisions:
 
 ### Key features
 
-1. **33 protocol manifests / 803 verified instructions.** Each manifest declares discriminators, account roles with PDA seeds, expected state changes, allowed CPIs, risk rules, and a machine-readable risk class. PDA seeds support dynamic templates (`{instruction_data:8:10}`, `{account_0}`, `{program_id}`) — verified against real mainnet accounts for Drift, Kamino, Jupiter DCA, and Squads V4.
+1. **129 protocol manifests / 3,186 verified instructions, 106 of them carrying a mainnet-measured `BattleTested` tier.** Each manifest declares discriminators, account roles with PDA seeds, expected state changes, allowed CPIs, risk rules, and a machine-readable risk class. PDA seeds support dynamic templates (`{instruction_data:8:10}`, `{account_0}`, `{program_id}`) — verified against real mainnet accounts for Drift, Kamino, Jupiter DCA, and Squads V4.
 
 2. **Multi-instruction pattern analysis.** Detects coordinated mass-drain patterns across multiple instructions in one transaction: Approve-then-Transfer (AAT), SetAuthority-then-Transfer (authority hijack), CloseAccount-then-Transfer (close-and-sweep), mass multi-transfer sweep (≥3 destinations or ≥4 sources), and Approve-then-System-assign (SlowMist AAT ownership theft). Ordering matters — the Approve must precede the Transfer.
 
@@ -148,7 +153,7 @@ Key architectural decisions:
 
 ### Proof-of-Concept
 
-The full working system is available at https://github.com/Stan-lee13/graphite — 1,014 Rust tests, 33 protocol manifests, TypeScript/Go SDKs, Python layer, React dashboard, HTTP server, Dockerfile, and a SolanaAgentKit integration verified end-to-end on devnet with 5 finalized transactions.
+The full working system is available at https://github.com/Stan-lee13/graphite — 1,562 Rust tests, 129 protocol manifests, TypeScript/Go SDKs, Python layer, React dashboard, HTTP server, Dockerfile, and a SolanaAgentKit integration verified end-to-end on devnet with 5 finalized transactions.
 
 ## 4. Budget Breakdown (Milestones)
 
@@ -266,7 +271,7 @@ This metric is tracked but carries no separate budget — it validates that the 
 
 ## Why You?
 
-1. **The code exists and works.** This is not a proposal to build a verification engine — it is a proposal to deploy, audit, expand, and integrate one that already runs 1,014 tests with 0 failures, covers 33 protocols with 803 verified instructions, and has been validated against real Solana mainnet exploit transactions. The $120k is for the final mile, not the research.
+1. **The code exists and works.** This is not a proposal to build a verification engine — it is a proposal to deploy, audit, expand, and integrate one that already runs 1,562 tests with 0 failures, covers 129 protocols with 3,186 verified instructions, and has been validated against real Solana mainnet exploit transactions. The $120k is for the final mile, not the research.
 
 2. **Two adversarial audits already found and fixed the hard bugs.** The C33–C44 audit series found 4 P0 and 1 P1 vulnerabilities — including a real discriminator bug that would have let SetAuthority hijacks bypass detection entirely. Every finding was root-fixed with a regression test and re-attacked with fresh variants. The codebase has been adversarially tested by independent reviewers, not just by the author.
 

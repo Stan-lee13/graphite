@@ -38,3 +38,17 @@ graphite-core/scripts/.census_*_cache.json
 
 # E2E scratch: keep IDL evidence, never the extracted npm module
 /graphite-core/e2e-scratch/idls/*.cjs
+
+# Round 18 census intermediates. The EVIDENCE is committed
+# (graphite-core/scripts/out/inventory_census.json, idl_index.json,
+# onboarding_report.json and the on-chain IDLs the manifests were generated
+# from); these are caches and working files that can be regenerated.
+graphite-core/scripts/out/block_sweep*.json
+graphite-core/scripts/out/tail_ids.txt
+graphite-core/scripts/out/testrun.txt
+graphite-core/scripts/out/verdicts*.tsv
+graphite-core/scripts/out/reasons*.tsv
+
+# The mainnet block sample is fetched, not committed: 13 MB of somebody
+# else's blocks, reproducible with tools/mainnet-sample/fetch_mainnet.py.
+tools/mainnet-sample/mainnet_sample.json

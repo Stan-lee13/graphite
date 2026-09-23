@@ -1,0 +1,5033 @@
+{
+ "address": "G3v8Wxa6TU8rwjZ4J5ey7zbnp44VxYTyTVESa3P6ByjT",
+ "metadata": {
+  "name": "brrr_lend",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "brrr v2 isolated aBTC/USDC lending market"
+ },
+ "instructions": [
+  {
+   "name": "accept_admin",
+   "discriminator": [
+    112,
+    42,
+    45,
+    90,
+    116,
+    181,
+    13,
+    170
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "pending_admin",
+     "signer": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "accrue_interest",
+   "discriminator": [
+    47,
+    40,
+    115,
+    198,
+    91,
+    12,
+    222,
+    49
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "apply_insurance_withdraw",
+   "discriminator": [
+    9,
+    217,
+    11,
+    185,
+    69,
+    32,
+    75,
+    183
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "admin",
+     "signer": true
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "treasury_usdc",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "apply_oracle_source",
+   "discriminator": [
+    197,
+    100,
+    221,
+    49,
+    165,
+    161,
+    130,
+    228
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "vault",
+     "docs": [
+      "The `brrr_vault` Vault \u2014 owner program and discriminator checked by `Account`. Its own pool is",
+      "admin-verified behind a 24 h timelock, so requiring equality here is what makes \"every pool is",
+      "verified by hand\" true of the market as well as the vault."
+     ],
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "pool_state"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "apply_risk",
+   "discriminator": [
+    170,
+    79,
+    222,
+    71,
+    104,
+    23,
+    150,
+    90
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "borrow",
+   "discriminator": [
+    228,
+    253,
+    131,
+    202,
+    207,
+    116,
+    89,
+    18
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "borrower",
+     "signer": true
+    },
+    {
+     "name": "position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         115,
+         105,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "borrower"
+       }
+      ]
+     }
+    },
+    {
+     "name": "abtc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "borrower_usdc",
+     "writable": true
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "pool_state",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "vault_btc",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "pyth_wbtc",
+     "docs": [
+      "Both required unless the market's debt asset IS its reward asset (`debt_is_numeraire`), when both must be",
+      "absent: there is no feed to read when one raw unit is worth one raw unit."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pyth_btc",
+     "optional": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "pool_vault_0",
+     "docs": [
+      "CPMM markets only (`oracle_kind == ORACLE_KIND_CPMM`): the pool's two token vaults, which ARE its price.",
+      "Their addresses and mints are checked against the pool's own bytes; a CLMM market must pass neither."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pool_vault_1",
+     "optional": true
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "cancel_insurance_withdraw",
+   "discriminator": [
+    101,
+    1,
+    171,
+    104,
+    85,
+    160,
+    156,
+    161
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "cancel_oracle_source",
+   "discriminator": [
+    223,
+    209,
+    70,
+    75,
+    228,
+    80,
+    145,
+    60
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "vault",
+     "docs": [
+      "The `brrr_vault` Vault \u2014 owner program and discriminator checked by `Account`. Its own pool is",
+      "admin-verified behind a 24 h timelock, so requiring equality here is what makes \"every pool is",
+      "verified by hand\" true of the market as well as the vault."
+     ],
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "pool_state"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "cancel_risk",
+   "discriminator": [
+    147,
+    192,
+    174,
+    173,
+    252,
+    67,
+    228,
+    44
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "checkpoint_oracle",
+   "discriminator": [
+    187,
+    237,
+    113,
+    202,
+    110,
+    184,
+    2,
+    2
+   ],
+   "accounts": [
+    {
+     "name": "market"
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "pool_state",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "vault_btc",
+     "docs": [
+      "Optional: with `abtc_mint`, `pyth_wbtc` and `pyth_btc` the event carries prices."
+     ],
+     "optional": true
+    },
+    {
+     "name": "abtc_mint",
+     "optional": true
+    },
+    {
+     "name": "pyth_wbtc",
+     "optional": true
+    },
+    {
+     "name": "pyth_btc",
+     "optional": true
+    },
+    {
+     "name": "pool_vault_0",
+     "docs": [
+      "CPMM markets only (`oracle_kind == ORACLE_KIND_CPMM`): the pool's two token vaults, which ARE its price.",
+      "Not optional in practice for such a market \u2014 without them there is no checkpoint at all."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pool_vault_1",
+     "optional": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "deposit_collateral",
+   "discriminator": [
+    156,
+    131,
+    142,
+    116,
+    146,
+    247,
+    162,
+    120
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "borrower",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         115,
+         105,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "borrower"
+       }
+      ]
+     }
+    },
+    {
+     "name": "abtc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "collateral_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "borrower_abtc",
+     "writable": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "fund_insurance",
+   "discriminator": [
+    58,
+    216,
+    37,
+    162,
+    201,
+    50,
+    20,
+    66
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "funder",
+     "signer": true
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "funder_usdc",
+     "writable": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "init_market",
+   "discriminator": [
+    33,
+    253,
+    15,
+    116,
+    89,
+    25,
+    127,
+    236
+   ],
+   "accounts": [
+    {
+     "name": "deployer",
+     "writable": true,
+     "signer": true,
+     "address": "CPFrsHgSeQGR2m8pUYoi6YtNyKGVevazrruaZRAH9rVh"
+    },
+    {
+     "name": "market",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         97,
+         114,
+         107,
+         101,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "abtc_mint"
+       },
+       {
+        "kind": "account",
+        "path": "usdc_mint"
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "abtc_mint"
+    },
+    {
+     "name": "usdc_mint"
+    },
+    {
+     "name": "vault",
+     "docs": [
+      "The `brrr_vault` Vault: owner program and discriminator are checked by `Account`."
+     ]
+    },
+    {
+     "name": "vault_btc"
+    },
+    {
+     "name": "pool_state",
+     "docs": [
+      "reader its `pool_kind` selects."
+     ]
+    },
+    {
+     "name": "pool_vault_0",
+     "docs": [
+      "CPMM vaults only: the pool's two token vaults, which are the price a constant-product market is opened at."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pool_vault_1",
+     "optional": true
+    },
+    {
+     "name": "collateral_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         108,
+         108,
+         97,
+         116,
+         101,
+         114,
+         97,
+         108
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         108,
+         105,
+         113,
+         117,
+         105,
+         100,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "treasury_abtc"
+    },
+    {
+     "name": "treasury_usdc"
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "params",
+     "type": {
+      "defined": {
+       "name": "InitMarketParams"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "liquidate",
+   "discriminator": [
+    223,
+    179,
+    226,
+    125,
+    48,
+    46,
+    39,
+    74
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner"
+    },
+    {
+     "name": "liquidator",
+     "signer": true
+    },
+    {
+     "name": "position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         115,
+         105,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "owner"
+       }
+      ]
+     }
+    },
+    {
+     "name": "abtc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "collateral_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidator_usdc",
+     "writable": true
+    },
+    {
+     "name": "liquidator_abtc",
+     "writable": true
+    },
+    {
+     "name": "treasury_abtc",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "pool_state",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "vault_btc",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "pyth_wbtc",
+     "docs": [
+      "Both required unless the market's debt asset IS its reward asset (`debt_is_numeraire`), when both must be",
+      "absent: there is no feed to read when one raw unit is worth one raw unit."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pyth_btc",
+     "optional": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "pool_vault_0",
+     "docs": [
+      "CPMM markets only (`oracle_kind == ORACLE_KIND_CPMM`): the pool's two token vaults, which ARE its price.",
+      "Their addresses and mints are checked against the pool's own bytes; a CLMM market must pass neither."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pool_vault_1",
+     "optional": true
+    }
+   ],
+   "args": [
+    {
+     "name": "repay_amount",
+     "type": "u64"
+    },
+    {
+     "name": "min_collateral_out",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "propose_admin",
+   "discriminator": [
+    121,
+    214,
+    199,
+    212,
+    87,
+    39,
+    117,
+    234
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "new_admin",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "propose_insurance_withdraw",
+   "discriminator": [
+    150,
+    214,
+    90,
+    95,
+    47,
+    139,
+    48,
+    175
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "propose_oracle_source",
+   "discriminator": [
+    110,
+    100,
+    16,
+    250,
+    44,
+    50,
+    56,
+    33
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "vault",
+     "docs": [
+      "The `brrr_vault` Vault \u2014 owner program and discriminator checked by `Account`. Its own pool is",
+      "admin-verified behind a 24 h timelock, so requiring equality here is what makes \"every pool is",
+      "verified by hand\" true of the market as well as the vault."
+     ],
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "pool_state"
+    }
+   ],
+   "args": [
+    {
+     "name": "pyth_wbtc_feed_id",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    },
+    {
+     "name": "pyth_btc_feed_id",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "propose_risk",
+   "discriminator": [
+    119,
+    19,
+    196,
+    133,
+    89,
+    193,
+    185,
+    139
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "risk",
+     "type": {
+      "defined": {
+       "name": "RiskConfig"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "repay",
+   "discriminator": [
+    234,
+    103,
+    67,
+    82,
+    208,
+    234,
+    219,
+    166
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "owner"
+    },
+    {
+     "name": "payer",
+     "signer": true
+    },
+    {
+     "name": "position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         115,
+         105,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "owner"
+       }
+      ]
+     }
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "payer_usdc",
+     "writable": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "self_close",
+   "docs": [
+    "`min_collateral_out` is the closer's floor; `max_collateral_out` is the owner's ceiling (SPEC \u00a72.12)."
+   ],
+   "discriminator": [
+    253,
+    203,
+    107,
+    7,
+    191,
+    183,
+    200,
+    217
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "docs": [
+      "The position owner. Signs, because this is the consent that replaces the health check."
+     ],
+     "signer": true
+    },
+    {
+     "name": "closer",
+     "docs": [
+      "Whoever takes the other side. Anyone may: `liquidator_only` protects a borrower from a stranger, and",
+      "here the borrower is the one asking."
+     ],
+     "signer": true
+    },
+    {
+     "name": "position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         115,
+         105,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "owner"
+       }
+      ]
+     }
+    },
+    {
+     "name": "abtc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "collateral_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "closer_usdc",
+     "writable": true
+    },
+    {
+     "name": "closer_abtc",
+     "writable": true
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "pool_state",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "vault_btc",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "pyth_wbtc",
+     "docs": [
+      "Both required unless the market's debt asset IS its reward asset (`debt_is_numeraire`), when both must be",
+      "absent: there is no feed to read when one raw unit is worth one raw unit."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pyth_btc",
+     "optional": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "pool_vault_0",
+     "docs": [
+      "CPMM markets only (`oracle_kind == ORACLE_KIND_CPMM`): the pool's two token vaults, which ARE its price.",
+      "Their addresses and mints are checked against the pool's own bytes; a CLMM market must pass neither."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pool_vault_1",
+     "optional": true
+    }
+   ],
+   "args": [
+    {
+     "name": "repay_amount",
+     "type": "u64"
+    },
+    {
+     "name": "min_collateral_out",
+     "type": "u64"
+    },
+    {
+     "name": "max_collateral_out",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "set_caps_down",
+   "discriminator": [
+    58,
+    87,
+    63,
+    21,
+    188,
+    21,
+    110,
+    241
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "supply_cap",
+     "type": "u64"
+    },
+    {
+     "name": "borrow_cap",
+     "type": "u64"
+    },
+    {
+     "name": "account_debt_cap",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "set_deleverage",
+   "discriminator": [
+    229,
+    198,
+    146,
+    23,
+    162,
+    126,
+    200,
+    64
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "on",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "set_guardian",
+   "discriminator": [
+    147,
+    243,
+    50,
+    121,
+    154,
+    164,
+    50,
+    30
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "guardian",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "set_liquidator_only",
+   "discriminator": [
+    173,
+    157,
+    253,
+    31,
+    239,
+    241,
+    183,
+    163
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "on",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "set_liquidators",
+   "discriminator": [
+    134,
+    139,
+    239,
+    159,
+    162,
+    208,
+    156,
+    160
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "liquidators",
+     "type": {
+      "array": [
+       "pubkey",
+       4
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "set_pause",
+   "discriminator": [
+    63,
+    32,
+    154,
+    2,
+    56,
+    103,
+    79,
+    45
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "flags",
+     "type": "u16"
+    },
+    {
+     "name": "secs",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "set_treasury",
+   "discriminator": [
+    57,
+    97,
+    196,
+    95,
+    195,
+    206,
+    106,
+    136
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    },
+    {
+     "name": "abtc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "treasury_abtc"
+    },
+    {
+     "name": "treasury_usdc"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "settle_bad_debt",
+   "discriminator": [
+    82,
+    236,
+    78,
+    95,
+    10,
+    30,
+    153,
+    241
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "owner"
+    },
+    {
+     "name": "position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         115,
+         105,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "owner"
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "supply",
+   "discriminator": [
+    81,
+    67,
+    116,
+    61,
+    250,
+    209,
+    5,
+    198
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "supplier",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "supply_position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         117,
+         112,
+         112,
+         108,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "supplier"
+       }
+      ]
+     }
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "supplier_usdc",
+     "writable": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "unpause",
+   "discriminator": [
+    169,
+    144,
+    4,
+    38,
+    10,
+    141,
+    188,
+    255
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "admin",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "flags",
+     "type": "u16"
+    }
+   ]
+  },
+  {
+   "name": "withdraw",
+   "discriminator": [
+    183,
+    18,
+    70,
+    156,
+    148,
+    109,
+    161,
+    34
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "supplier",
+     "signer": true
+    },
+    {
+     "name": "supply_position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         117,
+         112,
+         112,
+         108,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "supplier"
+       }
+      ]
+     }
+    },
+    {
+     "name": "usdc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "liquidity_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "supplier_usdc",
+     "writable": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    }
+   ],
+   "args": [
+    {
+     "name": "shares",
+     "type": "u128"
+    }
+   ]
+  },
+  {
+   "name": "withdraw_collateral",
+   "discriminator": [
+    115,
+    135,
+    168,
+    106,
+    139,
+    214,
+    138,
+    150
+   ],
+   "accounts": [
+    {
+     "name": "market",
+     "writable": true
+    },
+    {
+     "name": "authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "borrower",
+     "signer": true
+    },
+    {
+     "name": "position",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         115,
+         105,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       },
+       {
+        "kind": "account",
+        "path": "borrower"
+       }
+      ]
+     }
+    },
+    {
+     "name": "abtc_mint",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "collateral_vault",
+     "writable": true,
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "borrower_abtc",
+     "writable": true
+    },
+    {
+     "name": "oracle_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         111,
+         114,
+         97,
+         99,
+         108,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "market"
+       }
+      ]
+     }
+    },
+    {
+     "name": "pool_state",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "vault_btc",
+     "relations": [
+      "market"
+     ]
+    },
+    {
+     "name": "pyth_wbtc",
+     "docs": [
+      "Both required unless the market's debt asset IS its reward asset (`debt_is_numeraire`), when both must be",
+      "absent: there is no feed to read when one raw unit is worth one raw unit."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pyth_btc",
+     "optional": true
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "pool_vault_0",
+     "docs": [
+      "CPMM markets only (`oracle_kind == ORACLE_KIND_CPMM`): the pool's two token vaults, which ARE its price.",
+      "Their addresses and mints are checked against the pool's own bytes; a CLMM market must pass neither."
+     ],
+     "optional": true
+    },
+    {
+     "name": "pool_vault_1",
+     "optional": true
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "Market",
+   "discriminator": [
+    219,
+    190,
+    213,
+    55,
+    0,
+    227,
+    198,
+    154
+   ]
+  },
+  {
+   "name": "OracleState",
+   "discriminator": [
+    97,
+    156,
+    157,
+    189,
+    194,
+    73,
+    8,
+    15
+   ]
+  },
+  {
+   "name": "Position",
+   "discriminator": [
+    170,
+    188,
+    143,
+    228,
+    122,
+    64,
+    247,
+    208
+   ]
+  },
+  {
+   "name": "PriceUpdateV2",
+   "discriminator": [
+    34,
+    241,
+    35,
+    99,
+    157,
+    126,
+    244,
+    205
+   ]
+  },
+  {
+   "name": "SupplyPosition",
+   "discriminator": [
+    248,
+    221,
+    250,
+    222,
+    37,
+    167,
+    64,
+    209
+   ]
+  },
+  {
+   "name": "Vault",
+   "discriminator": [
+    211,
+    8,
+    232,
+    43,
+    2,
+    152,
+    117,
+    119
+   ]
+  }
+ ],
+ "events": [
+  {
+   "name": "Accrued",
+   "discriminator": [
+    207,
+    152,
+    166,
+    145,
+    189,
+    39,
+    33,
+    167
+   ]
+  },
+  {
+   "name": "AdminChanged",
+   "discriminator": [
+    232,
+    34,
+    31,
+    226,
+    62,
+    18,
+    19,
+    114
+   ]
+  },
+  {
+   "name": "BadDebtSettled",
+   "discriminator": [
+    127,
+    252,
+    205,
+    117,
+    115,
+    129,
+    202,
+    6
+   ]
+  },
+  {
+   "name": "Borrowed",
+   "discriminator": [
+    225,
+    182,
+    241,
+    78,
+    34,
+    145,
+    253,
+    230
+   ]
+  },
+  {
+   "name": "BreakerReset",
+   "discriminator": [
+    108,
+    198,
+    235,
+    208,
+    124,
+    113,
+    227,
+    174
+   ]
+  },
+  {
+   "name": "BreakerTripped",
+   "discriminator": [
+    248,
+    29,
+    234,
+    230,
+    10,
+    90,
+    65,
+    84
+   ]
+  },
+  {
+   "name": "CollateralDeposited",
+   "discriminator": [
+    244,
+    62,
+    77,
+    11,
+    135,
+    112,
+    61,
+    96
+   ]
+  },
+  {
+   "name": "CollateralWithdrawn",
+   "discriminator": [
+    51,
+    224,
+    133,
+    106,
+    74,
+    173,
+    72,
+    82
+   ]
+  },
+  {
+   "name": "DeleverageChanged",
+   "discriminator": [
+    202,
+    66,
+    198,
+    188,
+    240,
+    111,
+    75,
+    63
+   ]
+  },
+  {
+   "name": "InsuranceFunded",
+   "discriminator": [
+    158,
+    72,
+    23,
+    80,
+    138,
+    56,
+    33,
+    206
+   ]
+  },
+  {
+   "name": "InsuranceWithdrawn",
+   "discriminator": [
+    85,
+    95,
+    150,
+    170,
+    148,
+    235,
+    180,
+    156
+   ]
+  },
+  {
+   "name": "Liquidated",
+   "discriminator": [
+    231,
+    57,
+    55,
+    75,
+    0,
+    170,
+    246,
+    68
+   ]
+  },
+  {
+   "name": "LiquidatorsChanged",
+   "discriminator": [
+    143,
+    86,
+    0,
+    64,
+    88,
+    73,
+    221,
+    118
+   ]
+  },
+  {
+   "name": "MarketInitialized",
+   "discriminator": [
+    134,
+    160,
+    122,
+    87,
+    50,
+    3,
+    255,
+    81
+   ]
+  },
+  {
+   "name": "OracleCheckpoint",
+   "discriminator": [
+    140,
+    129,
+    62,
+    158,
+    254,
+    179,
+    96,
+    168
+   ]
+  },
+  {
+   "name": "OracleSourceApplied",
+   "discriminator": [
+    198,
+    5,
+    63,
+    169,
+    140,
+    0,
+    97,
+    163
+   ]
+  },
+  {
+   "name": "OracleSourceProposed",
+   "discriminator": [
+    220,
+    17,
+    223,
+    232,
+    56,
+    114,
+    107,
+    55
+   ]
+  },
+  {
+   "name": "PauseChanged",
+   "discriminator": [
+    238,
+    188,
+    213,
+    78,
+    134,
+    209,
+    178,
+    218
+   ]
+  },
+  {
+   "name": "Repaid",
+   "discriminator": [
+    38,
+    248,
+    231,
+    7,
+    150,
+    164,
+    172,
+    23
+   ]
+  },
+  {
+   "name": "RiskApplied",
+   "discriminator": [
+    135,
+    43,
+    197,
+    218,
+    212,
+    199,
+    254,
+    76
+   ]
+  },
+  {
+   "name": "RiskProposed",
+   "discriminator": [
+    167,
+    209,
+    201,
+    174,
+    39,
+    67,
+    141,
+    199
+   ]
+  },
+  {
+   "name": "SelfClosed",
+   "discriminator": [
+    58,
+    154,
+    72,
+    65,
+    127,
+    188,
+    1,
+    6
+   ]
+  },
+  {
+   "name": "Supplied",
+   "discriminator": [
+    137,
+    114,
+    239,
+    72,
+    162,
+    75,
+    133,
+    39
+   ]
+  },
+  {
+   "name": "Withdrawn",
+   "discriminator": [
+    20,
+    89,
+    223,
+    198,
+    194,
+    124,
+    219,
+    13
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "Paused",
+   "msg": "The action is paused"
+  },
+  {
+   "code": 6001,
+   "name": "Frozen",
+   "msg": "The market is frozen after an uncovered bad-debt event"
+  },
+  {
+   "code": 6002,
+   "name": "Deleveraging",
+   "msg": "Deleverage mode: no new borrows"
+  },
+  {
+   "code": 6003,
+   "name": "BreakerTripped",
+   "msg": "The oracle circuit breaker is tripped"
+  },
+  {
+   "code": 6004,
+   "name": "OracleStale",
+   "msg": "The last oracle checkpoint is too old"
+  },
+  {
+   "code": 6005,
+   "name": "OracleWindowTooShort",
+   "msg": "The checkpoint ring does not cover the requested TWAP window"
+  },
+  {
+   "code": 6006,
+   "name": "RateDecreased",
+   "msg": "The vault exchange rate decreased"
+  },
+  {
+   "code": 6007,
+   "name": "PythStale",
+   "msg": "The Pyth price is older than allowed"
+  },
+  {
+   "code": 6008,
+   "name": "PythConfidence",
+   "msg": "The Pyth confidence interval is too wide"
+  },
+  {
+   "code": 6009,
+   "name": "PythFeedMismatch",
+   "msg": "The Pyth price update is for a different feed"
+  },
+  {
+   "code": 6010,
+   "name": "PythVerification",
+   "msg": "The Pyth price update is not fully verified"
+  },
+  {
+   "code": 6011,
+   "name": "Depeg",
+   "msg": "WBTC/USD deviates too much from BTC/USD"
+  },
+  {
+   "code": 6012,
+   "name": "InsufficientLiquidity",
+   "msg": "Not enough idle liquidity in the market"
+  },
+  {
+   "code": 6013,
+   "name": "AboveSupplyCap",
+   "msg": "Supply would exceed the supply cap"
+  },
+  {
+   "code": 6014,
+   "name": "AboveBorrowCap",
+   "msg": "Borrow would exceed the borrow cap"
+  },
+  {
+   "code": 6015,
+   "name": "AboveAccountDebtCap",
+   "msg": "Borrow would exceed the per-account debt cap"
+  },
+  {
+   "code": 6016,
+   "name": "AboveMaxUtilisation",
+   "msg": "Borrow would push utilisation above the maximum"
+  },
+  {
+   "code": 6017,
+   "name": "BelowMinDebt",
+   "msg": "Debt would be below the minimum debt"
+  },
+  {
+   "code": 6018,
+   "name": "ExceedsLtv",
+   "msg": "Debt would exceed the loan-to-value limit"
+  },
+  {
+   "code": 6019,
+   "name": "HealthyPosition",
+   "msg": "The position is healthy"
+  },
+  {
+   "code": 6020,
+   "name": "HealthNotImproved",
+   "msg": "The liquidation does not improve the position's health"
+  },
+  {
+   "code": 6021,
+   "name": "SlippageExceeded",
+   "msg": "Output below the requested minimum"
+  },
+  {
+   "code": 6022,
+   "name": "ZeroAmount",
+   "msg": "Amount is zero"
+  },
+  {
+   "code": 6023,
+   "name": "PositionHasCollateral",
+   "msg": "The position still has collateral"
+  },
+  {
+   "code": 6024,
+   "name": "NoDebt",
+   "msg": "The position has no debt"
+  },
+  {
+   "code": 6025,
+   "name": "Unauthorized",
+   "msg": "Unauthorized"
+  },
+  {
+   "code": 6026,
+   "name": "NotDeployer",
+   "msg": "Only the compiled-in deployer may initialize"
+  },
+  {
+   "code": 6027,
+   "name": "ConfigOutOfBounds",
+   "msg": "Config value outside the hard bounds"
+  },
+  {
+   "code": 6028,
+   "name": "NothingPending",
+   "msg": "Nothing is pending"
+  },
+  {
+   "code": 6029,
+   "name": "TimelockNotElapsed",
+   "msg": "The timelock has not elapsed"
+  },
+  {
+   "code": 6030,
+   "name": "CapIncrease",
+   "msg": "Caps may only be lowered here"
+  },
+  {
+   "code": 6031,
+   "name": "PauseTooLong",
+   "msg": "Pause duration too long"
+  },
+  {
+   "code": 6032,
+   "name": "GuardianCannotPause",
+   "msg": "The guardian may not set this pause"
+  },
+  {
+   "code": 6033,
+   "name": "InvalidVault",
+   "msg": "Invalid vault account"
+  },
+  {
+   "code": 6034,
+   "name": "InvalidPool",
+   "msg": "Invalid pool account"
+  },
+  {
+   "code": 6035,
+   "name": "InvalidTokenAccount",
+   "msg": "Invalid token account"
+  },
+  {
+   "code": 6036,
+   "name": "NotAllowedLiquidator",
+   "msg": "liquidator_only is on and the signer is not on the allowlist"
+  },
+  {
+   "code": 6037,
+   "name": "MathOverflow",
+   "msg": "Arithmetic overflow"
+  },
+  {
+   "code": 6038,
+   "name": "InsufficientBalance",
+   "msg": "Amount exceeds the position's balance"
+  },
+  {
+   "code": 6039,
+   "name": "OracleAccountsMismatch",
+   "msg": "The oracle accounts passed do not match this market: a CPMM market needs both pool vaults and no Pyth, a CLMM market needs both Pyth updates and no pool vaults"
+  },
+  {
+   "code": 6040,
+   "name": "BorrowBeyondInsurance",
+   "msg": "Route B (SPEC \u00a70.4): this market's coin has a live transfer-fee authority, so its borrow book may not exceed its own insurance"
+  }
+ ],
+ "types": [
+  {
+   "name": "Accrued",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "interest",
+      "type": "u128"
+     },
+     {
+      "name": "fee_shares",
+      "type": "u128"
+     },
+     {
+      "name": "apr_bps",
+      "type": "u64"
+     },
+     {
+      "name": "util_bps",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "AdminChanged",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "admin",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "BadDebtSettled",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "bad",
+      "type": "u128"
+     },
+     {
+      "name": "covered",
+      "type": "u128"
+     },
+     {
+      "name": "socialised",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Borrowed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "shares",
+      "type": "u128"
+     },
+     {
+      "name": "debt_after",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "BreakerReset",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "BreakerTripped",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "dev_bps",
+      "type": "u64"
+     },
+     {
+      "name": "move_bps",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Checkpoint",
+   "docs": [
+    "One checkpoint of the tick accumulator.",
+    "",
+    "Layout note: `#[zero_copy]` derives `bytemuck::Pod`, which forbids implicit padding, and",
+    "`i128` is 16-byte aligned on the host. The semantic fields keep the SPEC order",
+    "(`ts`, `cum`); `padding` makes the layout explicit (32 bytes, `cum` at offset 16)."
+   ],
+   "serialization": "bytemuck",
+   "repr": {
+    "kind": "c"
+   },
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "ts",
+      "type": "i64"
+     },
+     {
+      "name": "padding",
+      "type": {
+       "array": [
+        "u8",
+        8
+       ]
+      }
+     },
+     {
+      "name": "cum",
+      "type": "i128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "CollateralDeposited",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "CollateralWithdrawn",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "DeleverageChanged",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "on",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "InitMarketParams",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "guardian",
+      "type": "pubkey"
+     },
+     {
+      "name": "risk",
+      "type": {
+       "defined": {
+        "name": "RiskConfig"
+       }
+      }
+     },
+     {
+      "name": "pyth_wbtc_feed_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "pyth_btc_feed_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "liquidators",
+      "docs": [
+       "Liquidator allowlist; `Pubkey::default()` marks an empty slot."
+      ],
+      "type": {
+       "array": [
+        "pubkey",
+        4
+       ]
+      }
+     },
+     {
+      "name": "liquidator_only",
+      "docs": [
+       "Launch with liquidation permissioned (SPEC \u00a72.7)."
+      ],
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "InsuranceFunded",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "shares",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "InsuranceWithdraw",
+   "docs": [
+    "An insurance withdrawal waiting for its timelock."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "eta",
+      "type": "i64"
+     },
+     {
+      "name": "active",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "InsuranceWithdrawn",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Liquidated",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "liquidator",
+      "type": "pubkey"
+     },
+     {
+      "name": "repaid",
+      "type": "u64"
+     },
+     {
+      "name": "seized",
+      "type": "u64"
+     },
+     {
+      "name": "to_liquidator",
+      "type": "u64"
+     },
+     {
+      "name": "to_treasury",
+      "type": "u64"
+     },
+     {
+      "name": "hf_before",
+      "type": "u128"
+     },
+     {
+      "name": "hf_after",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "LiquidatorsChanged",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "liquidators",
+      "type": {
+       "array": [
+        "pubkey",
+        4
+       ]
+      }
+     },
+     {
+      "name": "liquidator_only",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Market",
+   "docs": [
+    "The market. PDA `[\"market\", abtc_mint, usdc_mint]`."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "authority_bump",
+      "type": "u8"
+     },
+     {
+      "name": "oracle_bump",
+      "type": "u8"
+     },
+     {
+      "name": "abtc_mint",
+      "type": "pubkey"
+     },
+     {
+      "name": "usdc_mint",
+      "type": "pubkey"
+     },
+     {
+      "name": "vault_program",
+      "docs": [
+       "`brrr_vault` program id."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "vault",
+      "docs": [
+       "`brrr_vault` Vault account."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "vault_btc",
+      "docs": [
+       "Token-2022 account whose amount is A (from the Vault)."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "collateral_vault",
+      "docs": [
+       "PDA `[\"collateral\", market]`, SPL account of abtc, owner = authority."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "liquidity_vault",
+      "docs": [
+       "PDA `[\"liquidity\", market]`, SPL account of usdc, owner = authority."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "pending_admin",
+      "docs": [
+       "`Pubkey::default()` = none."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "guardian",
+      "type": "pubkey"
+     },
+     {
+      "name": "treasury_abtc",
+      "type": "pubkey"
+     },
+     {
+      "name": "treasury_usdc",
+      "type": "pubkey"
+     },
+     {
+      "name": "clmm_program",
+      "type": "pubkey"
+     },
+     {
+      "name": "pool_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "pyth_wbtc_feed_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "pyth_btc_feed_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "risk",
+      "type": {
+       "defined": {
+        "name": "RiskConfig"
+       }
+      }
+     },
+     {
+      "name": "pending_risk",
+      "type": {
+       "defined": {
+        "name": "PendingRisk"
+       }
+      }
+     },
+     {
+      "name": "total_supply_assets",
+      "type": "u128"
+     },
+     {
+      "name": "total_supply_shares",
+      "type": "u128"
+     },
+     {
+      "name": "total_borrow_assets",
+      "type": "u128"
+     },
+     {
+      "name": "total_borrow_shares",
+      "type": "u128"
+     },
+     {
+      "name": "insurance_shares",
+      "docs": [
+       "Supply shares owned by the market itself (reserve factor + `fund_insurance`)."
+      ],
+      "type": "u128"
+     },
+     {
+      "name": "last_accrual_ts",
+      "type": "i64"
+     },
+     {
+      "name": "total_collateral",
+      "docs": [
+       "\u03a3 Position.collateral == collateral_vault.amount."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "pause_flags",
+      "docs": [
+       "bit0 SUPPLY, bit1 WITHDRAW, bit2 DEPOSIT_COLLATERAL (retired, unsettable), bit3 WITHDRAW_COLLATERAL,",
+       "bit4 BORROW, bit5 LIQUIDATE."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "withdraw_pause_until",
+      "docs": [
+       "WITHDRAW counts only while `now < this`."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "liquidate_pause_until",
+      "docs": [
+       "LIQUIDATE counts only while `now < this`."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "deleverage",
+      "docs": [
+       "bonus \u2192 `deleverage_bonus_bps`, close factor 100 %, no new borrows."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "frozen",
+      "docs": [
+       "Set by `settle_bad_debt` beyond the socialisation limit; blocks everything except repay / liquidate / settle."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "insurance_withdraw",
+      "type": {
+       "defined": {
+        "name": "InsuranceWithdraw"
+       }
+      }
+     },
+     {
+      "name": "liquidators",
+      "docs": [
+       "Allowlist for `liquidate`; `Pubkey::default()` marks an empty slot. Four slots so the keeper",
+       "can be rotated without a window where nobody may liquidate."
+      ],
+      "type": {
+       "array": [
+        "pubkey",
+        4
+       ]
+      }
+     },
+     {
+      "name": "liquidator_only",
+      "docs": [
+       "`true` = only a listed key may liquidate. Ignored while `frozen` or `deleverage`: a wind-down",
+       "must never depend on our keeper being up."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "pending_oracle_source",
+      "type": {
+       "defined": {
+        "name": "PendingOracleSource"
+       }
+      }
+     },
+     {
+      "name": "stats",
+      "type": {
+       "defined": {
+        "name": "MarketStats"
+       }
+      }
+     },
+     {
+      "name": "quote_decimals",
+      "docs": [
+       "Decimals of the reward asset (`Vault.wbtc_mint`), 6..=9, read from the pool's own decimals byte and required",
+       "to equal `Vault.quote_decimals`. The Pyth leg is quoted per whole token, so this is what turns it into a",
+       "price per raw unit (SPEC \u00a70.3). Written by `init_market`, re-derived by `apply_oracle_source`."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "pool_reversed",
+      "docs": [
+       "`true` = the coin is the pool's token_0, so the pool's tick is reward-per-coin and is negated where it is",
+       "read (`oracle::read_pool_tick`). Everywhere else a tick means raw coin per raw reward asset."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "oracle_kind",
+      "docs": [
+       "`ORACLE_KIND_CLMM` (the pool's own `tick_current`) or `ORACLE_KIND_CPMM` (the tick of the pool's net",
+       "reserve ratio). Set from `Vault.pool_kind` by `init_market` and never changed: a market cannot migrate",
+       "between pool kinds, because the ring it would carry over was measured a different way."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "debt_is_numeraire",
+      "docs": [
+       "The vault's reward asset IS this market's debt asset (`Vault.wbtc_mint == usdc_mint`), so one raw unit is",
+       "worth exactly one raw unit: no Pyth leg, no depeg, and the two feed ids must be zero (SPEC \u00a72.4)."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "fee_risk_insured",
+      "docs": [
+       "The coin's transfer-fee authority was live when the market opened (`MINT_POLICY_FEE_AUTHORITY_LIVE` on a",
+       "promoted vault, SPEC \u00a70.4). Route B: whoever can raise that fee can cut what a liquidator receives, so",
+       "the borrow book of such a market may never exceed its own insurance (`borrow`)."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "reserved",
+      "docs": [
+       "Was 512; the five fields above came off its front, so the account size did not change."
+      ],
+      "type": {
+       "array": [
+        "u8",
+        507
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "MarketInitialized",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "admin",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MarketStats",
+   "docs": [
+    "Lifetime counters."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "liquidations",
+      "type": "u64"
+     },
+     {
+      "name": "bad_debt_settled",
+      "type": "u64"
+     },
+     {
+      "name": "socialised",
+      "type": "u64"
+     },
+     {
+      "name": "self_closes",
+      "docs": [
+       "Positions closed by their own owner (SPEC \u00a72.12)."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "to_treasury_abtc",
+      "docs": [
+       "aBTC taken as the protocol's share of the liquidation bonus. The ledger the later",
+       "insurance-fund / holder split reads; nothing spends it yet."
+      ],
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "OracleCheckpoint",
+   "docs": [
+    "Both ticks are raw coin per raw reward asset: on a market with `pool_reversed` they are the NEGATION of the",
+    "pool's own `tick_current` (SPEC \u00a70.3), so an indexer can feed them to `price_from_tick` without knowing which",
+    "way round the pool is."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "ts",
+      "type": "i64"
+     },
+     {
+      "name": "tick",
+      "type": "i32"
+     },
+     {
+      "name": "twap_long_tick",
+      "type": "i32"
+     },
+     {
+      "name": "spot_price",
+      "type": "u128"
+     },
+     {
+      "name": "p_borrow",
+      "type": "u128"
+     },
+     {
+      "name": "p_liq",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "OracleConfig",
+   "docs": [
+    "Oracle parameters (SPEC \u00a72.1 `OracleConfig`)."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "haircut_bps",
+      "docs": [
+       "Redemption haircut applied to the aBTC price. Default 300 (\u00d7 0.97)."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "twap_long_secs",
+      "docs": [
+       "Borrow-side TWAP window. Default 1800."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "twap_short_secs",
+      "docs": [
+       "Liquidation-side TWAP window. Default 600."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "confirm_secs",
+      "docs": [
+       "SPEC \u00a72.4. The median must span at least this long: the confirmation window, and the whole",
+       "manipulation defence now that the 30-minute floor is gone. Default 5, hard 3..30."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "median_samples",
+      "docs": [
+       "How many fast observations the median looks at. Default 7, hard 3..15."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "min_median_samples",
+      "docs": [
+       "Fewer usable observations than this and the market has not traded, so it has not crashed.",
+       "Default 3, hard 3..median_samples."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "seize_twap_secs",
+      "docs": [
+       "Window for the realisable cap on `p_seize`. Default 60, hard 15..600."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "ema_cap_bps",
+      "docs": [
+       "`p_borrow \u2264 ema_cap_bps \u00d7 ema / 10_000`. Default 15000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "ema_period_secs",
+      "docs": [
+       "EMA period of the tick. Default 86400."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "cp_max_age_borrow_secs",
+      "docs": [
+       "Oldest checkpoint accepted by borrow / withdraw_collateral. Default 900."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "cp_max_age_liq_secs",
+      "docs": [
+       "Oldest checkpoint accepted by liquidate. Default 7200."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "pyth_max_age_user_secs",
+      "docs": [
+       "Pyth max age for user actions. Default 60."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "pyth_max_age_liq_secs",
+      "docs": [
+       "Pyth max age for liquidations. Default 600."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "pyth_max_conf_bps",
+      "docs": [
+       "`conf / price \u2264 this`. Default 100."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "depeg_bps",
+      "docs": [
+       "`|wbtc \u2212 btc| / btc \u2264 this` for borrows. Default 300."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "breaker_move_bps",
+      "docs": [
+       "Breaker: twap_long move per hour. Default 2500."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "breaker_dev_bps",
+      "docs": [
+       "Breaker: `|spot / twap_long \u2212 1|`. Default 1500."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "breaker_resume_bps",
+      "docs": [
+       "Breaker resumes after `breaker_resume_secs` below this deviation. Default 1000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "breaker_resume_secs",
+      "docs": [
+       "Default 600."
+      ],
+      "type": "u32"
+     }
+    ]
+   }
+  },
+  {
+   "name": "OracleSourceApplied",
+   "docs": [
+    "`tick` is the first checkpoint of the new pool \u2014 oriented like every tick here, so negated when the new pool",
+    "is reversed (SPEC \u00a70.3); every TWAP window is short until the ring refills."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "pool_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "tick",
+      "type": "i32"
+     }
+    ]
+   }
+  },
+  {
+   "name": "OracleSourceProposed",
+   "docs": [
+    "SPEC \u00a72.11."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "pool_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "eta",
+      "type": "i64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "OracleState",
+   "docs": [
+    "Tick accumulator, EMA and breaker (SPEC \u00a72.1 `OracleState`). PDA `[\"oracle\", market]`.",
+    "",
+    "Layout note: fields keep the SPEC order; `breaker_tripped` is a `u8` (0/1) because `bool` is",
+    "not `Pod`, and the two explicit `padding*` arrays keep every `i128`/`u128` at a 16-byte offset",
+    "so the struct has no implicit padding on any target. Offsets (after the 8-byte discriminator):",
+    "market 0, idx 32, count 34, last_tick 36, last_ts 40, cum_last 48, ema_tick_x32 64, ema_ts 72,",
+    "breaker_tripped 80, breaker_tripped_at 88, breaker_calm_since 96, last_rate_wad 112, fast_idx 128,",
+    "fast_count 130, last_slow_ts 136, ring 144, fast 4240.",
+    "",
+    "Two rings, because two prices move at two speeds (SPEC \u00a72.4). `ring` is written at most every",
+    "`SLOW_SPACING_SECS` and its 128 slots span more than two hours, which is what `twap_long`, the EMA and",
+    "the breaker need. `fast` is written on every checkpoint \u2014 as often as once a second \u2014 and its 64 slots",
+    "carry the median that decides liquidations. One ring cannot do both: at a one-second cadence 128 slots",
+    "hold barely two minutes, and at a one-minute cadence a median is not a confirmation of anything."
+   ],
+   "serialization": "bytemuck",
+   "repr": {
+    "kind": "c"
+   },
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "idx",
+      "docs": [
+       "Newest checkpoint slot."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "count",
+      "docs": [
+       "Number of valid ring entries (\u2264 128)."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "last_tick",
+      "docs": [
+       "Tick recorded at the last checkpoint (accrues until the next one)."
+      ],
+      "type": "i32"
+     },
+     {
+      "name": "last_ts",
+      "type": "i64"
+     },
+     {
+      "name": "cum_last",
+      "docs": [
+       "tick_cumulative at `last_ts`."
+      ],
+      "type": "i128"
+     },
+     {
+      "name": "ema_tick_x32",
+      "docs": [
+       "EMA of the tick, fixed point << 32."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "ema_ts",
+      "type": "i64"
+     },
+     {
+      "name": "breaker_tripped",
+      "docs": [
+       "0 / 1."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "padding0",
+      "type": {
+       "array": [
+        "u8",
+        7
+       ]
+      }
+     },
+     {
+      "name": "breaker_tripped_at",
+      "type": "i64"
+     },
+     {
+      "name": "breaker_calm_since",
+      "docs": [
+       "0 = not calm."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "padding1",
+      "type": {
+       "array": [
+        "u8",
+        8
+       ]
+      }
+     },
+     {
+      "name": "last_rate_wad",
+      "docs": [
+       "Vault exchange rate; must be monotone."
+      ],
+      "type": "u128"
+     },
+     {
+      "name": "fast_idx",
+      "docs": [
+       "Newest fast-ring slot."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "fast_count",
+      "docs": [
+       "Valid fast-ring entries (\u2264 FAST_RING)."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "padding2",
+      "type": {
+       "array": [
+        "u8",
+        4
+       ]
+      }
+     },
+     {
+      "name": "last_slow_ts",
+      "docs": [
+       "When the slow ring was last written."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "ring",
+      "type": {
+       "array": [
+        {
+         "defined": {
+          "name": "Checkpoint"
+         }
+        },
+        128
+       ]
+      }
+     },
+     {
+      "name": "fast",
+      "type": {
+       "array": [
+        {
+         "defined": {
+          "name": "Checkpoint"
+         }
+        },
+        64
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "PauseChanged",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "flags",
+      "type": "u16"
+     },
+     {
+      "name": "withdraw_pause_until",
+      "type": "i64"
+     },
+     {
+      "name": "liquidate_pause_until",
+      "type": "i64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PendingConfig",
+   "docs": [
+    "A config waiting for its timelock."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "config",
+      "type": {
+       "defined": {
+        "name": "VaultConfig"
+       }
+      }
+     },
+     {
+      "name": "eta",
+      "type": "i64"
+     },
+     {
+      "name": "active",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PendingOracleSource",
+   "docs": [
+    "A pool / feed change waiting for its timelock (SPEC \u00a72.11)."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "pool_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "pyth_wbtc_feed_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "pyth_btc_feed_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "eta",
+      "type": "i64"
+     },
+     {
+      "name": "active",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PendingPool",
+   "docs": [
+    "A pool change waiting for its timelock."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "pool_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "amm_config",
+      "type": "pubkey"
+     },
+     {
+      "name": "observation_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "pool_vault_wbtc",
+      "type": "pubkey"
+     },
+     {
+      "name": "pool_vault_btc",
+      "type": "pubkey"
+     },
+     {
+      "name": "eta",
+      "type": "i64"
+     },
+     {
+      "name": "active",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PendingRisk",
+   "docs": [
+    "A risk config waiting for its timelock."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "risk",
+      "type": {
+       "defined": {
+        "name": "RiskConfig"
+       }
+      }
+     },
+     {
+      "name": "eta",
+      "type": "i64"
+     },
+     {
+      "name": "active",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Position",
+   "docs": [
+    "A borrower. PDA `[\"position\", market, owner]`."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "collateral",
+      "docs": [
+       "aBTC raw."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "borrow_shares",
+      "type": "u128"
+     },
+     {
+      "name": "last_ts",
+      "docs": [
+       "Last interaction."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "reserved",
+      "type": {
+       "array": [
+        "u8",
+        64
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "PriceFeedMessage",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "feed_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "price",
+      "type": "i64"
+     },
+     {
+      "name": "conf",
+      "type": "u64"
+     },
+     {
+      "name": "exponent",
+      "type": "i32"
+     },
+     {
+      "name": "publish_time",
+      "type": "i64"
+     },
+     {
+      "name": "prev_publish_time",
+      "type": "i64"
+     },
+     {
+      "name": "ema_price",
+      "type": "i64"
+     },
+     {
+      "name": "ema_conf",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PriceUpdateV2",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "write_authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "verification_level",
+      "type": {
+       "defined": {
+        "name": "VerificationLevel"
+       }
+      }
+     },
+     {
+      "name": "price_message",
+      "type": {
+       "defined": {
+        "name": "PriceFeedMessage"
+       }
+      }
+     },
+     {
+      "name": "posted_slot",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Repaid",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "payer",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "shares",
+      "type": "u128"
+     },
+     {
+      "name": "debt_after",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "RiskApplied",
+   "type": {
+    "kind": "struct",
+    "fields": []
+   }
+  },
+  {
+   "name": "RiskConfig",
+   "docs": [
+    "Risk parameters (SPEC \u00a72.1 `RiskConfig`)."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "ltv_bps",
+      "docs": [
+       "Default 2000; hard 1000..2000 and `ltv < lt`. A max-LTV position is liquidated after a",
+       "`1 \u2212 ltv/lt` = 42.9 % fall. The coin has printed larger falls than that; see SPEC \u00a72.1."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "lt_bps",
+      "docs": [
+       "Default 3000; hard 3000..5000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "liq_bonus_bps",
+      "docs": [
+       "Top of the ramp. Default 2500; hard \u2264 2500."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "liq_bonus_base_bps",
+      "docs": [
+       "Bottom of the ramp: what a liquidation costs the borrower at `HF = 1.00`. Default 1000, hard \u2264 liq_bonus_bps.",
+       "Acting early is low-risk and should be cheap; acting late carries inventory risk and should pay for it."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "liq_bonus_ramp_wad",
+      "docs": [
+       "Health span the ramp travels over: base at `HF = 1`, max at `HF = 1 \u2212 this`. Default 0.25 \u00d7 WAD."
+      ],
+      "type": "u128"
+     },
+     {
+      "name": "dev_max_bps",
+      "docs": [
+       "SPEC \u00a72.7. When `|p_trigger / twap_5m \u2212 1|` exceeds this, close only enough to restore health instead",
+       "of closing the position. 10000 disables it, which is the launch setting. Hard 2000..10000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "protocol_bonus_bps",
+      "docs": [
+       "Default 500, part of `liq_bonus_bps`; hard \u2264 `liq_bonus_bps`."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "deleverage_bonus_bps",
+      "docs": [
+       "Default 2000; hard \u2264 2500."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "self_close_bonus_bps",
+      "docs": [
+       "Default 500; hard \u2264 `liq_bonus_bps`. What a borrower pays to close their own position (SPEC \u00a72.12).",
+       "It is cost recovery for the closer's unwind (\u2248 450 bps), not profit \u2014 the treasury takes none of it."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "close_factor_bps",
+      "docs": [
+       "Default 5000; hard 1000..10000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "full_close_hf_wad",
+      "docs": [
+       "Default 0.9 \u00d7 WAD."
+      ],
+      "type": "u128"
+     },
+     {
+      "name": "full_close_debt",
+      "docs": [
+       "Default 2_000 \u00d7 10^6."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "min_debt",
+      "docs": [
+       "Default 10 \u00d7 10^6. It was 20: a $100 deposit is $94 of collateral after the coin's fee and the haircut and",
+       "borrows at most $18.80 at a 20 % LTV, so the old floor shut the smallest depositor out entirely (SPEC \u00a70.3)."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "supply_cap",
+      "docs": [
+       "Default 40_000 \u00d7 10^6."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "borrow_cap",
+      "docs": [
+       "Default 25_000 \u00d7 10^6."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "account_debt_cap",
+      "docs": [
+       "Default 10_000 \u00d7 10^6."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "max_util_bps",
+      "docs": [
+       "Default 9000 for new borrows; hard \u2264 9500."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "irm_base_bps",
+      "docs": [
+       "Default 0."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "irm_slope1_bps",
+      "docs": [
+       "Default 1000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "irm_slope2_bps",
+      "docs": [
+       "Default 10000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "irm_kink_bps",
+      "docs": [
+       "Default 8000; hard 0 < kink < 10000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "reserve_factor_bps",
+      "docs": [
+       "Default 1000; hard \u2264 5000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "socialise_max_bps",
+      "docs": [
+       "Default 1000 per settle event."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "oracle",
+      "type": {
+       "defined": {
+        "name": "OracleConfig"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "RiskProposed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "eta",
+      "type": "i64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "SelfClosed",
+   "docs": [
+    "SPEC \u00a72.12. No `to_treasury`: the whole bonus is the closer's cost recovery."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "closer",
+      "type": "pubkey"
+     },
+     {
+      "name": "repaid",
+      "type": "u64"
+     },
+     {
+      "name": "seized",
+      "type": "u64"
+     },
+     {
+      "name": "hf_before",
+      "type": "u128"
+     },
+     {
+      "name": "hf_after",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Supplied",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "supplier",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "shares",
+      "type": "u128"
+     }
+    ]
+   }
+  },
+  {
+   "name": "SupplyPosition",
+   "docs": [
+    "A supplier. PDA `[\"supply\", market, owner]`."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "owner",
+      "type": "pubkey"
+     },
+     {
+      "name": "shares",
+      "type": "u128"
+     },
+     {
+      "name": "reserved",
+      "type": {
+       "array": [
+        "u8",
+        64
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Vault",
+   "docs": [
+    "The vault. PDA `[\"vault\", btc_mint]`."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "authority_bump",
+      "type": "u8"
+     },
+     {
+      "name": "btc_mint",
+      "docs": [
+       "Token-2022 mint of the base coin."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "wbtc_mint",
+      "docs": [
+       "SPL mint of the reward asset."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "abtc_mint",
+      "docs": [
+       "PDA `[\"abtc\", vault]`; SPL Token, 9 dec, mint authority = authority, no freeze authority."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "vault_btc",
+      "docs": [
+       "`ATA(btc_multisig, btc_mint)` under Token-2022: owner = `btc_multisig`, delegate = authority for",
+       "`u64::MAX`. `amount` == total assets A. Owned by an on-curve address so the reward payer counts it",
+       "(`docs/v2/reward-delegate-design.html`)."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "vault_wbtc",
+      "docs": [
+       "`ATA(btc_multisig, wbtc_mint)` under SPL Token: owner = `btc_multisig`, delegate = authority for",
+       "`u64::MAX`. Must be the associated token account of the coin account's owner (stonkfun pays there)."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "dead_shares",
+      "docs": [
+       "PDA `[\"dead\", vault]`; SPL token account of abtc, owner = authority; never debited."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "pending_admin",
+      "docs": [
+       "`Pubkey::default()` = none."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "guardian",
+      "type": "pubkey"
+     },
+     {
+      "name": "treasury_wbtc",
+      "docs": [
+       "SPL token account (WBTC) that receives the performance fee."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "clmm_program",
+      "type": "pubkey"
+     },
+     {
+      "name": "pool_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "amm_config",
+      "type": "pubkey"
+     },
+     {
+      "name": "observation_state",
+      "type": "pubkey"
+     },
+     {
+      "name": "pool_vault_wbtc",
+      "docs": [
+       "CLMM token_0 vault (input side of the harvest)."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "pool_vault_btc",
+      "docs": [
+       "CLMM token_1 vault (output side)."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "config",
+      "type": {
+       "defined": {
+        "name": "VaultConfig"
+       }
+      }
+     },
+     {
+      "name": "pending_config",
+      "type": {
+       "defined": {
+        "name": "PendingConfig"
+       }
+      }
+     },
+     {
+      "name": "pending_pool",
+      "type": {
+       "defined": {
+        "name": "PendingPool"
+       }
+      }
+     },
+     {
+      "name": "sweep_eta",
+      "docs": [
+       "0 = none."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "pause_flags",
+      "docs": [
+       "bit 0 DEPOSIT, bit 1 HARVEST, bit 2 REDEEM, bit 3 EXIT."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "redeem_pause_until",
+      "docs": [
+       "REDEEM only counts while `now < redeem_pause_until`. Never zeroed after the first pause: it is also the",
+       "moment the last pause ended, from which `REDEEM_PAUSE_COOLOFF_SECS` runs."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "last_harvest_ts",
+      "type": "i64"
+     },
+     {
+      "name": "harvest_count",
+      "type": "u64"
+     },
+     {
+      "name": "total_wbtc_harvested",
+      "docs": [
+       "WBTC swapped (net of fee)."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "total_wbtc_fee",
+      "type": "u64"
+     },
+     {
+      "name": "total_btc_bought",
+      "type": "u64"
+     },
+     {
+      "name": "exit_authority",
+      "docs": [
+       "May call `redeem_swap` while `exit_open` is false. `Pubkey::default()` = none."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "exit_open",
+      "docs": [
+       "`true` = `redeem_swap` is permissionless."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "exit_count",
+      "type": "u64"
+     },
+     {
+      "name": "total_btc_sold",
+      "docs": [
+       "BTC sent to the pool by `redeem_swap` (gross, before the mint's transfer fee)."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "total_wbtc_out",
+      "docs": [
+       "WBTC delivered to exiters."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "btc_multisig",
+      "docs": [
+       "1-of-1 Token-2022 multisig whose sole signer is `authority`; owner of `vault_btc` and",
+       "`vault_wbtc`. Validated at `initialize` (`multisig::validate_multisig`); never changes."
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "coin_decimals",
+      "docs": [
+       "Decimals of `btc_mint` (6..=9); `abtc_mint` has the same."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "quote_decimals",
+      "docs": [
+       "Decimals of `wbtc_mint` (6..=9), read from the mint at `initialize`."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "coin_is_token0",
+      "docs": [
+       "Pool orientation: `false` = the reward asset is the pool's token_0, `true` = the coin is."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "pool_kind",
+      "docs": [
+       "`POOL_KIND_CLMM` or `POOL_KIND_CPMM`."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "mint_policy",
+      "docs": [
+       "`MINT_POLICY_*` bits recorded at `initialize`. Non-zero = never collateral (`brrr_lend::init_market`)."
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "quote_token_2022",
+      "docs": [
+       "`wbtc_mint` is owned by Token-2022 rather than SPL Token."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "collateral_promoted",
+      "docs": [
+       "SPEC \u00a70.4: the admin decided, under timelock, that these shares may back a `brrr_lend` market although",
+       "`mint_policy` is not zero. Never written by `initialize*`; carved out of `reserved`, so every vault",
+       "created before this revision reads `false`."
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "promotion_eta",
+      "docs": [
+       "ETA of a pending promotion, and whether one is armed (`propose_collateral_promotion`)."
+      ],
+      "type": "i64"
+     },
+     {
+      "name": "promotion_active",
+      "type": "bool"
+     },
+     {
+      "name": "reserved",
+      "type": {
+       "array": [
+        "u8",
+        208
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "VaultConfig",
+   "docs": [
+    "Tunable parameters (SPEC \u00a71.1 `VaultConfig`)."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "perf_fee_bps",
+      "docs": [
+       "Share of harvested WBTC sent to the treasury. Default 1000, hard max 3000."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "slippage_bps",
+      "docs": [
+       "Allowed price move below the reference on top of the pool fee. Default 100, hard max 500."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "harvest_cooldown_secs",
+      "docs": [
+       "Minimum seconds between harvests. Default 120, hard min 60."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "min_harvest_wbtc",
+      "docs": [
+       "Harvest only when at least this much WBTC is waiting. Default 6_500 \u2014 about $5 at WBTC",
+       "$76.7k (2026-09-13). It is a RAW floor, so it drifts with the BTC price; the keeper enforces",
+       "the exact $5 off chain from the Pyth price it already reads and alerts when this drifts far",
+       "from it. On chain it is the backstop that stops a dust harvest burning the 1 % pool fee and",
+       "resetting the cooldown."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "max_harvest_wbtc",
+      "docs": [
+       "Largest single harvest. Default 2_000_000."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "max_harvest_pool_bps",
+      "docs": [
+       "`amount_in \u2264 pool_vault_wbtc.amount \u00d7 this / 10_000`. Default 50, hard max 200."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "min_deposit",
+      "docs": [
+       "Smallest deposit (in raw BTC units). Default 10^9."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "deposit_cap",
+      "docs": [
+       "Total assets after a deposit may not exceed it. Default 50_000_000 \u00d7 10^9."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "max_transfer_fee_bps",
+      "docs": [
+       "Deposits revert when the mint's live transfer fee exceeds it. Default 500."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "twap_window_secs",
+      "docs": [
+       "TWAP window for the harvest reference tick. Default 600, hard range 60..3600."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "twap_max_age_secs",
+      "docs": [
+       "Older observation ring \u2192 fall back to `pool_state.tick_current`. Default 1800."
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "max_exit_pool_bps",
+      "docs": [
+       "`redeem_swap`'s BTC \u2264 `pool_vault_btc.amount \u00d7 this / 10_000`. Default 200, hard max 500.",
+       "Larger than `max_harvest_pool_bps` on purpose: a harvest is a drip, an exit clears a liquidation."
+      ],
+      "type": "u16"
+     },
+     {
+      "name": "min_exit_shares",
+      "docs": [
+       "Dust floor for `redeem_swap`. Default 10^9 (1 aBTC)."
+      ],
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "VerificationLevel",
+   "type": {
+    "kind": "enum",
+    "variants": [
+     {
+      "name": "Partial",
+      "fields": [
+       {
+        "name": "num_signatures",
+        "type": "u8"
+       }
+      ]
+     },
+     {
+      "name": "Full"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Withdrawn",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "market",
+      "type": "pubkey"
+     },
+     {
+      "name": "supplier",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "shares",
+      "type": "u128"
+     }
+    ]
+   }
+  }
+ ]
+}

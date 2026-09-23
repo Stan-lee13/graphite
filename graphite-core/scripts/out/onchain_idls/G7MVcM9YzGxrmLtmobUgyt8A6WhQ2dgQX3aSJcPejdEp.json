@@ -1,0 +1,1708 @@
+{
+ "address": "G7MVcM9YzGxrmLtmobUgyt8A6WhQ2dgQX3aSJcPejdEp",
+ "metadata": {
+  "name": "debot_router",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Debot Router \u2014 trading on debot.ai"
+ },
+ "instructions": [
+  {
+   "name": "create_token_account",
+   "discriminator": [
+    147,
+    241,
+    123,
+    100,
+    244,
+    132,
+    174,
+    118
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "owner"
+    },
+    {
+     "name": "token_account",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "token_mint"
+       },
+       {
+        "kind": "account",
+        "path": "owner"
+       }
+      ]
+     }
+    },
+    {
+     "name": "token_mint",
+     "address": "So11111111111111111111111111111111111111112"
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "bump",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "create_token_account_with_seed",
+   "discriminator": [
+    125,
+    191,
+    239,
+    140,
+    66,
+    8,
+    9,
+    228
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "owner"
+    },
+    {
+     "name": "token_account",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "token_mint"
+       },
+       {
+        "kind": "account",
+        "path": "owner"
+       },
+       {
+        "kind": "arg",
+        "path": "seed"
+       }
+      ]
+     }
+    },
+    {
+     "name": "token_mint",
+     "address": "So11111111111111111111111111111111111111112"
+    },
+    {
+     "name": "token_program",
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "bump",
+     "type": "u8"
+    },
+    {
+     "name": "seed",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "initialize_router_fee_config",
+   "discriminator": [
+    174,
+    155,
+    222,
+    208,
+    15,
+    134,
+    147,
+    196
+   ],
+   "accounts": [
+    {
+     "name": "router_fee_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "fee_recipient"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "fee_rate",
+     "type": {
+      "option": "u16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "recover_stuck_sol",
+   "discriminator": [
+    204,
+    158,
+    255,
+    150,
+    20,
+    27,
+    225,
+    37
+   ],
+   "accounts": [
+    {
+     "name": "router_fee_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "writable": true,
+     "signer": true,
+     "relations": [
+      "router_fee_config"
+     ]
+    },
+    {
+     "name": "sa_authority",
+     "writable": true,
+     "address": "DCfyk6fC2PN8mnsCdYoDpbuWQXhypjFvvvFC2WecTREX"
+    },
+    {
+     "name": "recipient",
+     "writable": true
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "recover_stuck_token",
+   "discriminator": [
+    195,
+    163,
+    219,
+    109,
+    89,
+    42,
+    55,
+    171
+   ],
+   "accounts": [
+    {
+     "name": "router_fee_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "writable": true,
+     "signer": true,
+     "relations": [
+      "router_fee_config"
+     ]
+    },
+    {
+     "name": "sa_authority",
+     "writable": true,
+     "address": "DCfyk6fC2PN8mnsCdYoDpbuWQXhypjFvvvFC2WecTREX"
+    },
+    {
+     "name": "token_account",
+     "writable": true
+    },
+    {
+     "name": "recipient_token_account",
+     "writable": true
+    },
+    {
+     "name": "token_mint"
+    },
+    {
+     "name": "token_program"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "recover_stuck_wsol",
+   "discriminator": [
+    105,
+    43,
+    65,
+    105,
+    160,
+    90,
+    245,
+    30
+   ],
+   "accounts": [
+    {
+     "name": "router_fee_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "writable": true,
+     "signer": true,
+     "relations": [
+      "router_fee_config"
+     ]
+    },
+    {
+     "name": "sa_authority",
+     "writable": true,
+     "address": "DCfyk6fC2PN8mnsCdYoDpbuWQXhypjFvvvFC2WecTREX"
+    },
+    {
+     "name": "wsol_token_account",
+     "writable": true
+    },
+    {
+     "name": "wsol_mint",
+     "address": "So11111111111111111111111111111111111111112"
+    },
+    {
+     "name": "recipient",
+     "writable": true
+    },
+    {
+     "name": "token_program"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "set_fee_rate",
+   "discriminator": [
+    53,
+    243,
+    137,
+    65,
+    8,
+    140,
+    158,
+    6
+   ],
+   "accounts": [
+    {
+     "name": "router_fee_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "router_fee_config"
+     ]
+    }
+   ],
+   "args": [
+    {
+     "name": "fee_rate",
+     "type": "u16"
+    }
+   ]
+  },
+  {
+   "name": "set_fee_recipient",
+   "discriminator": [
+    227,
+    18,
+    215,
+    42,
+    237,
+    246,
+    151,
+    66
+   ],
+   "accounts": [
+    {
+     "name": "router_fee_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "router_fee_config"
+     ]
+    },
+    {
+     "name": "new_fee_recipient"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "swap",
+   "discriminator": [
+    248,
+    198,
+    158,
+    145,
+    225,
+    117,
+    135,
+    200
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "router_fee_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_token_account",
+     "writable": true
+    },
+    {
+     "name": "destination_token_account",
+     "writable": true
+    },
+    {
+     "name": "source_mint"
+    },
+    {
+     "name": "destination_mint"
+    },
+    {
+     "name": "fee_account",
+     "writable": true,
+     "optional": true
+    },
+    {
+     "name": "sa_authority",
+     "writable": true,
+     "optional": true
+    },
+    {
+     "name": "source_token_sa",
+     "writable": true,
+     "optional": true
+    },
+    {
+     "name": "destination_token_sa",
+     "writable": true,
+     "optional": true
+    },
+    {
+     "name": "source_token_program",
+     "optional": true
+    },
+    {
+     "name": "destination_token_program",
+     "optional": true
+    },
+    {
+     "name": "associated_token_program",
+     "optional": true,
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "optional": true,
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "args",
+     "type": {
+      "defined": {
+       "name": "SwapArgs"
+      }
+     }
+    },
+    {
+     "name": "charge_on_input",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "swap_compact",
+   "discriminator": [
+    124,
+    230,
+    211,
+    253,
+    33,
+    81,
+    104,
+    96
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "router_fee_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         114,
+         111,
+         117,
+         116,
+         101,
+         114,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_token_account",
+     "writable": true
+    },
+    {
+     "name": "destination_token_account",
+     "writable": true
+    },
+    {
+     "name": "source_mint"
+    },
+    {
+     "name": "destination_mint"
+    },
+    {
+     "name": "fee_account",
+     "writable": true
+    },
+    {
+     "name": "source_token_program"
+    },
+    {
+     "name": "destination_token_program"
+    }
+   ],
+   "args": [
+    {
+     "name": "args",
+     "type": {
+      "defined": {
+       "name": "CompactSwapArgs"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "RouterFeeConfig",
+   "discriminator": [
+    26,
+    72,
+    47,
+    111,
+    80,
+    222,
+    96,
+    190
+   ]
+  }
+ ],
+ "events": [
+  {
+   "name": "SwapEvent",
+   "discriminator": [
+    64,
+    198,
+    205,
+    232,
+    38,
+    8,
+    113,
+    226
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "TooManyHops",
+   "msg": "Too many hops"
+  },
+  {
+   "code": 6001,
+   "name": "MinReturnNotReached",
+   "msg": "Min return not reached"
+  },
+  {
+   "code": 6002,
+   "name": "AmountInMustBeGreaterThanZero",
+   "msg": "amount_in must be greater than 0"
+  },
+  {
+   "code": 6003,
+   "name": "AmountsAndRoutesMustHaveTheSameLength",
+   "msg": "amounts and routes must have the same length"
+  },
+  {
+   "code": 6004,
+   "name": "TotalAmountsMustBeEqualToAmountIn",
+   "msg": "total_amounts must be equal to amount_in"
+  },
+  {
+   "code": 6005,
+   "name": "InvalidSourceTokenAccount",
+   "msg": "Invalid source token account"
+  },
+  {
+   "code": 6006,
+   "name": "InvalidDestinationTokenAccount",
+   "msg": "Invalid destination token account"
+  },
+  {
+   "code": 6007,
+   "name": "InvalidTokenAccount",
+   "msg": "Invalid token account"
+  },
+  {
+   "code": 6008,
+   "name": "InvalidCommissionRate",
+   "msg": "Invalid commission rate"
+  },
+  {
+   "code": 6009,
+   "name": "InvalidTrimRate",
+   "msg": "Invalid trim rate"
+  },
+  {
+   "code": 6010,
+   "name": "InvalidChargeRate",
+   "msg": "Invalid charge rate"
+  },
+  {
+   "code": 6011,
+   "name": "InvalidCommissionTokenAccount",
+   "msg": "Invalid commission token account"
+  },
+  {
+   "code": 6012,
+   "name": "InvalidCommissionTemporaryTokenAccount",
+   "msg": "Invalid commission temporary token account"
+  },
+  {
+   "code": 6013,
+   "name": "InvalidAccountsLength",
+   "msg": "Invalid accounts length"
+  },
+  {
+   "code": 6014,
+   "name": "InvalidHopAccounts",
+   "msg": "Invalid hop accounts"
+  },
+  {
+   "code": 6015,
+   "name": "InvalidHopFromAccount",
+   "msg": "Invalid hop from account"
+  },
+  {
+   "code": 6016,
+   "name": "SwapAuthorityIsNotSigner",
+   "msg": "Swap authority is not signer"
+  },
+  {
+   "code": 6017,
+   "name": "InvalidAuthorityPda",
+   "msg": "Invalid authority pda"
+  },
+  {
+   "code": 6018,
+   "name": "InvalidSwapAuthority",
+   "msg": "Invalid swap authority"
+  },
+  {
+   "code": 6019,
+   "name": "InvalidProgramId",
+   "msg": "Invalid program id"
+  },
+  {
+   "code": 6020,
+   "name": "InvalidPool",
+   "msg": "Invalid pool"
+  },
+  {
+   "code": 6021,
+   "name": "InvalidTokenMint",
+   "msg": "Invalid token mint"
+  },
+  {
+   "code": 6022,
+   "name": "CalculationError",
+   "msg": "Calculation error"
+  },
+  {
+   "code": 6023,
+   "name": "InvalidSanctumLstStateListData",
+   "msg": "Invalid sanctum lst state list data"
+  },
+  {
+   "code": 6024,
+   "name": "InvalidSanctumLstStateListIndex",
+   "msg": "Invalid sanctum lst state list index"
+  },
+  {
+   "code": 6025,
+   "name": "InvalidSanctumSwapAccounts",
+   "msg": "Invalid sanctum swap accounts"
+  },
+  {
+   "code": 6026,
+   "name": "InvalidSwapAuthorityAccounts",
+   "msg": "Invalid swap authority account"
+  },
+  {
+   "code": 6027,
+   "name": "InvalidBridgeSeed",
+   "msg": "Bridge Seed Error"
+  },
+  {
+   "code": 6028,
+   "name": "InvalidBundleInput",
+   "msg": "Invalid accounts and instruction length"
+  },
+  {
+   "code": 6029,
+   "name": "MissingSaAccount",
+   "msg": "SA is required"
+  },
+  {
+   "code": 6030,
+   "name": "InvalidPlatformFeeRate",
+   "msg": "Invalid platform fee rate"
+  },
+  {
+   "code": 6031,
+   "name": "AmountOutMustBeGreaterThanZero",
+   "msg": "Amount out must be greater than 0"
+  },
+  {
+   "code": 6032,
+   "name": "InvalidDampingTerm",
+   "msg": "Invalid DampingTerm"
+  },
+  {
+   "code": 6033,
+   "name": "InvalidMint",
+   "msg": "Invalid mint"
+  },
+  {
+   "code": 6034,
+   "name": "InvalidPlatformFeeAmount",
+   "msg": "Invalid platform fee amount"
+  },
+  {
+   "code": 6035,
+   "name": "InvalidFeeTokenAccount",
+   "msg": "Invalid fee token account"
+  },
+  {
+   "code": 6036,
+   "name": "InvalidSaAuthority",
+   "msg": "Invalid sa authority"
+  },
+  {
+   "code": 6037,
+   "name": "CommissionAccountIsNone",
+   "msg": "Commission account is none"
+  },
+  {
+   "code": 6038,
+   "name": "PlatformFeeAccountIsNone",
+   "msg": "Platform fee account is none"
+  },
+  {
+   "code": 6039,
+   "name": "TrimAccountIsNone",
+   "msg": "Trim account is none"
+  },
+  {
+   "code": 6040,
+   "name": "ChargeAccountIsNone",
+   "msg": "Charge account is none"
+  },
+  {
+   "code": 6041,
+   "name": "InvalidFeeAccount",
+   "msg": "Invalid fee account"
+  },
+  {
+   "code": 6042,
+   "name": "InvalidSourceTokenSa",
+   "msg": "Invalid source token sa"
+  },
+  {
+   "code": 6043,
+   "name": "SaAuthorityIsNone",
+   "msg": "Sa authority is none"
+  },
+  {
+   "code": 6044,
+   "name": "SourceTokenSaIsNone",
+   "msg": "Source token sa is none"
+  },
+  {
+   "code": 6045,
+   "name": "SourceTokenProgramIsNone",
+   "msg": "Source token program is none"
+  },
+  {
+   "code": 6046,
+   "name": "DestinationTokenSaIsNone",
+   "msg": "Destination token sa is none"
+  },
+  {
+   "code": 6047,
+   "name": "DestinationTokenProgramIsNone",
+   "msg": "Destination token program is none"
+  },
+  {
+   "code": 6048,
+   "name": "ResultMustBeGreaterThanZero",
+   "msg": "Calculation result must be greater than zero"
+  },
+  {
+   "code": 6049,
+   "name": "InvalidAccountData",
+   "msg": "Invalid account data"
+  },
+  {
+   "code": 6050,
+   "name": "InvalidRfqParameters",
+   "msg": "Invalid RFQ parameters"
+  },
+  {
+   "code": 6051,
+   "name": "TobAuthorityPdaRequired",
+   "msg": "TOB mode requires authority PDA"
+  },
+  {
+   "code": 6052,
+   "name": "TobWsolSaRequired",
+   "msg": "TOB mode with WSOL fees requires wsol_sa account"
+  },
+  {
+   "code": 6053,
+   "name": "InvalidWsolSa",
+   "msg": "Invalid WSOL SA account"
+  },
+  {
+   "code": 6054,
+   "name": "InvalidTrimAccount",
+   "msg": "Invalid trim account"
+  },
+  {
+   "code": 6055,
+   "name": "InvalidChargeAccount",
+   "msg": "Invalid charge account"
+  },
+  {
+   "code": 6056,
+   "name": "InvalidCommissionAccount",
+   "msg": "Invalid commission account"
+  },
+  {
+   "code": 6057,
+   "name": "InvalidPlatformFeeAccount",
+   "msg": "Invalid platform fee account"
+  },
+  {
+   "code": 6058,
+   "name": "InvalidActualAmountIn",
+   "msg": "Invalid actual amount in"
+  },
+  {
+   "code": 6059,
+   "name": "UnexpectedSaTokenAccount",
+   "msg": "Unexpected SA token account in CPI"
+  },
+  {
+   "code": 6060,
+   "name": "InvalidSourceTokenSaMint",
+   "msg": "Invalid source token sa mint"
+  },
+  {
+   "code": 6061,
+   "name": "InvalidDestinationTokenSaMint",
+   "msg": "Invalid destination token sa mint"
+  },
+  {
+   "code": 6062,
+   "name": "AdapterAbort",
+   "msg": "Adapter abort"
+  },
+  {
+   "code": 6063,
+   "name": "InsufficientFunds",
+   "msg": "Insufficient funds"
+  },
+  {
+   "code": 6064,
+   "name": "InvalidDiffLamports",
+   "msg": "Invalid diff lamports"
+  },
+  {
+   "code": 6065,
+   "name": "InvalidTokenProgram",
+   "msg": "Invalid token program"
+  },
+  {
+   "code": 6066,
+   "name": "InvalidSigner",
+   "msg": "Invalid signer"
+  },
+  {
+   "code": 6067,
+   "name": "InvalidAssociatedTokenProgram",
+   "msg": "Invalid associated token program"
+  },
+  {
+   "code": 6068,
+   "name": "SolReceiverMustBeSystemAccount",
+   "msg": "SOL receiver must be a system account"
+  },
+  {
+   "code": 6069,
+   "name": "InsufficientBalance",
+   "msg": "Insufficient balance for transfer"
+  },
+  {
+   "code": 6070,
+   "name": "SolReceiverRequiresAccCloseFlag",
+   "msg": "SOL receiver requires acc_close_flag to be true"
+  },
+  {
+   "code": 6071,
+   "name": "DestinationMustBeWsolForSolReceiver",
+   "msg": "Destination must be wSOL when sol_receiver is specified"
+  },
+  {
+   "code": 6072,
+   "name": "InvalidGoonfiParameters",
+   "msg": "Invalid Goonfi parameters"
+  },
+  {
+   "code": 6073,
+   "name": "InvalidTrimAmount",
+   "msg": "Invalid trim amount"
+  },
+  {
+   "code": 6074,
+   "name": "ReceiverMustBeTokenAccount",
+   "msg": "Receiver must be a token account for wrap operation"
+  },
+  {
+   "code": 6075,
+   "name": "ReceiverMustBeWsolAccount",
+   "msg": "Receiver must be a WSOL token account for wrap operation"
+  },
+  {
+   "code": 6076,
+   "name": "TokenProgramIsNone",
+   "msg": "Token program is none"
+  },
+  {
+   "code": 6077,
+   "name": "AssociatedTokenProgramIsNone",
+   "msg": "Associated token program is none"
+  },
+  {
+   "code": 6078,
+   "name": "SystemProgramIsNone",
+   "msg": "System program is none"
+  },
+  {
+   "code": 6079,
+   "name": "FeeRateTooHigh",
+   "msg": "Fee rate too high"
+  },
+  {
+   "code": 6080,
+   "name": "InvalidFeeRecipient",
+   "msg": "Invalid fee recipient account"
+  }
+ ],
+ "types": [
+  {
+   "name": "CompactSwapArgs",
+   "docs": [
+    "Compact single-route encoding for latency-sensitive router calls.",
+    "",
+    "This intentionally supports only one top-level route with up to `MAX_HOPS`",
+    "hops. The legacy `swap` instruction remains available for split routes and",
+    "Dex variants that carry payloads."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "amount_in",
+      "type": "u64"
+     },
+     {
+      "name": "min_return",
+      "type": "u64"
+     },
+     {
+      "name": "route_amount_in",
+      "type": "u64"
+     },
+     {
+      "name": "charge_on_input",
+      "type": "bool"
+     },
+     {
+      "name": "route_len",
+      "type": "u8"
+     },
+     {
+      "name": "route_dexes",
+      "type": {
+       "array": [
+        "u8",
+        3
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Dex",
+   "type": {
+    "kind": "enum",
+    "variants": [
+     {
+      "name": "SplTokenSwap"
+     },
+     {
+      "name": "StableSwap"
+     },
+     {
+      "name": "Whirlpool"
+     },
+     {
+      "name": "MeteoraDynamicpool"
+     },
+     {
+      "name": "RaydiumSwap"
+     },
+     {
+      "name": "RaydiumStableSwap"
+     },
+     {
+      "name": "RaydiumClmmSwap"
+     },
+     {
+      "name": "AldrinExchangeV1"
+     },
+     {
+      "name": "AldrinExchangeV2"
+     },
+     {
+      "name": "LifinityV1"
+     },
+     {
+      "name": "LifinityV2"
+     },
+     {
+      "name": "RaydiumClmmSwapV2"
+     },
+     {
+      "name": "FluxBeam"
+     },
+     {
+      "name": "MeteoraDlmm"
+     },
+     {
+      "name": "RaydiumCpmmSwap"
+     },
+     {
+      "name": "OpenBookV2"
+     },
+     {
+      "name": "WhirlpoolV2"
+     },
+     {
+      "name": "Phoenix"
+     },
+     {
+      "name": "ObricV2"
+     },
+     {
+      "name": "SanctumAddLiq"
+     },
+     {
+      "name": "SanctumRemoveLiq"
+     },
+     {
+      "name": "SanctumNonWsolSwap"
+     },
+     {
+      "name": "SanctumWsolSwap"
+     },
+     {
+      "name": "PumpfunBuy"
+     },
+     {
+      "name": "PumpfunSell"
+     },
+     {
+      "name": "StabbleSwap"
+     },
+     {
+      "name": "SanctumRouter"
+     },
+     {
+      "name": "MeteoraVaultDeposit"
+     },
+     {
+      "name": "MeteoraVaultWithdraw"
+     },
+     {
+      "name": "Saros"
+     },
+     {
+      "name": "MeteoraLst"
+     },
+     {
+      "name": "Solfi"
+     },
+     {
+      "name": "QualiaSwap"
+     },
+     {
+      "name": "Zerofi"
+     },
+     {
+      "name": "PumpfunammBuy"
+     },
+     {
+      "name": "PumpfunammSell"
+     },
+     {
+      "name": "Virtuals"
+     },
+     {
+      "name": "VertigoBuy"
+     },
+     {
+      "name": "VertigoSell"
+     },
+     {
+      "name": "PerpetualsAddLiq"
+     },
+     {
+      "name": "PerpetualsRemoveLiq"
+     },
+     {
+      "name": "PerpetualsSwap"
+     },
+     {
+      "name": "RaydiumLaunchpad"
+     },
+     {
+      "name": "LetsBonkFun"
+     },
+     {
+      "name": "Woofi"
+     },
+     {
+      "name": "MeteoraDbc"
+     },
+     {
+      "name": "MeteoraDlmmSwap2"
+     },
+     {
+      "name": "MeteoraDAMMV2"
+     },
+     {
+      "name": "Gavel"
+     },
+     {
+      "name": "BoopfunBuy"
+     },
+     {
+      "name": "BoopfunSell"
+     },
+     {
+      "name": "MeteoraDbc2"
+     },
+     {
+      "name": "GooseFX"
+     },
+     {
+      "name": "Dooar"
+     },
+     {
+      "name": "Numeraire"
+     },
+     {
+      "name": "SaberDecimalWrapperDeposit"
+     },
+     {
+      "name": "SaberDecimalWrapperWithdraw"
+     },
+     {
+      "name": "SarosDlmm"
+     },
+     {
+      "name": "OneDexSwap"
+     },
+     {
+      "name": "Manifest"
+     },
+     {
+      "name": "ByrealClmm"
+     },
+     {
+      "name": "PancakeSwapV3Swap"
+     },
+     {
+      "name": "PancakeSwapV3SwapV2"
+     },
+     {
+      "name": "Tessera"
+     },
+     {
+      "name": "SolRfq",
+      "fields": [
+       {
+        "name": "rfq_id",
+        "type": "u64"
+       },
+       {
+        "name": "expected_maker_amount",
+        "type": "u64"
+       },
+       {
+        "name": "expected_taker_amount",
+        "type": "u64"
+       },
+       {
+        "name": "maker_send_amount",
+        "type": "u64"
+       },
+       {
+        "name": "taker_send_amount",
+        "type": "u64"
+       },
+       {
+        "name": "expiry",
+        "type": "u64"
+       },
+       {
+        "name": "maker_use_native_sol",
+        "type": "bool"
+       },
+       {
+        "name": "taker_use_native_sol",
+        "type": "bool"
+       }
+      ]
+     },
+     {
+      "name": "PumpfunBuy2"
+     },
+     {
+      "name": "PumpfunammBuy2"
+     },
+     {
+      "name": "Humidifi"
+     },
+     {
+      "name": "HeavenBuy"
+     },
+     {
+      "name": "HeavenSell"
+     },
+     {
+      "name": "SolfiV2"
+     },
+     {
+      "name": "PumpfunBuy3"
+     },
+     {
+      "name": "PumpfunSell3"
+     },
+     {
+      "name": "PumpfunammBuy3"
+     },
+     {
+      "name": "PumpfunammSell3"
+     },
+     {
+      "name": "Goonfi"
+     },
+     {
+      "name": "MoonitBuy"
+     },
+     {
+      "name": "MoonitSell"
+     },
+     {
+      "name": "Trends"
+     },
+     {
+      "name": "RaydiumSwapV2"
+     },
+     {
+      "name": "Whalestreet"
+     },
+     {
+      "name": "SugarMoneyBuy",
+      "fields": [
+       {
+        "name": "bonding_curve_bump",
+        "type": "u8"
+       },
+       {
+        "name": "bonding_curve_sol_associated_account_bump",
+        "type": "u8"
+       }
+      ]
+     },
+     {
+      "name": "SugarMoneySell",
+      "fields": [
+       {
+        "name": "bonding_curve_bump",
+        "type": "u8"
+       },
+       {
+        "name": "bonding_curve_sol_associated_account_bump",
+        "type": "u8"
+       }
+      ]
+     },
+     {
+      "name": "MeteoraDAMMV2Swap2"
+     },
+     {
+      "name": "AlphaQ"
+     },
+     {
+      "name": "FutarchyAmm"
+     },
+     {
+      "name": "PumpfunSell2"
+     },
+     {
+      "name": "HumidifiSwap2",
+      "fields": [
+       {
+        "name": "swap_id",
+        "type": "u64"
+       }
+      ]
+     },
+     {
+      "name": "Scorch",
+      "fields": [
+       {
+        "name": "id",
+        "type": "u128"
+       }
+      ]
+     },
+     {
+      "name": "JupiterLendDeposit"
+     },
+     {
+      "name": "JupiterLendRedeem"
+     },
+     {
+      "name": "TaurusFi"
+     },
+     {
+      "name": "BisonFi"
+     },
+     {
+      "name": "GoonfiV2"
+     },
+     {
+      "name": "Quantum"
+     },
+     {
+      "name": "BoopfunBuy2"
+     },
+     {
+      "name": "BoopfunSell2"
+     },
+     {
+      "name": "ByrealClmm2"
+     },
+     {
+      "name": "Dooar2"
+     },
+     {
+      "name": "HeavenBuy2"
+     },
+     {
+      "name": "HeavenSell2"
+     },
+     {
+      "name": "MoonitBuy2"
+     },
+     {
+      "name": "MoonitSell2"
+     },
+     {
+      "name": "SaberDecimalWrapperDeposit2"
+     },
+     {
+      "name": "SaberDecimalWrapperWithdraw2"
+     },
+     {
+      "name": "PumpfunBuyV2"
+     },
+     {
+      "name": "PumpfunSellV2"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Route",
+   "docs": [
+    "\u5355\u8df3\u5355 DEX\uff1a\u6574\u7b14 `amount_in` \u7ecf\u8be5 hop \u7684 `dex` \u7ee7\u7eed\u8def\u7531\uff08\u4e0d\u518d\u652f\u6301 hop \u5185\u591a\u6c60\u6309\u6743\u91cd\u62c6\u5206\uff09\u3002"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "dex",
+      "type": {
+       "defined": {
+        "name": "Dex"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "RouterFeeConfig",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "fee_recipient",
+      "type": "pubkey"
+     },
+     {
+      "name": "fee_rate",
+      "type": "u16"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "SwapArgs",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "amount_in",
+      "type": "u64"
+     },
+     {
+      "name": "min_return",
+      "type": "u64"
+     },
+     {
+      "name": "amounts",
+      "type": {
+       "vec": "u64"
+      }
+     },
+     {
+      "name": "routes",
+      "type": {
+       "vec": {
+        "vec": {
+         "defined": {
+          "name": "Route"
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "SwapEvent",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "dex",
+      "type": {
+       "defined": {
+        "name": "Dex"
+       }
+      }
+     },
+     {
+      "name": "amount_in",
+      "type": "u64"
+     },
+     {
+      "name": "amount_out",
+      "type": "u64"
+     }
+    ]
+   }
+  }
+ ],
+ "constants": [
+  {
+   "name": "SEED_SA",
+   "type": "bytes",
+   "value": "[114, 111, 117, 116, 101, 114, 95, 115, 97]"
+  }
+ ]
+}

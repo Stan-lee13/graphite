@@ -319,3 +319,112 @@ fn resolution_is_deterministic() {
     let b = resolve(metas);
     assert_eq!(a, b);
 }
+
+/// Round 18: an account the manifest never declared has no declared
+/// privilege, so there is nothing for it to violate.
+///
+/// `remaining_accounts` is how a large part of Solana works — a route hop's
+/// extra venue accounts, a batch refresh's reserve list, a router's fee
+/// accounts — and every one of them is normally writable. Because an extra
+/// slot fell through to the `("extra", false, false, ...)` placeholder, the
+/// `!is_writable && real.is_writable` comparison fired on the placeholder
+/// rather than on a declaration, and the result was a HARD BLOCK
+/// (`AccountIdentityMismatch`) on ordinary traffic. Measured over 10,617
+/// real mainnet transactions on 2026-09-22: 429 blocks on Pump AMM, 336 on
+/// Pump.fun, 199 on the System Program, 72 on SPL Token — all on
+/// transactions the chain had executed successfully.
+///
+/// The extra accounts remain visible as `role: extra` and still feed the
+/// drainer and account-count heuristics, which is where an account the
+/// manifest did not expect actually belongs.
+#[test]
+fn an_undeclared_extra_account_has_no_privilege_to_mismatch() {
+    let mut registry = load_seed_manifests();
+    registry
+        .load_from_json(&manifest_json())
+        .expect("test manifest must load");
+
+    let mut addresses = vec![
+        AUTHORITY.to_string(),
+        READONLY_ACCOUNT.to_string(),
+        WRITABLE_ACCOUNT.to_string(),
+    ];
+    // Two accounts past the end of the manifest's three declared slots.
+    addresses.push("11111111111111111111111111111111".to_string());
+    addresses.push("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string());
+
+    let mut metas = matching_metas();
+    // Both extras are writable, and one of them signs — exactly what a
+    // route hop or a batch instruction supplies.
+    metas.push(RealAccountMeta {
+        is_signer: false,
+        is_writable: true,
+    });
+    metas.push(RealAccountMeta {
+        is_signer: true,
+        is_writable: true,
+    });
+
+    let input = AccountResolutionInput {
+        program_id: TEST_PROGRAM.to_string(),
+        instruction_discriminator: "bbbbbbbbbbbbbbbb".to_string(),
+        account_addresses: addresses,
+        instruction_data: None,
+        real_account_metas: metas,
+    };
+    let resolved = resolve_accounts(&input, &registry)
+        .expect("resolution must succeed")
+        .resolved_accounts;
+
+    assert_eq!(resolved.len(), 5);
+    for (i, a) in resolved.iter().enumerate().skip(3) {
+        assert_eq!(a.role, "extra", "slot {i} should be an undeclared extra");
+        assert!(
+            !a.privilege_mismatch,
+            "slot {i} is not declared by the manifest, so it cannot mismatch a declared privilege"
+        );
+    }
+    // The declared slots are untouched by this: they still match.
+    for (i, a) in resolved.iter().take(3).enumerate() {
+        assert!(
+            !a.privilege_mismatch,
+            "declared slot {i} matches and must not flag"
+        );
+    }
+}
+
+/// ...and the declared slots keep failing when they should, with extras present.
+#[test]
+fn extras_do_not_mask_a_real_privilege_mismatch_on_a_declared_slot() {
+    let mut registry = load_seed_manifests();
+    registry
+        .load_from_json(&manifest_json())
+        .expect("test manifest must load");
+
+    let mut metas = matching_metas();
+    metas[0].is_signer = false; // the required signer did not sign
+    metas.push(RealAccountMeta {
+        is_signer: false,
+        is_writable: true,
+    });
+
+    let input = AccountResolutionInput {
+        program_id: TEST_PROGRAM.to_string(),
+        instruction_discriminator: "bbbbbbbbbbbbbbbb".to_string(),
+        account_addresses: vec![
+            AUTHORITY.to_string(),
+            READONLY_ACCOUNT.to_string(),
+            WRITABLE_ACCOUNT.to_string(),
+            "11111111111111111111111111111111".to_string(),
+        ],
+        instruction_data: None,
+        real_account_metas: metas,
+    };
+    let resolved = resolve_accounts(&input, &registry)
+        .expect("resolution must succeed")
+        .resolved_accounts;
+    assert!(
+        resolved[0].privilege_mismatch,
+        "a declared signer that did not sign must still be flagged when extras follow it"
+    );
+}

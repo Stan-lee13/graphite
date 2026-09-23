@@ -1053,7 +1053,7 @@ fn test_manifest_injection_extra_instruction_not_loaded() {
     //
     // What used to be a real Phase-1 vulnerability is now closed for the
     // registry that actually matters. A registry built by
-    // `load_seed_manifests()` marks the 33 shipped manifests as the audited
+    // `load_seed_manifests()` marks the shipped manifests as the audited
     // trust anchor and REFUSES to replace them
     // (`ManifestError::SeedManifestImmutable`) — previously this same
     // `insert()` silently overwrote the real SPL Token definition, letting an

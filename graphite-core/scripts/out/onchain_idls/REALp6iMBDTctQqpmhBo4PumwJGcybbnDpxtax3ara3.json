@@ -1,0 +1,544 @@
+{
+ "address": "REALp6iMBDTctQqpmhBo4PumwJGcybbnDpxtax3ara3",
+ "metadata": {
+  "name": "amm_routing",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "close_pool_config",
+   "docs": [
+    "Close an existing pool configuration"
+   ],
+   "discriminator": [
+    61,
+    235,
+    59,
+    97,
+    37,
+    93,
+    72,
+    161
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "docs": [
+      "only super admin can create admin group"
+     ],
+     "writable": true,
+     "signer": true,
+     "address": "AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o"
+    },
+    {
+     "name": "pool_config",
+     "docs": [
+      "amm admin group account to store admin permissions."
+     ],
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "create_pool_config",
+   "docs": [
+    "Create a new pool configuration"
+   ],
+   "discriminator": [
+    35,
+    169,
+    128,
+    194,
+    191,
+    226,
+    198,
+    6
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "docs": [
+      "only super admin can create admin group"
+     ],
+     "writable": true,
+     "signer": true,
+     "address": "AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o"
+    },
+    {
+     "name": "pool_id",
+     "docs": [
+      "The pool id to create"
+     ]
+    },
+    {
+     "name": "pool_config",
+     "docs": [
+      "Initialize amm admin group account to store admin permissions."
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "pool_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "params",
+     "type": {
+      "defined": {
+       "name": "CreatePoolConfigParams"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "routing_v6",
+   "docs": [
+    "Route a swap through multiple DEXes"
+   ],
+   "discriminator": [
+    156,
+    231,
+    12,
+    223,
+    43,
+    185,
+    96,
+    148
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "docs": [
+      "\u7528\u6237\u8d26\u6237\uff0c\u652f\u4ed8\u4ea4\u6613\u8d39\u7528\u548cSOL\u8f93\u5165"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "input_token_account",
+     "docs": [
+      "\u7528\u6237\u7684\u8f93\u5165\u4ee3\u5e01\u8d26\u6237\uff08ATA\u6216\u4e34\u65f6WSOL\uff09"
+     ],
+     "writable": true
+    },
+    {
+     "name": "input_token_mint",
+     "docs": [
+      "\u8f93\u5165\u4ee3\u5e01\u7684\u94f8\u5e01\u8d26\u6237"
+     ]
+    },
+    {
+     "name": "token_program",
+     "docs": [
+      "SPL\u4ee3\u5e01\u7a0b\u5e8f"
+     ],
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "token_program_2022",
+     "docs": [
+      "SPL\u4ee3\u5e012022\u7a0b\u5e8f"
+     ],
+     "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "\u7cfb\u7edf\u7a0b\u5e8f"
+     ],
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "associated_token_program",
+     "docs": [
+      "\u5173\u8054\u4ee3\u5e01\u7a0b\u5e8f\uff0c\u7528\u4e8e\u521b\u5efaATA\u8d26\u6237"
+     ],
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "memo_program",
+     "docs": [
+      "memo\u7a0b\u5e8f"
+     ],
+     "address": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount_in",
+     "type": "u64"
+    },
+    {
+     "name": "amount_out_minimum",
+     "type": "u64"
+    },
+    {
+     "name": "swap_account_counts",
+     "type": "bytes"
+    }
+   ]
+  },
+  {
+   "name": "smart_swap_v3",
+   "discriminator": [
+    30,
+    241,
+    99,
+    220,
+    222,
+    218,
+    18,
+    51
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "docs": [
+      "\u7528\u6237\u8d26\u6237\uff0c\u652f\u4ed8\u4ea4\u6613\u8d39\u7528\u548cSOL\u8f93\u5165"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "dex_program"
+    },
+    {
+     "name": "pool_state",
+     "writable": true
+    },
+    {
+     "name": "input_vault",
+     "docs": [
+      "\u8f93\u5165\u4ee3\u5e01\u4fdd\u7ba1\u5e93"
+     ],
+     "writable": true
+    },
+    {
+     "name": "output_vault",
+     "docs": [
+      "\u8f93\u51fa\u4ee3\u5e01\u4fdd\u7ba1\u5e93"
+     ],
+     "writable": true
+    },
+    {
+     "name": "observation_state",
+     "writable": true
+    },
+    {
+     "name": "input_mint",
+     "docs": [
+      "\u8f93\u5165\u4ee3\u5e01\u7684\u94f8\u5e01\u8d26\u6237"
+     ]
+    },
+    {
+     "name": "output_mint",
+     "docs": [
+      "\u8f93\u51fa\u4ee3\u5e01\u7684\u94f8\u5e01\u8d26\u6237"
+     ]
+    },
+    {
+     "name": "user_input_token_account",
+     "docs": [
+      "\u7528\u6237\u7684\u8f93\u5165\u4ee3\u5e01\u8d26\u6237\uff08ATA\u6216\u4e34\u65f6WSOL\uff09"
+     ],
+     "writable": true
+    },
+    {
+     "name": "user_output_token_account",
+     "docs": [
+      "\u7528\u6237\u7684\u8f93\u51fa\u4ee3\u5e01\u8d26\u6237\uff08ATA\u6216\u4e34\u65f6WSOL\uff09"
+     ],
+     "writable": true
+    },
+    {
+     "name": "token_program",
+     "docs": [
+      "SPL\u4ee3\u5e01\u7a0b\u5e8f"
+     ],
+     "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    },
+    {
+     "name": "token_program_2022",
+     "docs": [
+      "SPL\u4ee3\u5e012022\u7a0b\u5e8f"
+     ],
+     "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "\u7cfb\u7edf\u7a0b\u5e8f"
+     ],
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "associated_token_program",
+     "docs": [
+      "\u5173\u8054\u4ee3\u5e01\u7a0b\u5e8f\uff0c\u7528\u4e8e\u521b\u5efaATA\u8d26\u6237"
+     ],
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "memo_program",
+     "docs": [
+      "memo\u7a0b\u5e8f"
+     ],
+     "address": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "other_amount_threshold",
+     "type": "u64"
+    },
+    {
+     "name": "sqrt_price_limit_x64",
+     "type": "u128"
+    },
+    {
+     "name": "is_base_input",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "update_pool_config",
+   "docs": [
+    "Update an existing pool configuration"
+   ],
+   "discriminator": [
+    68,
+    236,
+    203,
+    122,
+    179,
+    62,
+    234,
+    252
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "docs": [
+      "only super admin can create admin group"
+     ],
+     "signer": true,
+     "address": "AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o"
+    },
+    {
+     "name": "pool_config",
+     "docs": [
+      "amm admin group account to store admin permissions."
+     ],
+     "writable": true
+    }
+   ],
+   "args": [
+    {
+     "name": "params",
+     "type": {
+      "defined": {
+       "name": "UpdatePoolConfigParams"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "PoolConfig",
+   "discriminator": [
+    26,
+    108,
+    14,
+    123,
+    116,
+    230,
+    129,
+    43
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "TooLittleOutputReceived",
+   "msg": "Too little output received"
+  },
+  {
+   "code": 6001,
+   "name": "InvalidAccountInfo",
+   "msg": "Invalid account info"
+  },
+  {
+   "code": 6002,
+   "name": "InvalidSwapCount",
+   "msg": "Invalid swap count"
+  },
+  {
+   "code": 6003,
+   "name": "AccountNotFound",
+   "msg": "Account not found"
+  },
+  {
+   "code": 6004,
+   "name": "InvalidAmount",
+   "msg": "Invalid amount"
+  },
+  {
+   "code": 6005,
+   "name": "InvalidAccountCount",
+   "msg": "Invalid account count"
+  },
+  {
+   "code": 6006,
+   "name": "InvalidDexType",
+   "msg": "Invalid dex type"
+  },
+  {
+   "code": 6007,
+   "name": "InvalidMintOwner",
+   "msg": "Invalid mint owner - must be Token or Token2022 program"
+  },
+  {
+   "code": 6008,
+   "name": "NotApproved",
+   "msg": "Not approved"
+  },
+  {
+   "code": 6009,
+   "name": "InvalidFeeRate",
+   "msg": "Invalid fee rate"
+  }
+ ],
+ "types": [
+  {
+   "name": "CreatePoolConfigParams",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "fee_receiver",
+      "docs": [
+       "The account that will receive fees"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "fee_rate",
+      "docs": [
+       "The fee rate for the pool"
+      ],
+      "type": "u32"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PoolConfig",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "pool_id",
+      "docs": [
+       "byreal clmm's pool id"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "fee_receiver",
+      "docs": [
+       "fee receiver address"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "fee_rate",
+      "docs": [
+       "fee rate in basis points"
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "padding1",
+      "docs": [
+       "padding for alignment"
+      ],
+      "type": {
+       "array": [
+        "u8",
+        28
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "UpdatePoolConfigParams",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "fee_receiver",
+      "docs": [
+       "The account that will receive fees"
+      ],
+      "type": {
+       "option": "pubkey"
+      }
+     },
+     {
+      "name": "fee_rate",
+      "docs": [
+       "The fee rate for the pool"
+      ],
+      "type": {
+       "option": "u32"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

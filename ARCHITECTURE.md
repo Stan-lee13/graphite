@@ -5,7 +5,7 @@
 Graphite is a deterministic semantic verification engine for Solana. It verifies
 that transactions constructed by AI agents match their declared intent by checking
 program IDs, CPI chains, account structures, cross-instruction patterns, and risk
-patterns against a curated knowledge base of 33 protocol manifests covering 803
+patterns against a knowledge base of 129 protocol manifests covering 3,186
 instructions.
 
 **Honest framing:** Graphite performs deterministic pattern matching on program
@@ -61,6 +61,54 @@ Grouping is per PARENT rather than across the whole tree, because that is what s
 
 The thresholds are a judgment call, stated as one. There was no corpus of real CPI traces to calibrate against — five fixtures carry a trace and none carry discriminators — so twelve is set well above any routine per-parent fan-out (a route hop makes one or two token calls; an ATA batch a handful), and the warning at six surfaces the shape long before the block. The residual gap is a deliberately shallow bush: three known intermediate programs each calling the target three times evades both the path rule and the per-parent rule, and is genuinely route-shaped.
 
+### The trust tier a manifest may declare (Round 18)
+
+`trust_tier` in a manifest sets the confidence ceiling that decides whether a
+program can be used at all under a strict profile: `OfficialManifest` caps
+confidence at 0.75, `BattleTested` at 1.0, and the Treasury and Enterprise
+profiles ask for 0.95 and 0.99. The tier is therefore the difference between a
+protocol an agent can transact with and one it cannot.
+
+Until Round 18 that tier was a string in a JSON file and nothing checked it.
+Eight manifests declared `BattleTested` — the tier the engine's own definition
+reserves for 1,000+ verified transactions — and the engine believed all eight,
+which is P7 ("computed from evidence, never asserted") applied to every source
+of evidence except the document in this repository.
+
+`protocols/battle_tested_evidence.json` now carries a mainnet measurement for
+every seed manifest, and `load_seed_manifests` lowers a declared `BattleTested`
+to `OfficialManifest` unless that record shows all three of:
+
+1. the program account exists and is **executable**;
+2. at least **1,000 successful transactions** carry its address over a window
+   the record states — the same 1,000 that
+   `semantic_graph_store::thresholds::BATTLE_TESTED_TX` demands of evidence the
+   node earns at runtime;
+3. of at least **20 instructions really observed on chain**, the manifest can
+   name at least **90%** by the same prefix rule the engine uses. A transaction
+   count cannot show this: it is the axis that catches a manifest describing a
+   surface the deployed program has moved past.
+
+The gate reads the raw measurements, never the file's own
+`meets_battle_tested` field, so a hand-edited boolean promotes nothing. The
+measurements are read-only and reproducible
+(`scripts/battle_tested_census.py`); `tests/battle_tested_evidence.rs` proves
+each axis is load-bearing and that every seed manifest has a record at all.
+
+**What the tier does and does not say.** It says the program is real, heavily
+used, and accurately described here. It does not say the protocol is safe: a
+heavily used malicious program would clear the same bar. What judges that is
+L4, L5 and L7, which run identically at every tier.
+
+Two measurement details matter when reading the file. `getSignaturesForAddress`
+returns transactions that *carry* an address, not only those that invoke it —
+Drift's recent signatures are mostly transactions that load its address through
+a lookup table and call something else — so volume alone cannot establish use,
+and the decode axis is what does. And an Anchor program emits events by CPI-ing
+itself with the discriminator `e445a52e51cb9a1d`; that is the program talking
+to the log, not an instruction any caller sends, so it is excluded from the
+decode denominator.
+
 ### Quarantine (Self-Healing Semantic Graph, 3.8)
 
 An operator can withdraw a program from trust at any time. A quarantined program's tier is forced to `Unknown` and its verifications carry a `ProgramQuarantined` risk finding, which is a hard gate — a tier downgrade alone would still let a permissive profile through, which is not what an operator means when they pull the switch.
@@ -83,7 +131,7 @@ Reachable through `graphite quarantine add|lift|list` (operating on the server's
 
 Most account roles in an instruction are genuinely **externally-determined** — which token account to debit, who the recipient is — and cannot be pre-verified by any means; requiring a PDA seed or an expected address on every role would be both wrong (there is nothing to check against) and infeasible. But a large, high-value subset of roles are **fixed, well-known constants**: the SPL Token, Token-2022, System, Compute Budget, and Associated-Token-Account program IDs, and a manifest's own program self-reference (the `"{program_id}"` seed-template sentinel). These are neither a PDA (no seed formula exists) nor legitimately caller-chosen.
 
-`AccountRoleDef.expected_address` (a manifest-declared constant, or a small set of acceptable constants — e.g. a generic "token program" slot that legitimately accepts either classic SPL Token or Token-2022) lets the manifest pin these slots. Account resolution checks the supplied address against them and, on mismatch, sets `ResolvedAccount.expected_address_mismatch` — folded into the SAME hard-block risk finding (`AccountIdentityMismatch`) that a PDA mismatch already produces (Constitution P4). 542 account roles across 19 manifests are pinned this way as of this fix (`graphite-core/scripts/populate_expected_addresses.py` — rerun when onboarding a new protocol).
+`AccountRoleDef.expected_address` (a manifest-declared constant, or a small set of acceptable constants — e.g. a generic "token program" slot that legitimately accepts either classic SPL Token or Token-2022) lets the manifest pin these slots. Account resolution checks the supplied address against them and, on mismatch, sets `ResolvedAccount.expected_address_mismatch` — folded into the SAME hard-block risk finding (`AccountIdentityMismatch`) that a PDA mismatch already produces (Constitution P4). 542 account roles across 19 of the 129 manifests are pinned this way (`graphite-core/scripts/populate_expected_addresses.py` — rerun when onboarding a new protocol).
 
 `ResolvedAccount.identity` (`Pda` / `Constant` / `Unverified`) makes the **remaining, unavoidable trust boundary** visible rather than silently assumed safe: an externally-determined account (the large majority of roles) reports `Unverified` honestly — this is not a finding or a penalty, just disclosure (P12: absence of verification is not itself evidence of harm). Closing that remaining boundary for fund-critical externally-determined accounts (e.g. confirming a token account's on-chain owner matches the transaction signer) requires live account data and is tracked as a follow-up, not claimed here.
 
@@ -306,8 +354,8 @@ blockhash window between verification and execution.
 graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
-│   ├── protocols/          # 33 JSON protocol manifests (803 instructions)
-│   ├── tests/              # 1,422 tests (unit + adversarial + exploit + RPC trust boundary + real mainnet v0/ALT + cross-language corpus)
+│   ├── protocols/          # 129 JSON protocol manifests (3,186 instructions) + battle_tested_evidence.json
+│   ├── tests/              # 1,562 tests (unit + adversarial + exploit + RPC trust boundary + real mainnet v0/ALT + cross-language corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)

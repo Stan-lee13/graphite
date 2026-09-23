@@ -1,0 +1,661 @@
+{
+ "version": "0.4.0",
+ "name": "verifier",
+ "instructions": [
+  {
+   "name": "verify",
+   "docs": [
+    "Verifies a Chainlink Data Streams report is signed by the Decentralized Oracle Network (DON)."
+   ],
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "accessController",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "user",
+     "isMut": false,
+     "isSigner": true
+    },
+    {
+     "name": "configAccount",
+     "isMut": false,
+     "isSigner": false
+    }
+   ],
+   "args": [
+    {
+     "name": "signedReport",
+     "type": "bytes"
+    }
+   ]
+  },
+  {
+   "name": "setConfigWithActivationTime",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    }
+   ],
+   "args": [
+    {
+     "name": "signers",
+     "type": {
+      "vec": {
+       "array": [
+        "u8",
+        20
+       ]
+      }
+     }
+    },
+    {
+     "name": "f",
+     "type": "u8"
+    },
+    {
+     "name": "activationTime",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "setConfig",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    }
+   ],
+   "args": [
+    {
+     "name": "signers",
+     "type": {
+      "vec": {
+       "array": [
+        "u8",
+        20
+       ]
+      }
+     }
+    },
+    {
+     "name": "f",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "setConfigActive",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    }
+   ],
+   "args": [
+    {
+     "name": "donConfigIndex",
+     "type": "u64"
+    },
+    {
+     "name": "isActive",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "removeLatestConfig",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "setAccessController",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    },
+    {
+     "name": "accessController",
+     "isMut": false,
+     "isSigner": false,
+     "isOptional": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "initialize",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": true,
+     "isSigner": true
+    },
+    {
+     "name": "program",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "programData",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "systemProgram",
+     "isMut": false,
+     "isSigner": false
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "initializeAccountData",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    },
+    {
+     "name": "accessController",
+     "isMut": false,
+     "isSigner": false,
+     "isOptional": true
+    },
+    {
+     "name": "program",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "programData",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "systemProgram",
+     "isMut": false,
+     "isSigner": false
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "reallocAccount",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": true,
+     "isSigner": true
+    },
+    {
+     "name": "program",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "programData",
+     "isMut": false,
+     "isSigner": false
+    },
+    {
+     "name": "systemProgram",
+     "isMut": false,
+     "isSigner": false
+    }
+   ],
+   "args": [
+    {
+     "name": "len",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "transferOwnership",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    }
+   ],
+   "args": [
+    {
+     "name": "proposedOwner",
+     "type": "publicKey"
+    }
+   ]
+  },
+  {
+   "name": "acceptOwnership",
+   "accounts": [
+    {
+     "name": "verifierAccount",
+     "isMut": true,
+     "isSigner": false
+    },
+    {
+     "name": "owner",
+     "isMut": false,
+     "isSigner": true
+    }
+   ],
+   "args": []
+  }
+ ],
+ "accounts": [
+  {
+   "name": "VerifierAccount",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "version",
+      "type": "u8"
+     },
+     {
+      "name": "padding",
+      "type": {
+       "array": [
+        "u8",
+        7
+       ]
+      }
+     },
+     {
+      "name": "verifierAccountConfig",
+      "type": {
+       "defined": "VerifierAccountConfig"
+      }
+     },
+     {
+      "name": "donConfigs",
+      "type": {
+       "defined": "DonConfigs"
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "types": [
+  {
+   "name": "VerifierAccountConfig",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "owner",
+      "type": "publicKey"
+     },
+     {
+      "name": "proposedOwner",
+      "type": "publicKey"
+     },
+     {
+      "name": "accessController",
+      "type": "publicKey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "SigningKey",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "key",
+      "type": {
+       "array": [
+        "u8",
+        20
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "SigningKeys",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "xs",
+      "type": {
+       "array": [
+        {
+         "defined": "SigningKey"
+        },
+        31
+       ]
+      }
+     },
+     {
+      "name": "len",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "DonConfig",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "activationTime",
+      "type": "u32"
+     },
+     {
+      "name": "donConfigId",
+      "type": {
+       "array": [
+        "u8",
+        24
+       ]
+      }
+     },
+     {
+      "name": "f",
+      "type": "u8"
+     },
+     {
+      "name": "isActive",
+      "type": "u8"
+     },
+     {
+      "name": "padding",
+      "type": "u8"
+     },
+     {
+      "name": "signers",
+      "type": {
+       "defined": "SigningKeys"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "DonConfigs",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "len",
+      "type": "u16"
+     },
+     {
+      "name": "padding",
+      "type": {
+       "array": [
+        "u8",
+        6
+       ]
+      }
+     },
+     {
+      "name": "xs",
+      "type": {
+       "array": [
+        {
+         "defined": "DonConfig"
+        },
+        256
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "events": [
+  {
+   "name": "ConfigActivated",
+   "fields": [
+    {
+     "name": "donConfigId",
+     "type": "string",
+     "index": false
+    },
+    {
+     "name": "isActive",
+     "type": "bool",
+     "index": false
+    }
+   ]
+  },
+  {
+   "name": "ConfigRemoved",
+   "fields": [
+    {
+     "name": "donConfigId",
+     "type": "string",
+     "index": false
+    }
+   ]
+  },
+  {
+   "name": "ReportVerified",
+   "fields": [
+    {
+     "name": "feedId",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     },
+     "index": false
+    },
+    {
+     "name": "requester",
+     "type": "publicKey",
+     "index": false
+    }
+   ]
+  },
+  {
+   "name": "ConfigSet",
+   "fields": [
+    {
+     "name": "donConfigId",
+     "type": "string",
+     "index": false
+    },
+    {
+     "name": "signers",
+     "type": {
+      "vec": {
+       "array": [
+        "u8",
+        20
+       ]
+      }
+     },
+     "index": false
+    },
+    {
+     "name": "f",
+     "type": "u8",
+     "index": false
+    },
+    {
+     "name": "donConfigIndex",
+     "type": "u16",
+     "index": false
+    }
+   ]
+  },
+  {
+   "name": "AccessControllerSet",
+   "fields": [
+    {
+     "name": "accessController",
+     "type": "publicKey",
+     "index": false
+    }
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "ZeroAddress",
+   "msg": "Zero Address"
+  },
+  {
+   "code": 6001,
+   "name": "FaultToleranceMustBePositive",
+   "msg": "Fault tolerance must be a positive non-zero value"
+  },
+  {
+   "code": 6002,
+   "name": "ExcessSigners",
+   "msg": "Too many signers provided"
+  },
+  {
+   "code": 6003,
+   "name": "InsufficientSigners",
+   "msg": "Insufficient number of signers provided"
+  },
+  {
+   "code": 6004,
+   "name": "NonUniqueSignatures",
+   "msg": "Non-unique signatures provided"
+  },
+  {
+   "code": 6005,
+   "name": "BadActivationTime",
+   "msg": "Activation time cannot be in the future"
+  },
+  {
+   "code": 6006,
+   "name": "DonConfigAlreadyExists",
+   "msg": "DonConfig already exists"
+  },
+  {
+   "code": 6007,
+   "name": "BadVerification",
+   "msg": "Bad verification"
+  },
+  {
+   "code": 6008,
+   "name": "MismatchedSignatures",
+   "msg": "Mismatched signatures"
+  },
+  {
+   "code": 6009,
+   "name": "NoSigners",
+   "msg": "No Signers"
+  },
+  {
+   "code": 6010,
+   "name": "DonConfigDoesNotExist",
+   "msg": "DonConfig does not exist"
+  },
+  {
+   "code": 6011,
+   "name": "InvalidPDA",
+   "msg": "Invalid PDA"
+  },
+  {
+   "code": 6012,
+   "name": "Unauthorized",
+   "msg": "Unauthorized"
+  },
+  {
+   "code": 6013,
+   "name": "InvalidAccessController",
+   "msg": "Invalid Access Controller"
+  },
+  {
+   "code": 6014,
+   "name": "InvalidConfigAccount",
+   "msg": "Invalid Config Account"
+  },
+  {
+   "code": 6015,
+   "name": "MaxNumberOfConfigsReached",
+   "msg": "Max number of configs reached"
+  },
+  {
+   "code": 6016,
+   "name": "ConfigDeactivated",
+   "msg": "Config is deactivated"
+  },
+  {
+   "code": 6017,
+   "name": "InvalidInputs",
+   "msg": "Invalid inputs"
+  }
+ ]
+}

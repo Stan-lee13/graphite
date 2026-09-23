@@ -1,0 +1,1811 @@
+{
+ "address": "E7vM2tFMoHU49pqTgaoGDcCRAFGYs2w6rKPsRQJuukgA",
+ "metadata": {
+  "name": "bridge_cards",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "add_or_update_merchant_debitor",
+   "docs": [
+    "* Add or update a merchant debitor account.\n     * Debitor accounts are authorized to initiate transfers from user delegates.\n     *\n     * @param ctx Context containing required accounts\n     * @param merchant_id Unique identifier for the merchant\n     * @param debitor_allowed Whether the debitor account should be allowed to initiate transfers"
+   ],
+   "discriminator": [
+    146,
+    231,
+    125,
+    152,
+    248,
+    31,
+    184,
+    177
+   ],
+   "accounts": [
+    {
+     "name": "manager",
+     "docs": [
+      "The merchant manager account, must match manager in manager_state",
+      "Required permissions: Signer"
+     ],
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "docs": [
+      "Account that will pay for PDA creation and rent",
+      "Required permissions: Signer, Mutable (for rent payment)"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "manager_state",
+     "docs": [
+      "PDA storing the merchant manager's authorization",
+      "Seeds: [MERCHANT_MANAGER_SEED, merchant_id]",
+      "Required permissions: Read-only"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         101,
+         114,
+         99,
+         104,
+         97,
+         110,
+         116,
+         95,
+         109,
+         97,
+         110,
+         97,
+         103,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "debitor_state",
+     "docs": [
+      "PDA storing the debitor's authorization state",
+      "Seeds: [MERCHANT_DEBITOR_SEED, merchant_id, debitor]",
+      "Space: Discriminator + Boolean",
+      "Required permissions: Mutable if new, Read-only if existing"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         101,
+         114,
+         99,
+         104,
+         97,
+         110,
+         116,
+         95,
+         100,
+         101,
+         98,
+         105,
+         116,
+         111,
+         114
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       },
+       {
+        "kind": "account",
+        "path": "debitor"
+       }
+      ]
+     }
+    },
+    {
+     "name": "debitor",
+     "docs": [
+      "Account to be authorized as a debitor",
+      "Not required to sign to allow manager to revoke access",
+      "Required permissions: None (read-only validation)"
+     ]
+    },
+    {
+     "name": "mint",
+     "docs": [
+      "The token mint account that this debitor is authorized for",
+      "Required permissions: None (read-only validation)"
+     ]
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "Required for account creation"
+     ],
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "merchant_id",
+     "type": "u64"
+    },
+    {
+     "name": "debitor_allowed",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "add_or_update_merchant_destination",
+   "docs": [
+    "* Add or update a merchant destination account.\n     * Destination accounts are token accounts authorized to receive transfers for a merchant.\n     *\n     * @param ctx Context containing required accounts\n     * @param merchant_id Unique identifier for the merchant\n     * @param destination_allowed Whether the destination account should be allowed to receive funds"
+   ],
+   "discriminator": [
+    245,
+    1,
+    42,
+    181,
+    74,
+    111,
+    219,
+    163
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "docs": [
+      "The program admin account, must match admin stored in state",
+      "Required permissions: Signer"
+     ],
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "docs": [
+      "Account that will pay for PDA creation and rent",
+      "Required permissions: Signer, Mutable (for rent payment)"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "state",
+     "docs": [
+      "Global program state storing the admin public key",
+      "Seeds: [STATE_SEED]",
+      "Required permissions: Read-only"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "destination_state",
+     "docs": [
+      "PDA storing the destination's authorization state",
+      "Seeds: [MERCHANT_DESTINATION_SEED, merchant_id, mint, destination_token_account]",
+      "Space: Discriminator + Boolean",
+      "Required permissions: Mutable if new, Read-only if existing"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         101,
+         114,
+         99,
+         104,
+         97,
+         110,
+         116,
+         95,
+         100,
+         101,
+         115,
+         116,
+         105,
+         110,
+         97,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       },
+       {
+        "kind": "account",
+        "path": "destination_token_account"
+       }
+      ]
+     }
+    },
+    {
+     "name": "destination_token_account",
+     "docs": [
+      "Token account to be allowlisted as a destination",
+      "Must use the specified mint",
+      "Required permissions: None (read-only validation)"
+     ]
+    },
+    {
+     "name": "mint",
+     "docs": [
+      "Mint of the destination token account",
+      "Used for PDA derivation and account validation",
+      "Required permissions: None (read-only validation)"
+     ]
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "Required for account creation"
+     ],
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "merchant_id",
+     "type": "u64"
+    },
+    {
+     "name": "destination_allowed",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "add_or_update_merchant_manager",
+   "docs": [
+    "* Add or update a merchant manager.\n     * Managers can configure delegate and destination settings for their merchant.\n     *\n     * @param ctx Context containing required accounts\n     * @param merchant_id Unique identifier for the merchant"
+   ],
+   "discriminator": [
+    199,
+    36,
+    64,
+    77,
+    113,
+    190,
+    79,
+    156
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "docs": [
+      "The program admin account, must match admin stored in state",
+      "Required permissions: Signer"
+     ],
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "docs": [
+      "Account that will pay for PDA creation and rent",
+      "Required permissions: Signer, Mutable (for rent payment)"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "state",
+     "docs": [
+      "Global program state storing the admin public key",
+      "Seeds: [STATE_SEED]",
+      "Required permissions: Read-only"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "manager_state",
+     "docs": [
+      "PDA storing the merchant manager's authorization state",
+      "Seeds: [MERCHANT_MANAGER_SEED, merchant_id]",
+      "Space: Discriminator + Pubkey",
+      "Required permissions: Mutable if new, Read-only if existing"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         101,
+         114,
+         99,
+         104,
+         97,
+         110,
+         116,
+         95,
+         109,
+         97,
+         110,
+         97,
+         103,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "manager",
+     "docs": [
+      "Account to be set as the merchant manager",
+      "Not a signer to allow admin to revoke access without manager cooperation",
+      "Required permissions: None"
+     ]
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "Required for account creation"
+     ],
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "merchant_id",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "add_or_update_user_delegate",
+   "docs": [
+    "* Add or update a user delegate for a specific merchant.\n     * Delegates can initiate transfers on behalf of users within configured limits.\n     *\n     * @param ctx Context containing required accounts\n     * @param merchant_id Unique identifier for the merchant\n     * @param max_transfer_limit Maximum amount allowed in a single transfer\n     * @param period_transfer_limit Maximum amount allowed within the time period\n     * @param transfer_limit_period Duration of the transfer limit period in seconds"
+   ],
+   "discriminator": [
+    163,
+    223,
+    69,
+    151,
+    59,
+    227,
+    176,
+    151
+   ],
+   "accounts": [
+    {
+     "name": "manager",
+     "docs": [
+      "Merchant manager account, must match manager in manager_state",
+      "Required permissions: Signer"
+     ],
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "docs": [
+      "Account that will pay for PDA creation and rent",
+      "Required permissions: Signer, Mutable (for rent payment)"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "manager_state",
+     "docs": [
+      "PDA storing the merchant manager's authorization",
+      "Seeds: [MERCHANT_MANAGER_SEED, merchant_id]",
+      "Required permissions: Read-only"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         101,
+         114,
+         99,
+         104,
+         97,
+         110,
+         116,
+         95,
+         109,
+         97,
+         110,
+         97,
+         103,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "user_token_account",
+     "docs": [
+      "Token account that will be controlled by the delegate",
+      "Required permissions: Read-only"
+     ]
+    },
+    {
+     "name": "mint",
+     "docs": [
+      "Mint of the tokens that can be transferred by this delegate",
+      "Required permissions: Read-only"
+     ]
+    },
+    {
+     "name": "user_delegate_account",
+     "docs": [
+      "PDA storing the delegate's transfer limits and state",
+      "Seeds: [USER_DELEGATE_SEED, merchant_id, mint, user_token_account]",
+      "Space: Discriminator + Delegate parameters",
+      "Required permissions: Mutable if new, Read-only if existing"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114,
+         95,
+         100,
+         101,
+         108,
+         101,
+         103,
+         97,
+         116,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       },
+       {
+        "kind": "account",
+        "path": "user_token_account"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "Required for account creation"
+     ],
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "merchant_id",
+     "type": "u64"
+    },
+    {
+     "name": "max_transfer_limit",
+     "type": "u64"
+    },
+    {
+     "name": "period_transfer_limit",
+     "type": "u64"
+    },
+    {
+     "name": "transfer_limit_period",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "close_account",
+   "docs": [
+    "* Close a program account and recover its rent.\n     * Only the admin can execute this instruction.\n     *\n     * @param ctx Context containing required accounts\n     * @param input_seeds Seeds used to derive the PDA being closed"
+   ],
+   "discriminator": [
+    125,
+    255,
+    149,
+    14,
+    110,
+    34,
+    72,
+    24
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "docs": [
+      "Program admin account, must match admin stored in state",
+      "Required permissions: Signer"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "docs": [
+      "Account that will receive the recovered rent",
+      "Required permissions: Signer, Mutable (for rent receipt)"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "account_to_close",
+     "docs": [
+      "Program-derived account to be closed",
+      "Required permissions: Mutable (for closure)"
+     ],
+     "writable": true
+    },
+    {
+     "name": "state",
+     "docs": [
+      "Global program state storing the admin public key",
+      "Seeds: [STATE_SEED]",
+      "Required permissions: Read-only"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "input_seeds",
+     "type": {
+      "vec": "bytes"
+     }
+    }
+   ]
+  },
+  {
+   "name": "debit_user",
+   "docs": [
+    "* Debit tokens from a user's account via their delegate.\n     * The transfer must be within the delegate's configured limits.\n     *\n     * @param ctx Context containing required accounts\n     * @param merchant_id Unique identifier for the merchant\n     * @param amount Amount of tokens to transfer"
+   ],
+   "discriminator": [
+    41,
+    78,
+    252,
+    76,
+    103,
+    159,
+    216,
+    207
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "docs": [
+      "Account that pays for the transaction fees and rent"
+     ],
+     "signer": true
+    },
+    {
+     "name": "user_delegate_account",
+     "docs": [
+      "Program Derived Address (PDA) that stores the delegate's transfer limits and state",
+      "This account acts as the authority for the user's token account",
+      "",
+      "Seeds: [USER_DELEGATE_SEED, merchant_id, mint, user_token_account]",
+      "Required permissions: Mutable (updates period tracking)"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114,
+         95,
+         100,
+         101,
+         108,
+         101,
+         103,
+         97,
+         116,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       },
+       {
+        "kind": "account",
+        "path": "user_token_account"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "debitor",
+     "docs": [
+      "Account initiating the debit operation",
+      "Must be an authorized debitor for the merchant",
+      "Required permissions: Signer"
+     ],
+     "signer": true
+    },
+    {
+     "name": "debitor_state",
+     "docs": [
+      "PDA storing the debitor's authorization state for this merchant",
+      "Seeds: [MERCHANT_DEBITOR_SEED, merchant_id, debitor]",
+      "Required permissions: Read-only"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         101,
+         114,
+         99,
+         104,
+         97,
+         110,
+         116,
+         95,
+         100,
+         101,
+         98,
+         105,
+         116,
+         111,
+         114
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       },
+       {
+        "kind": "account",
+        "path": "debitor"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "destination_token_account",
+     "docs": [
+      "Token account that will receive the transferred tokens",
+      "Must be an authorized destination for the merchant",
+      "Required permissions: Mutable"
+     ],
+     "writable": true
+    },
+    {
+     "name": "destination_state",
+     "docs": [
+      "PDA storing the destination's authorization state for this merchant and mint",
+      "Seeds: [MERCHANT_DESTINATION_SEED, merchant_id, mint, destination_token_account]",
+      "Required permissions: Read-only"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         101,
+         114,
+         99,
+         104,
+         97,
+         110,
+         116,
+         95,
+         100,
+         101,
+         115,
+         116,
+         105,
+         110,
+         97,
+         116,
+         105,
+         111,
+         110
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "merchant_id"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       },
+       {
+        "kind": "account",
+        "path": "destination_token_account"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "user_token_account",
+     "docs": [
+      "User's token account from which tokens will be transferred",
+      "Must have the same mint as the destination account",
+      "Required permissions: Mutable"
+     ],
+     "writable": true
+    },
+    {
+     "name": "mint",
+     "docs": [
+      "The mint of the tokens being transferred",
+      "Used to verify token account compatibility and for PDA derivation",
+      "Required permissions: Read-only"
+     ]
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "Required Solana system programs"
+     ],
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "token_program"
+    }
+   ],
+   "args": [
+    {
+     "name": "merchant_id",
+     "type": "u64"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "initialize",
+   "docs": [
+    "* Initialize the Bridge Cards program state.\n     * Creates the global state account and sets the program admin.\n     *\n     * @param ctx Context containing:\n     *   - The system program for account creation\n     *   - The signer who will become the admin\n     *   - The state account to initialize"
+   ],
+   "discriminator": [
+    175,
+    175,
+    109,
+    31,
+    13,
+    152,
+    155,
+    237
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "docs": [
+      "Account that will pay for state account creation and become the admin",
+      "Required permissions: Signer, Mutable (for rent payment)"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "state",
+     "docs": [
+      "Program Derived Address that will store global program state",
+      "Seeds: [STATE_SEED]",
+      "Space: Discriminator + Admin Pubkey",
+      "Required permissions: None (account is being created)"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program_account",
+     "signer": true
+    },
+    {
+     "name": "system_program",
+     "docs": [
+      "Required for account creation"
+     ],
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "update_admin",
+   "docs": [
+    "* Update the program admin.\n     * Only the current admin can execute this instruction.\n     *\n     * @param ctx Context containing required accounts"
+   ],
+   "discriminator": [
+    161,
+    176,
+    40,
+    213,
+    60,
+    184,
+    179,
+    228
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "docs": [
+      "Current admin account, must match admin stored in state",
+      "Required permissions: Signer"
+     ],
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "docs": [
+      "Account that will pay for transaction fees",
+      "Required permissions: Signer, Mutable (for fee payment)"
+     ],
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "state",
+     "docs": [
+      "Global program state storing the admin public key",
+      "Seeds: [STATE_SEED]",
+      "Required permissions: Mutable (for admin update)"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        194,
+        237,
+        187,
+        147,
+        120,
+        166,
+        195,
+        32,
+        6,
+        18,
+        82,
+        240,
+        73,
+        52,
+        133,
+        60,
+        96,
+        208,
+        73,
+        114,
+        83,
+        191,
+        56,
+        26,
+        85,
+        158,
+        12,
+        178,
+        33,
+        193,
+        158,
+        171
+       ]
+      }
+     }
+    },
+    {
+     "name": "new_admin",
+     "docs": [
+      "Account that will become the new admin",
+      "Required permissions: Signer (prevents invalid transfers)"
+     ],
+     "signer": true
+    }
+   ],
+   "args": []
+  }
+ ],
+ "accounts": [
+  {
+   "name": "BridgeCardsState",
+   "discriminator": [
+    162,
+    34,
+    182,
+    200,
+    113,
+    16,
+    172,
+    169
+   ]
+  },
+  {
+   "name": "MerchantDebitorState",
+   "discriminator": [
+    222,
+    129,
+    209,
+    99,
+    207,
+    165,
+    226,
+    9
+   ]
+  },
+  {
+   "name": "MerchantDestinationState",
+   "discriminator": [
+    109,
+    153,
+    171,
+    195,
+    48,
+    157,
+    126,
+    157
+   ]
+  },
+  {
+   "name": "MerchantManagerState",
+   "discriminator": [
+    106,
+    215,
+    70,
+    26,
+    75,
+    99,
+    82,
+    214
+   ]
+  },
+  {
+   "name": "UserDelegateState",
+   "discriminator": [
+    228,
+    175,
+    6,
+    227,
+    194,
+    34,
+    211,
+    175
+   ]
+  }
+ ],
+ "events": [
+  {
+   "name": "AccountClosed",
+   "discriminator": [
+    19,
+    250,
+    79,
+    236,
+    91,
+    80,
+    148,
+    48
+   ]
+  },
+  {
+   "name": "AdminUpdated",
+   "discriminator": [
+    69,
+    82,
+    49,
+    171,
+    43,
+    3,
+    80,
+    161
+   ]
+  },
+  {
+   "name": "MerchantDebitorAddedOrUpdated",
+   "discriminator": [
+    144,
+    33,
+    133,
+    45,
+    186,
+    96,
+    152,
+    0
+   ]
+  },
+  {
+   "name": "MerchantDestinationAddedOrUpdated",
+   "discriminator": [
+    87,
+    93,
+    240,
+    5,
+    247,
+    151,
+    187,
+    126
+   ]
+  },
+  {
+   "name": "MerchantManagerAddedOrUpdated",
+   "discriminator": [
+    250,
+    212,
+    126,
+    37,
+    236,
+    93,
+    15,
+    208
+   ]
+  },
+  {
+   "name": "UserDebited",
+   "discriminator": [
+    23,
+    131,
+    175,
+    145,
+    31,
+    139,
+    18,
+    56
+   ]
+  },
+  {
+   "name": "UserDelegateAddedOrUpdated",
+   "discriminator": [
+    114,
+    208,
+    112,
+    212,
+    29,
+    244,
+    218,
+    7
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "ExceedsTransferLimitPerPeriod",
+   "msg": "Exceeds transfer limit per period"
+  },
+  {
+   "code": 6001,
+   "name": "ExceedsMaxTransferLimit",
+   "msg": "Exceeds max transfer limit"
+  },
+  {
+   "code": 6002,
+   "name": "InvalidPda",
+   "msg": "Invalid PDA"
+  },
+  {
+   "code": 6003,
+   "name": "ExceedsMaxTransactionsPerSlot",
+   "msg": "Exceeds max transactions per slot"
+  }
+ ],
+ "types": [
+  {
+   "name": "AccountClosed",
+   "docs": [
+    "* Event emitted when a program account is closed.\n * This event is emitted by the close_account instruction.\n *\n * Fields:\n * @field account - Public key of the account that was closed"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "account",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "AdminUpdated",
+   "docs": [
+    "* Event emitted when the program admin is updated.\n * This event is emitted by the update_admin instruction.\n *\n * Fields:\n * @field admin - Public key of the new admin account"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "admin",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "BridgeCardsState",
+   "docs": [
+    "* The global state of the BridgeCards program.\n *\n * This state account holds the admin pubkey which has authority to:\n * - Add/update merchant destinations\n * - Add/update merchant managers\n * - Close accounts\n * - Update the admin\n *\n * The bump field stores the PDA bump seed to avoid recalculation."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MerchantDebitorAddedOrUpdated",
+   "docs": [
+    "* Event emitted when a merchant's debitor account is added or its state is updated.\n * This event is emitted by the add_or_update_merchant_debitor instruction.\n *\n * Fields:\n * @field merchant_id - Unique identifier of the merchant\n * @field state_pda - Public key of the debitor state PDA\n * @field debitor - Public key of the debitor account\n * @field previous_state - Previous authorization state (true if was allowed)\n * @field new_state - New authorization state (true if now allowed)"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "merchant_id",
+      "type": "u64"
+     },
+     {
+      "name": "state_pda",
+      "type": "pubkey"
+     },
+     {
+      "name": "debitor",
+      "type": "pubkey"
+     },
+     {
+      "name": "previous_state",
+      "type": "bool"
+     },
+     {
+      "name": "new_state",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MerchantDebitorState",
+   "docs": [
+    "* State for a merchant's debitor account.\n *\n * When allowed is true, this account can initiate transfers from user delegates\n * associated with this merchant. This is used to control which accounts can\n * debit funds from users on behalf of the merchant.\n *\n * The bump field stores the PDA bump seed to avoid recalculation."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "allowed",
+      "type": "bool"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MerchantDestinationAddedOrUpdated",
+   "docs": [
+    "* Event emitted when a merchant's destination account is added or its state is updated.\n * This event is emitted by the add_or_update_merchant_destination instruction.\n *\n * Fields:\n * @field merchant_id - Unique identifier of the merchant\n * @field mint - Public key of the token mint\n * @field destination - Public key of the destination token account\n * @field state_pda - Public key of the destination state PDA\n * @field previous_state - Previous authorization state (true if was allowed)\n * @field new_state - New authorization state (true if now allowed)"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "merchant_id",
+      "type": "u64"
+     },
+     {
+      "name": "mint",
+      "type": "pubkey"
+     },
+     {
+      "name": "destination",
+      "type": "pubkey"
+     },
+     {
+      "name": "state_pda",
+      "type": "pubkey"
+     },
+     {
+      "name": "previous_state",
+      "type": "bool"
+     },
+     {
+      "name": "new_state",
+      "type": "bool"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MerchantDestinationState",
+   "docs": [
+    "* State for a merchant's destination token account.\n *\n * When allowed is true, this token account can receive transfers from user delegates\n * associated with this merchant. This is used to control which token accounts\n * can receive funds on behalf of the merchant.\n *\n * The bump field stores the PDA bump seed to avoid recalculation."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "allowed",
+      "type": "bool"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MerchantManagerAddedOrUpdated",
+   "docs": [
+    "* Event emitted when a merchant manager is added or updated.\n * This event is emitted by the add_or_update_merchant_manager instruction.\n *\n * Fields:\n * @field merchant_id - Unique identifier of the merchant\n * @field manager - Public key of the manager account"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "merchant_id",
+      "type": "u64"
+     },
+     {
+      "name": "manager",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MerchantManagerState",
+   "docs": [
+    "* State for a merchant's manager account.\n *\n * The manager pubkey stored here has authority to:\n * - Add/update user delegates for this merchant\n * - Add/update debitors for this merchant\n *\n * The bump field stores the PDA bump seed to avoid recalculation."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "manager",
+      "type": "pubkey"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "UserDebited",
+   "docs": [
+    "* Event emitted when a user is debited by a merchant.\n * This event is emitted by the debit_user instruction.\n *\n * Fields:\n * @field debitor - Public key of the merchant debitor account that initiated the debit\n * @field user_delegate - Public key of the user's delegate account that authorized the debit\n * @field merchant_id - Unique identifier of the merchant\n * @field user_ata - Public key of the user's associated token account being debited\n * @field destination_ata - Public key of the destination associated token account receiving the funds\n * @field mint - Public key of the token mint being transferred\n * @field amount - Amount of tokens being transferred\n * @field user_nonce - Unique nonce to prevent replay attacks"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "debitor",
+      "type": "pubkey"
+     },
+     {
+      "name": "user_delegate",
+      "type": "pubkey"
+     },
+     {
+      "name": "merchant_id",
+      "type": "u64"
+     },
+     {
+      "name": "user_ata",
+      "type": "pubkey"
+     },
+     {
+      "name": "destination_ata",
+      "type": "pubkey"
+     },
+     {
+      "name": "mint",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "UserDelegateAddedOrUpdated",
+   "docs": [
+    "* Event emitted when a user delegate is added or updated for a merchant.\n * This event is emitted by the add_or_update_user_delegate instruction.\n *\n * Fields:\n * @field merchant_pda - Public key of the merchant's PDA\n * @field user_delegate - Public key of the delegate account being added/updated"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "merchant_id",
+      "type": "u64"
+     },
+     {
+      "name": "mint",
+      "type": "pubkey"
+     },
+     {
+      "name": "user_ata",
+      "type": "pubkey"
+     },
+     {
+      "name": "user_delegate",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "UserDelegateState",
+   "docs": [
+    "* State for a user's delegate account that can initiate transfers on their behalf.\n *\n * This account stores transfer limits and tracking for:\n * - Maximum amount per single transfer\n * - Maximum amount within a time period\n * - Amount transferred in current period\n * - Period reset timestamp\n * - Period duration\n *\n * The bump field stores the PDA bump seed to avoid recalculation."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "per_transfer_limit",
+      "type": "u64"
+     },
+     {
+      "name": "period_transfer_limit",
+      "type": "u64"
+     },
+     {
+      "name": "period_transferred_amount",
+      "type": "u64"
+     },
+     {
+      "name": "period_timestamp_last_reset",
+      "type": "u64"
+     },
+     {
+      "name": "transfer_limit_period_seconds",
+      "type": "u32"
+     },
+     {
+      "name": "slot_last_transferred",
+      "type": "u64"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  }
+ ]
+}

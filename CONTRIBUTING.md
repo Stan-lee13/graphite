@@ -64,11 +64,11 @@ Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), 
 
 - [ ] `cargo fmt --all -- --check` clean (0 diffs)
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)
-- [ ] `cargo test --release` passes (0 failures — currently 1,455 tests, 10 ignored; `--include-ignored` for the live RPC corpus)
-- [ ] `cargo test --release --no-default-features --lib` (301) and `--no-default-features --features cli` (1,281) pass — the feature matrix is tested, not just checked
+- [ ] `cargo test --release` passes (0 failures — currently 1,562 tests, 12 ignored; `--include-ignored` for the live RPC corpus)
+- [ ] `cargo test --release --no-default-features --lib` (320) and `--no-default-features --features cli` (1,366) pass — the feature matrix is tested, not just checked
 - [ ] `cargo audit --deny warnings` clean
 - [ ] Container builds, boots, `/health` answers, `/data` is writable, unauthenticated `/verify` is `401`, and a keyless container refuses to start
-- [ ] TypeScript SDK `npm run build` + `npm test`; SAK integration `npm run typecheck` + `npm test` (73) and the regenerated artifact fixture + corpus show no diff
+- [ ] TypeScript SDK `npm run build` + `npm test`; SAK integration `npm run typecheck` + `npm test` (100) and the regenerated artifact fixture + corpus show no diff
 - [ ] Go SDK `gofmt` / `go vet` / `go test ./...` pass
 - [ ] Python AI layer `pytest` passes (27)
 - [ ] Dashboard `npm run typecheck` + `npm run build`
@@ -82,11 +82,70 @@ Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), 
 
 ## Adding a Protocol Manifest
 
-1. Copy `graphite-core/protocols/` template (use an existing manifest as reference)
-2. Verify the program ID against official on-chain sources (not explorer — use official docs/GitHub)
-3. Add the program ID to `TRUSTED_COMPOSABILITY_PROGRAMS` in `risk_engine.rs` if it's a DEX/aggregator/multisig (one canonical list; `TRUSTED_CPI_ROOTS` and `DEX_PROGRAMS` are aliases of it) and pin fixed account roles with `expected_address` (`scripts/populate_expected_addresses.py`)
-4. Add a test case in the appropriate test file
-5. Run the Python cross-check test to validate base58 charset and pubkey length
+A manifest describes one program's instruction surface. It is a trust anchor:
+once a program has one, Graphite judges its transactions against the manifest
+instead of falling back to Unknown Protocol Mode. So the manifest must come
+from the program, not from a guess about it.
+
+**The instruction surface must have an authoritative source.** In order of
+preference:
+
+1. **The program's own on-chain Anchor IDL** — the account at
+   `create_with_seed(find_program_address([], program), "anchor:idl", program)`,
+   owned by the program itself. `scripts/fetch_onchain_idls.py` pulls it and
+   `scripts/onboard_from_inventory.py` turns it into a manifest. This is how
+   the 49 programs onboarded in Round 18 were built.
+2. **The protocol's published IDL or program source**, with discriminators
+   derived the way the program's own generated client derives them
+   (`sha256("global:" + snake_case(name))[0..8]` for Anchor, the borsh variant
+   index for a native program) and then **confirmed against real mainnet
+   transactions** — see `scripts/census_drift_kamino.py` for the pattern.
+
+Do not hand-write account lists from documentation. Do not invent PDA seed
+templates: ground a PDA **only** where the deployed program actually
+seed-constrains it, because a wrong template flags legitimate transactions
+(the C26 failure mode, which caught two near-misses in C27 alone).
+
+**Then:**
+
+1. Put the file in `graphite-core/protocols/` and add its name to
+   `SEED_MANIFESTS` in `manifest.rs`. The list is checked against the
+   directory in both directions
+   (`manifest::tests::test_every_protocol_file_is_a_seed_manifest`), so a file
+   that is never loaded fails CI.
+2. Add the program to `protocols/verified_program_ids.json` with provenance
+   that says how the ID was confirmed executable on mainnet. The count is
+   derived from `SEED_MANIFESTS`, and the two are compared by name and ID in
+   both Rust and the Python AI layer.
+3. Add the file to the manifest map in
+   `python-ai-layer/test_intent_parser.py`.
+4. Run `scripts/battle_tested_census.py <program_id> --merge` and commit the
+   measurement. **Every seed manifest must have a record**
+   (`tests/battle_tested_evidence.rs`), whatever the record says.
+5. Regenerate the coverage page: `scripts/render_coverage.py`.
+   `tests/docs_match_the_registry.rs` compares it to the loaded registry.
+
+**Trust tier.** Write `OfficialManifest`. A manifest does not get to award
+itself the top tier: the loader lowers a declared `BattleTested` to
+`OfficialManifest` unless the measurement in
+`protocols/battle_tested_evidence.json` shows the program is executable, that
+at least 1,000 successful transactions invoked it over a stated window, and
+that the manifest names at least 90% of the instructions actually observed on
+chain. Write `BattleTested` only once the census says you may — and note that
+the tier is a statement about **usage and description accuracy, not safety**.
+A heavily used malicious program would clear the bar; what protects against it
+is L4, L5 and L7, which run the same way at every tier.
+
+**Trusted-CPI status is separate and is not granted by onboarding.**
+`TRUSTED_COMPOSABILITY_PROGRAMS` in `risk_engine.rs` (aliased as
+`TRUSTED_CPI_ROOTS` / `DEX_PROGRAMS`) *relaxes* CPI checks, so it stays
+hand-curated: add a program there only with a deliberate argument for why its
+CPI surface can be trusted wholesale. Declaring the CPI targets per
+instruction in the manifest's `allowed_cpis` is the normal mechanism, and it
+is the one a new protocol should use. Tagging `"category": "swap"`, by
+contrast, makes Graphite *stricter* (FakeSwap), and `is_swap_program` now
+reads that tag straight from the manifests, so there is no second list to
+update.
 
 ## Reporting Issues
 

@@ -83,13 +83,16 @@ fn no_evidence() -> BehaviorEvidence {
 // ============================================================
 
 #[test]
-fn test_all_20_manifests_load_with_valid_pubkeys() {
+fn test_every_seed_manifest_loads_with_a_valid_pubkey() {
     let registry = load_seed_manifests();
     let manifests = registry.list();
+    // The count is read from the baked-in list, not typed here: it changed in
+    // nine of the last ten rounds and the explanatory comment beside it went
+    // stale every time. What this test is actually for is the assertion below.
     assert_eq!(
         manifests.len(),
-        33,
-        "expected exactly 33 seed manifests (22 + 6 new: Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi, + 5 new C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)"
+        graphite_core::manifest::SEED_MANIFESTS.len(),
+        "the registry must load every baked-in seed manifest"
     );
 
     for m in &manifests {

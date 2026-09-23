@@ -1,0 +1,586 @@
+{
+ "address": "BwRZQcpiqQrQkpfWJDxzcpojPRmTB21FoVQYkcZBBReo",
+ "metadata": {
+  "name": "tarb",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "add_payer",
+   "discriminator": [
+    61,
+    99,
+    143,
+    10,
+    87,
+    142,
+    145,
+    154
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority_signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "payer",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "add_user",
+   "discriminator": [
+    15,
+    200,
+    3,
+    168,
+    184,
+    41,
+    189,
+    176
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority_signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "user",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "execute",
+   "discriminator": [
+    130,
+    221,
+    242,
+    154,
+    13,
+    193,
+    189,
+    29
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "user",
+     "signer": true
+    },
+    {
+     "name": "out_ata"
+    }
+   ],
+   "args": [
+    {
+     "name": "data",
+     "type": {
+      "defined": {
+       "name": "ExecuteData"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "execute_share",
+   "discriminator": [
+    176,
+    94,
+    250,
+    241,
+    103,
+    47,
+    214,
+    83
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "user",
+     "signer": true
+    },
+    {
+     "name": "out_ata",
+     "writable": true
+    },
+    {
+     "name": "payer",
+     "writable": true
+    },
+    {
+     "name": "token_program"
+    }
+   ],
+   "args": [
+    {
+     "name": "data",
+     "type": {
+      "defined": {
+       "name": "ExecuteShareData"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "initialize",
+   "discriminator": [
+    175,
+    175,
+    109,
+    31,
+    13,
+    152,
+    155,
+    237
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "bump",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "remove_payer",
+   "discriminator": [
+    118,
+    61,
+    105,
+    90,
+    157,
+    177,
+    250,
+    232
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority_signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "payer",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "remove_user",
+   "discriminator": [
+    99,
+    5,
+    208,
+    156,
+    250,
+    249,
+    104,
+    114
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority_signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "user",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "transfer_authority",
+   "discriminator": [
+    48,
+    169,
+    76,
+    72,
+    229,
+    180,
+    55,
+    161
+   ],
+   "accounts": [
+    {
+     "name": "config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority_signer",
+     "signer": true
+    }
+   ],
+   "args": [
+    {
+     "name": "new_authority",
+     "type": "pubkey"
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "Config",
+   "discriminator": [
+    155,
+    12,
+    170,
+    224,
+    30,
+    250,
+    204,
+    130
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "Unauthorized",
+   "msg": "Unauthorized"
+  },
+  {
+   "code": 6001,
+   "name": "UserNotWhitelisted",
+   "msg": "User not whitelisted"
+  },
+  {
+   "code": 6002,
+   "name": "ProgramNotWhitelisted",
+   "msg": "Program not whitelisted"
+  },
+  {
+   "code": 6003,
+   "name": "DataAlreadyExists",
+   "msg": "Data already exists"
+  },
+  {
+   "code": 6004,
+   "name": "MaxCapacityExceeded",
+   "msg": "Maximum capacity exceeded"
+  },
+  {
+   "code": 6005,
+   "name": "UserNotSigner",
+   "msg": "User not signer"
+  },
+  {
+   "code": 6006,
+   "name": "NegativeSwapPnl",
+   "msg": "Negative swap pnl"
+  },
+  {
+   "code": 6007,
+   "name": "InvalidHumidifiIxData",
+   "msg": "Invalid HumidiFi instruction data"
+  },
+  {
+   "code": 6008,
+   "name": "InvalidBps",
+   "msg": "Invalid basis points (must be <= 10000)"
+  },
+  {
+   "code": 6009,
+   "name": "ShareOverflow",
+   "msg": "Share calculation overflow"
+  },
+  {
+   "code": 6010,
+   "name": "PayerNotWhitelisted",
+   "msg": "Payer not whitelisted"
+  }
+ ],
+ "types": [
+  {
+   "name": "Config",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "callers",
+      "type": {
+       "vec": "pubkey"
+      }
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "payers",
+      "type": {
+       "vec": "pubkey"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ExecuteData",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "hops",
+      "type": {
+       "vec": {
+        "defined": {
+         "name": "Hop"
+        }
+       }
+      }
+     },
+     {
+      "name": "in_amount",
+      "type": "u64"
+     },
+     {
+      "name": "out_amount_min",
+      "type": "i64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "ExecuteShareData",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "hops",
+      "type": {
+       "vec": {
+        "defined": {
+         "name": "Hop"
+        }
+       }
+      }
+     },
+     {
+      "name": "in_amount",
+      "type": "u64"
+     },
+     {
+      "name": "out_amount_min",
+      "type": "i64"
+     },
+     {
+      "name": "bps",
+      "type": "u16"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Hop",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "data",
+      "type": "bytes"
+     },
+     {
+      "name": "accounts_len",
+      "type": "u64"
+     },
+     {
+      "name": "in_amount_offset",
+      "type": "u8"
+     },
+     {
+      "name": "in_amount_len",
+      "type": "u8"
+     },
+     {
+      "name": "out_ata_index",
+      "type": "u8"
+     }
+    ]
+   }
+  }
+ ],
+ "constants": [
+  {
+   "name": "CALLERS_SEED",
+   "type": "bytes",
+   "value": "[99, 97, 108, 108, 101, 114, 115]"
+  },
+  {
+   "name": "CONFIG_SEED",
+   "type": "bytes",
+   "value": "[99, 111, 110, 102, 105, 103]"
+  }
+ ]
+}

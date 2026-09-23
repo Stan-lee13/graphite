@@ -1,5 +1,9 @@
 # Round 14 — the prefix and the pin
 
+> **Historical record.** This report describes the codebase at commit
+> `eaee998` on 2026-09-20, and the fixes made on top of it. For the current
+> state of Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-09-20
 **Trigger:** a forensic re-audit of the working tree, commissioned as an
 adversarial review of Round 13 rather than a continuation of it.

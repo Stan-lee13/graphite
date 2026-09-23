@@ -1,5 +1,10 @@
 # Graphite — Solana Foundation Grant Proposal
 
+> **Living document, last revised 2026-09-23.** The figures below are the
+> project's current ones as of that date. For anything that has moved since,
+> [`CURRENT.md`](CURRENT.md) is authoritative and this page is not.
+
+
 **Project:** Graphite — a deterministic transaction-verification and anti-drain layer for AI agents on Solana
 **Requested funding:** $120,000 (milestone-based, 3 milestones over ~9 months)
 **Grant type:** Open-source public good / security infrastructure (Foundation funding range $10k–$400k, milestone-based, ~30-day evaluation)
@@ -141,7 +146,7 @@ Key properties:
 | Real data | 3 real mainnet exploits blocked in benchmark (Wormhole $320M, CLINKSINK, SlowMist AAT); 35 real exploit signatures in holdout, 0 false negatives |
 | Live validation | L3 on real devnet RPC; L8 on real mainnet RPC; SAK integration = 5 finalized devnet transactions |
 | Corpus | 2,181 deterministic fixtures (dev / regression / holdout), byte-identical across runs |
-| Manifests | 33 protocols, 803 instructions, program IDs verified executable on mainnet |
+| Manifests | 129 protocols, 3,186 instructions, program IDs verified executable on mainnet; 106 carry a `BattleTested` tier backed by a recorded measurement |
 | Security | Two independent adversarial audits; 4 P0 + 1 P1 classes root-fixed and re-attacked with fresh variants |
 | Performance | ~1.8ms p50 / ~2.8ms p95 / ~3.0ms p99 verification — 0.5% of Solana's 400ms block budget |
 | Integrations | TypeScript SDK, Go SDK, Python advisory layer, React dashboard, HTTP server, Dockerfile, SolanaAgentKit integration |

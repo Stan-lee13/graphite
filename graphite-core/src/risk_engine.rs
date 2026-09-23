@@ -883,27 +883,38 @@ fn detect_hidden_transfer(accounts: &[String], expected_changes: &[String]) -> b
 }
 
 /// Detect FakeSwap: swap intent on a swap program but no output/credit state changes.
-/// The canonical swap-protocol set — SINGLE source of truth for both
-/// FakeSwap detection and intent-capability classification. New swap
-/// protocols are added here (and tagged `"category": "swap"` in their
-/// manifest, verified by `manifest_category_aligns_with_swap_set`), so
-/// detection logic itself never needs editing per protocol.
+/// Is this program a swap venue?
+///
+/// Read from the manifests, not from a list kept beside them. There used to be
+/// a hard-coded `SWAP_PROGRAMS` array here that had to be edited in step with
+/// every manifest's `"category": "swap"` tag, and the identical arrangement one
+/// screen up (`TRUSTED_COMPOSABILITY_PROGRAMS`) had already drifted once for
+/// real — three DEXes in one list and not the other, misflagging their
+/// legitimate swaps. With 82 manifests instead of 33 that discipline was not
+/// going to hold, so the tag in the manifest is now the only place the fact
+/// lives.
+///
+/// Note the polarity, because it is why this list may be derived while the
+/// trusted-CPI list above may not: being a swap program makes Graphite
+/// STRICTER (a declared swap intent whose instruction produces no credit or
+/// output is a `FakeSwap` block). `TRUSTED_COMPOSABILITY_PROGRAMS` does the
+/// opposite — it relaxes the CPI checks — so it stays hand-curated, and a
+/// newly onboarded protocol earns nothing there by being onboarded. A new
+/// protocol's CPI surface is instead declared per instruction in its own
+/// manifest, where it is visible and checkable.
 pub fn is_swap_program(program_id: &str) -> bool {
-    const SWAP_PROGRAMS: &[&str] = &[
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", // Jupiter V6
-        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc", // Orca Whirlpools
-        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", // Meteora DLMM
-        "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // Raydium AMM V4
-        "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", // Jupiter DCA (periodic swaps)
-        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", // Pump.fun (bonding-curve buy/sell)
-        "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY", // Phoenix spot DEX
-        "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb", // OpenBook V2 CLOB
-        "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu", // Jupiter Limit Order
-        "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK", // Raydium CLMM
-        "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C", // Raydium CPMM
-        "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP", // Orca TokenSwap V2
-    ];
-    SWAP_PROGRAMS.contains(&program_id)
+    static SWAP_PROGRAMS: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    SWAP_PROGRAMS
+        .get_or_init(|| {
+            crate::manifest::load_seed_manifests()
+                .list()
+                .iter()
+                .filter(|m| m.protocol.category == "swap")
+                .map(|m| m.protocol.program_id.clone())
+                .collect()
+        })
+        .contains(program_id)
 }
 
 pub fn detect_fake_swap(

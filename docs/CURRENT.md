@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-09-22, after Round 17 (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-09-22, after Round 18 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -41,9 +41,17 @@ Measured on real mainnet:        10,669 transactions from 8 finalized blocks, 18
                                  0 parse failures, 0 false refusals from the L2 self-consistency check, and all
                                  1,087 known-risky-table blocks verified against the named instruction's own
                                  bytes. Round 13 changed 0 of 9,784 verdicts (`tools/mainnet-sample`)
-Manifest coverage of the chain:  92.5% of sampled mainnet transactions call a program with NO manifest; the
-                                 drainer heuristic blocks them (>=3 accounts, no declared state changes), which
-                                 is the fail-closed posture meeting the coverage boundary, not a bug
+Manifest coverage of the chain:  129 manifests / 3,186 instructions. On a 10,617-transaction mainnet sample,
+                                 44.0% of non-vote transactions have a manifested primary program, up from 20.8%
+                                 for the same sample before Round 18. The rest still meet the drainer heuristic
+                                 (>=3 accounts, no declared state changes), which is the fail-closed posture at
+                                 the coverage boundary, not a bug
+Trust tier a manifest declares:  checked, not believed - `BattleTested` is lowered to `OfficialManifest` at load
+                                 unless protocols/battle_tested_evidence.json shows an executable program, >=1,000
+                                 successful transactions over a stated window, and >=90% of really-observed
+                                 instructions named by the manifest (Round 18)
+Message version 1:               refused by name, and no longer rare: 17.2% of the same sample. Fail-closed and
+                                 honest, but roughly one mainnet transaction in six is one Graphite cannot verify
 Durable-nonce transactions:      refused at L2 by default; opt-in requires on-chain nonce verification
 Token-2022 extensions:           classified, not modelled â€” semantics/authority/unknown/unreadable all block
 Input bounds:                    artifact â‰¤ 1232 bytes (PACKET_DATA_SIZE), â‰¤ 256 declared siblings, every
@@ -148,6 +156,12 @@ transaction under the stated threat model, and no external party has yet tried.
 | Malformed policy input is a 400 before the pipeline; both profile axes are clamped | Round 17 (F-16-08 / F-15-07): `enforce_wallet_profile` returns `Err` for `min_confidence > 1`; `WEAKEST_BUILTIN_MIN_TRUST_TIER` | `server::tests::min_confidence_above_one_is_refused_up_front`, `::unknown_tier_floor_is_raised_to_the_weakest_builtin` |
 | `content_hash` is framed | Round 17 (F-16-09): domain tag + u32 LE length prefixes + list counts, mirrored in TS SDK, SAK AuditBind, Go | `verification::tests::test_content_hash_is_injective_across_field_boundaries`; pinned vectors `48c65c638aceb5de` / `dd8569c46af7e6c0` in all four suites |
 | Manifest URLs are links only when http(s) | Round 17 (F-16-10): `manifest::validate`, `manifest_registry::validate_manifest`, console `httpUrl()` | `manifest::tests::test_manifest_url_fields_must_be_http` |
+| A manifest may not award itself a trust tier | Round 18: `load_seed_manifests` lowers a declared `BattleTested` unless `protocols/battle_tested_evidence.json` clears `manifest::battle_tested_bar` on all three axes; the gate reads the raw measurements, never the file's own verdict field | `tests/battle_tested_evidence.rs` (8 tests, one per axis and one proving the verdict field is ignored) |
+| Every seed manifest has a mainnet measurement on record | Round 18: identity, volume over a stated window, and the share of really-observed instructions the manifest can name; reproducible with `scripts/battle_tested_census.py` | `battle_tested_evidence::every_seed_manifest_has_a_measurement_on_record` |
+| The manifest list and the manifest directory agree | Round 18: one `SEED_MANIFESTS` list produces both the name and the baked-in contents (the `include_str!` match arms are gone), and the list is compared to `protocols/` in both directions | `manifest::tests::test_every_protocol_file_is_a_seed_manifest` |
+| The documented protocol table is the loaded registry | Round 18: `docs/protocol-coverage.md` is generated; the test compares every row's program id, name, instruction count and APPLIED tier against `load_seed_manifests()`, and the README's headline counts too | `tests/docs_match_the_registry.rs` |
+| An account the manifest never declared has no privilege to mismatch | Round 18: an `extra` slot past the declared list is `remaining_accounts`; comparing the real `AccountMeta` against the placeholder blocked 1,036 real mainnet transactions across four programs | `privilege_mismatch::an_undeclared_extra_account_has_no_privilege_to_mismatch`, `::extras_do_not_mask_a_real_privilege_mismatch_on_a_declared_slot` |
+| A swap program is one whose manifest says so | Round 18: `is_swap_program` reads `"category": "swap"` from the loaded manifests instead of a second hand-kept list; the trusted-CPI list stays hand-curated, because it RELAXES checks | `manifest::tests::manifest_category_aligns_with_swap_set` |
 
 ## What is NOT enforced (documented limitations)
 
@@ -223,8 +237,11 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
 | Rounds 15â€“16 findings | **Closed in Round 17** (every item, each with a regression test; see the Round 17 report and `SECURITY.md`) | â€” |
+| Identity mismatches on declared signer slots | **Open — measured, not diagnosed** (Round 18): 544 `AccountIdentityMismatch` blocks remain over a 10,617-transaction mainnet sample, most `kind=privilege` on slots the manifest DOES declare as signers. The shape suggests instructions reached through CPI, where a PDA signs via `invoke_signed`; that is a hypothesis, and a blocking control is not loosened on one. Reproduce with `GRAPHITE_MAINNET_REASONS` | Engineering |
+| Manifests for the traffic that publishes no on-chain IDL | Open (Round 18): the programs that dominate the remaining unmanifested share do not publish an Anchor IDL account, so they need a per-protocol source rather than a sweep | Engineering |
+| Five manifests below the decode bar | Open (Round 18): Metaplex Token Metadata (0.67 — the unified V2 instruction set is not modelled), Bubblegum, Light System Program, Coinflow and Pump Fees. Each is recorded in `battle_tested_evidence.json` with the unnamed leading bytes | Engineering |
 | Branch protection on `main` (required CI, no force-push) | Absent; conflicts with the standing push-to-main workflow | Owner |
-| **Version-1 transaction format** â€” **on MAINNET as of 2026-09-17**: 875 of 10,669 transactions (8.2%) across eight sampled finalized blocks, every block carrying some (`tools/mainnet-sample`). Refused by name today, so nothing fails open â€” but an agent building one is refused, and a client capped at `maxSupportedTransactionVersion: 0` is refused the WHOLE BLOCK (`-32015`), not just the v1 transactions in it. Must be parsed, bound and simulated | **Open â€” now overdue, not merely time-sensitive** | Engineering |
+| **Version-1 transaction format** — **on MAINNET and growing**: 1,829 of 10,617 transactions (17.2%) across eight finalized blocks on 2026-09-22, up from 8.2% five days earlier; an 80-block census the same day put it at 15.8% of 95,181 (`tools/mainnet-sample`, `scripts/solana_inventory_census.py`). Refused by name, so nothing fails open — but roughly one mainnet transaction in six is one Graphite cannot verify at all, and a client capped at `maxSupportedTransactionVersion: 0` is refused the WHOLE BLOCK (`-32015`). Must be parsed, bound and simulated | **Open — the largest single gap in coverage of the chain** | Engineering |
 | Token-2022 `TransferFee` modelling | Open | Engineering |
 | `content_hash` â†’ a name that says it is an instruction-level identifier | Open (it is the 64-bit AuditBind key, not the authoritative binding) | Engineering |
 | Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | â€” |
@@ -235,15 +252,16 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## Numbers (as of this page's commit)
 
-1,549 Rust tests passing in the all-features build (11 network-dependent
-ignored, all of which were run against public devnet for Round 12); 319 in
-the featureless library build; 1,353 in the cli-only build; 100 TypeScript
+1,562 Rust tests passing in the all-features build (12 network-dependent
+ignored, all of which were run against public devnet for Round 12, plus the
+mainnet-sample probe run for Round 18); 320 in
+the featureless library build; 1,366 in the cli-only build; 100 TypeScript
 tests in the SAK integration; 17 in the TypeScript SDK (13 hermetic, 4 against a
 live server â€” run in the Round 12 probe and in CI's container job); 20 Go; 27
 Python; 110 live-probe checks of the release binary; the runtime oracle over
 the corpus, 1,659 mutations and 600,000 generated frames. Clippy `-D warnings`
 and fmt clean on rustc 1.98.1. Reproduced from `cargo test` / `npm test` output
-in the Round 17 report, not estimated. CI for the
+in the Round 18 report, not estimated. CI for the
 commit is the GitHub Actions run for that SHA â€” the runs endpoint, not the
 combined-status endpoint.
 
@@ -251,6 +269,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-09-23 | [round18-the-registry-is-measured-2026-09-23.md](round18-the-registry-is-measured-2026-09-23.md) | `trust_tier` was a string nothing checked: eight manifests declared `BattleTested` and the engine believed all eight. A mainnet measurement now backs every seed manifest (executable account; >=1,000 successful transactions over a stated window; >=90% of >=20 really-observed instructions named), and `load_seed_manifests` lowers an unsupported declaration. The registry went from 33 manifests / 803 instructions to 129 / 3,186 (106 of them battle-tested on the evidence), ranked by what mainnet runs and generated from each program's own on-chain Anchor IDL; 216 instructions merged into six manifests that had fallen behind. Running that registry against real blocks found two pre-existing defects blocking legitimate traffic — an undeclared extra account had a privilege to mismatch (1,036 blocks across four programs), and the Wormhole manifest named the wrong instruction for two bytes — plus one introduced and fixed in the round (PDAs grounded under the wrong program). Non-vote mainnet transactions whose primary program Graphite can name: 20.8% -> 44.0% on the same sample. 544 identity mismatches remain, measured and left open rather than loosened |
 | 2026-09-22 | [round17-what-counts-as-evidence-2026-09-22.md](round17-what-counts-as-evidence-2026-09-22.md) | Every Round 15 and Round 16 finding closed, each with a regression test that fails on `e95857d`: pre-signed artifacts refused at `/verify` and L8 reporting `RecordedForDifferentBytes` (F-16-01) and `recorded_verdicts` (F-16-11); baseline eligibility â€” sound and risk-clear only, `err == null` part of completeness, one observation per artifact digest (F-16-03, F-15-01, F-15-02) â€” with a `simulation_failed` residual (F-16-04); a variance floor, a shadow accumulator, `/health.frozen_baselines` and `graphite evidence promote-shadow` (F-16-02); L2 fails on unresolved lookup positions (F-15-05); Check 10 keyed on the bytes (F-15-03); observed CPI targets judged (F-16-05); the PDA template grammar closed at load and at verify (F-16-06); blocking plugins fail closed on panic (F-16-07); `min_confidence > 1` a 400 and the tier axis clamped (F-16-08, F-15-07); framed `content_hash` v2 in all four implementations (F-16-09); http(s)-only manifest links (F-16-10); lifecycle merged across a rotation (F-15-09); the devnet demo through `executeBoundTransaction` and the Go doc with the residual check (F-16-12); `--locked` in CI, `go.mod` pinned (F-16-13/16); finite rate limit (F-16-15); mismatches by slot (F-16-14). Live-probed on a loopback Core; CI green |
 | 2026-09-21 | [round16-signed-before-it-was-shown-2026-09-21.md](round16-signed-before-it-was-shown-2026-09-21.md) | The full 43-section forensic brief run against `e95857d` (code identical to `21c0a7b`), report only. The exact-byte boundary held under every mutation tried, and 2 of 2 deliberate breaks (L8 signature binding, sibling coverage) were caught. New: a pre-signed artifact is approved as `artifact_bound` but its refusal cannot be found by L8 when the chain's bytes are available â€” the stronger evidence path yields the weaker alarm (F-16-01); ten identical-CU requests, none of which need to be approved, freeze a program's baseline and refuse every honest transaction at any other CU (F-16-02/03); plus measured CPI targets, PDA template grammar, Risk-plugin panic semantics, a 500 on `min_confidence > 1`, unframed `content_hash`, console link schemes, last-wins L8 attribution, and `--locked` in CI. Round 15's three P2 findings re-measured and still open; twelve historical classes CONFIRMED CLOSED; 14 missing tests named |
 | 2026-09-20 | [round15-earned-by-asking-2026-09-20.md](round15-earned-by-asking-2026-09-20.md) | A full forensic re-audit of `21c0a7b`, report only. The exact-byte boundary and all twelve historical classes re-checked and confirmed closed. Three new confirmed defects, none an approval bypass through the reference bridge: confidence is earned by repetition â€” the same refused request is approved under Gaming on its second call because the `SimulationMatch` signal is the baseline sample count (F-15-01); a failed simulation with non-zero compute units is recorded as trusted evidence and certified "integrity clean" by L3 (F-15-02); an empty caller label switches the manifest risk-class hard gate off for non-native programs while the confidence floor still refuses (F-15-03). Plus the unresolved-ALT approval path and the deactivating-table discrepancy (F-15-05), two digests for one artifact (F-15-04), two in-repo executors without the residual policy (F-15-06), and three hardening items. 1 of 1 deliberate break caught; 11 missing tests named |

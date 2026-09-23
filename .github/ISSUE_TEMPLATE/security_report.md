@@ -17,6 +17,9 @@ How would an attacker exploit this?
 - [ ] Policy Engine
 - [ ] CPI Validation
 - [ ] Account Resolution
+- [ ] Transaction artifact / wire-format parser
+- [ ] Execution boundary (signing, L8 attribution, the SAK bridge)
+- [ ] Trust-tier evidence (`battle_tested_evidence.json` and the loader gate)
 - [ ] Other
 
 ## Reproduction

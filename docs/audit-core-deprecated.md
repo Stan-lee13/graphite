@@ -1,3 +1,7 @@
+> **Historical record, superseded.** This audit was run against a pre-Phase-1.5
+> codebase and is kept unedited as evidence. For the current state of Graphite
+> see [`CURRENT.md`](CURRENT.md).
+
 <!-- 
 DEPRECATED: This audit was performed on an earlier version of the codebase (pre-Phase 1.5 audit).
 The following findings have been RESOLVED:

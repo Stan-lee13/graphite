@@ -96,7 +96,11 @@ fn base_input(program_id: &str, discriminator: &str, intent: &str) -> Verificati
 #[test]
 fn all_new_manifests_are_loaded_and_instruction_surfaces_parse() {
     let registry = load_seed_manifests();
-    assert_eq!(registry.list().len(), 33, "expected 33 seed manifests (22 + Phoenix, OpenBook V2, Switchboard, Jupiter Limit, Solend, Marginfi + C56: Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)");
+    assert_eq!(
+        registry.list().len(),
+        graphite_core::manifest::SEED_MANIFESTS.len(),
+        "the registry must load every baked-in seed manifest"
+    );
     for id in [PUMP_FUN, JUPITER_DCA, WORMHOLE, METAPLEX] {
         let m = registry
             .get(id)

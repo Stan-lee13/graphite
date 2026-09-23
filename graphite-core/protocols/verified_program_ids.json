@@ -1,238 +1,910 @@
 {
-  "note": "SINGLE SOURCE OF TRUTH for seed-manifest program IDs. Every ID below was verified executable on mainnet via getAccountInfo (scripts/live_revalidate.py reproduces the check). The Rust pin test (manifest.rs test_all_seed_manifest_program_ids_are_canonical), the blessed-canonical-set test (manifest.rs test_registry_contains_blessed_canonical_programs), and the Python AI-layer cross-check (python-ai-layer/test_intent_parser.py) assert the manifests match this list EXACTLY and BIDIRECTIONALLY and that the non-negotiable core programs can never vanish from it. Add a new program here ONLY with on-chain evidence (executable account + provenance).",
-  "verified_on": "2026-08-12",
-  "verification_method": "getAccountInfo executable=true on api.mainnet-beta.solana.com; reproducible via graphite-core/scripts/live_revalidate.py",
-  "programs": [
-    {
-      "name": "System Program",
-      "program_id": "11111111111111111111111111111111",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "native runtime program"
-    },
-    {
-      "name": "SPL Token Program",
-      "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "spl-token official"
-    },
-    {
-      "name": "Token-2022 Program",
-      "program_id": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "spl-token-2022 official"
-    },
-    {
-      "name": "Stake Program",
-      "program_id": "Stake11111111111111111111111111111111111111",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "native runtime program"
-    },
-    {
-      "name": "SPL Memo Program (classic)",
-      "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "spl-memo official (classic memo from solana-program-library); restored 2026-08-08 (C15) â€” C1's 'never existed' claim was itself the error; re-verified EXEC on mainnet: 99,736 B ELF, owner BPFLoader2111, actively used"
-    },
-    {
-      "name": "Memo Program",
-      "program_id": "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "solana-program/memo v4.0.0 (upgradeable); EXEC on mainnet 2026-08-08: 48 B, owner BPFLoaderUpgradeab1e"
-    },
-    {
-      "name": "Legacy Memo Program (SPL)",
-      "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "legacy spl-memo; re-verified EXEC on mainnet+devnet 2026-08-08 â€” superseded, NOT retired (C10)"
-    },
-    {
-      "name": "Associated Token Account Program",
-      "program_id": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "spl-associated-token-account official; EXEC on mainnet 2026-08-08 (Tier-0)"
-    },
-    {
-      "name": "Compute Budget Program",
-      "program_id": "ComputeBudget111111111111111111111111111111",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "native runtime program; EXEC on mainnet 2026-08-08; 0x02/0x03/0x04 observed live in pinned fixtures (Tier-0)"
-    },
-    {
-      "name": "BPF Loader (classic)",
-      "program_id": "BPFLoader2111111111111111111111111111111111",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "native runtime program; EXEC on mainnet 2026-08-08 (Tier-0)"
-    },
-    {
-      "name": "BPF Loader Upgradeable",
-      "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "native runtime program; EXEC on mainnet 2026-08-08; owns memo v4.0.0 Memo4c2p (Tier-0)"
-    },
-    {
-      "name": "Raydium AMM V4",
-      "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "docs.raydium.io"
-    },
-    {
-      "name": "Jupiter V6 Aggregator",
-      "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "jup.ag official"
-    },
-    {
-      "name": "Orca Whirlpools",
-      "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "orca.so official"
-    },
-    {
-      "name": "Meteora DLMM",
-      "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "meteora.ag official"
-    },
-    {
-      "name": "Squads V4 Multisig",
-      "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "squads.so official"
-    },
-    {
-      "name": "Pump.fun",
-      "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "pump.fun official"
-    },
-    {
-      "name": "Jupiter DCA",
-      "program_id": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "jup.ag official"
-    },
-    {
-      "name": "Wormhole Core Bridge",
-      "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "wormhole.com official"
-    },
-    {
-      "name": "Metaplex Token Metadata",
-      "program_id": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "metaplex.com official"
-    },
-    {
-      "name": "Drift Perpetuals Exchange",
-      "program_id": "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "drift.trade official; program id from velocity-exchange/protocol-v2 SDK DRIFT_PROGRAM_ID; confirmed executable on mainnet 2026-08-09 (C27)"
-    },
-    {
-      "name": "Kamino Lending",
-      "program_id": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "kamino.finance official; program id from Kamino-Finance/klend-sdk codegen PROGRAM_ID; confirmed executable on mainnet 2026-08-09 (C27)"
-    },
-    {
-      "name": "Phoenix",
-      "program_id": "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-10; official Ellipsis-Labs/phoenix-v1 idl/phoenix_v1.json"
-    },
-    {
-      "name": "OpenBook V2",
-      "program_id": "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-10; official openbook-dex/openbook-v2 idl/openbook_v2.json"
-    },
-    {
-      "name": "Switchboard",
-      "program_id": "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-10; official mrgnlabs/sbv2-solana idl/mainnet.json"
-    },
-    {
-      "name": "Jupiter Limit Order",
-      "program_id": "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-10; published jup-ag limit-order IDL"
-    },
-    {
-      "name": "Solend",
-      "program_id": "So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-10; official solendprotocol SDK instruction tags + live txs"
-    },
-    {
-      "name": "Marginfi",
-      "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-10; live mainnet txs (no official IDL published)"
-    },
-    {
-      "name": "Raydium CLMM",
-      "program_id": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-12; raydium-io/raydium-idl raydium_clmm.json (new-spec IDL with explicit discriminators + pda seeds)"
-    },
-    {
-      "name": "Raydium CPMM",
-      "program_id": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-12; raydium-io/raydium-idl raydium_cp_swap.json (new-spec IDL with explicit discriminators + pda seeds)"
-    },
-    {
-      "name": "Marinade Staking",
-      "program_id": "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-12; IDL from @marinade.finance/marinade-ts-sdk v6.0.0; discriminators derived sha256('global:'+snake)[0:8] (scheme verified against new-spec explicit arrays)"
-    },
-    {
-      "name": "SPL Stake Pool",
-      "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-12; tags from solana-program/stake-pool instruction.rs borsh enum (official)"
-    },
-    {
-      "name": "Orca TokenSwap V2",
-      "program_id": "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP",
-      "verified": true,
-      "network": "mainnet",
-      "provenance": "getAccountInfo executable=true 2026-08-12; tags from orca-so/solana-program-library token-swap SwapInstruction enum + live mainnet tx decode (0x01 swap confirmed)"
-    }
-  ]
+ "note": "SINGLE SOURCE OF TRUTH for seed-manifest program IDs. Every ID below was verified executable on mainnet via getAccountInfo (scripts/live_revalidate.py reproduces the check). The Rust pin test (manifest.rs test_all_seed_manifest_program_ids_are_canonical), the blessed-canonical-set test (manifest.rs test_registry_contains_blessed_canonical_programs), and the Python AI-layer cross-check (python-ai-layer/test_intent_parser.py) assert the manifests match this list EXACTLY and BIDIRECTIONALLY and that the non-negotiable core programs can never vanish from it. Add a new program here ONLY with on-chain evidence (executable account + provenance).",
+ "verified_on": "2026-09-22",
+ "verification_method": "getAccountInfo executable=true on api.mainnet-beta.solana.com; reproducible via graphite-core/scripts/live_revalidate.py. Programs onboarded in Round 18 additionally publish their own on-chain Anchor IDL (graphite-core/scripts/fetch_onchain_idls.py), which is where their instruction surface came from.",
+ "programs": [
+  {
+   "name": "System Program",
+   "program_id": "11111111111111111111111111111111",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "native runtime program"
+  },
+  {
+   "name": "SPL Token Program",
+   "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "spl-token official"
+  },
+  {
+   "name": "Token-2022 Program",
+   "program_id": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "spl-token-2022 official"
+  },
+  {
+   "name": "Stake Program",
+   "program_id": "Stake11111111111111111111111111111111111111",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "native runtime program"
+  },
+  {
+   "name": "SPL Memo Program (classic)",
+   "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "spl-memo official (classic memo from solana-program-library); restored 2026-08-08 (C15) â€” C1's 'never existed' claim was itself the error; re-verified EXEC on mainnet: 99,736 B ELF, owner BPFLoader2111, actively used"
+  },
+  {
+   "name": "Memo Program",
+   "program_id": "Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "solana-program/memo v4.0.0 (upgradeable); EXEC on mainnet 2026-08-08: 48 B, owner BPFLoaderUpgradeab1e"
+  },
+  {
+   "name": "Legacy Memo Program (SPL)",
+   "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "legacy spl-memo; re-verified EXEC on mainnet+devnet 2026-08-08 â€” superseded, NOT retired (C10)"
+  },
+  {
+   "name": "Associated Token Account Program",
+   "program_id": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "spl-associated-token-account official; EXEC on mainnet 2026-08-08 (Tier-0)"
+  },
+  {
+   "name": "Compute Budget Program",
+   "program_id": "ComputeBudget111111111111111111111111111111",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "native runtime program; EXEC on mainnet 2026-08-08; 0x02/0x03/0x04 observed live in pinned fixtures (Tier-0)"
+  },
+  {
+   "name": "BPF Loader (classic)",
+   "program_id": "BPFLoader2111111111111111111111111111111111",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "native runtime program; EXEC on mainnet 2026-08-08 (Tier-0)"
+  },
+  {
+   "name": "BPF Loader Upgradeable",
+   "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "native runtime program; EXEC on mainnet 2026-08-08; owns memo v4.0.0 Memo4c2p (Tier-0)"
+  },
+  {
+   "name": "Raydium AMM V4",
+   "program_id": "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "docs.raydium.io"
+  },
+  {
+   "name": "Jupiter V6 Aggregator",
+   "program_id": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "jup.ag official"
+  },
+  {
+   "name": "Orca Whirlpools",
+   "program_id": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "orca.so official"
+  },
+  {
+   "name": "Meteora DLMM",
+   "program_id": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "meteora.ag official"
+  },
+  {
+   "name": "Squads V4 Multisig",
+   "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "squads.so official"
+  },
+  {
+   "name": "Pump.fun",
+   "program_id": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "pump.fun official"
+  },
+  {
+   "name": "Jupiter DCA",
+   "program_id": "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "jup.ag official"
+  },
+  {
+   "name": "Wormhole Core Bridge",
+   "program_id": "worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "wormhole.com official"
+  },
+  {
+   "name": "Metaplex Token Metadata",
+   "program_id": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "metaplex.com official"
+  },
+  {
+   "name": "Drift Perpetuals Exchange",
+   "program_id": "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "drift.trade official; program id from velocity-exchange/protocol-v2 SDK DRIFT_PROGRAM_ID; confirmed executable on mainnet 2026-08-09 (C27)"
+  },
+  {
+   "name": "Kamino Lending",
+   "program_id": "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "kamino.finance official; program id from Kamino-Finance/klend-sdk codegen PROGRAM_ID; confirmed executable on mainnet 2026-08-09 (C27)"
+  },
+  {
+   "name": "Phoenix",
+   "program_id": "PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-10; official Ellipsis-Labs/phoenix-v1 idl/phoenix_v1.json"
+  },
+  {
+   "name": "OpenBook V2",
+   "program_id": "opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-10; official openbook-dex/openbook-v2 idl/openbook_v2.json"
+  },
+  {
+   "name": "Switchboard",
+   "program_id": "SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-10; official mrgnlabs/sbv2-solana idl/mainnet.json"
+  },
+  {
+   "name": "Jupiter Limit Order",
+   "program_id": "jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-10; published jup-ag limit-order IDL"
+  },
+  {
+   "name": "Solend",
+   "program_id": "So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-10; official solendprotocol SDK instruction tags + live txs"
+  },
+  {
+   "name": "Marginfi",
+   "program_id": "MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-10; live mainnet txs (no official IDL published)"
+  },
+  {
+   "name": "Raydium CLMM",
+   "program_id": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-12; raydium-io/raydium-idl raydium_clmm.json (new-spec IDL with explicit discriminators + pda seeds)"
+  },
+  {
+   "name": "Raydium CPMM",
+   "program_id": "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-12; raydium-io/raydium-idl raydium_cp_swap.json (new-spec IDL with explicit discriminators + pda seeds)"
+  },
+  {
+   "name": "Marinade Staking",
+   "program_id": "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-12; IDL from @marinade.finance/marinade-ts-sdk v6.0.0; discriminators derived sha256('global:'+snake)[0:8] (scheme verified against new-spec explicit arrays)"
+  },
+  {
+   "name": "SPL Stake Pool",
+   "program_id": "SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-12; tags from solana-program/stake-pool instruction.rs borsh enum (official)"
+  },
+  {
+   "name": "Orca TokenSwap V2",
+   "program_id": "9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "getAccountInfo executable=true 2026-08-12; tags from orca-so/solana-program-library token-swap SwapInstruction enum + live mainnet tx decode (0x01 swap confirmed)"
+  },
+  {
+   "name": "Pump Fees (pfeeUxB6)",
+   "program_id": "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 6hgWp61YgGzJ9QmvxyFtLnGfA8MYgx93Hby6fdq8gG31, owned by the program, declaring 29 instructions as \"pump_fees\" v0.1.0; observed in 6277 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Pump AMM (pAMMBay6)",
+   "program_id": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 5fLnXNNoZcZt9Qku6HARM3un3Ttm2cGsR7gN9Zp1R7h3, owned by the program, declaring 27 instructions as \"pump_amm\" v0.1.0; observed in 5507 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Cp AMM (cpamdpZC)",
+   "program_id": "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at F1hSvutXSc9iAvB9bQPmjNDwiN2tCXzazTEEvDgNCBMa, owned by the program, declaring 38 instructions as \"cp_amm\" v0.2.0; observed in 1084 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Swap Orchestrator (DF1ow4ts)",
+   "program_id": "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at Cp2dCjxCWdktak2JiSrh87X6sz31EnDVKoTGtsHJvhYq, owned by the program, declaring 18 instructions as \"swap_orchestrator\" v0.1.0; observed in 560 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Raydium Launchpad (LanMV9sA)",
+   "program_id": "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at E6wT2uNeoWUvDrwdch1R8ETsyewR1ZM4WAwsa5hLJK5Z, owned by the program, declaring 28 instructions as \"raydium_launchpad\" v0.2.0; observed in 286 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Dynamic Bonding Curve (dbcij3LW)",
+   "program_id": "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at B8daPXJqt9sv94r1s9GM13sNH6CSak6UtYHV2yyDGbtf, owned by the program, declaring 28 instructions as \"dynamic_bonding_curve\" v0.1.10; observed in 272 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Okx DEX Router (proVF4pM)",
+   "program_id": "proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 8wXL8gQduvMr6pmzhJnbUqsnnegJnmnPiZVPzehLjoeT, owned by the program, declaring 25 instructions as \"OKX: DEX Router\" v0.1.0; observed in 208 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Sage (SAGE2HAw)",
+   "program_id": "SAGE2HAwep459SNq61LHvjxPk4pLPEJLoMETef7f7EE",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at BMNFuTbTw2qT6niCWavnvwMGduW2AV5wPXaLSZQTuLZd, owned by the program, declaring 106 instructions as \"sage\" v0.1.0; observed in 189 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Scope (HFn8GnPA)",
+   "program_id": "HFn8GnPADiny6XqUoWE8uRPPxb29ikn4yTuPa9MF2fWJ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at AWUuZ6o4ZJX2fDqjUqDaA1pfHenZ6XEbmuTamMgM911E, owned by the program, declaring 15 instructions as \"scope\" v0.41.0; observed in 149 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "AMM V3 (HpNfyc2S)",
+   "program_id": "HpNfyc2Saw7RKkQd8nEL4khUcuPhQ7WwY1B2qjx8jxFq",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CAD7TZySgk4RkqyAkGu3bJFvf8itWsfTtpViRK8TJrKf, owned by the program, declaring 27 instructions as \"amm_v3\" v0.1.0; observed in 138 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Verifier (Gt9S41Pt)",
+   "program_id": "Gt9S41PtjR58CbG9JhJ3J6vxesqrNAswbWYbLNTMZA3c",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 8bgW8mggBiNRuCY9Nxxs5BtKanrt2i23v6MrMnVmoFaq, owned by the program, declaring 11 instructions as \"verifier\" v0.4.0; observed in 127 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Relay Depository (99vQwtBw)",
+   "program_id": "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 4jeFJWgwBBW7Pyqjd7tUZqM53Dor3m51DddoK8yvDJXW, owned by the program, declaring 6 instructions as \"relay_depository\" v0.1.0; observed in 97 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Byreal Clmm (REALQqNE)",
+   "program_id": "REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 6WEaY6LvFDGwzb2k9po2PnSYUL2a78biakjjR5aMQSCo, owned by the program, declaring 35 instructions as \"byreal_clmm\" v0.1.0; observed in 95 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Cargo (Cargo2VN)",
+   "program_id": "Cargo2VNTPPTi9c1vq1Jw5d3BWUNr18MjRtSupAghKEk",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at C9PmKCYqVPq1mdpa6sVfWtxthrgzbMZLWrdVGsioPUJt, owned by the program, declaring 17 instructions as \"cargo\" v0.1.0; observed in 91 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Points (Point2iB)",
+   "program_id": "Point2iBvz7j5TMVef8nEgpmz4pDr7tU7v3RjAfkQbM",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HdyjUi8PUGgwPgZmLz1S9G2ZG8uLnMUgpXoxNXeyhEqF, owned by the program, declaring 14 instructions as \"points\" v0.1.0; observed in 72 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Pyth Solana Receiver (rec5EKMG)",
+   "program_id": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 68r7YcKwR5n8sV3Ngnt7Du28BabWNjZWMFQkkwSeg2A3, owned by the program, declaring 13 instructions as \"pyth_solana_receiver\" v0.2.1; observed in 60 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Pyth Push Oracle (pythWSns)",
+   "program_id": "pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 575zhTafbMJZJSjtk3615gTBTCR39JdbH6ciz1aaRsh4, owned by the program, declaring 1 instructions as \"pyth_push_oracle\" v0.1.0; observed in 60 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Coinflow (FD1amxhT)",
+   "program_id": "FD1amxhTsDpwzoVX41dxp2ygAESURV2zdUACzxM1Dfw9",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at BhNnEYygEmt8sMfxbeUwKewzKFfNRDBFg1cRb7jHXmBT, owned by the program, declaring 15 instructions as \"coinflow\" v0.1.0; observed in 54 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Wormhole Core Bridge Solana (HDwcJBJX)",
+   "program_id": "HDwcJBJXjL9FpJ7UBsYBtaDjsBUhuLCUYoz3zr8SWWaQ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 6cMFuNNdxnBR7rHRkydNnDvyYmQMXinG74Z9digvbhgH, owned by the program, declaring 10 instructions as \"wormhole_core_bridge_solana\" v0.0.1-alpha.5; observed in 49 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "M2 (M2mx93ek)",
+   "program_id": "M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CAX99cYM8o19EC6adAbNcncEorGQS8vv8xjutgVds2DC, owned by the program, declaring 24 instructions as \"m2\" v0.1.0; observed in 42 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Mmm (mmm3XBJg)",
+   "program_id": "mmm3XBJg5gk8XJxEKBvdgptZz6SgK4tXvn36sodowMc",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CoFLUSa75jnuGeDoH2N8iUNurGb5ZstV6HzfRqm1ac5a, owned by the program, declaring 29 instructions as \"mmm\" v0.2.0; observed in 37 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Vault (24Uqj9JC)",
+   "program_id": "24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at ActKRY9gHqKUGy9snXsUYnA4pPASKUsqeje1v1HABaaT, owned by the program, declaring 14 instructions as \"vault\" v0.7.2; observed in 35 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "AMM (Eo7WjKq6)",
+   "program_id": "Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CxthXv8iiNpX29cuiYgSs7rZSSveWfgQKDtvTCp8bxia, owned by the program, declaring 26 instructions as \"amm\" v0.5.2; observed in 35 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Pyth Push Oracle (pyt2F414)",
+   "program_id": "pyt2F414BA6dPttK6RddPZUdHfapoBN24GL5wbrPCou",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 3QaVWLarB2ifHnSd3DqVv4s75Gf5dCYGJdo7hpKcuQE4, owned by the program, declaring 1 instructions as \"pyth_push_oracle\" v0.1.0; observed in 27 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Pyth Solana Receiver (rec2HHDD)",
+   "program_id": "rec2HHDDnjLfj4kE7VyEtFA1HPGQLK33259532cRyHp",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at raeUSn8gguFWVFs4iw3YathYM3mdb95W5Bfiu3tqE7F, owned by the program, declaring 13 instructions as \"pyth_solana_receiver\" v0.2.1; observed in 27 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Wormhole Core Bridge Solana (HDw2E7P8)",
+   "program_id": "HDw2E7P8X1SkCyjvoGsfBGAVUutKcj874bXjHrpVYrVL",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 6N5STfYGYK99anLiF38cc6KLovoEooehcT2LE3UndHNj, owned by the program, declaring 10 instructions as \"wormhole_core_bridge_solana\" v0.0.1-alpha.5; observed in 21 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Tail Trade (J51H4gev)",
+   "program_id": "J51H4gevuj9sLwp2qvRQMs4fBvZHWebEVeNhdUdPNR1K",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at B4poaPq96UxhqiTR7EhtNL6hRA4iy2rceKgBDNYCBt2j, owned by the program, declaring 230 instructions as \"tail_trade\" v0.1.0; observed in 20 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Tcomp (TCMPhJdw)",
+   "program_id": "TCMPhJdwDryooaGtiocG1u3xcYbRpiJzb283XfCZsDp",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 7yPVu5hUbfnHec2d6EUmTfdpyzcoL3TArZ3HX7FpA9yT, owned by the program, declaring 21 instructions as \"tcomp\" v2.0.1; observed in 19 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Staking (SKRskrmt)",
+   "program_id": "SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 4aAEUKCcju9iAEAgdeaNz4RC7sCPv63q5g714nw4QY68, owned by the program, declaring 11 instructions as \"staking\" v0.1.0; observed in 19 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Pyth Lazer Solana Contract (pytd2yyk)",
+   "program_id": "pytd2yyk641x7ak7mkaasSJVXh6YYZnC7wTmtgAyxPt",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at AUuHVnggr2prrwaNdZhCHXucvD8QJEmfMKXRAhBTFfF4, owned by the program, declaring 3 instructions as \"pyth_lazer_solana_contract\" v0.2.0; observed in 16 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Doves (DoVEsk76)",
+   "program_id": "DoVEsk76QybCEHQGzkvYPWLQu9gzNoZZZt3TPiL597e",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 4D2RLxRVWjGUp7E45noWC6x7BfmSQbQ4mQevHvTV5ai6, owned by the program, declaring 7 instructions as \"doves\" v0.1.0; observed in 14 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Safecinerator (CLEANALo)",
+   "program_id": "CLEANALo6FtS6quqTTEXDGFFTuSKMkeKGgcweeiPRJzK",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at F41Ft3hGApvCSa5UnutESCVagPJQ5ivgQryRdaiJNVT5, owned by the program, declaring 2 instructions as \"safecinerator\" v0.1.0; observed in 12 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Bubblegum (BGUMAp9G)",
+   "program_id": "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at FkEqjp7yVqKgKr7CjkcmDYpD4KxjzFvsUAQeySTqQBVk, owned by the program, declaring 17 instructions as \"bubblegum\" v0.12.0; observed in 12 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Gmsol Store (Gmso1uvJ)",
+   "program_id": "Gmso1uvJnLbawvw7yezdfCDcPydwW2s2iqG3w6MDucLo",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 7EajSAQ8RufQsMrcVZzdAV5XmFNvFZahWvcknMzMJeQg, owned by the program, declaring 130 instructions as \"gmsol_store\" v0.10.0; observed in 10 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Stableswap (ghosty4Z)",
+   "program_id": "ghosty4ZU1Qk1HN7Ymz4pZ15QfspzJZgSYFkdKN6ZLK",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at FzB8t8tWBTEp1XbwXwPzNthUXc4RuJTfUYY51cXUWzny, owned by the program, declaring 16 instructions as \"stableswap\" v0.1.0; observed in 10 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Marketplace (CcmRKTuZ)",
+   "program_id": "CcmRKTuZCGJBWQwMHvDYApBRvSZNHqGJXkznqpDTSQUr",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at BaG7ceddQ1UAg4QzrzX1c6MKKKH8wwHwRnKPkbF8TRqp, owned by the program, declaring 52 instructions as \"marketplace\" v0.1.0; observed in 9 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Timelock (strmRqUC)",
+   "program_id": "strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 8i4Dx1At9cusc86r44THGNnq8eTgoTTpNTF8N63Lm7t9, owned by the program, declaring 10 instructions as \"timelock\" v0.1.0; observed in 8 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Fusionamm (fUSioN9Y)",
+   "program_id": "fUSioN9YKKSa3CUC2YUc4tPkHJ5Y6XW1yz8y6F7qWz9",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at GmsDDp7nRhoG254GCxEnHKpj1gLMt59XtrpTkQKpaXGR, owned by the program, declaring 33 instructions as \"fusionamm\" v1.1.4; observed in 8 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "AMM Routing (REALp6iM)",
+   "program_id": "REALp6iMBDTctQqpmhBo4PumwJGcybbnDpxtax3ara3",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CpHCpMknxEqJ9nzHd3771SH57t8zBiLVRfYPMwTjJfQe, owned by the program, declaring 5 instructions as \"amm_routing\" v0.1.0; observed in 8 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Donau (FknMf1SR)",
+   "program_id": "FknMf1SRUnujeyezuvKBQ7T57L2iSGbNd6D3iSrdDUHQ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at BsH3dkPKesm5rzrFRCZmRTFwqtRDw9acbc5vbD559jzx, owned by the program, declaring 13 instructions as \"donau\" v0.1.0; observed in 7 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Perpetuals (PERPHjGB)",
+   "program_id": "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 38GK1i4cQPAxqrbfKX4RRMNfXpKRn5PgLFHVJeXm1C8Y, owned by the program, declaring 59 instructions as \"perpetuals\" v0.1.0; observed in 7 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Crash Game (G3z6yQqL)",
+   "program_id": "G3z6yQqLP1q2JqFqEwND6rTX3vsnzzr3Vv16pMoSdkcx",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 4LVRq7NwW9UKfvfpC9T2iALcBXurWH9wY6Vz6JrH99d3, owned by the program, declaring 10 instructions as \"crash_game\" v0.1.0; observed in 7 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "DEX (jupZ4m2G)",
+   "program_id": "jupZ4m2GqUCJ5iueMfzQf8khFfH31d4XAQt3RzCT9Vd",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 84tF4Ms1Q7aUsDDW8HeuKm3BCMYhDFH6mf852PdTwYro, owned by the program, declaring 37 instructions as \"dex\" v0.1.0; observed in 7 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Bonkswap (BSwp6bEB)",
+   "program_id": "BSwp6bEBihVLdqJRKGgzjcGLHkcTuzmSo1TQkHepzH8p",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 6G5n1sMcNLWshLDCGAm2m54odhiyQHGhb7NDBiXvEoWW, owned by the program, declaring 19 instructions as \"bonkswap\" v0.1.1; observed in 7 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Order Engine (61DFfeTK)",
+   "program_id": "61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at ARpUTgSk6XR8aoHGxmQ7RnVvSTFw8mtW6j9Xuxwj9HW1, owned by the program, declaring 1 instructions as \"order_engine\" v0.1.0; observed in 6 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Account Compression (compr6CU)",
+   "program_id": "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at PTcLzPDqQEuerAGp3QXquEWHhWrUYpTtDFvjc9XHni2, owned by the program, declaring 13 instructions as \"account_compression\" v1.0.0; observed in 6 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Light System Program (SySTEM1e)",
+   "program_id": "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at DtKYkdjXMzyzEpF1CN4HM8wF5zUZHtZKxua3wui5NS9V, owned by the program, declaring 4 instructions as \"light_system_program\" v1.0.0; observed in 6 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Cc Vrf (ccvrfu3f)",
+   "program_id": "ccvrfu3fSpbnPLiUqdWAt85Zn9nq96ekwGTbHqGtdgQ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at Fu5qyb3QdMLWaX2SMw69HdCHfKrotZz1wDeEQVeTj2bB, owned by the program, declaring 6 instructions as \"cc_vrf\" v0.1.0; observed in 6 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Farms (FarmsPZp)",
+   "program_id": "FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at Ey7rZRLbKdhDqcUuSpAkApk3S3dK7RHoKPJST1RRVJAp, owned by the program, declaring 27 instructions as \"farms\" v1.7.0; observed in 5 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Brrr Lend (G3v8Wxa6)",
+   "program_id": "G3v8Wxa6TU8rwjZ4J5ey7zbnp44VxYTyTVESa3P6ByjT",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 4oyLp8FnUUgWNgXRdmHnJ9sq2jhnYmVR86FHEmJg7UPP, owned by the program, declaring 32 instructions as \"brrr_lend\" v0.1.0; observed in 5 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Squads Smart Account Program (SMRTzfY6)",
+   "program_id": "SMRTzfY6DfH5ik3TKiyLFfXexV8uSG3d2UksSCYdunG",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 6smoqe8YGsnBkPAEGDmcnxZe9ErCxDwNTJqUio1DcTDm, owned by the program, declaring 37 instructions as \"squads_smart_account_program\" v0.1.0; observed in 4 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Crafting (CRAFT2RP)",
+   "program_id": "CRAFT2RPXPJWCEix4WpJST3E7NLf79GTqZUL75wngXo5",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 6FNSc9exiGM6brRuRfeSWV6ZqpNQmHhe4ycCitCaDxAN, owned by the program, declaring 31 instructions as \"crafting\" v0.1.0; observed in 4 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Bo Sc (MAN1CxT5)",
+   "program_id": "MAN1CxT5Hh2J7pyLB7Fu4P7TNvQ1d1NSLcKbgSGrhLZ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 9FDE4JxG6S5p1ZZCcYQNvfxhDHbi2MLuQfAVsnbJRSec, owned by the program, declaring 21 instructions as \"bo_sc\" v0.1.12; observed in 3 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Arcium (Arcj82pX)",
+   "program_id": "Arcj82pX7HxYKLR92qvgZUAd7vGS1k4hQvAFcPATFdEQ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at YJdcBFdxSHw1C3iR3HfaLNoSrQAmXZYwLA3FtwQ64mX, owned by the program, declaring 59 instructions as \"arcium\" v0.9.7; observed in 3 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Debot Router (G7MVcM9Y)",
+   "program_id": "G7MVcM9YzGxrmLtmobUgyt8A6WhQ2dgQX3aSJcPejdEp",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at A73ESELbVk6oTUuJSF7rE9JQVgzKuJsjYwMbzKtqZJra, owned by the program, declaring 10 instructions as \"debot_router\" v0.1.0; observed in 3 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Raydium Liquidity Locking (LockrWmn)",
+   "program_id": "LockrWmn6K5twhz3y9w1dQERbmgSaRkfnTeTKbpofwE",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HzLkUWn57cdtyQNQLJpyu2EPF8qQAiGt4iuiEo1XnEFK, owned by the program, declaring 4 instructions as \"raydium_liquidity_locking\" v0.1.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Kamino Vault (KvauGMsp)",
+   "program_id": "KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CEMRqxNQ9UKW5LaxGwFSbYY63DCyHwpX2XYKcyDmmdVL, owned by the program, declaring 26 instructions as \"kamino_vault\" v2.2.2; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Score (FLEET1qq)",
+   "program_id": "FLEET1qqzpexyaDpqb2DGsSzE2sDCizewCg9WjrA6DBW",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HXit7ZDB9VW3uUXcGRqLD16ELz1cXk2DeQEiC1EMxDBb, owned by the program, declaring 17 instructions as \"score\" v0.1.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Orao Vrf (VRFzZoJd)",
+   "program_id": "VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 2k87h9SGW5ncsQz3xJyyp56nREMFWHBCGK5owuG6Axxx, owned by the program, declaring 6 instructions as \"orao_vrf\" v0.6.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Gamma (GAMMA7me)",
+   "program_id": "GAMMA7meSFWaBXF25oSUgmGRwaW6sCMFLmBNiMSdbHVT",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 9hUkyRcTver9JvBCFbBG4mATzLGJKRTUFPtRvuhrdEqg, owned by the program, declaring 27 instructions as \"gamma\" v0.2.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Nosana Jobs (nosJhNRq)",
+   "program_id": "nosJhNRqr2bc9g1nfGDcXXTXvYUmxD4cVwy2pMWhrYM",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at FzNGzex94JUVESW6kZGF8WDPH8mwSGLWPr4PewYJ3PVG, owned by the program, declaring 19 instructions as \"nosana_jobs\" v2.2.1; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Vault (vo1tWgqZ)",
+   "program_id": "vo1tWgqZMjG61Z2T9qUaMYKqZ75CYzMuaZ2LZP1n7HV",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 68kcFtyE4qK3ZmBo5wwwPcanH5h8SmF3VkYVqNTCZSR9, owned by the program, declaring 11 instructions as \"vault\" v1.5.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Stable Swap (swapNyd8)",
+   "program_id": "swapNyd8XiQwJ6ianp9snpu4brUqFxadzvHebnAXjJZ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at BSmgJDBfLsx9zsuuCyJhkchCu2ohfYx2vcPCNBQ5PDK9, owned by the program, declaring 19 instructions as \"stable_swap\" v1.5.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Swift (mayan34V)",
+   "program_id": "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 2qzWRSi3vRWtFwd7WRjvTUno5BPswFrH4H22fAZkmz5o, owned by the program, declaring 27 instructions as \"swift\" v0.1.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Main (CWgkFB7n)",
+   "program_id": "CWgkFB7ngUc9cGD1LryyhP7h6xYWtwrAjhSKKCoR1gkz",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 2JC8vobbYunKECSi5HZCTkjmQsbya8AQyqKgJXf2XwNR, owned by the program, declaring 26 instructions as \"main\" v0.1.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Tarb (BwRZQcpi)",
+   "program_id": "BwRZQcpiqQrQkpfWJDxzcpojPRmTB21FoVQYkcZBBReo",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at FqoeyHvFiWSRdraK91xXhKEorrpBd7J3KTbXYixwCcu6, owned by the program, declaring 8 instructions as \"tarb\" v0.1.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Bridge (FCW1uBM3)",
+   "program_id": "FCW1uBM3pZ7fQWvEL9sxTe4fNiH41bu9DWX4ErTZ6aMq",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HVH96DCoyJ8G4pZRxDqsE85LJWyhynpk4JaBQbb9MbBA, owned by the program, declaring 8 instructions as \"bridge\" v0.1.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Guacswap (Gswppe6E)",
+   "program_id": "Gswppe6ERWKpUTXvRPfXdzHhiCyJvLadVvXGfdpBqcE1",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at BBvVcNCC2X4qp4gTUCTxfkMt5VteNG2ynEmahmdCcEUK, owned by the program, declaring 20 instructions as \"guacswap\" v0.1.1; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Zap (zapvX9M3)",
+   "program_id": "zapvX9M3uf5pvy4wRPAbQgdQsM1xmuiFnkfHKPvwMiz",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CGyVoxqF2nfaWSRFR6FRcUAL5uy6SENzH2ueEFQUL4YR, owned by the program, declaring 8 instructions as \"zap\" v0.2.1; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Atlas Fee Payer (APR1MEny)",
+   "program_id": "APR1MEny25pKupwn72oVqMH4qpDouArsX8zX4VwwfoXD",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 3SGMPFChmEvgDXckhYbdjRzz46QGQxbJUMheAg4qErir, owned by the program, declaring 7 instructions as \"atlas_fee_payer\" v0.4.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Profile Vault (pv1ttom8)",
+   "program_id": "pv1ttom8tbyh83C1AVh6QH2naGRdVQUVt3HY1Yst5sv",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at GF36YhRarFdaxP4FMVRedkUcscidCBwJmtpTTLAChxek, owned by the program, declaring 3 instructions as \"profile_vault\" v0.7.0; observed in 2 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Merkle Distributor (MErKy6nZ)",
+   "program_id": "MErKy6nZVoVAkryxAejJz2juifQ4ArgLgHmaJCQkU7N",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 4Lc7QFwhQHAt1FekFDN3p3AD8y7Nkn1xG5yM9kkhRCjf, owned by the program, declaring 11 instructions as \"merkle_distributor\" v1.5.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Aligned Distributor (aMERKpFA)",
+   "program_id": "aMERKpFAWoChCi5oZwPvgsSCoGpZKBiU7fi76bdZjt2",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at DjiiFLHJGFAWxCcbDCmBtopynuPwDAscLVuaftXAaQnn, owned by the program, declaring 10 instructions as \"aligned_distributor\" v1.4.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Spl Account Compression (cmtDvXum)",
+   "program_id": "cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 7vzcW3fVgy3sB18qmGCKqdYAJstbuHNAmgeNac71oM62, owned by the program, declaring 7 instructions as \"spl_account_compression\" v0.1.2; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Omnipair (omnixgS8)",
+   "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 4EjYPP6Jiyzn8Kx8K5rNi2ACbb7f7i47F58uAbvuLoX9, owned by the program, declaring 21 instructions as \"omnipair\" v0.10.5; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Tuna (tuna4uSQ)",
+   "program_id": "tuna4uSQZncNeeiAMKbstuxA9CUkHH6HmC64wgmnogD",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at EooDyoDKbettJ6dvuuikga95ZLxKa2FifjrCicVm8HmP, owned by the program, declaring 66 instructions as \"tuna\" v3.6.20; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Hylo Earn Pool (HysTabVU)",
+   "program_id": "HysTabVUfmQBFcmzu1ctRd1Y1fxd66RBpboy1bmtDSQQ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at AWArpXp31bh4i9AtZBXiCoAN5a6k6doYrBYVurrqCRzK, owned by the program, declaring 11 instructions as \"hylo_earn_pool\" v2.0.5; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Verifier (ttaiNybR)",
+   "program_id": "ttaiNybR4ncnBFsBCQKdVus8BNHepErToRp5cuULduL",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HGwWCyEvJe7ZQphRmnRAfj5BxJWL24tZZTM6MLuogAaV, owned by the program, declaring 16 instructions as \"verifier\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Escrow (5BD9UAUC)",
+   "program_id": "5BD9UAUCRCg6Chv6CS5k4sBHGd7CciWpng9u7iJxJFjx",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at EKTzZ57nZjYW4R2P6DuTigp8nHHF6q87XpG2yjeN9BpN, owned by the program, declaring 20 instructions as \"escrow\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Marketplace (traderDn)",
+   "program_id": "traderDnaR5w6Tcoi3NFm53i48FTDNbGjBSZwWXDRrg",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HVe3W4GYcXYgQozKyctzAU68KN39prUeo3y7swgFawkE, owned by the program, declaring 16 instructions as \"marketplace\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Bridge Cards (cardWArq)",
+   "program_id": "cardWArqhdV5jeRXXjUti7cHAa4mj41Nj3Apc6RPZH2",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at x469D3CaD4Y2LCN7tojoPYoniUXaRwHj7eEgAYecNbi, owned by the program, declaring 8 instructions as \"bridge_cards\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Rush (RUsHe5Kt)",
+   "program_id": "RUsHe5Kt19Koe2stiQuTRS4wkev5QjY5AyatokniGeY",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at GfB9Jf1n3nGKXP7rDbmj7nLaaqheugpV99e4hLEp4jaw, owned by the program, declaring 12 instructions as \"rush\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Mintfx (EmiytJ3z)",
+   "program_id": "EmiytJ3zWX9koH3emPsWDEs9RqNm6NNFp4CkMLoiA1KC",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HYA5qKexL9uM2HSgfqyEZKnZpLFEWfgSBPwAWYBwukRk, owned by the program, declaring 17 instructions as \"mintfx\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Oridion (ord1qJZ3)",
+   "program_id": "ord1qJZ3DB52s9NoG8nuoacW85aCyNvECa5kAqcBVBu",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 3Ug2i2UmdvKLTQ43q8WXA7ABBNCC4Fdf5oCeUmuMaBnB, owned by the program, declaring 21 instructions as \"oridion\" v3.0.1; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Order Engine (2En5Y11S)",
+   "program_id": "2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at GJwPa6DAFzYKNddAgxwzKzuDgnE4NeaWkKPN9FFqkmkb, owned by the program, declaring 1 instructions as \"order_engine\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Limo (LiMoM9rM)",
+   "program_id": "LiMoM9rMhrdYrfzUCxQppvxCSG1FcrUK9G8uLq4A1GF",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at CEKPqaWFh121hEPxCd6vyuZRe2n3tsgQZZczuX8vmbnu, owned by the program, declaring 15 instructions as \"limo\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Order Book (MzLoYnJ6)",
+   "program_id": "MzLoYnJ6sF6eeejs4vV95TNmXqS3W4cAtLGKkjT4ZrK",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 5DNgPoEFEt32mgD9fuXyCutxu2naVThKHebYkNeXBAo3, owned by the program, declaring 18 instructions as \"order_book\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Rmn Remote (RmnXLft1)",
+   "program_id": "RmnXLft1mSEwDgMKu2okYuHkiazxntFFcZFrrcXxYg7",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 8pFr6hBFoBC46caLWrDAjEJpzA1QMU523tAmnUbSXDE5, owned by the program, declaring 12 instructions as \"rmn_remote\" v1.6.3; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Ccip Offramp (offqSMQW)",
+   "program_id": "offqSMQWgQud6WJz694LRzkeN5kMYpCHTpXQr3Rkcjm",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at H99oudFyNZB96AwiJwcGZ2mR2wacxD6N4r14n4e33n7j, owned by the program, declaring 21 instructions as \"ccip_offramp\" v1.6.3; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Futarchy (FUTARELB)",
+   "program_id": "FUTARELBfJfQ8RDGhg1wdhddq1odMAJUePHFuBYfUxKq",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at Cgg4TGESEzsewehRcFnbDaGmBznwkH23Ro1HqWz5VdtG, owned by the program, declaring 23 instructions as \"futarchy\" v0.6.1; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Data Credits (credMBJh)",
+   "program_id": "credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at EYSpidk9o3wXozoUVJN3fqAeRBzHBHdqQXMWtNhamWYE, owned by the program, declaring 9 instructions as \"data_credits\" v0.2.7; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Helium Sub Daos (hdaoVTCq)",
+   "program_id": "hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at C99VjPwyXbser5rWiC4wm3F4i7he5YGsqnqVUbiyBHFN, owned by the program, declaring 23 instructions as \"helium_sub_daos\" v0.2.50; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Store (HEvSKofv)",
+   "program_id": "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 7FQupg5eV1vLDs7eFcSGDFDgskKUCb9hEGv1JbVA4BPo, owned by the program, declaring 13 instructions as \"store\" v1.0.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Ocr2 (cjg3oHmg)",
+   "program_id": "cjg3oHmg9uuPsP8D6g29NWvhySJkdYdAo9D25PRbKXJ",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 2WAC1fCfVFWjPYc9FdjzZtRMZrz9dnkXC4fnweQ79THf, owned by the program, declaring 20 instructions as \"ocr2\" v1.0.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Tuktuk (tuktukUr)",
+   "program_id": "tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at GkUxZMcw2RbwZ64VL3MvBtYNV8zim3y7UfzabFTybAUJ, owned by the program, declaring 11 instructions as \"tuktuk\" v0.2.11; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "Doorcash (67g5Hhrz)",
+   "program_id": "67g5HhrzQ2eqqEDJTEogHGBjAfwRD8evD3wg6LTDV8GK",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at DLfKSWq1791mLFwHDwgyv28TR6Wm6GPTa6BqJMrcAvpQ, owned by the program, declaring 15 instructions as \"doorcash\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  }
+ ]
 }

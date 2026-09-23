@@ -1,0 +1,26 @@
+{
+ "address": "abrn446KXzKZxSowJdHN9XumbGfQi4DdAfWHBT7X81r",
+ "metadata": {
+  "name": "burn_and_claim",
+  "version": "1.2.0",
+  "spec": "0.1.0",
+  "description": "The All-In-One Solana Burner. Burn Tokens & NFTs. Close Accounts. Claim Back SOL."
+ },
+ "instructions": [
+  {
+   "name": "burnAndClaim",
+   "discriminator": [
+    237,
+    52,
+    164,
+    249,
+    149,
+    113,
+    13,
+    92
+   ],
+   "accounts": [],
+   "args": []
+  }
+ ]
+}

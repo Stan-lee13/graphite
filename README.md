@@ -11,10 +11,10 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 **Current status, in one place: [docs/CURRENT.md](docs/CURRENT.md).** Every dated report under `docs/` is a historical record and points there.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1455_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1562_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
-[![Protocols](https://img.shields.io/badge/Protocol_Manifests-33-blue?style=flat-square)](graphite-core/protocols/)
+[![Protocols](https://img.shields.io/badge/Protocol_Manifests-129-blue?style=flat-square)](docs/protocol-coverage.md)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-11_red?style=flat-square)](graphite-core/src/risk_engine.rs)
 [![Version](https://img.shields.io/badge/Version-v0.2.0--beta-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
 
@@ -123,45 +123,38 @@ All 11 patterns are real detection logic — not stubs, not placeholders. Nine a
 
 ---
 
-## Supported Protocols (33 Manifests / 803 Instructions)
+## Supported Protocols (129 Manifests / 3,186 Instructions)
 
-| Protocol | Program ID | Trust Tier |
-|----------|-----------|------------|
-| System Program | `11111111111111111111111111111111` | Battle Tested |
-| SPL Token | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` | Battle Tested |
-| Token-2022 | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | Official Manifest |
-| Stake Program | `Stake11111111111111111111111111111111111111` | Battle Tested |
-| Memo (v4.0.0, upgradeable) | `Memo4c2pN8afCj432Lb7RMVKi9PbQnnW7ewFFaV3oAH` | Official Manifest |
-| Memo (classic SPL, restored 2026-08-08) | `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` | Official Manifest |
-| Memo (legacy SPL, superseded) | `Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo` | Official Manifest |
-| Associated Token Account | `ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL` | Official Manifest |
-| Compute Budget | `ComputeBudget111111111111111111111111111111` | Official Manifest |
-| BPF Loader (classic) | `BPFLoader2111111111111111111111111111111111` | Official Manifest |
-| BPF Loader Upgradeable | `BPFLoaderUpgradeab1e11111111111111111111111` | Official Manifest |
-| Jupiter V6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | Battle Tested |
-| Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | Battle Tested |
-| Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | Battle Tested |
-| Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8` | Battle Tested |
-| Squads V4 | `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf` | Battle Tested |
-| Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | Official Manifest |
-| Jupiter DCA | `DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M` | Official Manifest |
-| Wormhole Core | `worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth` | Official Manifest |
-| Metaplex Token Metadata | `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s` | Official Manifest |
-| Drift Protocol | `dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH` | Official Manifest |
-| Kamino Lending | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` | Official Manifest |
-| Phoenix | `PhoeNiXZ8ByJGLkxNfZRnkUfjvmuYqLR89jjFHGqdXY` | Official Manifest |
-| OpenBook V2 | `opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb` | Official Manifest |
-| Switchboard | `SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f` | Official Manifest |
-| Jupiter Limit Order | `jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu` | Official Manifest |
-| Solend | `So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo` | Official Manifest |
-| Marginfi | `MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA` | Official Manifest |
-| Raydium CLMM | `CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK` | Official Manifest |
-| Raydium CPMM | `CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C` | Official Manifest |
-| Marinade Staking | `MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD` | Official Manifest |
-| SPL Stake Pool | `SPoo1Ku8WFXoNDMHPsrGSTSG1Y47rzgn41SLUNakuHy` | Official Manifest |
-| Orca TokenSwap V2 | `9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP` | Official Manifest |
+The full table — every program, its instruction count, the tier the loader
+actually applied, and the mainnet measurement behind it — is
+**[docs/protocol-coverage.md](docs/protocol-coverage.md)**, which is generated
+from the manifests and compared against the loaded registry in CI, so it cannot
+drift from the code the way a hand-maintained table does (it had: four rows of
+the old table named the wrong tier).
 
----
+Of those, **106 carry a BattleTested tier that a mainnet measurement supports** — up from 8 that merely declared one.
+
+**A manifest does not get to award itself a trust tier.** `BattleTested` lifts
+the confidence ceiling from 0.75 to 1.0 and is the floor the Enterprise profile
+demands, so it is the difference between a protocol an agent can use and one it
+cannot. `load_seed_manifests` lowers a declared `BattleTested` to
+`OfficialManifest` unless `protocols/battle_tested_evidence.json` shows that the
+program is executable on mainnet, that at least 1,000 successful transactions
+carry its address over a stated window, and that the manifest can name at least
+90% of the instructions really observed on chain. Measurements are read-only and
+reproducible (`graphite-core/scripts/battle_tested_census.py`).
+
+That tier is a statement about usage and description accuracy, **not about
+safety**: a heavily used malicious program would clear the same bar. What judges
+safety is L4, L5 and L7, which run identically at every tier.
+
+Ninety-six of these manifests were onboarded in Round 18 from each program's
+**own on-chain Anchor IDL** — the account the program itself owns — after
+ranking the Solana program inventory by real usage over 80 finalized mainnet
+blocks. On a 10,617-transaction sample, the share of non-vote transactions whose
+primary program Graphite can name went from 20.8% to 44.0%
+(`tools/mainnet-sample`); counted per program invocation over an 80-block
+census, 64.5% to 79.5% ([docs/protocol-coverage.md](docs/protocol-coverage.md)).
 
 ## What's in the Box
 
@@ -195,7 +188,8 @@ graphite/
 │   │   ├── benchmark.rs           ← P16-compliant benchmark (18 scored + 2 baselines)
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
-│   ├── protocols/                 ← 33 JSON protocol manifests (803 instructions)
+│   ├── protocols/                 ← 129 JSON protocol manifests (3,186 instructions)
+│   │                                 + battle_tested_evidence.json: the mainnet measurement behind each tier
 │   └── tests/                     ← 1,455 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)

@@ -564,6 +564,203 @@
    "allowed_cpis": [],
    "risk_rules": [],
    "risk_class": "mint"
+  },
+  {
+   "name": "InitializeAccount2",
+   "discriminator": "10",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.account token balance to 0",
+    "sets accounts.account owner to the owner in the instruction data"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "SyncNative",
+   "discriminator": "11",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "sets accounts.account token balance to its lamport balance less rent"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": ""
+  },
+  {
+   "name": "InitializeAccount3",
+   "discriminator": "12",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.account token balance to 0",
+    "sets accounts.account owner to the owner in the instruction data"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "InitializeMultisig2",
+   "discriminator": "13",
+   "accounts": [
+    {
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.multisig with the signer set in the instruction data"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "InitializeMint2",
+   "discriminator": "14",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes accounts.mint",
+    "sets the mint authority and freeze authority from the instruction data"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "mint authority in the instruction data must be the expected one"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "GetAccountDataSize",
+   "discriminator": "15",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "no state changes (read-only instruction)"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": ""
+  },
+  {
+   "name": "InitializeImmutableOwner",
+   "discriminator": "16",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "marks accounts.account owner as immutable"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "AmountToUiAmount",
+   "discriminator": "17",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "no state changes (read-only instruction)"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": ""
+  },
+  {
+   "name": "UiAmountToAmount",
+   "discriminator": "18",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "no state changes (read-only instruction)"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": ""
   }
  ],
  "trust_tier": "BattleTested"

@@ -1,0 +1,1797 @@
+{
+ "address": "RUsHe5Kt19Koe2stiQuTRS4wkev5QjY5AyatokniGeY",
+ "metadata": {
+  "name": "rush",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "admin_close_buyer",
+   "docs": [
+    "Close a Buyer account (admin only)"
+   ],
+   "discriminator": [
+    106,
+    20,
+    254,
+    117,
+    113,
+    39,
+    61,
+    233
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "buyer",
+     "writable": true
+    },
+    {
+     "name": "sol_destination",
+     "writable": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "admin_close_fee_collector",
+   "docs": [
+    "Close a FeeCollector account (admin only)"
+   ],
+   "discriminator": [
+    249,
+    85,
+    135,
+    27,
+    79,
+    56,
+    179,
+    226
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "fee_collector",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         70,
+         69,
+         69,
+         95,
+         67,
+         79,
+         76,
+         76,
+         69,
+         67,
+         84,
+         79,
+         82
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "sol_destination",
+     "writable": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "admin_close_global",
+   "docs": [
+    "Close the Global account (admin only)"
+   ],
+   "discriminator": [
+    237,
+    148,
+    68,
+    111,
+    4,
+    161,
+    91,
+    110
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "sol_destination",
+     "writable": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "admin_close_round",
+   "docs": [
+    "Close a Round account (admin only)"
+   ],
+   "discriminator": [
+    66,
+    210,
+    165,
+    132,
+    223,
+    67,
+    241,
+    200
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "round",
+     "writable": true
+    },
+    {
+     "name": "sol_destination",
+     "writable": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "buy",
+   "docs": [
+    "Buy a ticket for the current round"
+   ],
+   "discriminator": [
+    102,
+    6,
+    61,
+    18,
+    1,
+    218,
+    235,
+    234
+   ],
+   "accounts": [
+    {
+     "name": "buyer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "fee_collector",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         70,
+         69,
+         69,
+         95,
+         67,
+         79,
+         76,
+         76,
+         69,
+         67,
+         84,
+         79,
+         82
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "round",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         82,
+         79,
+         85,
+         78,
+         68
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "global.current_round_id",
+        "account": "Global"
+       }
+      ]
+     }
+    },
+    {
+     "name": "buyer_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         66,
+         85,
+         89,
+         69,
+         82
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "buyer"
+       },
+       {
+        "kind": "account",
+        "path": "global.current_round_id",
+        "account": "Global"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "event_authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         95,
+         101,
+         118,
+         101,
+         110,
+         116,
+         95,
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "claim_admin_fee",
+   "docs": [
+    "Claim accumulated admin fees (admin only)"
+   ],
+   "discriminator": [
+    140,
+    174,
+    8,
+    26,
+    35,
+    27,
+    162,
+    21
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "fee_collector",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         70,
+         69,
+         69,
+         95,
+         67,
+         79,
+         76,
+         76,
+         69,
+         67,
+         84,
+         79,
+         82
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "recipient",
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "event_authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         95,
+         101,
+         118,
+         101,
+         110,
+         116,
+         95,
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "claim_treasury",
+   "docs": [
+    "Claim from treasury (admin only)"
+   ],
+   "discriminator": [
+    78,
+    107,
+    230,
+    224,
+    191,
+    237,
+    4,
+    163
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "recipient",
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "event_authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         95,
+         101,
+         118,
+         101,
+         110,
+         116,
+         95,
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program"
+    }
+   ],
+   "args": [
+    {
+     "name": "params",
+     "type": {
+      "defined": {
+       "name": "ClaimTreasuryParams"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "claim_yield",
+   "docs": [
+    "Claim yield for a specific round"
+   ],
+   "discriminator": [
+    49,
+    74,
+    111,
+    7,
+    186,
+    22,
+    61,
+    165
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "round",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         82,
+         79,
+         85,
+         78,
+         68
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "round_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "buyer_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         66,
+         85,
+         89,
+         69,
+         82
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "authority"
+       },
+       {
+        "kind": "arg",
+        "path": "round_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "event_authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         95,
+         101,
+         118,
+         101,
+         110,
+         116,
+         95,
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program"
+    }
+   ],
+   "args": [
+    {
+     "name": "round_id",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "initialize",
+   "docs": [
+    "Initialize the Rush game with global config and first round"
+   ],
+   "discriminator": [
+    175,
+    175,
+    109,
+    31,
+    13,
+    152,
+    155,
+    237
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "fee_collector",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         70,
+         69,
+         69,
+         95,
+         67,
+         79,
+         76,
+         76,
+         69,
+         67,
+         84,
+         79,
+         82
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "round",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         82,
+         79,
+         85,
+         78,
+         68
+        ]
+       },
+       {
+        "kind": "const",
+        "value": [
+         1,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "params",
+     "type": {
+      "defined": {
+       "name": "InitializeParams"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "inject_jackpot",
+   "docs": [
+    "Inject SOL into the active round's jackpot"
+   ],
+   "discriminator": [
+    137,
+    127,
+    247,
+    233,
+    147,
+    157,
+    248,
+    196
+   ],
+   "accounts": [
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "round",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         82,
+         79,
+         85,
+         78,
+         68
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "global.current_round_id",
+        "account": "Global"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "event_authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         95,
+         101,
+         118,
+         101,
+         110,
+         116,
+         95,
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "reset",
+   "docs": [
+    "Reset the round after expiry, pay winner, start next round"
+   ],
+   "discriminator": [
+    23,
+    81,
+    251,
+    84,
+    138,
+    183,
+    240,
+    214
+   ],
+   "accounts": [
+    {
+     "name": "keeper",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "round",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         82,
+         79,
+         85,
+         78,
+         68
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "global.current_round_id",
+        "account": "Global"
+       }
+      ]
+     }
+    },
+    {
+     "name": "next_round",
+     "writable": true
+    },
+    {
+     "name": "winner",
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "event_authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         95,
+         101,
+         118,
+         101,
+         110,
+         116,
+         95,
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "update_global",
+   "docs": [
+    "Update global configuration (admin only)"
+   ],
+   "discriminator": [
+    90,
+    152,
+    240,
+    21,
+    199,
+    38,
+    72,
+    20
+   ],
+   "accounts": [
+    {
+     "name": "admin",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "global",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         71,
+         76,
+         79,
+         66,
+         65,
+         76
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "event_authority",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         95,
+         101,
+         118,
+         101,
+         110,
+         116,
+         95,
+         97,
+         117,
+         116,
+         104,
+         111,
+         114,
+         105,
+         116,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program"
+    }
+   ],
+   "args": [
+    {
+     "name": "params",
+     "type": {
+      "defined": {
+       "name": "UpdateGlobalParams"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "Buyer",
+   "discriminator": [
+    212,
+    193,
+    28,
+    181,
+    26,
+    219,
+    85,
+    174
+   ]
+  },
+  {
+   "name": "FeeCollector",
+   "discriminator": [
+    250,
+    213,
+    73,
+    200,
+    175,
+    76,
+    225,
+    213
+   ]
+  },
+  {
+   "name": "Global",
+   "discriminator": [
+    167,
+    232,
+    232,
+    177,
+    200,
+    108,
+    114,
+    127
+   ]
+  },
+  {
+   "name": "Round",
+   "discriminator": [
+    87,
+    127,
+    165,
+    51,
+    73,
+    78,
+    116,
+    174
+   ]
+  }
+ ],
+ "events": [
+  {
+   "name": "AdminFeeClaimed",
+   "discriminator": [
+    13,
+    64,
+    87,
+    123,
+    24,
+    83,
+    128,
+    54
+   ]
+  },
+  {
+   "name": "GlobalUpdated",
+   "discriminator": [
+    131,
+    66,
+    237,
+    209,
+    176,
+    87,
+    119,
+    203
+   ]
+  },
+  {
+   "name": "JackpotInjected",
+   "discriminator": [
+    245,
+    94,
+    32,
+    249,
+    192,
+    176,
+    173,
+    144
+   ]
+  },
+  {
+   "name": "RoundReset",
+   "discriminator": [
+    209,
+    209,
+    117,
+    76,
+    125,
+    47,
+    106,
+    30
+   ]
+  },
+  {
+   "name": "TicketPurchased",
+   "discriminator": [
+    108,
+    59,
+    246,
+    95,
+    84,
+    145,
+    13,
+    71
+   ]
+  },
+  {
+   "name": "TreasuryClaimed",
+   "discriminator": [
+    59,
+    99,
+    64,
+    13,
+    118,
+    14,
+    251,
+    106
+   ]
+  },
+  {
+   "name": "YieldClaimed",
+   "discriminator": [
+    177,
+    201,
+    94,
+    68,
+    19,
+    200,
+    227,
+    27
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "Unauthorized",
+   "msg": "Unauthorized: caller is not the admin"
+  },
+  {
+   "code": 6001,
+   "name": "UnauthorizedKeeper",
+   "msg": "Unauthorized: caller is not the keeper bot"
+  },
+  {
+   "code": 6002,
+   "name": "RoundNotActive",
+   "msg": "Round is not active"
+  },
+  {
+   "code": 6003,
+   "name": "RoundNotStarted",
+   "msg": "Round has not started yet (no buys)"
+  },
+  {
+   "code": 6004,
+   "name": "InvalidFeeConfiguration",
+   "msg": "Invalid fee configuration: total fees must not exceed 100%"
+  },
+  {
+   "code": 6005,
+   "name": "ArithmeticOverflow",
+   "msg": "Arithmetic overflow"
+  },
+  {
+   "code": 6006,
+   "name": "InsufficientFunds",
+   "msg": "Insufficient funds"
+  },
+  {
+   "code": 6007,
+   "name": "NothingToClaim",
+   "msg": "Nothing to claim"
+  },
+  {
+   "code": 6008,
+   "name": "InvalidRoundId",
+   "msg": "Invalid round ID"
+  },
+  {
+   "code": 6009,
+   "name": "InvalidAmount",
+   "msg": "Invalid amount: must be greater than zero"
+  },
+  {
+   "code": 6010,
+   "name": "FromNotWritable",
+   "msg": "From account is not writable"
+  },
+  {
+   "code": 6011,
+   "name": "ToNotWritable",
+   "msg": "To account is not writable"
+  },
+  {
+   "code": 6012,
+   "name": "InsufficientBalance",
+   "msg": "Insufficient balance"
+  }
+ ],
+ "types": [
+  {
+   "name": "AdminFeeClaimed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "recipient",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Buyer",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "authority",
+      "docs": [
+       "Owner of this buyer account"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "round_id",
+      "docs": [
+       "Round ID this buyer participates in"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "total_tickets_owned",
+      "docs": [
+       "Total tickets owned by this buyer"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "last_buy_slot",
+      "docs": [
+       "Slot of last purchase"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "reward_factor_snapshot",
+      "docs": [
+       "Snapshot of reward factor at last update"
+      ],
+      "type": "u128"
+     },
+     {
+      "name": "pending_yield",
+      "docs": [
+       "Pending yield to claim (lamports)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "lifetime_yield",
+      "docs": [
+       "Total yield earned over lifetime (lamports)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "buffer",
+      "docs": [
+       "Buffer for future use"
+      ],
+      "type": {
+       "array": [
+        "u8",
+        56
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ClaimTreasuryParams",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "FeeCollector",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "buffer",
+      "docs": [
+       "Buffer for future use"
+      ],
+      "type": {
+       "array": [
+        "u8",
+        64
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Global",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "admin",
+      "docs": [
+       "Admin authority who can update config and claim fees"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "current_round_id",
+      "docs": [
+       "Current active round ID"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "admin_fee_bps",
+      "docs": [
+       "Fee sent to fee collector PDA (basis points)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "vault_bps",
+      "docs": [
+       "Fee sent to treasury/global PDA (basis points)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "yield_bps",
+      "docs": [
+       "Fee distributed as yield to ticket holders (basis points)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "buffer",
+      "docs": [
+       "Buffer for future use"
+      ],
+      "type": {
+       "array": [
+        "u8",
+        64
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "GlobalUpdated",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "vault_bps",
+      "type": "u64"
+     },
+     {
+      "name": "admin_fee_bps",
+      "type": "u64"
+     },
+     {
+      "name": "yield_bps",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "InitializeParams",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "vault_bps",
+      "type": "u64"
+     },
+     {
+      "name": "admin_fee_bps",
+      "type": "u64"
+     },
+     {
+      "name": "yield_bps",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "JackpotInjected",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "round_id",
+      "type": "u64"
+     },
+     {
+      "name": "payer",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "new_jackpot",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Round",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "id",
+      "docs": [
+       "Round number"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "jackpot",
+      "docs": [
+       "SOL in the jackpot (lamports)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "last_buyer",
+      "docs": [
+       "Current leader (last buyer)"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "expiry_slot",
+      "docs": [
+       "Slot when round expires"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "reward_factor",
+      "docs": [
+       "Cumulative reward factor for yield distribution (scaled by SCALE_FACTOR)"
+      ],
+      "type": "u128"
+     },
+     {
+      "name": "total_tickets_sold",
+      "docs": [
+       "Total tickets sold in this round"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "total_yield_deposited",
+      "docs": [
+       "Total SOL deposited for yield distribution"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "total_buy_volume",
+      "docs": [
+       "Total SOL spent on ticket purchases (buy volume)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "total_vaulted",
+      "docs": [
+       "Total SOL sent to vault/treasury"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "is_active",
+      "docs": [
+       "Whether the round is still active"
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "buffer",
+      "docs": [
+       "Buffer for future use"
+      ],
+      "type": {
+       "array": [
+        "u8",
+        64
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "RoundReset",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "round_id",
+      "type": "u64"
+     },
+     {
+      "name": "winner",
+      "type": "pubkey"
+     },
+     {
+      "name": "jackpot",
+      "type": "u64"
+     },
+     {
+      "name": "winner_payout",
+      "type": "u64"
+     },
+     {
+      "name": "rollover",
+      "type": "u64"
+     },
+     {
+      "name": "total_tickets_sold",
+      "type": "u64"
+     },
+     {
+      "name": "next_round_id",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "TicketPurchased",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "round_id",
+      "type": "u64"
+     },
+     {
+      "name": "buyer",
+      "type": "pubkey"
+     },
+     {
+      "name": "price",
+      "type": "u64"
+     },
+     {
+      "name": "tickets_owned",
+      "type": "u64"
+     },
+     {
+      "name": "total_tickets_sold",
+      "type": "u64"
+     },
+     {
+      "name": "jackpot",
+      "type": "u64"
+     },
+     {
+      "name": "new_expiry_slot",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "TreasuryClaimed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "recipient",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "UpdateGlobalParams",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "admin",
+      "type": {
+       "option": "pubkey"
+      }
+     },
+     {
+      "name": "vault_bps",
+      "type": {
+       "option": "u64"
+      }
+     },
+     {
+      "name": "admin_fee_bps",
+      "type": {
+       "option": "u64"
+      }
+     },
+     {
+      "name": "yield_bps",
+      "type": {
+       "option": "u64"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "YieldClaimed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "round_id",
+      "type": "u64"
+     },
+     {
+      "name": "buyer",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  }
+ ]
+}

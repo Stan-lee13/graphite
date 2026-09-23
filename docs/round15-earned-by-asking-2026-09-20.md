@@ -1,5 +1,9 @@
 # Round 15 — earned by asking
 
+> **Historical record.** This report describes the codebase at commit
+> `21c0a7b` on 2026-09-20. Every finding it opened was closed in Round 17.
+> For the current state of Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-09-20
 **Trigger:** a forensic re-audit of the whole boundary, commissioned as an
 adversarial review of every previous fix rather than a continuation of Round 14.
@@ -475,7 +479,8 @@ before and after: `177a62b0b34087fe6da91fc71256d20d7b52a4885c45e9b73ff1d74e250f8
 ```
 === BROKEN  (sed: `&& sim_res.err.is_none()` removed at verification.rs:5228)
 test an_errored_simulation_never_produces_a_diff ... FAILED
-thread 'an_errored_simulation_never_produces_a_diff' panicked at testspc_trust_boundary.rs:636:5
+thread 'an_errored_simulation_never_produces_a_diff' panicked at tests
+pc_trust_boundary.rs:636:5
 test result: FAILED. 0 passed; 1 failed
 === RESTORED (cp from .r15bak; sha256 177a62b0…0f89d0 = pristine)
 test an_errored_simulation_never_produces_a_diff ... ok

@@ -2,7 +2,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "eaf64016b0f35560f0a6ea87f5a0028e91d92acde9c7ffcc2d73343cdad18c09",
+    "content_hash": "0933076b2e5de887c06d8d710bf24181b9ddd819c26c10235656c0b88118cc6a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -17,7 +17,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "00",
       "account_addresses": [
-        "3nNZHArbfhzwEu4NRJa4P2PV3N7xN8PJQpUqM7rd5xsa"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5"
       ],
       "instruction_data": [
         0,
@@ -65,7 +65,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3866d9e2f9518e2d48aa717325d9f9f3de8f53566fc249c43a38e7b420881794",
+    "content_hash": "3d70792b9693076329c00b62a97498298afcb31b428f85cb1f076c4d8500d08e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -80,7 +80,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "00",
       "account_addresses": [
-        "3nNZHArbfhzwEu4NRJa4P2PV3N7xN8PJQpUqM7rd5xsa"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5"
       ],
       "instruction_data": [
         0,
@@ -128,7 +128,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b51af2e367dcba06e6c6c5ac6397bf5a79f117864f1869c848b219512a9bd9f6",
+    "content_hash": "04a271a06e25cc62e22686ba24ade5628b48f9ac6aefd616553ac8fe124aa770",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -143,7 +143,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "00",
       "account_addresses": [
-        "3nNZHArbfhzwEu4NRJa4P2PV3N7xN8PJQpUqM7rd5xsa"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5"
       ],
       "instruction_data": [
         0,
@@ -191,7 +191,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "3c1b67b81e12f735a680d5db570b51d91f07d59118a6edcd3a384c28f1803cf8",
+    "content_hash": "1c7d1a09cb441f6a3ad461b1705859ec6b9249dd444c5205c355a98fe36a93e9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -206,15 +206,15 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "00",
       "account_addresses": [
-        "3nNZHArbfhzwEu4NRJa4P2PV3N7xN8PJQpUqM7rd5xsa",
-        "HcY2e2atwMZKRnYBJby4ssX2wRj6mv4ja2yw3id3Bik8",
-        "4TeoaYfx2cMDDEZssWYCYVV8fmPWTuraQbn8i3QcSapJ",
-        "23REVLe25y2vYkVNjF8RdJZDq8mvcNp99tKeR8nCny1j",
-        "B33nL6sJ4SRre1VWjzMpNsHLHMeUjaqmMV3qffmWLpqf",
-        "3zEy86cTTUpdCGE3Z3ByfJjUM56Txt1k94nAH8mJCwwY",
-        "7AJoSiifRQU7CFHTamnX91gAAyLsYGGtEs8RrDhc7vHk",
-        "B4BDtSrLKfwH9rj4F43XVMmQKeUmnMeN2p5bfLUGL53d",
-        "U6CintrLzLiSBXxxTtrQSUgU3rYbTvPZQMovqCK2X1v"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5",
+        "7FiN5uF4ADRojRF3jHWMS9x5bcgYF7sx6TVbCgNuar3R",
+        "7n93U9uj99SXuJ4ZvhG6zE25Bdx9AFSvRJzaBbRhvA7U",
+        "26HzZ7YdCVXQ3Ubz9gXUrSDeYZj8ekTrrykA8tnWU8b5",
+        "Dib5o6zAdC3LEMLsFyqrMVYBb8E39V6dhUpx9M9uJjwP",
+        "B3Up4AdHVvtvv6o7Y8zHSLCV3ECsyLCHMcA6sNhRN6KG",
+        "D2bKSk4GAQw3TbByUCE4oJu7pyKjZ6VRJf4dCH3AaBU8",
+        "21T56tTwRaspApu4R8Rho4vXStGbn94mgd2dJN39LTFS",
+        "7Mkw7Yojm1mJsPmxZTmFbkP9oeBkK6Np8idzwSV26fB6"
       ],
       "instruction_data": [
         0,
@@ -262,7 +262,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4a9faf7fb8088bd38d414297839bb850db088fa26f7bd5bcb5b3ffb0138c49fd",
+    "content_hash": "57c776aa651800a2adb17475e3d0fa547e0c6f8a305024ca5cab264c4dab43e6",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -277,7 +277,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "00000000",
       "account_addresses": [
-        "3nNZHArbfhzwEu4NRJa4P2PV3N7xN8PJQpUqM7rd5xsa"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5"
       ],
       "instruction_data": [
         0,
@@ -325,7 +325,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e74cc84b779c11a550b802aaffdcd88d1ff1dd75844885c455e504ddcab81034",
+    "content_hash": "1534427d31dff3c56aaef5cf52aa94ef25c951f6b3abf4181d7ea869b844447e",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -340,7 +340,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "00ff00",
       "account_addresses": [
-        "3nNZHArbfhzwEu4NRJa4P2PV3N7xN8PJQpUqM7rd5xsa"
+        "DtAfUq3R9dCPUV4kZ8aBGKxxNXFv6M1AzXUeF8foTbz5"
       ],
       "instruction_data": [
         0,
@@ -435,7 +435,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "e9be798d57fc403d276f4a968e4d40bd4a7cf0be829f70791b8501c18edb6ecc",
+    "content_hash": "edadf7a2e153747d278d51e100ca17a7cb59fec9f097c7e63049fcc76fa3095a",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -450,7 +450,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "01",
       "account_addresses": [
-        "2iRcpP8ABMTeDUwPPTJ3JGpLvu9cdM2hceuFgExPRTbZ"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT"
       ],
       "instruction_data": [
         1,
@@ -498,7 +498,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "99dca6b1c460bb4e4241571142ed9da762ee159ae1ceaaf92aafdf47624d2d68",
+    "content_hash": "f786f1fdd4f563b450e1f9e72df9bcb6ec4fbd9050758de740a9801179030dcb",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -513,7 +513,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "01",
       "account_addresses": [
-        "2iRcpP8ABMTeDUwPPTJ3JGpLvu9cdM2hceuFgExPRTbZ"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT"
       ],
       "instruction_data": [
         1,
@@ -561,7 +561,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "b50fd3d3f4ce883ea37b6c779d43c61fb2533f259013e747c6f0836f42c0c201",
+    "content_hash": "34f8e6faecff7d8da1b3dd9bf877a35a9f2e872ca599944fc1ec439cfb8a82e9",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -576,7 +576,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "01",
       "account_addresses": [
-        "2iRcpP8ABMTeDUwPPTJ3JGpLvu9cdM2hceuFgExPRTbZ"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT"
       ],
       "instruction_data": [
         1,
@@ -624,7 +624,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "aada9603a78ead7eba6fb8a05ec95b41d2b50c9aa5985df7eb77ae43f3e86a97",
+    "content_hash": "445ce93c505c46ef9a7eac930694d499a08a266d13c8cba88956fdbccb86ea83",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -639,15 +639,15 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "01",
       "account_addresses": [
-        "2iRcpP8ABMTeDUwPPTJ3JGpLvu9cdM2hceuFgExPRTbZ",
-        "HcY2e2atwMZKRnYBJby4ssX2wRj6mv4ja2yw3id3Bik8",
-        "4TeoaYfx2cMDDEZssWYCYVV8fmPWTuraQbn8i3QcSapJ",
-        "23REVLe25y2vYkVNjF8RdJZDq8mvcNp99tKeR8nCny1j",
-        "B33nL6sJ4SRre1VWjzMpNsHLHMeUjaqmMV3qffmWLpqf",
-        "3zEy86cTTUpdCGE3Z3ByfJjUM56Txt1k94nAH8mJCwwY",
-        "7AJoSiifRQU7CFHTamnX91gAAyLsYGGtEs8RrDhc7vHk",
-        "B4BDtSrLKfwH9rj4F43XVMmQKeUmnMeN2p5bfLUGL53d",
-        "U6CintrLzLiSBXxxTtrQSUgU3rYbTvPZQMovqCK2X1v"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT",
+        "7FiN5uF4ADRojRF3jHWMS9x5bcgYF7sx6TVbCgNuar3R",
+        "7n93U9uj99SXuJ4ZvhG6zE25Bdx9AFSvRJzaBbRhvA7U",
+        "26HzZ7YdCVXQ3Ubz9gXUrSDeYZj8ekTrrykA8tnWU8b5",
+        "Dib5o6zAdC3LEMLsFyqrMVYBb8E39V6dhUpx9M9uJjwP",
+        "B3Up4AdHVvtvv6o7Y8zHSLCV3ECsyLCHMcA6sNhRN6KG",
+        "D2bKSk4GAQw3TbByUCE4oJu7pyKjZ6VRJf4dCH3AaBU8",
+        "21T56tTwRaspApu4R8Rho4vXStGbn94mgd2dJN39LTFS",
+        "7Mkw7Yojm1mJsPmxZTmFbkP9oeBkK6Np8idzwSV26fB6"
       ],
       "instruction_data": [
         1,
@@ -695,7 +695,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "56bc57ab09a582b4340a0cccda86fe075079aa80a2213153bb4831bdf3ddf8e7",
+    "content_hash": "7475f80edd923a75f4587327dc78aa02c770d7b25fcc6800c5c7161dfa6d2f74",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -710,7 +710,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "01000000",
       "account_addresses": [
-        "2iRcpP8ABMTeDUwPPTJ3JGpLvu9cdM2hceuFgExPRTbZ"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT"
       ],
       "instruction_data": [
         1,
@@ -758,7 +758,7 @@
   {
     "program_id": "BPFLoader2111111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "4a4f23e63f0b492ed913890a77511e24131a66644bb4bd7df30ece08d1ef66b4",
+    "content_hash": "4ae4bab598b8d7b961022ef82e4143712568824201fc30aec1d018a4edd51ab5",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -773,7 +773,7 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "01ff00",
       "account_addresses": [
-        "2iRcpP8ABMTeDUwPPTJ3JGpLvu9cdM2hceuFgExPRTbZ"
+        "7jC7xMG7LKsJ1p8gArfHEgAri2GZK8JDoarV9zmqbDVT"
       ],
       "instruction_data": [
         1,

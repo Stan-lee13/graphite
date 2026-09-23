@@ -313,6 +313,8 @@ pub fn resolve_accounts(
                 ("extra".to_string(), false, false, false, vec![], vec![])
             }
         };
+        // Whether the manifest declared anything about THIS slot at all.
+        let declared = ix_def.accounts.get(i).is_some();
 
         let pda_mismatch = is_pda && pda_mismatches.contains(&i);
         let expected_address_mismatch =
@@ -328,7 +330,20 @@ pub fn resolve_accounts(
         // REAL AccountMeta, when the caller supplied one for this position.
         // Only the security-relevant directions are flagged — see
         // `ResolvedAccount::privilege_mismatch`'s doc comment.
-        let privilege_mismatch = real_metas_usable
+        //
+        // Only for a slot the manifest DECLARES. An account past the end of
+        // the declared list is `remaining_accounts`: the manifest says
+        // nothing about it, so there is no expectation for it to violate,
+        // and `is_writable` above is a placeholder false rather than a
+        // declaration. Comparing against that placeholder made every
+        // legitimate writable remaining-account a blocking
+        // `AccountIdentityMismatch` — 429 of Pump AMM's, 336 of Pump.fun's,
+        // 199 of the System Program's and 72 of SPL Token's in a single
+        // 10,617-transaction mainnet sample, all on real, successful
+        // transactions (Round 18). The extra accounts are still visible as
+        // `role: extra` and still counted by the drainer and account-count
+        // heuristics, which is where an unexpected account belongs.
+        let privilege_mismatch = (declared && real_metas_usable)
             .then(|| &input.real_account_metas[i])
             .map(|real| (is_signer && !real.is_signer) || (!is_writable && real.is_writable))
             .unwrap_or(false);

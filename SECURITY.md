@@ -216,6 +216,71 @@ applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 Mi
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
 
+## The Registry Is Measured, Not Asserted (2026-09-23; Round 18)
+
+`trust_tier` in a shipped manifest was a string that nothing checked. Eight
+manifests declared `BattleTested` — the tier the engine's own definition
+reserves for 1,000+ verified transactions — and the engine believed all eight.
+That is Constitution P7 ("computed from evidence, never asserted") applied to
+every source of evidence except the document in this repository, and it matters
+because the tier sets the confidence ceiling: 0.75 at `OfficialManifest`, 1.0 at
+`BattleTested`, against profile floors of 0.95 (Treasury) and 0.99 (Enterprise).
+It is the difference between a protocol an agent can transact with and one it
+cannot.
+
+**The claim is now checked at load.** `protocols/battle_tested_evidence.json`
+carries a mainnet measurement for every seed manifest, and
+`load_seed_manifests` lowers a declared `BattleTested` to `OfficialManifest`
+unless that record shows the program is executable, that at least 1,000
+successful transactions carry its address over a stated window (the same 1,000
+`semantic_graph_store::thresholds::BATTLE_TESTED_TX` demands of evidence the
+node earns itself), and that the manifest can name at least 90% of at least 20
+instructions really observed on chain. The gate reads the raw measurements and
+never the file's own verdict field, so a hand-edited boolean promotes nothing.
+Measurements are read-only and reproducible
+(`graphite-core/scripts/battle_tested_census.py`);
+`tests/battle_tested_evidence.rs` proves each axis is load-bearing.
+
+**The tier is not a safety badge.** It says the program is real, heavily used
+and accurately described here. A heavily used malicious program would clear the
+same bar. What judges safety is L4, L5 and L7, which run identically at every
+tier.
+
+**Two defects that the measurement found, both blocking real traffic:**
+
+- **An account the manifest never declared had a privilege to mismatch.** A slot
+  past the end of the declared list is `remaining_accounts`; `resolve_accounts`
+  compared the real `AccountMeta` against the `("extra", is_writable: false)`
+  placeholder, so every legitimate writable remaining-account became a blocking
+  `AccountIdentityMismatch`. Over 10,617 real mainnet transactions: 429 blocks
+  on Pump AMM, 336 on Pump.fun, 199 on the System Program, 72 on SPL Token, all
+  on transactions the chain had executed successfully. Fixed; the extra accounts
+  remain visible as `role: extra` and still feed the drainer and account-count
+  heuristics. Regression:
+  `privilege_mismatch::an_undeclared_extra_account_has_no_privilege_to_mismatch`.
+- **A shipped manifest named the wrong instruction for two bytes.** The decode
+  census found 29 observed Wormhole core-bridge instructions carrying tag `08`
+  that no manifest entry could name, while the manifest put
+  `PostMessageUnreliable` at `09` and `VerifySignatures` at `03`. Against the
+  program's own dispatch order, `03` is `SetFees` and `09` is
+  `ClosePostedMessage`: Graphite would have named a `SetFees` instruction
+  "VerifySignatures". Corrected to `07` and `08`, with the reason recorded in
+  the instruction's `risk_rules`.
+
+**Still open, and stated rather than closed.** 544 `AccountIdentityMismatch`
+blocks remain over the same sample, most of them `kind=privilege` on slots the
+manifest DOES declare as signers. The shape suggests instructions reached
+through CPI, where a PDA signs via `invoke_signed` and the message header cannot
+show it — but that is a hypothesis, and a blocking control is not loosened on a
+hypothesis. The breakdown is in the Round 18 report and is reproducible with
+`GRAPHITE_MAINNET_REASONS`.
+
+**Coverage.** 129 manifests / 3,186 instructions, 96 of them generated from each
+program's own on-chain Anchor IDL after ranking the inventory by real usage. On
+the same 10,617-transaction sample, the share of non-vote transactions whose
+primary program Graphite can name went from 20.8% to 44.0%. The programs that
+dominate the remainder do not publish an on-chain IDL.
+
 ## What Counts as Evidence, and What Was Signed First (2026-09-22; Round 17)
 
 Rounds 15 and 16 were report-only forensic re-audits of the whole boundary
@@ -338,7 +403,7 @@ These are documented scope boundaries, not hidden vulnerabilities:
 - **A permitted durable-nonce transaction has no clock.** With `GRAPHITE_ALLOW_DURABLE_NONCE=1`, a verified nonce transaction is executable as verified *if submitted before the nonce advances*; the missing expiry is the operator's recorded tradeoff, and the opt-in is process-wide.
 - **`fdatasync` proves the device acknowledged, not the platter.** A storage device with a lying write cache is outside what any userspace program can verify.
 - **Token-2022 `TransferFee` is refused, not modelled.** Fee-bearing mints block until the fee is modelled.
-- **Graphite's parser is compared against the runtime's own decoder and sanitizer, for the frames the oracle generates.** `tools/runtime-oracle` (its own workspace; the agave crates never reach the shipped binary) decodes the corpus, its 1,659 mutations and 600,000 seeded, structure-aware frames with `solana-transaction` / `solana-message` exactly as a validator's packet path does — bincode 1 with a 1232-byte limit and trailing bytes refused, then `VersionedTransaction::sanitize` — and CI fails on any byte string Graphite parses that the runtime refuses, or reads differently. Its first run found five such classes and 8 of the corpus's own recorded mutations (Round 12). What it does not cover: agave's newer `wincode` decode path (the same wire format; not yet a second oracle), the V1 message format — **live on devnet as of 2026-09 (Round 12: block 499429420 carried 7 v1 transactions of 60)** — which Graphite refuses by name (`UnsupportedVersion(1)`) at the parser, reports as `Unavailable` at L8 when the RPC refuses a v1 signature to a version-0 client, and skips in the live corpus; the fail-closed direction, and a hard dependency on implementing it before the format reaches mainnet; and coverage-guided fuzzing; the generator is seeded and structure-aware, not a libFuzzer campaign.
+- **Graphite's parser is compared against the runtime's own decoder and sanitizer, for the frames the oracle generates.** `tools/runtime-oracle` (its own workspace; the agave crates never reach the shipped binary) decodes the corpus, its 1,659 mutations and 600,000 seeded, structure-aware frames with `solana-transaction` / `solana-message` exactly as a validator's packet path does — bincode 1 with a 1232-byte limit and trailing bytes refused, then `VersionedTransaction::sanitize` — and CI fails on any byte string Graphite parses that the runtime refuses, or reads differently. Its first run found five such classes and 8 of the corpus's own recorded mutations (Round 12). What it does not cover: agave's newer `wincode` decode path (the same wire format; not yet a second oracle), the V1 message format — **now live on MAINNET, and no longer rare: 1,829 of the 10,617 transactions in the Round 18 sample (17.2%) were version 1, across 8 finalized blocks on 2026-09-22 (`tools/mainnet-sample`), and an 80-block inventory census the same day put it at 15,066 of 95,181 (15.8%)** — which Graphite refuses by name (`UnsupportedVersion(1)`) at the parser, reports as `Unavailable` at L8 when the RPC refuses a v1 signature to a version-0 client, and skips in the live corpus. The direction is fail-closed and the refusal is honest, but it is no longer a dependency to schedule: roughly one mainnet transaction in six is one Graphite cannot verify at all, and that is the largest single gap in its coverage of the chain. Implementing it is a Phase 3 gate (ROADMAP); and coverage-guided fuzzing; the generator is seeded and structure-aware, not a libFuzzer campaign.
 - **Round-8 era swap-path residual: the unverified opt-out.** `executeSwap` without a built payload aborts unless `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=I_ACCEPT_UNVERIFIED_SWAP_EXECUTION`, in which case SAK's builder executes an instruction Graphite never saw and the outcome says `verifiedExecution: false`. The remainder of this historical bullet is kept for the record:** execution then goes through SAK's opaque `methods.swap`, which is not guaranteed to submit the reduced-projection-verified instruction — `GRAPHITE_SWAP_STRICT=1` refuses that path entirely. See `ARCHITECTURE.md` → Known Boundary Limitations.
 - **State diffing needs RPC and a signed transaction** — L4 builds a real pre/post account diff only when an RPC client is attached (`GRAPHITE_RPC_URL`) AND the caller supplies `signed_transaction`; a bare `instruction_data` payload can be simulated for compute numbers but the post-state it implies is not trustworthy, so no diff is built from it. A caller may pass `state_diff` directly, but under `CallerSupplied` provenance it can only fail the layer, never certify it (a clean caller diff yields `Inconclusive`). The diff also covers only the instruction's declared writable accounts; an RPC that will not return post-state (over 100 addresses, or an older node) leaves L4 on its structural fallback. Token balance changes are decoded for SPL Token and Token-2022 accounts and mints — other program-owned account data is compared by length and owner only, so a semantic change inside an opaque account is seen as "data changed", not interpreted.
 - **The P10 gate on a FIRST manifest submission bootstraps a baseline; it does not validate the manifest** — a brand-new program has no prior recorded behaviour, so there is nothing for its first submission to regress against. A fixture recorded under the candidate manifest and replayed under the same manifest agrees with itself by construction. Requiring one still matters: it stops a program being enshrined with an empty regression history, which would leave every later version un-gatable too. The submitter chooses which transaction to pin (`graphite registry record-fixture` prints the outcome it pinned), the same assumption the upgrade path already makes. An upgrade that does not RAISE the trust tier is not a promotion and is not gated — the tier ladder, not the manifest diff, is what the gate keys off.

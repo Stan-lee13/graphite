@@ -1,0 +1,2404 @@
+{
+ "address": "FknMf1SRUnujeyezuvKBQ7T57L2iSGbNd6D3iSrdDUHQ",
+ "metadata": {
+  "name": "donau",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "burn_charge_type_token",
+   "docs": [
+    "Burn charge-type tokens with expiration checks"
+   ],
+   "discriminator": [
+    244,
+    142,
+    45,
+    160,
+    52,
+    98,
+    81,
+    173
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "owner"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "associated_token_account",
+     "writable": true
+    },
+    {
+     "name": "breakdown",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "associated_token_account"
+       }
+      ]
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "min_expiration",
+     "type": "i64"
+    },
+    {
+     "name": "max_expiration",
+     "type": "i64"
+    }
+   ]
+  },
+  {
+   "name": "burn_coupon_type_token",
+   "docs": [
+    "Burn coupon-type tokens (no expiration / breakdown required)"
+   ],
+   "discriminator": [
+    251,
+    236,
+    171,
+    217,
+    132,
+    37,
+    190,
+    230
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "owner"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "associated_token_account",
+     "writable": true
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "close_associated_token_account",
+   "docs": [
+    "Close an associated token account and transfer lamports to the receiver"
+   ],
+   "discriminator": [
+    80,
+    204,
+    181,
+    236,
+    72,
+    78,
+    69,
+    95
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "owner"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "receiver",
+     "writable": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "associated_token_account",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "owner"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "breakdown",
+     "writable": true,
+     "optional": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "associated_token_account"
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "close_mint",
+   "docs": [
+    "Close a mint account (supply must be 0) and transfer lamports to the receiver"
+   ],
+   "discriminator": [
+    149,
+    251,
+    157,
+    212,
+    65,
+    181,
+    235,
+    129
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "issuer"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "receiver",
+     "writable": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "issuer",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "issuer.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "issuer.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "token_program"
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "close_user",
+   "docs": [
+    "Close a user account",
+    "",
+    "This remains a constraint-only Anchor close. Any linked breakdown PDAs",
+    "and associated token accounts must be closed off-chain first because the",
+    "program cannot enumerate all dependent accounts for a user."
+   ],
+   "discriminator": [
+    86,
+    219,
+    138,
+    140,
+    236,
+    24,
+    118,
+    200
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "user"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "receiver",
+     "writable": true
+    },
+    {
+     "name": "user",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "user.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "user.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "create_mint",
+   "docs": [
+    "Create a deterministic mint"
+   ],
+   "discriminator": [
+    69,
+    44,
+    215,
+    132,
+    253,
+    214,
+    41,
+    45
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "issuer",
+      "municipality"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "municipality_uuid"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "issuer",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "issuer.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "issuer.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "municipality_uuid",
+     "type": "u128"
+    },
+    {
+     "name": "name",
+     "type": "string"
+    },
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "uri",
+     "type": "string"
+    },
+    {
+     "name": "decimals",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "create_user",
+   "docs": [
+    "Create a user account"
+   ],
+   "discriminator": [
+    108,
+    227,
+    130,
+    130,
+    252,
+    109,
+    75,
+    218
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "user",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "parent_uuid"
+       },
+       {
+        "kind": "arg",
+        "path": "uuid"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "uuid",
+     "type": "u128"
+    },
+    {
+     "name": "parent",
+     "type": "pubkey"
+    },
+    {
+     "name": "parent_uuid",
+     "type": "u128"
+    },
+    {
+     "name": "user_type",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "mint_to_with_ata",
+   "docs": [
+    "Mint tokens with ATA creation (init_if_needed) and breakdown in one step"
+   ],
+   "discriminator": [
+    155,
+    57,
+    135,
+    120,
+    107,
+    226,
+    33,
+    109
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "issuer",
+      "owner"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "issuer",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "issuer.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "issuer.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "associated_token_account",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "owner"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "breakdown",
+     "writable": true,
+     "optional": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "associated_token_account"
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "expiration_date",
+     "type": "i64"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "redeem_charge_type_token",
+   "docs": [
+    "Redeem charge-type tokens with expiration checks"
+   ],
+   "discriminator": [
+    175,
+    6,
+    218,
+    243,
+    255,
+    61,
+    14,
+    137
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "owner",
+      "redeemer"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "redeemer",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "redeemer.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "redeemer.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_breakdown",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "source_token"
+       }
+      ]
+     }
+    },
+    {
+     "name": "dest_breakdown",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "dest_token"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_token",
+     "writable": true
+    },
+    {
+     "name": "dest_token",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "redeemer"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "min_expiration",
+     "type": {
+      "option": "i64"
+     }
+    },
+    {
+     "name": "max_expiration",
+     "type": {
+      "option": "i64"
+     }
+    },
+    {
+     "name": "only_expired",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "redeem_coupon_type_token",
+   "docs": [
+    "Redeem coupon-type tokens with expiration checks"
+   ],
+   "discriminator": [
+    203,
+    85,
+    40,
+    198,
+    109,
+    159,
+    183,
+    25
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "owner",
+      "redeemer"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "redeemer",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "redeemer.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "redeemer.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_token",
+     "writable": true
+    },
+    {
+     "name": "dest_token",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "redeemer"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "only_expired",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "resize_breakdown",
+   "docs": [
+    "Resize a breakdown account to accommodate more entries"
+   ],
+   "discriminator": [
+    235,
+    104,
+    87,
+    129,
+    183,
+    147,
+    201,
+    194
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "breakdown",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "associated_token_account"
+       }
+      ]
+     }
+    },
+    {
+     "name": "associated_token_account"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "len",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "transfer_charge_type_token",
+   "docs": [
+    "Transfer charge-type tokens with breakdown and expiration checks"
+   ],
+   "discriminator": [
+    131,
+    74,
+    187,
+    124,
+    185,
+    240,
+    254,
+    196
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "owner",
+      "new_owner"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "new_owner",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "new_owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "new_owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_breakdown",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "source_token"
+       }
+      ]
+     }
+    },
+    {
+     "name": "dest_breakdown",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         98,
+         114,
+         101,
+         97,
+         107,
+         100,
+         111,
+         119,
+         110
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "dest_token"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_token",
+     "writable": true
+    },
+    {
+     "name": "dest_token",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "new_owner"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "min_expiration",
+     "type": "i64"
+    },
+    {
+     "name": "max_expiration",
+     "type": "i64"
+    },
+    {
+     "name": "allow_expired",
+     "type": "bool"
+    }
+   ]
+  },
+  {
+   "name": "transfer_coupon_type_token",
+   "docs": [
+    "Transfer coupon-type tokens (no expiration / breakdown required)"
+   ],
+   "discriminator": [
+    246,
+    239,
+    6,
+    62,
+    104,
+    130,
+    230,
+    23
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "municipality",
+      "owner",
+      "new_owner"
+     ]
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "rent_payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "municipality",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "owner",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "new_owner",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         117,
+         115,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "new_owner.parent_uuid",
+        "account": "User"
+       },
+       {
+        "kind": "account",
+        "path": "new_owner.uuid",
+        "account": "User"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "municipality.uuid",
+        "account": "User"
+       },
+       {
+        "kind": "arg",
+        "path": "symbol"
+       }
+      ]
+     }
+    },
+    {
+     "name": "source_token",
+     "writable": true
+    },
+    {
+     "name": "dest_token",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "new_owner"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "symbol",
+     "type": "string"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "allow_expired",
+     "type": "bool"
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "BalanceBreakdown",
+   "discriminator": [
+    123,
+    198,
+    82,
+    67,
+    203,
+    64,
+    79,
+    4
+   ]
+  },
+  {
+   "name": "User",
+   "discriminator": [
+    159,
+    117,
+    95,
+    227,
+    239,
+    151,
+    58,
+    236
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "InvalidUserRelationship",
+   "msg": "User and municipality accounts are not related as expected"
+  }
+ ],
+ "types": [
+  {
+   "name": "BalanceBreakdown",
+   "docs": [
+    "Stores a token balance as expiration-based buckets for type-1 mints.",
+    "",
+    "Entries are kept sorted by `expiration_date` so other instructions can",
+    "consume balances in earliest-expiration-first order."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "entries",
+      "type": {
+       "vec": {
+        "defined": {
+         "name": "Entry"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Entry",
+   "docs": [
+    "Represents one expiration bucket inside a `BalanceBreakdown` account."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "expiration_date",
+      "type": "i64"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "User",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "parent_uuid",
+      "type": "u128"
+     },
+     {
+      "name": "parent",
+      "type": "pubkey"
+     },
+     {
+      "name": "uuid",
+      "type": "u128"
+     },
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "user_type",
+      "type": "u8"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "created_at",
+      "type": "i64"
+     }
+    ]
+   }
+  }
+ ]
+}

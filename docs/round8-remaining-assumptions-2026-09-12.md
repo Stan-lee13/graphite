@@ -1,5 +1,9 @@
 # Round 8 — Attacking the Remaining Assumptions
 
+> **Historical record.** This report describes the codebase at commit
+> `7f414e5` on 2026-09-12, and the fixes made on top of it. For the current
+> state of Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Ground truth at the start of the round.** HEAD `7f414e5`; the substantive
 parent `1830e7b` has a GitHub Actions run that completed **success** (Actions
 API). rustc 1.98.1 (CI's `stable`), Node 24.1.0, `@solana/web3.js` 1.98.4,

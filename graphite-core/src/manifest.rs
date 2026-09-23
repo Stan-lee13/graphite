@@ -166,6 +166,16 @@ impl ManifestRegistry {
     /// Load a manifest from JSON.
     pub fn load_from_json(&mut self, json: &str) -> Result<&ProtocolManifest, ManifestError> {
         let manifest: ProtocolManifest = serde_json::from_str(json)?;
+        self.load_manifest(manifest)
+    }
+
+    /// Load an already-parsed manifest. Same validation and same seed-wins
+    /// rule as `load_from_json`; separate so the seed loader can clamp a
+    /// declared trust tier to the evidence before the manifest is inserted.
+    pub fn load_manifest(
+        &mut self,
+        manifest: ProtocolManifest,
+    ) -> Result<&ProtocolManifest, ManifestError> {
         self.validate(&manifest)?;
         let key = manifest.protocol.program_id.clone();
         // Seed manifests are the audited trust anchor and are immutable at
@@ -455,177 +465,259 @@ pub fn discriminator_matches(manifest_disc: &str, input_disc: &str) -> bool {
     input_disc.starts_with(&manifest_disc)
 }
 
+/// The compile-time-baked seed manifest set: the audited trust anchor.
+///
+/// ONE list. It used to be two - a `seed_paths` array and a `match` arm per
+/// path for `include_str!`, which needs a literal - and adding a manifest to
+/// one without the other aborted the process at startup. The macro takes each
+/// path once and produces both the name and its baked-in contents, so the two
+/// can no longer disagree.
+///
+/// `tests::test_every_protocol_file_is_a_seed_manifest` additionally fails if
+/// a file lands in `protocols/` without being listed here, which is the other
+/// half of the same mistake: a manifest that exists on disk, is reviewed, and
+/// is never loaded.
+macro_rules! seed_manifests {
+    ($($file:literal),* $(,)?) => {
+        &[$(($file, include_str!(concat!("../protocols/", $file)))),*]
+    };
+}
+
+pub const SEED_MANIFESTS: &[(&str, &str)] = seed_manifests![
+    "system-program.json",
+    "spl-token.json",
+    "token-2022.json",
+    "stake-program.json",
+    "raydium-amm-v4.json",
+    "squads-v4.json",
+    "jupiter-v6.json",
+    "orca-whirlpools.json",
+    "meteora-dlmm.json",
+    "memo-program.json",
+    "legacy-memo-program.json",
+    "spl-memo-program.json",
+    "ata-program.json",
+    "compute-budget.json",
+    "bpf-loader.json",
+    "bpf-loader-upgradeable.json",
+    "pump-fun.json",
+    "jupiter-dca.json",
+    "wormhole-core.json",
+    "metaplex-token-metadata.json",
+    "drift.json",
+    "kamino-lending.json",
+    "phoenix.json",
+    "openbook-v2.json",
+    "switchboard-v2.json",
+    "jupiter-limit.json",
+    "solend.json",
+    "marginfi-v2.json",
+    "raydium-clmm.json",
+    "raydium-cpmm.json",
+    "marinade.json",
+    "spl-stake-pool.json",
+    "orca-tokenswap-v2.json",
+    "pump-fees-pfeeux.json",
+    "pump-amm-pammba.json",
+    "cp-amm-cpamdp.json",
+    "swap-orchestrator-df1ow4.json",
+    "raydium-launchpad-lanmv9.json",
+    "dynamic-bonding-curve-dbcij3.json",
+    "okx-dex-router-provf4.json",
+    "sage-sage2h.json",
+    "scope-hfn8gn.json",
+    "amm-v3-hpnfyc.json",
+    "verifier-gt9s41.json",
+    "relay-depository-99vqwt.json",
+    "byreal-clmm-realqq.json",
+    "cargo-cargo2.json",
+    "points-point2.json",
+    "pyth-solana-receiver-rec5ek.json",
+    "pyth-push-oracle-pythws.json",
+    "coinflow-fd1amx.json",
+    "wormhole-core-bridge-solana-hdwcjb.json",
+    "m2-m2mx93.json",
+    "mmm-mmm3xb.json",
+    "vault-24uqj9.json",
+    "amm-eo7wjk.json",
+    "pyth-push-oracle-pyt2f4.json",
+    "pyth-solana-receiver-rec2hh.json",
+    "wormhole-core-bridge-solana-hdw2e7.json",
+    "tail-trade-j51h4g.json",
+    "tcomp-tcmphj.json",
+    "staking-skrskr.json",
+    "pyth-lazer-solana-contract-pytd2y.json",
+    "doves-dovesk.json",
+    "safecinerator-cleana.json",
+    "bubblegum-bgumap.json",
+    "gmsol-store-gmso1u.json",
+    "stableswap-ghosty.json",
+    "marketplace-ccmrkt.json",
+    "timelock-strmrq.json",
+    "fusionamm-fusion.json",
+    "amm-routing-realp6.json",
+    "donau-fknmf1.json",
+    "perpetuals-perphj.json",
+    "crash-game-g3z6yq.json",
+    "dex-jupz4m.json",
+    "bonkswap-bswp6b.json",
+    "order-engine-61dffe.json",
+    "account-compression-compr6.json",
+    "light-system-program-system.json",
+    "cc-vrf-ccvrfu.json",
+    "farms-farmsp.json",
+    "brrr-lend-g3v8wx.json",
+    "squads-smart-account-program-smrtzf.json",
+    "crafting-craft2.json",
+    "bo-sc-man1cx.json",
+    "arcium-arcj82.json",
+    "debot-router-g7mvcm.json",
+    "raydium-liquidity-locking-lockrw.json",
+    "kamino-vault-kvaugm.json",
+    "score-fleet1.json",
+    "orao-vrf-vrfzzo.json",
+    "gamma-gamma7.json",
+    "nosana-jobs-nosjhn.json",
+    "vault-vo1twg.json",
+    "stable-swap-swapny.json",
+    "swift-mayan3.json",
+    "main-cwgkfb.json",
+    "tarb-bwrzqc.json",
+    "bridge-fcw1ub.json",
+    "guacswap-gswppe.json",
+    "zap-zapvx9.json",
+    "atlas-fee-payer-apr1me.json",
+    "profile-vault-pv1tto.json",
+    "merkle-distributor-merky6.json",
+    "aligned-distributor-amerkp.json",
+    "spl-account-compression-cmtdvx.json",
+    "omnipair-omnixg.json",
+    "tuna-tuna4u.json",
+    "hylo-earn-pool-hystab.json",
+    "verifier-ttainy.json",
+    "escrow-5bd9ua.json",
+    "marketplace-trader.json",
+    "bridge-cards-cardwa.json",
+    "rush-rushe5.json",
+    "mintfx-emiytj.json",
+    "oridion-ord1qj.json",
+    "order-engine-2en5y1.json",
+    "limo-limom9.json",
+    "order-book-mzloyn.json",
+    "rmn-remote-rmnxlf.json",
+    "ccip-offramp-offqsm.json",
+    "futarchy-futare.json",
+    "data-credits-credmb.json",
+    "helium-sub-daos-hdaovt.json",
+    "store-hevsko.json",
+    "ocr2-cjg3oh.json",
+    "tuktuk-tuktuk.json",
+    "doorcash-67g5hh.json",
+];
+
+/// The on-chain measurements that back a `BattleTested` declaration.
+///
+/// Baked in beside the manifests and produced by
+/// `scripts/battle_tested_census.py`. Every field the gate below reads is a
+/// measurement (executable account, successful-transaction count over a stated
+/// window, and the share of REAL observed instructions the manifest can name);
+/// the file's own `meets_battle_tested` flag is deliberately NOT consulted, so
+/// a hand-edited boolean cannot promote a program.
+pub const BATTLE_TESTED_EVIDENCE: &str = include_str!("../protocols/battle_tested_evidence.json");
+
+/// The bar a shipped manifest must clear to DECLARE `BattleTested`.
+///
+/// `MIN_SUCCESSFUL_TRANSACTIONS` is the same 1,000 that
+/// `semantic_graph_store::thresholds::BATTLE_TESTED_TX` requires of evidence
+/// the node earns at runtime — the declaration is held to the bar the engine
+/// applies to itself. The decode rate is the part a transaction count cannot
+/// show: that the manifest actually names the instructions the program is
+/// being asked to run, rather than describing a surface that has drifted.
+pub mod battle_tested_bar {
+    pub const MIN_SUCCESSFUL_TRANSACTIONS: u64 = 1_000;
+    pub const MIN_DECODED_INSTRUCTIONS: u64 = 20;
+    pub const MIN_DECODE_RATE: f64 = 0.90;
+}
+
+/// Program ids whose recorded measurements clear `battle_tested_bar`.
+///
+/// Fail-closed twice over: a program with no record, or a record that falls
+/// short, is simply absent from the set, and the seed loader then refuses to
+/// let that manifest claim the tier.
+pub fn battle_tested_programs() -> std::collections::BTreeSet<String> {
+    let doc: serde_json::Value = match serde_json::from_str(BATTLE_TESTED_EVIDENCE) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "battle_tested_evidence.json is not valid JSON — refusing to start with unverifiable trust tiers");
+            std::process::exit(1);
+        }
+    };
+    qualifying_programs(&doc)
+}
+
+/// The gate itself, over any evidence document — the part the tests drive
+/// with hand-built records to prove what it refuses.
+pub fn qualifying_programs(doc: &serde_json::Value) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    let Some(programs) = doc["programs"].as_array() else {
+        return out;
+    };
+    for p in programs {
+        let executable = p["identity"]["executable"].as_bool().unwrap_or(false);
+        let txs = p["volume"]["successful_transactions_counted"]
+            .as_u64()
+            .unwrap_or(0);
+        let observed = p["decode"]["instructions_observed"].as_u64().unwrap_or(0);
+        let rate = p["decode"]["decode_rate"].as_f64().unwrap_or(0.0);
+        if executable
+            && txs >= battle_tested_bar::MIN_SUCCESSFUL_TRANSACTIONS
+            && observed >= battle_tested_bar::MIN_DECODED_INSTRUCTIONS
+            && rate >= battle_tested_bar::MIN_DECODE_RATE
+        {
+            if let Some(id) = p["program_id"].as_str() {
+                out.insert(id.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// Load the built-in seed protocol manifests.
-/// These are embedded at compile time — no file system access needed.
+/// These are embedded at compile time - no file system access needed.
 pub fn load_seed_manifests() -> ManifestRegistry {
     let mut registry = ManifestRegistry::new();
-    // Fail-closed: seed manifests are compile-time-baked via include_str!.
-    // If one fails to parse or validate, log the error and abort with a
-    // non-zero exit to avoid running in a weakened, unknown-protocol state.
-    let seed_paths = [
-        "../protocols/system-program.json",
-        "../protocols/spl-token.json",
-        "../protocols/token-2022.json",
-        "../protocols/stake-program.json",
-        "../protocols/raydium-amm-v4.json",
-        "../protocols/squads-v4.json",
-        "../protocols/jupiter-v6.json",
-        "../protocols/orca-whirlpools.json",
-        "../protocols/meteora-dlmm.json",
-        "../protocols/memo-program.json",
-        "../protocols/legacy-memo-program.json",
-        "../protocols/spl-memo-program.json",
-        "../protocols/ata-program.json",
-        "../protocols/compute-budget.json",
-        "../protocols/bpf-loader.json",
-        "../protocols/bpf-loader-upgradeable.json",
-        "../protocols/pump-fun.json",
-        "../protocols/jupiter-dca.json",
-        "../protocols/wormhole-core.json",
-        "../protocols/metaplex-token-metadata.json",
-        "../protocols/drift.json",
-        "../protocols/kamino-lending.json",
-        "../protocols/phoenix.json",
-        "../protocols/openbook-v2.json",
-        "../protocols/switchboard-v2.json",
-        "../protocols/jupiter-limit.json",
-        "../protocols/solend.json",
-        "../protocols/marginfi-v2.json",
-        "../protocols/raydium-clmm.json",
-        "../protocols/raydium-cpmm.json",
-        "../protocols/marinade.json",
-        "../protocols/spl-stake-pool.json",
-        "../protocols/orca-tokenswap-v2.json",
-    ];
-
-    for p in &seed_paths {
-        // include_str! requires a string literal; map path to literal explicitly
-        let res = match *p {
-            "../protocols/system-program.json" => {
-                registry.load_from_json(include_str!("../protocols/system-program.json"))
-            }
-            "../protocols/spl-token.json" => {
-                registry.load_from_json(include_str!("../protocols/spl-token.json"))
-            }
-            "../protocols/token-2022.json" => {
-                registry.load_from_json(include_str!("../protocols/token-2022.json"))
-            }
-            "../protocols/stake-program.json" => {
-                registry.load_from_json(include_str!("../protocols/stake-program.json"))
-            }
-            "../protocols/raydium-amm-v4.json" => {
-                registry.load_from_json(include_str!("../protocols/raydium-amm-v4.json"))
-            }
-            "../protocols/squads-v4.json" => {
-                registry.load_from_json(include_str!("../protocols/squads-v4.json"))
-            }
-            "../protocols/jupiter-v6.json" => {
-                registry.load_from_json(include_str!("../protocols/jupiter-v6.json"))
-            }
-            "../protocols/orca-whirlpools.json" => {
-                registry.load_from_json(include_str!("../protocols/orca-whirlpools.json"))
-            }
-            "../protocols/meteora-dlmm.json" => {
-                registry.load_from_json(include_str!("../protocols/meteora-dlmm.json"))
-            }
-            "../protocols/memo-program.json" => {
-                registry.load_from_json(include_str!("../protocols/memo-program.json"))
-            }
-            "../protocols/legacy-memo-program.json" => {
-                registry.load_from_json(include_str!("../protocols/legacy-memo-program.json"))
-            }
-            "../protocols/spl-memo-program.json" => {
-                registry.load_from_json(include_str!("../protocols/spl-memo-program.json"))
-            }
-            "../protocols/ata-program.json" => {
-                registry.load_from_json(include_str!("../protocols/ata-program.json"))
-            }
-            "../protocols/compute-budget.json" => {
-                registry.load_from_json(include_str!("../protocols/compute-budget.json"))
-            }
-            "../protocols/bpf-loader.json" => {
-                registry.load_from_json(include_str!("../protocols/bpf-loader.json"))
-            }
-            "../protocols/bpf-loader-upgradeable.json" => {
-                registry.load_from_json(include_str!("../protocols/bpf-loader-upgradeable.json"))
-            }
-            "../protocols/pump-fun.json" => {
-                registry.load_from_json(include_str!("../protocols/pump-fun.json"))
-            }
-            "../protocols/jupiter-dca.json" => {
-                registry.load_from_json(include_str!("../protocols/jupiter-dca.json"))
-            }
-            "../protocols/wormhole-core.json" => {
-                registry.load_from_json(include_str!("../protocols/wormhole-core.json"))
-            }
-            "../protocols/metaplex-token-metadata.json" => {
-                registry.load_from_json(include_str!("../protocols/metaplex-token-metadata.json"))
-            }
-            "../protocols/drift.json" => {
-                registry.load_from_json(include_str!("../protocols/drift.json"))
-            }
-            "../protocols/kamino-lending.json" => {
-                registry.load_from_json(include_str!("../protocols/kamino-lending.json"))
-            }
-            "../protocols/phoenix.json" => {
-                registry.load_from_json(include_str!("../protocols/phoenix.json"))
-            }
-            "../protocols/openbook-v2.json" => {
-                registry.load_from_json(include_str!("../protocols/openbook-v2.json"))
-            }
-            "../protocols/switchboard-v2.json" => {
-                registry.load_from_json(include_str!("../protocols/switchboard-v2.json"))
-            }
-            "../protocols/jupiter-limit.json" => {
-                registry.load_from_json(include_str!("../protocols/jupiter-limit.json"))
-            }
-            "../protocols/solend.json" => {
-                registry.load_from_json(include_str!("../protocols/solend.json"))
-            }
-            "../protocols/marginfi-v2.json" => {
-                registry.load_from_json(include_str!("../protocols/marginfi-v2.json"))
-            }
-            "../protocols/raydium-clmm.json" => {
-                registry.load_from_json(include_str!("../protocols/raydium-clmm.json"))
-            }
-            "../protocols/raydium-cpmm.json" => {
-                registry.load_from_json(include_str!("../protocols/raydium-cpmm.json"))
-            }
-            "../protocols/marinade.json" => {
-                registry.load_from_json(include_str!("../protocols/marinade.json"))
-            }
-            "../protocols/spl-stake-pool.json" => {
-                registry.load_from_json(include_str!("../protocols/spl-stake-pool.json"))
-            }
-            "../protocols/orca-tokenswap-v2.json" => {
-                registry.load_from_json(include_str!("../protocols/orca-tokenswap-v2.json"))
-            }
-            // Not `unreachable!()`. The arms above and `seed_paths` are
-            // two hand-maintained lists of the same literals, and adding a
-            // manifest to one without the other would panic at startup
-            // inside `GraphiteCore::new()`. Fail closed with a diagnostic
-            // instead, exactly as a parse failure does below — an engine
-            // that cannot load its own trust anchors must refuse to run,
-            // and it should say which one is missing.
-            other => {
-                tracing::error!(
-                    path = %other,
-                    "seed manifest is listed in seed_paths but has no include_str! arm — refusing to start with an incomplete manifest set"
-                );
+    let earned = battle_tested_programs();
+    // Fail-closed: if one fails to parse or validate, log the error and abort
+    // with a non-zero exit rather than run in a weakened, unknown-protocol
+    // state.
+    for (name, body) in SEED_MANIFESTS {
+        let mut manifest: ProtocolManifest = match serde_json::from_str(body) {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::error!(manifest = %name, error = %e, "Failed to parse seed manifest");
                 std::process::exit(1);
             }
         };
-
-        if let Err(e) = res {
-            tracing::error!(path = %p, error = %e, "Failed to load seed manifest");
+        // P7, applied to the shipped trust anchor: a tier is computed from
+        // evidence, never asserted by whoever wrote the document — and a seed
+        // manifest is still a document. `BattleTested` without a measurement
+        // that clears the bar is lowered to `OfficialManifest`, which is what
+        // a hand-written manifest alone can support.
+        if manifest.trust_tier == "BattleTested" && !earned.contains(&manifest.protocol.program_id)
+        {
+            tracing::warn!(
+                manifest = %name,
+                program_id = %manifest.protocol.program_id,
+                "manifest declares BattleTested with no qualifying on-chain measurement — treating it as OfficialManifest"
+            );
+            manifest.trust_tier = "OfficialManifest".to_string();
+        }
+        if let Err(e) = registry.load_manifest(manifest) {
+            tracing::error!(manifest = %name, error = %e, "Failed to load seed manifest");
             std::process::exit(1);
         }
     }
 
-    // Everything loaded above is the audited trust anchor. Freezing it here is
-    // what makes `load_from_json` refuse to replace a seed manifest at runtime
-    // (see `ManifestError::SeedManifestImmutable`). Done AFTER the loop so the
-    // seed loads themselves are not blocked by their own rule.
     registry.freeze_as_seed_set();
     registry
 }
@@ -659,6 +751,39 @@ mod tests {
             }
         }
         out
+    }
+
+    /// A manifest file that exists, was reviewed, and is never loaded is
+    /// indistinguishable from one that was never written. The seed list and
+    /// the directory must agree in both directions.
+    #[test]
+    fn test_every_protocol_file_is_a_seed_manifest() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("protocols");
+        let mut on_disk: BTreeSet<String> = BTreeSet::new();
+        for entry in std::fs::read_dir(&dir).expect("protocols/ must be readable") {
+            let name = entry
+                .expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .to_string();
+            if !name.ends_with(".json") {
+                continue;
+            }
+            // Not manifests: the program-id registry and the on-chain
+            // measurements that back the declared tiers.
+            if name == "verified_program_ids.json" || name == "battle_tested_evidence.json" {
+                continue;
+            }
+            on_disk.insert(name);
+        }
+        let listed: BTreeSet<String> = SEED_MANIFESTS.iter().map(|(n, _)| n.to_string()).collect();
+        assert_eq!(
+            listed,
+            on_disk,
+            "seed manifest list and protocols/ disagree: only listed = {:?}, only on disk = {:?}",
+            listed.difference(&on_disk).collect::<Vec<_>>(),
+            on_disk.difference(&listed).collect::<Vec<_>>(),
+        );
     }
 
     #[test]
@@ -1295,10 +1420,16 @@ mod tests {
             serde_json::from_str(include_str!("../protocols/verified_program_ids.json"))
                 .expect("verified_program_ids.json must be valid JSON");
         let programs = verified["programs"].as_array().expect("programs array");
+        // Not a hand-typed number. It was one for nine rounds, and every
+        // onboarding had to remember to bump it and its explanatory comment;
+        // the comment drifted anyway. The registry must list exactly the
+        // programs that are actually baked in — no more, no fewer.
         assert_eq!(
             programs.len(),
-            33,
-            "verified registry must list exactly the 33 seed programs (C27 added Drift + Kamino, C46 added Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi, C56 added Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2)"
+            SEED_MANIFESTS.len(),
+            "verified registry lists {} programs but {} seed manifests are baked in",
+            programs.len(),
+            SEED_MANIFESTS.len()
         );
 
         let mut verified_by_id: std::collections::BTreeMap<&str, &str> =
@@ -1861,9 +1992,21 @@ mod test_c27_drift_kamino {
     #[test]
     fn test_drift_and_kamino_discriminators_match_anchor_snake_case() {
         let registry = load_seed_manifests();
-        for (id, expected_count) in [(DRIFT, 249usize), (KAMINO, 51usize)] {
+        // A FLOOR, not an equality. The count was pinned exactly in C27, which
+        // meant the manifest could not grow without editing the test; Round 18
+        // merged 15 instructions into Kamino from the program's own on-chain
+        // IDL and this line failed on the growth rather than on anything being
+        // wrong. Shrinking below the C27 surface is still a regression and
+        // still fails. What this test is actually for is the per-instruction
+        // convention check below, which every merged instruction must also
+        // satisfy.
+        for (id, min_count) in [(DRIFT, 249usize), (KAMINO, 51usize)] {
             let m = registry.get(id).unwrap_or_else(|| panic!("{id} loaded"));
-            assert_eq!(m.instructions.len(), expected_count, "{id} IDL surface");
+            assert!(
+                m.instructions.len() >= min_count,
+                "{id} IDL surface shrank: {} instructions, C27 pinned at least {min_count}",
+                m.instructions.len()
+            );
             for ix in &m.instructions {
                 let snake = snake_case(&ix.name);
                 let mut hasher = Sha256::new();

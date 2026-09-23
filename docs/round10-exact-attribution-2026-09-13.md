@@ -1,5 +1,9 @@
 # Round 10 — Exact Execution Attribution
 
+> **Historical record.** This report describes the codebase at commit
+> `25e2306` on 2026-09-13, and the fixes made on top of it. For the current
+> state of Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Ground truth at the start of the round.** HEAD `25e2306`; the substantive
 parent `a56c7e8` has a GitHub Actions run that completed **success** (Actions
 run 34720050898). rustc 1.98.1, Node 24.1.0, `@solana/web3.js` 1.98.4,

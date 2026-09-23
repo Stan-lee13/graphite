@@ -115,10 +115,10 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] 1,000+ meaningful regression fixtures (2,181 corpus, C41)
 - [x] Real holdout evaluation with independent labels (38 fixtures, 0 FN, C41)
 
-## Hardening Rounds (2026-09-05 → 2026-09-12) — COMPLETE, reports in `docs/`
+## Hardening Rounds (2026-09-05 → 2026-09-22) — reports in `docs/`
 
-Eight adversarial rounds run after Phase 2, each driven by an independent review of
-the previous commit and each closed with reproductions committed as tests and every
+Eighteen rounds run after Phase 2, each driven by an adversarial review of the
+previous commit and each closed with reproductions committed as tests and every
 fix reverted once to prove its test fails without it. Status of every guarantee:
 [docs/CURRENT.md](docs/CURRENT.md).
 
@@ -143,7 +143,14 @@ fix reverted once to prove its test fails without it. Status of every guarantee:
 - [x] Tested compiler = shipped compiler (`1.98.1` in CI and the container); Go, cargo-audit and Python test deps pinned/hash-locked (Round 10)
 - [x] L8 chain bytes bound to the signature (first slot + ed25519 under the fee payer), refused otherwise with no fallback; request path no longer deep-copies state (`/health` 100 ms → 1 ms, 21 → 960 verifies/s); refusals readable; parser matches the runtime's signer-count rule; 32-character API keys; TS SDK live conformance in CI (Round 11)
 - [x] Parser proven never looser than the runtime (`tools/runtime-oracle` against the agave decoder + `sanitize`, in CI; five accepted-but-unexecutable frame classes closed); L8 weighs inclusion (commitment read, self-contradiction and malformed statuses withheld, redirects refused, optional independent witness `GRAPHITE_RPC_WITNESS_URL`); lifecycle sequence findings on every report; one server per data directory (Round 12)
-- [x] 1,422 Rust tests (301 featureless, 1,281 cli-only), 73 TypeScript, CI green on every commit since `f10e4ab`
+- [x] The instruction's own leading bytes decide identity everywhere — every manifest lookup, the known-risky table, declared siblings; a hex discriminator contradicting its `instruction_data` fails L2 for every program (Round 13)
+- [x] `content_hash` framed against field-boundary collisions; the artifact's discriminator re-grounded and pinned across Rust, the TS SDK, AuditBind and Go (Rounds 13–14)
+- [x] Evidence is earned, not asserted: the baseline records only sound, risk-clear, successfully simulated transactions, keyed on the artifact digest so the same bytes are one observation; a failed simulation is named `simulation_failed`, never "clean" (Rounds 15–17)
+- [x] A pre-signed artifact is refused at `/verify`; L8 names a cited verdict about other bytes and alarms when it was a refusal; every verdict on record for the chain digest is reported (Rounds 16–17)
+- [x] A uniform compute history is a ±25% band, not a point; flagged-but-clean executions accumulate in a shadow baseline `/health` reports and an operator promotes (Round 17)
+- [x] Blocking plugins fail closed on panic; `min_confidence > 1` is a 400 before the pipeline; the PDA seed-template grammar is closed at manifest load, at registry submission and at verify (Round 17)
+- [x] **The registry is measured, not asserted (Round 18):** the Solana program inventory ranked from real mainnet blocks; 98 programs onboarded from their own on-chain Anchor IDLs; `protocols/battle_tested_evidence.json` records identity, volume and how much of each program's REAL traffic its manifest can name; `load_seed_manifests` lowers any `BattleTested` the measurement does not support
+- [x] 1,549 Rust tests at Round 17 (319 featureless), 100 TypeScript, CI green on every commit since `f10e4ab`
 
 ## Phase 3 (Production) — what gates it
 
@@ -153,8 +160,10 @@ the public service. Owner decisions are marked.
 - [ ] **Independent third-party audit** — every report so far is internal engineering work and says so (owner)
 - [ ] **Branch protection on `main`** — required CI, no force-push; today CI is advisory because the branch accepts direct pushes (owner)
 - [ ] Token-2022 `TransferFee` modelled so fee-bearing mints stop blocking
-- [ ] A hard L2 failure on an unparseable artifact (today: a weaker fallback path, bounded by the confidence cap and the permissive-profile flag)
-- [ ] Graphite's parser checked against Solana's own decoder over the mutation corpus (today: against `messageOf` and `web3.js`)
+- [ ] **Message version 1 parsed.** The format is refused by name today, which is fail-closed and correct, but 17.2% of the 10,617 transactions in the Round 18 mainnet sample were v1 — Graphite cannot verify them at all (`tools/mainnet-sample`)
+- [ ] **Manifest coverage of the traffic that has no published IDL.** Round 18 took the manifested share of non-vote mainnet transactions from 20.8% to 44.0% by onboarding every heavily used program that publishes its own on-chain Anchor IDL. The programs that now dominate the unmanifested remainder do not publish one, so they need a different, per-protocol route
+- [x] A hard L2 failure on an unparseable artifact — done in Round 9: no `instruction_data`, or an artifact that does not parse, fails L2
+- [x] Graphite's parser checked against Solana's own decoder over the mutation corpus — done in Round 12 (`tools/runtime-oracle`, in CI over the corpus and 600,000 generated frames); this line contradicted the Round 12 entry above for six rounds
 - [ ] `content_hash` renamed to say it is an instruction-level identifier
 - [ ] Persisted archive index so a node with years of audit archives does not scan them once at startup
 - [ ] Mainnet deployment; enterprise integrations

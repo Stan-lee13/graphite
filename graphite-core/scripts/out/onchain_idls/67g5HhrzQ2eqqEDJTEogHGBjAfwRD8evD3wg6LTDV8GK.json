@@ -1,0 +1,2072 @@
+{
+ "address": "67g5HhrzQ2eqqEDJTEogHGBjAfwRD8evD3wg6LTDV8GK",
+ "metadata": {
+  "name": "doorcash",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "DoorCash \u2014 provably fair on-chain elimination game"
+ },
+ "instructions": [
+  {
+   "name": "admin_emergency_sweep_game_vault",
+   "discriminator": [
+    130,
+    78,
+    156,
+    10,
+    76,
+    19,
+    155,
+    62
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "house_wallet",
+     "writable": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "_game_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "admin_emergency_sweep_mode_vault",
+   "discriminator": [
+    230,
+    103,
+    127,
+    110,
+    199,
+    203,
+    204,
+    235
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "house_wallet",
+     "writable": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "mode"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101,
+         45,
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "mode"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "mode",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "admin_sweep_game_vault_dust",
+   "discriminator": [
+    156,
+    148,
+    30,
+    56,
+    198,
+    132,
+    80,
+    104
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "house_wallet",
+     "writable": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "_game_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "cancel_game",
+   "discriminator": [
+    121,
+    194,
+    154,
+    118,
+    103,
+    235,
+    149,
+    52
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "close_no_winner_settlement",
+   "discriminator": [
+    200,
+    140,
+    176,
+    141,
+    220,
+    149,
+    96,
+    178
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "refund_round_id",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "enter_game",
+   "discriminator": [
+    157,
+    184,
+    173,
+    203,
+    193,
+    117,
+    106,
+    66
+   ],
+   "accounts": [
+    {
+     "name": "player",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "player_entry",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         101,
+         110,
+         116,
+         114,
+         121
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       },
+       {
+        "kind": "account",
+        "path": "player"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_participant",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101,
+         45,
+         112,
+         97,
+         114,
+         116,
+         105,
+         99,
+         105,
+         112,
+         97,
+         110,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       },
+       {
+        "kind": "account",
+        "path": "player"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "game_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "initialize_game",
+   "discriminator": [
+    44,
+    62,
+    102,
+    247,
+    126,
+    208,
+    130,
+    215
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "house_wallet"
+    },
+    {
+     "name": "game",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "mode"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "game_id",
+     "type": "string"
+    },
+    {
+     "name": "mode",
+     "type": "u8"
+    },
+    {
+     "name": "seed_hash",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    },
+    {
+     "name": "entry_fee_lamports",
+     "type": "u64"
+    },
+    {
+     "name": "max_players",
+     "type": "u8"
+    },
+    {
+     "name": "min_players",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "open_no_winner_settlement",
+   "discriminator": [
+    62,
+    72,
+    24,
+    8,
+    126,
+    228,
+    207,
+    123
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "game_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.game_id",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101,
+         45,
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "house_wallet",
+     "writable": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "pay_no_winner_batch",
+   "discriminator": [
+    13,
+    70,
+    143,
+    193,
+    211,
+    190,
+    238,
+    82
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101,
+         45,
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "refund_round_id",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "refund_player_single",
+   "discriminator": [
+    177,
+    207,
+    59,
+    196,
+    145,
+    174,
+    54,
+    223
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "house_wallet",
+     "writable": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "player",
+     "writable": true
+    },
+    {
+     "name": "player_entry",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         101,
+         110,
+         116,
+         114,
+         121
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "game_id"
+       },
+       {
+        "kind": "account",
+        "path": "player"
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "game_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "register_no_winner_entries",
+   "discriminator": [
+    117,
+    142,
+    210,
+    90,
+    42,
+    221,
+    42,
+    95
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "repair_no_winner_streak_entries",
+   "discriminator": [
+    233,
+    154,
+    246,
+    214,
+    25,
+    183,
+    190,
+    127
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "reveal_seed",
+   "discriminator": [
+    196,
+    119,
+    194,
+    112,
+    156,
+    211,
+    239,
+    105
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    }
+   ],
+   "args": [
+    {
+     "name": "seed",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "settle_winners",
+   "discriminator": [
+    156,
+    92,
+    53,
+    103,
+    212,
+    245,
+    9,
+    188
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "game_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.game_id",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "mode_vault",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101,
+         45,
+         118,
+         97,
+         117,
+         108,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    },
+    {
+     "name": "house_wallet",
+     "writable": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "winner_count",
+     "type": "u8"
+    }
+   ]
+  },
+  {
+   "name": "start_game",
+   "discriminator": [
+    249,
+    47,
+    252,
+    172,
+    184,
+    162,
+    245,
+    14
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game"
+     ]
+    },
+    {
+     "name": "game",
+     "writable": true
+    },
+    {
+     "name": "mode_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         111,
+         100,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "game.mode",
+        "account": "Game"
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  }
+ ],
+ "accounts": [
+  {
+   "name": "Game",
+   "discriminator": [
+    27,
+    90,
+    166,
+    125,
+    74,
+    100,
+    121,
+    18
+   ]
+  },
+  {
+   "name": "ModeParticipant",
+   "discriminator": [
+    0,
+    2,
+    133,
+    199,
+    23,
+    248,
+    197,
+    95
+   ]
+  },
+  {
+   "name": "ModeState",
+   "discriminator": [
+    109,
+    209,
+    230,
+    121,
+    246,
+    215,
+    245,
+    251
+   ]
+  },
+  {
+   "name": "PlayerEntry",
+   "discriminator": [
+    158,
+    6,
+    39,
+    104,
+    234,
+    4,
+    153,
+    255
+   ]
+  }
+ ],
+ "events": [
+  {
+   "name": "GameCancelled",
+   "discriminator": [
+    113,
+    20,
+    200,
+    104,
+    76,
+    35,
+    9,
+    241
+   ]
+  },
+  {
+   "name": "GameVaultRecovery",
+   "discriminator": [
+    159,
+    185,
+    5,
+    147,
+    19,
+    228,
+    22,
+    89
+   ]
+  },
+  {
+   "name": "ModeVaultRecovery",
+   "discriminator": [
+    114,
+    208,
+    93,
+    26,
+    188,
+    234,
+    103,
+    222
+   ]
+  },
+  {
+   "name": "NoWinnerEntriesRepaired",
+   "discriminator": [
+    194,
+    239,
+    42,
+    69,
+    132,
+    114,
+    87,
+    158
+   ]
+  },
+  {
+   "name": "NoWinnerSettlementClosed",
+   "discriminator": [
+    193,
+    164,
+    150,
+    29,
+    12,
+    123,
+    233,
+    108
+   ]
+  },
+  {
+   "name": "NoWinnerSettlementOpened",
+   "discriminator": [
+    25,
+    133,
+    255,
+    7,
+    108,
+    101,
+    255,
+    14
+   ]
+  },
+  {
+   "name": "PlayerEntered",
+   "discriminator": [
+    101,
+    19,
+    105,
+    26,
+    55,
+    244,
+    15,
+    194
+   ]
+  },
+  {
+   "name": "SeedRevealed",
+   "discriminator": [
+    28,
+    28,
+    203,
+    69,
+    255,
+    141,
+    240,
+    236
+   ]
+  },
+  {
+   "name": "WinnerSettlement",
+   "discriminator": [
+    211,
+    224,
+    212,
+    7,
+    217,
+    30,
+    28,
+    70
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "Unauthorized",
+   "msg": "Not authorised to perform this action"
+  },
+  {
+   "code": 6001,
+   "name": "GameNotAccepting",
+   "msg": "Game is not currently accepting players"
+  },
+  {
+   "code": 6002,
+   "name": "LobbyFull",
+   "msg": "Lobby is full"
+  },
+  {
+   "code": 6003,
+   "name": "NotEnoughPlayers",
+   "msg": "Not enough players to start"
+  },
+  {
+   "code": 6004,
+   "name": "SeedAlreadyRevealed",
+   "msg": "Seed has already been revealed"
+  },
+  {
+   "code": 6005,
+   "name": "SeedNotRevealed",
+   "msg": "Seed must be revealed before settlement"
+  },
+  {
+   "code": 6006,
+   "name": "SeedHashMismatch",
+   "msg": "Seed does not match committed hash"
+  },
+  {
+   "code": 6007,
+   "name": "InvalidGameStatus",
+   "msg": "Invalid game status for this operation"
+  },
+  {
+   "code": 6008,
+   "name": "CannotCancelActiveGame",
+   "msg": "Cannot cancel a game that is Active, Settling, or Complete"
+  },
+  {
+   "code": 6009,
+   "name": "GameNotCancelled",
+   "msg": "Game must be Cancelled to issue refunds"
+  },
+  {
+   "code": 6010,
+   "name": "AlreadyRefunded",
+   "msg": "Player has already been refunded"
+  },
+  {
+   "code": 6011,
+   "name": "NoWinners",
+   "msg": "No winners provided"
+  },
+  {
+   "code": 6012,
+   "name": "WinnerAccountMismatch",
+   "msg": "Winner account count does not match winner_count argument"
+  },
+  {
+   "code": 6013,
+   "name": "ArithmeticOverflow",
+   "msg": "Arithmetic overflow in settlement calculation"
+  },
+  {
+   "code": 6014,
+   "name": "HouseWalletMismatch",
+   "msg": "House wallet does not match game record"
+  },
+  {
+   "code": 6015,
+   "name": "InvalidConfig",
+   "msg": "Invalid game configuration"
+  },
+  {
+   "code": 6016,
+   "name": "GameIdTooLong",
+   "msg": "Game ID exceeds maximum length"
+  },
+  {
+   "code": 6017,
+   "name": "InvalidMode",
+   "msg": "Invalid game mode"
+  },
+  {
+   "code": 6018,
+   "name": "ModeMismatch",
+   "msg": "Mode account does not match game mode"
+  },
+  {
+   "code": 6019,
+   "name": "ModeRefundRoundOpen",
+   "msg": "A no-winner refund round is still open for this mode"
+  },
+  {
+   "code": 6020,
+   "name": "BatchAccountMismatch",
+   "msg": "Batch account list is malformed"
+  },
+  {
+   "code": 6021,
+   "name": "EntryGameMismatch",
+   "msg": "Player entry does not belong to this game"
+  },
+  {
+   "code": 6022,
+   "name": "NoEligibleRefundEntries",
+   "msg": "No eligible entries are registered for this refund round"
+  },
+  {
+   "code": 6023,
+   "name": "RefundRoundNotOpen",
+   "msg": "Refund round is not open"
+  },
+  {
+   "code": 6024,
+   "name": "RefundRoundMismatch",
+   "msg": "Refund round id does not match the active mode state"
+  },
+  {
+   "code": 6025,
+   "name": "RefundRoundIncomplete",
+   "msg": "Refund round has not paid all eligible entries yet"
+  },
+  {
+   "code": 6026,
+   "name": "StreakMismatch",
+   "msg": "Mode participant streak does not match the game streak"
+  },
+  {
+   "code": 6027,
+   "name": "InvalidWinnerEntry",
+   "msg": "Winner entry does not match the supplied winner wallet"
+  },
+  {
+   "code": 6028,
+   "name": "DuplicateWinner",
+   "msg": "Winner list contains the same wallet more than once"
+  },
+  {
+   "code": 6029,
+   "name": "InsufficientVaultFunds",
+   "msg": "Vault does not contain enough lamports for the recorded pot"
+  },
+  {
+   "code": 6030,
+   "name": "EmergencyRecoveryTooEarly",
+   "msg": "Emergency recovery delay has not elapsed"
+  }
+ ],
+ "types": [
+  {
+   "name": "Game",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "house_wallet",
+      "type": "pubkey"
+     },
+     {
+      "name": "seed_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "seed",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "seed_revealed",
+      "type": "bool"
+     },
+     {
+      "name": "mode",
+      "type": "u8"
+     },
+     {
+      "name": "entry_fee",
+      "type": "u64"
+     },
+     {
+      "name": "max_players",
+      "type": "u8"
+     },
+     {
+      "name": "min_players",
+      "type": "u8"
+     },
+     {
+      "name": "player_count",
+      "type": "u16"
+     },
+     {
+      "name": "total_pot",
+      "type": "u64"
+     },
+     {
+      "name": "prize_each",
+      "type": "u64"
+     },
+     {
+      "name": "house_cut",
+      "type": "u64"
+     },
+     {
+      "name": "carry_in",
+      "type": "u64"
+     },
+     {
+      "name": "carry_out",
+      "type": "u64"
+     },
+     {
+      "name": "refund_pool",
+      "type": "u64"
+     },
+     {
+      "name": "refund_per_entry",
+      "type": "u64"
+     },
+     {
+      "name": "refund_round_id",
+      "type": "u64"
+     },
+     {
+      "name": "streak_id",
+      "type": "u64"
+     },
+     {
+      "name": "settlement_kind",
+      "type": {
+       "defined": {
+        "name": "SettlementKind"
+       }
+      }
+     },
+     {
+      "name": "vault_bump",
+      "type": "u8"
+     },
+     {
+      "name": "status",
+      "type": {
+       "defined": {
+        "name": "GameStatus"
+       }
+      }
+     },
+     {
+      "name": "initialized_slot",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "GameCancelled",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     }
+    ]
+   }
+  },
+  {
+   "name": "GameStatus",
+   "type": {
+    "kind": "enum",
+    "variants": [
+     {
+      "name": "Waiting"
+     },
+     {
+      "name": "Lobby"
+     },
+     {
+      "name": "Active"
+     },
+     {
+      "name": "Settling"
+     },
+     {
+      "name": "Complete"
+     },
+     {
+      "name": "Cancelled"
+     }
+    ]
+   }
+  },
+  {
+   "name": "GameVaultRecovery",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "destination",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "recovery_kind",
+      "type": {
+       "defined": {
+        "name": "RecoveryKind"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ModeParticipant",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "wallet",
+      "type": "pubkey"
+     },
+     {
+      "name": "mode",
+      "type": "u8"
+     },
+     {
+      "name": "streak_id",
+      "type": "u64"
+     },
+     {
+      "name": "eligible_entries",
+      "type": "u64"
+     },
+     {
+      "name": "last_paid_refund_round_id",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "ModeState",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "mode",
+      "type": "u8"
+     },
+     {
+      "name": "active_streak_id",
+      "type": "u64"
+     },
+     {
+      "name": "carry_lamports",
+      "type": "u64"
+     },
+     {
+      "name": "eligible_entry_count",
+      "type": "u64"
+     },
+     {
+      "name": "open_refund_round_id",
+      "type": "u64"
+     },
+     {
+      "name": "refund_per_entry_lamports",
+      "type": "u64"
+     },
+     {
+      "name": "refund_remainder_lamports",
+      "type": "u64"
+     },
+     {
+      "name": "refund_round_open",
+      "type": "bool"
+     },
+     {
+      "name": "refund_paid_entry_count",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "ModeVaultRecovery",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "mode",
+      "type": "u8"
+     },
+     {
+      "name": "destination",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "NoWinnerEntriesRepaired",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "refund_round_id",
+      "type": "u64"
+     },
+     {
+      "name": "repaired_entries",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "NoWinnerSettlementClosed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "refund_round_id",
+      "type": "u64"
+     },
+     {
+      "name": "carry_out",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "NoWinnerSettlementOpened",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "refund_round_id",
+      "type": "u64"
+     },
+     {
+      "name": "house_cut",
+      "type": "u64"
+     },
+     {
+      "name": "carry_in",
+      "type": "u64"
+     },
+     {
+      "name": "refund_pool",
+      "type": "u64"
+     },
+     {
+      "name": "carry_out",
+      "type": "u64"
+     },
+     {
+      "name": "refund_per_entry",
+      "type": "u64"
+     },
+     {
+      "name": "eligible_entry_count",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PlayerEntered",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "player",
+      "type": "pubkey"
+     },
+     {
+      "name": "count",
+      "type": "u16"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PlayerEntry",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "player",
+      "type": "pubkey"
+     },
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "mode",
+      "type": "u8"
+     },
+     {
+      "name": "entered_at_slot",
+      "type": "u64"
+     },
+     {
+      "name": "refunded",
+      "type": "bool"
+     },
+     {
+      "name": "merged_streak_id",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "RecoveryKind",
+   "type": {
+    "kind": "enum",
+    "variants": [
+     {
+      "name": "Dust"
+     },
+     {
+      "name": "Emergency"
+     }
+    ]
+   }
+  },
+  {
+   "name": "SeedRevealed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "seed",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "SettlementKind",
+   "type": {
+    "kind": "enum",
+    "variants": [
+     {
+      "name": "Unsettled"
+     },
+     {
+      "name": "Winner"
+     },
+     {
+      "name": "NoWinner"
+     }
+    ]
+   }
+  },
+  {
+   "name": "WinnerSettlement",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "game_id",
+      "type": "string"
+     },
+     {
+      "name": "winner_count",
+      "type": "u8"
+     },
+     {
+      "name": "prize_each",
+      "type": "u64"
+     },
+     {
+      "name": "house_cut",
+      "type": "u64"
+     },
+     {
+      "name": "carry_in",
+      "type": "u64"
+     },
+     {
+      "name": "carry_out",
+      "type": "u64"
+     }
+    ]
+   }
+  }
+ ]
+}

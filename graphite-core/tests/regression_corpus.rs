@@ -214,12 +214,48 @@ fn txi(program: &str, disc: &str, accounts: Vec<String>) -> TransactionInstructi
 /// spot_market_vault 8:10, Kamino obligation 8:9/9:10). Both sides of the
 /// PDA derivation (this builder and account_resolution) receive the SAME
 /// buffer, so the derived addresses agree.
-fn instruction_data_for(disc: &str) -> Vec<u8> {
+/// Synthetic instruction data for a canonical fixture: the discriminator, then
+/// a deterministic tail.
+///
+/// The tail is long enough for every `{instruction_data:a:b}` PDA seed the
+/// instruction declares. That is not cosmetic. Since Round 17 a template the
+/// request cannot satisfy — a slice past the end of the data — is reported as
+/// an unresolvable template and the slot is flagged `pda_mismatch`, which is
+/// correct: Graphite will not approve an account it could not re-derive. A
+/// 16-byte buffer against a `{instruction_data:8:40}` seed therefore produced
+/// a fixture that no honest caller would send, and it was the fixture, not
+/// the engine, that was wrong. 36 of the 49 manifests onboarded in Round 18
+/// declare such a seed, which is how this surfaced.
+fn instruction_data_for(disc: &str, ins: &graphite_core::manifest::InstructionDef) -> Vec<u8> {
     let mut data = hex::decode(disc.trim_start_matches("0x")).unwrap_or_default();
     while data.len() < 8 {
         data.push(0);
     }
     data.extend_from_slice(&[0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    let needed = ins
+        .accounts
+        .iter()
+        .flat_map(|a| a.pda_seeds.iter())
+        .filter_map(|seed| {
+            let spec = seed
+                .strip_prefix("{instruction_data:")
+                .and_then(|s| s.strip_suffix('}'))?;
+            let mut parts = spec.split(':');
+            let start: usize = parts.next()?.parse().ok()?;
+            match parts.next() {
+                Some(end) => end.parse::<usize>().ok(),
+                None => Some(start + 8),
+            }
+        })
+        .max()
+        .unwrap_or(0);
+    // A deterministic, non-zero tail: distinct bytes make a wrong slice
+    // produce a different address instead of accidentally matching.
+    let mut i = 0u8;
+    while data.len() < needed {
+        data.push(0x10u8.wrapping_add(i));
+        i = i.wrapping_add(1);
+    }
     data
 }
 
@@ -554,7 +590,7 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
             // Instruction-data buffer: discriminator prefix (L2 requires it)
             // + deterministic market-index tail for {instruction_data:N:M}
             // PDA seed templates.
-            let instruction_data = instruction_data_for(&disc);
+            let instruction_data = instruction_data_for(&disc, ins);
             let accounts = instruction_accounts(program, ins, seed_base, &instruction_data);
             let cpis = ins.allowed_cpis.clone();
             let intent = intent_for(&ins.name, program);
@@ -705,7 +741,7 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
                     // L2 requires instruction data to start with the input
                     // discriminator — the variant's own bytes, not the
                     // canonical disc's.
-                    p.instruction_data = Some(instruction_data_for(&padded));
+                    p.instruction_data = Some(instruction_data_for(&padded, ins));
                     push(
                         &mut corpus,
                         &mut notes,
@@ -729,7 +765,7 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
                     intent,
                     good_evidence(),
                 );
-                np.instruction_data = Some(instruction_data_for(&near));
+                np.instruction_data = Some(instruction_data_for(&near, ins));
                 push(
                     &mut corpus,
                     &mut notes,

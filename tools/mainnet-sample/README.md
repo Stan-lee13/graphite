@@ -50,6 +50,58 @@ was measured by reverting the change, re-running over the identical sample, and
 diffing — which produced 9,784 identical verdicts, the evidence that the change
 moved nothing for honest traffic. "The tests pass" would not have shown that.
 
+## Recorded results (2026-09-22, Round 18)
+
+10,617 transactions from 8 blocks, 195 distinct programs, against the 131-manifest
+registry:
+
+| | |
+|---|---|
+| parse failures | 0 of 8,788 |
+| L2 discriminator-contradiction false positives | 0 |
+| version-1 transactions (refused by name) | 1,829 (17.2%) |
+| reached a verdict | 8,767 |
+| risk Clear | 6,190 |
+| primary program has a manifest | 1,498 of 8,767 (17.1%) — **1,498 of 3,405 (44.0%) excluding validator votes** |
+
+The last row is the one Round 18 moved. On the **same sample**, against the
+33-manifest registry this round started from, it was 708 of 3,405 — **20.8%**.
+Onboarding 98 programs from their own on-chain Anchor IDLs roughly doubled the
+share of non-vote mainnet traffic whose primary program Graphite can name.
+
+Validator vote transactions are reported separately because no agent ever signs
+one; they are 5,362 of the 8,767 and including them moves every percentage
+without changing what an agent is protected for.
+
+### What this run found
+
+Running the instrument after onboarding is what exposed two false-positive
+classes that a manifest count would never have shown:
+
+1. **An undeclared extra account had a privilege to mismatch.** An account past
+   the end of a manifest's declared list is `remaining_accounts` — the manifest
+   says nothing about it — but the resolver compared the real `AccountMeta`
+   against the `("extra", is_writable: false)` placeholder, so every legitimate
+   writable remaining-account became a blocking `AccountIdentityMismatch`. In
+   this sample: 429 on Pump AMM, 336 on Pump.fun, 199 on the System Program, 72
+   on SPL Token, all on transactions the chain had executed successfully. Fixed
+   in `account_resolution.rs`; regression test
+   `privilege_mismatch.rs::an_undeclared_extra_account_has_no_privilege_to_mismatch`.
+2. **A PDA grounded under the wrong program.** An IDL may state that a PDA is
+   derived under a DIFFERENT program — an associated token account is derived
+   under the ATA program — and the manifest template grammar always derives
+   under the instruction's own program. Three of the six grounded slots on Pump
+   AMM's `buy` are of that kind. The generator no longer grounds them, nor any
+   seed whose byte offset into the instruction data is not exactly computable.
+
+`AccountIdentityMismatch` fell from 1,022 to 544 across the two fixes. The
+remainder is a measured, open finding rather than a closed one: 544 blocks
+remain, most of them `kind=privilege` on slots the manifest DOES declare as
+signers, and they are recorded in the Round 18 report with their breakdown.
+
+`GRAPHITE_MAINNET_REASONS=<path>` writes one line per blocked transaction with
+the risk engine's own words, which is how that breakdown was produced.
+
 ## Recorded results (2026-09-17, slots 447885495–447888295)
 
 10,669 transactions from 8 blocks, 189 distinct programs:

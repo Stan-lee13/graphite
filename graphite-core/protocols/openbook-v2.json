@@ -2188,7 +2188,7 @@
    "risk_class": ""
   }
  ],
- "trust_tier": "OfficialManifest",
+ "trust_tier": "BattleTested",
  "verification": {
   "program_id_verified_on_chain": true,
   "program_id_source": "https://api.mainnet-beta.solana.com getAccountInfo executable=true",

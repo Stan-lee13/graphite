@@ -1,5 +1,10 @@
 # Graphite Phase 2 — Public Beta Build Plan
 
+> **Historical record.** This is the plan Phase 2 was built to, written before
+> the work. Numbers, test counts and tier claims in it are from that moment and
+> several were superseded within days (see the 2026-08-10 note below, and then
+> Rounds 6–18). For what is true now see [`CURRENT.md`](CURRENT.md).
+
 **Branch:** `phase2-development` (created from `main` @ `0a143fe`, tag `v0.1.0-alpha`)
 **Target release:** `v0.2.0-beta`
 

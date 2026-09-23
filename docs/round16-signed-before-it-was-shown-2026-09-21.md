@@ -1,5 +1,9 @@
 # Round 16 — signed before it was shown
 
+> **Historical record.** This report describes the codebase at commit
+> `e95857d` on 2026-09-21. Every finding it opened was closed in Round 17.
+> For the current state of Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Date:** 2026-09-21
 **Trigger:** the full 43-section forensic brief — exact transaction identity,
 pre-signed artifacts, discriminator identity, manifest trust, PDA templates,

@@ -1,0 +1,2050 @@
+{
+ "address": "ord1qJZ3DB52s9NoG8nuoacW85aCyNvECa5kAqcBVBu",
+ "metadata": {
+  "name": "oridion",
+  "version": "3.0.1",
+  "spec": "0.1.0",
+  "description": "Solana Oridion Galaxy"
+ },
+ "instructions": [
+  {
+   "name": "bang",
+   "docs": [
+    "UNIVERSE"
+   ],
+   "discriminator": [
+    139,
+    124,
+    243,
+    15,
+    181,
+    216,
+    69,
+    241
+   ],
+   "accounts": [
+    {
+     "name": "universe",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         120,
+         48,
+         95,
+         79,
+         82,
+         73,
+         68,
+         73,
+         79,
+         78,
+         95,
+         48,
+         120,
+         95
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "rent",
+     "address": "SysvarRent111111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "create_planet",
+   "docs": [
+    "CREATE PLANET"
+   ],
+   "discriminator": [
+    109,
+    42,
+    0,
+    132,
+    145,
+    210,
+    15,
+    25
+   ],
+   "accounts": [
+    {
+     "name": "planet",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         80,
+         76,
+         65,
+         95
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "name"
+       },
+       {
+        "kind": "const",
+        "value": [
+         95,
+         78,
+         69,
+         84,
+         95
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "universe",
+     "writable": true
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "rent",
+     "address": "SysvarRent111111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "name",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "delete_planet",
+   "docs": [
+    "DELETE PLANET"
+   ],
+   "discriminator": [
+    233,
+    29,
+    41,
+    96,
+    235,
+    188,
+    132,
+    197
+   ],
+   "accounts": [
+    {
+     "name": "planet",
+     "writable": true
+    },
+    {
+     "name": "universe",
+     "writable": true
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "emergency_land_by_creator",
+   "discriminator": [
+    24,
+    90,
+    157,
+    15,
+    1,
+    64,
+    167,
+    40
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         100
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "creator"
+       },
+       {
+        "kind": "arg",
+        "path": "pod_id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "creator",
+     "docs": [
+      "The creator is the signer who originally derived the pod PDA."
+     ],
+     "signer": true
+    },
+    {
+     "name": "destination",
+     "writable": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "emergency_land_with_code",
+   "docs": [
+    "Emergency land with code"
+   ],
+   "discriminator": [
+    129,
+    250,
+    230,
+    226,
+    84,
+    49,
+    97,
+    223
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "destination",
+     "writable": true
+    }
+   ],
+   "args": [
+    {
+     "name": "passcode",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "initialize_treasury",
+   "docs": [
+    "INIT TREASURY"
+   ],
+   "discriminator": [
+    124,
+    186,
+    211,
+    195,
+    85,
+    165,
+    129,
+    166
+   ],
+   "accounts": [
+    {
+     "name": "treasury",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         116,
+         114,
+         101,
+         97,
+         115,
+         117,
+         114,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "land",
+   "docs": [
+    "LAND FUNDS TO FINAL DESTINATION.",
+    "- Handles the transaction from the pod's current planet to set final destination user wallet.",
+    "- This is just like planet hop except deliver to destination wallet",
+    "Since we MUST pass the destination wallet address in the accounts section,",
+    "and it must match the set `pod.destination` already; there is no need for further destination checks here."
+   ],
+   "discriminator": [
+    34,
+    112,
+    208,
+    19,
+    65,
+    226,
+    42,
+    230
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "destination",
+     "writable": true
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "launch_pod",
+   "docs": [
+    "-------------------------------------------------------------------///",
+    "LAUNCH POD",
+    "Creates a user's pod account and handles initial launch to a planet.",
+    "- Destination address must be set on creation.",
+    "Otherwise, users will not trust Oridion if it can dictate the landing",
+    "destination address at any time. This is not safe for the user. User should know",
+    "that Oridion cannot alter their deposit or destination.",
+    "-------------------------------------------------------------------///"
+   ],
+   "discriminator": [
+    67,
+    31,
+    149,
+    179,
+    103,
+    156,
+    64,
+    205
+   ],
+   "accounts": [
+    {
+     "name": "pod_meta",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         100,
+         95,
+         109,
+         101,
+         116,
+         97
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "creator"
+       }
+      ]
+     }
+    },
+    {
+     "name": "pod",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         111,
+         100
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "creator"
+       },
+       {
+        "kind": "arg",
+        "path": "id"
+       }
+      ]
+     }
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "universe",
+     "writable": true
+    },
+    {
+     "name": "planet",
+     "writable": true
+    },
+    {
+     "name": "treasury",
+     "docs": [
+      "We verify its address via seeds and ensure it is program-owned when necessary.",
+      "Used only to receive lamports \u2014 no data validation required."
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         116,
+         114,
+         101,
+         97,
+         115,
+         117,
+         114,
+         121
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "id",
+     "type": "u16"
+    },
+    {
+     "name": "args",
+     "type": {
+      "defined": {
+       "name": "PodArgs"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "lock_planet",
+   "docs": [
+    "LOCK PLANET - Locks the planet during transaction"
+   ],
+   "discriminator": [
+    174,
+    219,
+    71,
+    196,
+    111,
+    58,
+    64,
+    61
+   ],
+   "accounts": [
+    {
+     "name": "planet",
+     "writable": true
+    },
+    {
+     "name": "pod"
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "lock_universe",
+   "docs": [
+    "LOCK UNIVERSE"
+   ],
+   "discriminator": [
+    141,
+    169,
+    53,
+    7,
+    205,
+    61,
+    154,
+    88
+   ],
+   "accounts": [
+    {
+     "name": "universe",
+     "writable": true
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "planet_hop",
+   "docs": [
+    "HOP FROM PLANET TO PLANET"
+   ],
+   "discriminator": [
+    3,
+    179,
+    164,
+    183,
+    237,
+    113,
+    157,
+    134
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "to_planet",
+     "writable": true
+    },
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "rebalance_planet",
+   "docs": [
+    "REBALANCE - Easy way to fix any imbalances in the planet"
+   ],
+   "discriminator": [
+    157,
+    129,
+    114,
+    28,
+    222,
+    143,
+    3,
+    157
+   ],
+   "accounts": [
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "to_planet",
+     "writable": true
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount_lamports",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "scatter_end",
+   "docs": [
+    "SCATTER HOP - END (PLANET1|PLANET2|PLANET3|PLANET4|PLANET5 -> PLANET)"
+   ],
+   "discriminator": [
+    149,
+    162,
+    44,
+    45,
+    241,
+    6,
+    69,
+    114
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "to_planet",
+     "writable": true
+    },
+    {
+     "name": "from_planet_1",
+     "writable": true
+    },
+    {
+     "name": "from_planet_2",
+     "writable": true
+    },
+    {
+     "name": "from_planet_3",
+     "writable": true
+    },
+    {
+     "name": "scatter_meta",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         99,
+         97,
+         116,
+         116,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "pod"
+       }
+      ]
+     }
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "scatter_lock",
+   "docs": [
+    "SCATTER LOCK - Same lock but for scatter hop (3 planets)"
+   ],
+   "discriminator": [
+    201,
+    101,
+    164,
+    34,
+    234,
+    149,
+    95,
+    137
+   ],
+   "accounts": [
+    {
+     "name": "planet_1",
+     "writable": true
+    },
+    {
+     "name": "planet_2",
+     "writable": true
+    },
+    {
+     "name": "planet_3",
+     "writable": true
+    },
+    {
+     "name": "pod"
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "scatter_start",
+   "docs": [
+    "SCATTER HOP - START (PLANET -> PLANET1|PLANET2|PLANET3|PLANET4|PLANET5)"
+   ],
+   "discriminator": [
+    161,
+    67,
+    71,
+    212,
+    30,
+    242,
+    25,
+    238
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "to_planet_1",
+     "writable": true
+    },
+    {
+     "name": "to_planet_2",
+     "writable": true
+    },
+    {
+     "name": "to_planet_3",
+     "writable": true
+    },
+    {
+     "name": "scatter_meta",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         99,
+         97,
+         116,
+         116,
+         101,
+         114
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "pod"
+       }
+      ]
+     }
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "star_hop_three_end",
+   "docs": [
+    "STAR HOP THREE - END (STAR1|START2|STAR3 -> PLANET)"
+   ],
+   "discriminator": [
+    137,
+    154,
+    251,
+    87,
+    206,
+    85,
+    239,
+    80
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "to_planet",
+     "writable": true
+    },
+    {
+     "name": "star_one",
+     "writable": true
+    },
+    {
+     "name": "star_two",
+     "writable": true
+    },
+    {
+     "name": "star_three",
+     "writable": true
+    },
+    {
+     "name": "star_meta",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         114,
+         95,
+         116,
+         104,
+         114,
+         101,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "pod"
+       }
+      ]
+     }
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM",
+     "relations": [
+      "star_one",
+      "star_two",
+      "star_three"
+     ]
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "star_hop_three_start",
+   "docs": [
+    "STAR HOP THREE - START (PLANET -> STAR1|START2|STAR3)"
+   ],
+   "discriminator": [
+    113,
+    173,
+    37,
+    152,
+    51,
+    142,
+    34,
+    219
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "star_one",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         73,
+         78,
+         70,
+         73,
+         78,
+         73,
+         84,
+         89,
+         95
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "star_one_id"
+       },
+       {
+        "kind": "const",
+        "value": [
+         95,
+         66,
+         69,
+         89,
+         79,
+         78,
+         68,
+         95
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "star_two",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         73,
+         78,
+         70,
+         73,
+         78,
+         73,
+         84,
+         89,
+         95
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "star_two_id"
+       },
+       {
+        "kind": "const",
+        "value": [
+         95,
+         66,
+         69,
+         89,
+         79,
+         78,
+         68,
+         95
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "star_three",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         73,
+         78,
+         70,
+         73,
+         78,
+         73,
+         84,
+         89,
+         95
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "star_three_id"
+       },
+       {
+        "kind": "const",
+        "value": [
+         95,
+         66,
+         69,
+         89,
+         79,
+         78,
+         68,
+         95
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "star_meta",
+     "docs": [
+      "The PDA is derived from [b\"star_three\", pod.key()], and data is written manually using `.serialize()`.",
+      "We ensure the account is the correct target by checking the key before use."
+     ],
+     "writable": true
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    },
+    {
+     "name": "rent",
+     "address": "SysvarRent111111111111111111111111111111111"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "_star_one_id",
+     "type": "string"
+    },
+    {
+     "name": "_star_two_id",
+     "type": "string"
+    },
+    {
+     "name": "_star_three_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "star_hop_two_end",
+   "docs": [
+    "STAR HOP TWO - END - (STAR1|START2 -> PLANET)"
+   ],
+   "discriminator": [
+    106,
+    244,
+    138,
+    223,
+    114,
+    247,
+    244,
+    46
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "to_planet",
+     "writable": true
+    },
+    {
+     "name": "star_one",
+     "writable": true
+    },
+    {
+     "name": "star_two",
+     "writable": true
+    },
+    {
+     "name": "star_meta",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         114,
+         95,
+         116,
+         119,
+         111
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "pod"
+       }
+      ]
+     }
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM",
+     "relations": [
+      "star_one",
+      "star_two"
+     ]
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "star_hop_two_start",
+   "docs": [
+    "STAR HOP TWO - START (PLANET -> STAR1|START2)",
+    "The \"from\" planet must be locked before."
+   ],
+   "discriminator": [
+    244,
+    208,
+    228,
+    223,
+    91,
+    106,
+    93,
+    17
+   ],
+   "accounts": [
+    {
+     "name": "pod",
+     "writable": true
+    },
+    {
+     "name": "from_planet",
+     "writable": true
+    },
+    {
+     "name": "star_one",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         73,
+         78,
+         70,
+         73,
+         78,
+         73,
+         84,
+         89,
+         95
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "star_one_id"
+       },
+       {
+        "kind": "const",
+        "value": [
+         95,
+         66,
+         69,
+         89,
+         79,
+         78,
+         68,
+         95
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "star_two",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         95,
+         73,
+         78,
+         70,
+         73,
+         78,
+         73,
+         84,
+         89,
+         95
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "star_two_id"
+       },
+       {
+        "kind": "const",
+        "value": [
+         95,
+         66,
+         69,
+         89,
+         79,
+         78,
+         68,
+         95
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "star_meta",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         115,
+         116,
+         97,
+         114,
+         95,
+         116,
+         119,
+         111
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "pod"
+       }
+      ]
+     }
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    },
+    {
+     "name": "rent",
+     "address": "SysvarRent111111111111111111111111111111111"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "_star_one_id",
+     "type": "string"
+    },
+    {
+     "name": "_star_two_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "update_fee",
+   "docs": [
+    "UPDATE FEE"
+   ],
+   "discriminator": [
+    232,
+    253,
+    195,
+    247,
+    148,
+    212,
+    73,
+    222
+   ],
+   "accounts": [
+    {
+     "name": "universe",
+     "writable": true
+    },
+    {
+     "name": "creator",
+     "writable": true,
+     "signer": true,
+     "address": "ordnd8TZFYW4k4MeLrR3qSwXMxezL6W3WryUPYTzLQM"
+    }
+   ],
+   "args": [
+    {
+     "name": "fee",
+     "type": "u32"
+    },
+    {
+     "name": "increment",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "withdraw_from_treasury",
+   "docs": [
+    "WITHDRAW FROM TREASURY"
+   ],
+   "discriminator": [
+    0,
+    164,
+    86,
+    76,
+    56,
+    72,
+    12,
+    170
+   ],
+   "accounts": [
+    {
+     "name": "treasury",
+     "writable": true
+    },
+    {
+     "name": "recipient",
+     "writable": true
+    },
+    {
+     "name": "manager",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "Planet",
+   "discriminator": [
+    242,
+    27,
+    236,
+    42,
+    220,
+    217,
+    132,
+    128
+   ]
+  },
+  {
+   "name": "Pod",
+   "discriminator": [
+    38,
+    158,
+    247,
+    154,
+    184,
+    100,
+    20,
+    121
+   ]
+  },
+  {
+   "name": "PodMeta",
+   "discriminator": [
+    182,
+    244,
+    128,
+    125,
+    86,
+    146,
+    96,
+    23
+   ]
+  },
+  {
+   "name": "Star",
+   "discriminator": [
+    214,
+    131,
+    207,
+    208,
+    202,
+    148,
+    162,
+    48
+   ]
+  },
+  {
+   "name": "StarMeta",
+   "discriminator": [
+    70,
+    157,
+    77,
+    76,
+    7,
+    141,
+    163,
+    53
+   ]
+  },
+  {
+   "name": "TransitMeta",
+   "discriminator": [
+    172,
+    142,
+    131,
+    25,
+    35,
+    193,
+    136,
+    255
+   ]
+  },
+  {
+   "name": "Treasury",
+   "discriminator": [
+    238,
+    239,
+    123,
+    238,
+    89,
+    1,
+    168,
+    253
+   ]
+  },
+  {
+   "name": "Universe",
+   "discriminator": [
+    86,
+    112,
+    227,
+    226,
+    88,
+    47,
+    242,
+    113
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "InvalidTreasure",
+   "msg": "InvalidTreasure"
+  },
+  {
+   "code": 6001,
+   "name": "InvalidPasscode",
+   "msg": "Invalid passcode"
+  },
+  {
+   "code": 6002,
+   "name": "TooSoonToEmLand",
+   "msg": "Too soon to emergency land"
+  },
+  {
+   "code": 6003,
+   "name": "UnauthorizedMode",
+   "msg": "Unauthorized mode"
+  },
+  {
+   "code": 6004,
+   "name": "UniverseLocked",
+   "msg": "Universe is locked"
+  },
+  {
+   "code": 6005,
+   "name": "InsufficientFee",
+   "msg": "Insufficient fee"
+  },
+  {
+   "code": 6006,
+   "name": "TooManyPods",
+   "msg": "Too many pods!"
+  },
+  {
+   "code": 6007,
+   "name": "PlanetNameTooLong",
+   "msg": "Planet name too long"
+  },
+  {
+   "code": 6008,
+   "name": "PlanetDeleteHasFundsError",
+   "msg": "Planet cannot be deleted. Still has funds"
+  },
+  {
+   "code": 6009,
+   "name": "HopErrorToAndFromAreSame",
+   "msg": "To and from cannot be the same"
+  },
+  {
+   "code": 6010,
+   "name": "InsufficientFunds",
+   "msg": "Insufficient funds for hop"
+  },
+  {
+   "code": 6011,
+   "name": "HopErrorStarsMustBeUnique",
+   "msg": "Stars IDs must be unique"
+  },
+  {
+   "code": 6012,
+   "name": "AlreadyLanded",
+   "msg": "Pod lamports have already landed!"
+  },
+  {
+   "code": 6013,
+   "name": "PlanetNotEnoughFundsError",
+   "msg": "Planet does not have enough lamports to cover transaction!"
+  },
+  {
+   "code": 6014,
+   "name": "PlanetStillLocked",
+   "msg": "Planet is still locked!"
+  },
+  {
+   "code": 6015,
+   "name": "PlanetNotLocked",
+   "msg": "Planet must be locked in order to hop"
+  },
+  {
+   "code": 6016,
+   "name": "NotAuthorizedToHop",
+   "msg": "Pod not authorized to hop from this planet"
+  },
+  {
+   "code": 6017,
+   "name": "LockExpired",
+   "msg": "Planet lock has expired!"
+  },
+  {
+   "code": 6018,
+   "name": "StarHopCalculationError",
+   "msg": "Star split calculations do not add up!"
+  },
+  {
+   "code": 6019,
+   "name": "InTransit",
+   "msg": "Pod is in transit. Cannot start if already in transit!"
+  },
+  {
+   "code": 6020,
+   "name": "NotInTransit",
+   "msg": "Pod is not in transit. Cannot end if not started!"
+  },
+  {
+   "code": 6021,
+   "name": "InvalidDepositAmount",
+   "msg": "Pod amount must be greater than 0!"
+  },
+  {
+   "code": 6022,
+   "name": "InvalidLandingTimestamp",
+   "msg": "Landing timestamp must be in the future!"
+  },
+  {
+   "code": 6023,
+   "name": "ExistingPodActive",
+   "msg": "Pod is active!"
+  },
+  {
+   "code": 6024,
+   "name": "InvalidDestination",
+   "msg": "Invalid destination address"
+  },
+  {
+   "code": 6025,
+   "name": "InvalidDelay",
+   "msg": "Invalid delay amount passed"
+  },
+  {
+   "code": 6026,
+   "name": "InvalidMode",
+   "msg": "Invalid mode passed"
+  },
+  {
+   "code": 6027,
+   "name": "InvalidScatterMeta",
+   "msg": "Invalid Scatter meta"
+  },
+  {
+   "code": 6028,
+   "name": "ScatterSplitMathError",
+   "msg": "Scatter split math not adding up!"
+  },
+  {
+   "code": 6029,
+   "name": "ScatterTotalToPodMismatch",
+   "msg": "Scatter total to pod amount mismatch!"
+  },
+  {
+   "code": 6030,
+   "name": "UnusualMathError",
+   "msg": "Unusual math error"
+  },
+  {
+   "code": 6031,
+   "name": "InsufficientTreasuryBalance",
+   "msg": "Insufficient treasury balance for withdrawal"
+  },
+  {
+   "code": 6032,
+   "name": "InvalidStarMetaPda",
+   "msg": "Invalid star meta account passed"
+  },
+  {
+   "code": 6033,
+   "name": "PdaAlreadyInitialized",
+   "msg": "PDA already initialized"
+  }
+ ],
+ "types": [
+  {
+   "name": "ActivityEntry",
+   "repr": {
+    "kind": "c"
+   },
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "action",
+      "type": "u8"
+     },
+     {
+      "name": "to",
+      "type": {
+       "array": [
+        "u8",
+        10
+       ]
+      }
+     },
+     {
+      "name": "time",
+      "type": "i64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Planet",
+   "repr": {
+    "kind": "c"
+   },
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "account_type",
+      "type": "u8"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "created",
+      "type": "i64"
+     },
+     {
+      "name": "visits",
+      "type": "u64"
+     },
+     {
+      "name": "base_lamports",
+      "type": "u64"
+     },
+     {
+      "name": "locked_at",
+      "type": "i64"
+     },
+     {
+      "name": "locked_by",
+      "type": "pubkey"
+     },
+     {
+      "name": "name",
+      "type": "string"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Pod",
+   "repr": {
+    "kind": "c"
+   },
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "account_type",
+      "type": "u8"
+     },
+     {
+      "name": "version",
+      "type": "u8"
+     },
+     {
+      "name": "mode",
+      "type": "u8"
+     },
+     {
+      "name": "next_process",
+      "type": "u8"
+     },
+     {
+      "name": "last_process",
+      "type": "u8"
+     },
+     {
+      "name": "is_in_transit",
+      "type": "u8"
+     },
+     {
+      "name": "id",
+      "type": "u16"
+     },
+     {
+      "name": "hops",
+      "type": "u16"
+     },
+     {
+      "name": "delay",
+      "type": "u32"
+     },
+     {
+      "name": "next_process_at",
+      "type": "i64"
+     },
+     {
+      "name": "land_at",
+      "type": "i64"
+     },
+     {
+      "name": "created_at",
+      "type": "i64"
+     },
+     {
+      "name": "last_process_at",
+      "type": "i64"
+     },
+     {
+      "name": "lamports",
+      "type": "u64"
+     },
+     {
+      "name": "location",
+      "type": "pubkey"
+     },
+     {
+      "name": "destination",
+      "type": "pubkey"
+     },
+     {
+      "name": "passcode_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "log",
+      "type": {
+       "array": [
+        {
+         "defined": {
+          "name": "ActivityEntry"
+         }
+        },
+        10
+       ]
+      }
+     },
+     {
+      "name": "log_index",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PodArgs",
+   "docs": [
+    "# Optional Transparency Memo",
+    "",
+    "The `show_memo` flag allows the user to optionally attach a public `spl-memo` instruction",
+    "to their pod transaction for transparency and wallet compatibility.",
+    "",
+    "## Purpose",
+    "- Helps wallets like Phantom recognize and explain the transaction.",
+    "- Assists users in identifying their activity on explorers.",
+    "- Does **not** affect privacy unless explicitly enabled.",
+    "",
+    "## Defaults to `false`",
+    "- Users must explicitly opt in.",
+    "- When `false`, no memo is added. The pod remains private.",
+    "- When `true`, a memo like `Oridion: launched pod from 7GdQ...2kHt` is attached.",
+    "",
+    "## Security Note",
+    "- This setting is respected on-chain; users cannot be forced to reveal origin.",
+    "- This pattern maintains compatibility with trust-scoring logic used by wallets."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "deposit_lamports",
+      "type": "u64"
+     },
+     {
+      "name": "mode",
+      "type": "u8"
+     },
+     {
+      "name": "delay",
+      "type": "u32"
+     },
+     {
+      "name": "show_memo",
+      "type": "u8"
+     },
+     {
+      "name": "passcode",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "d0",
+      "type": {
+       "array": [
+        "u8",
+        16
+       ]
+      }
+     },
+     {
+      "name": "d1",
+      "type": {
+       "array": [
+        "u8",
+        16
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "PodMeta",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "ids",
+      "type": {
+       "vec": "u16"
+      }
+     },
+     {
+      "name": "created_at",
+      "type": "i64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Star",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "manager",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "StarMeta",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "to_pdas",
+      "type": {
+       "array": [
+        "pubkey",
+        3
+       ]
+      }
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "TransitMeta",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "from",
+      "type": "pubkey"
+     },
+     {
+      "name": "to_pdas",
+      "type": {
+       "array": [
+        "pubkey",
+        3
+       ]
+      }
+     },
+     {
+      "name": "amounts",
+      "type": {
+       "array": [
+        "u64",
+        3
+       ]
+      }
+     },
+     {
+      "name": "created_at",
+      "type": "i64"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Treasury",
+   "repr": {
+    "kind": "c"
+   },
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "authority",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Universe",
+   "repr": {
+    "kind": "c"
+   },
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "account_type",
+      "type": "u8"
+     },
+     {
+      "name": "locked",
+      "type": "u8"
+     },
+     {
+      "name": "bump",
+      "type": "u8"
+     },
+     {
+      "name": "created",
+      "type": "i64"
+     },
+     {
+      "name": "last_updated",
+      "type": "i64"
+     },
+     {
+      "name": "fee",
+      "type": "u64"
+     },
+     {
+      "name": "increment",
+      "type": "u64"
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,5 +1,13 @@
 # Phase 2 — Public Beta Development Branch
 
+> **Superseded.** This page describes the branch discipline used while Phase 2
+> was being built on `phase2-development`, with `main` frozen at
+> `v0.1.0-alpha`. That phase is over: Phase 2 was merged, and work since
+> Round 6 lands on `main` directly, one commit per round, each with CI green
+> before the next round starts. It is kept as a record of how the beta was
+> staged. For how the repository is worked on now see
+> [`../CONTRIBUTING.md`](../CONTRIBUTING.md) and [`CURRENT.md`](CURRENT.md).
+
 ## Phase 2 Branch Rules (non-negotiable)
 
 1. **ALL Phase 2 work happens on `phase2-development`.** Feature branches (`feature/*`) merge into `phase2-development`; no direct commits to `main`.

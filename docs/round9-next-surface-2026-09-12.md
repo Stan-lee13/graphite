@@ -1,5 +1,9 @@
 # Round 9 — The Next Surface
 
+> **Historical record.** This report describes the codebase at commit
+> `2416cb4` on 2026-09-12, and the fixes made on top of it. For the current
+> state of Graphite see [`CURRENT.md`](CURRENT.md).
+
 **Ground truth at the start of the round.** HEAD `2416cb4` (documentation);
 the substantive parent `0a36712` has a GitHub Actions run that completed
 **success** (Actions run 34691034415). rustc 1.98.1 (CI's `stable`), Node

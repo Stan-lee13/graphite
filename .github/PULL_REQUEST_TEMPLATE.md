@@ -18,6 +18,11 @@ Brief description of what this PR changes.
 - [ ] No new `unwrap()` or `panic!()` in hot path
 - [ ] Constitution principles checked (P1-P16)
 - [ ] No public performance claim without reproducible benchmark (P16)
+- [ ] If a protocol manifest was added or changed: it is listed in `SEED_MANIFESTS`, in
+      `protocols/verified_program_ids.json` and in the Python cross-check map; a mainnet
+      measurement is on record (`scripts/battle_tested_census.py`); `trust_tier` is
+      `OfficialManifest` unless that measurement supports more; and
+      `scripts/render_coverage.py` was re-run
 
 ## Test Evidence
 ```

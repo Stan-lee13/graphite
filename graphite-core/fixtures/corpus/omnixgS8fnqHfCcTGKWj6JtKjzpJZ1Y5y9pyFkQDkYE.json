@@ -1,0 +1,4927 @@
+[
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "f46ad3a87be80b0b6dd6a63b248161b86916dd4de88ab12ed1a2b952119fa4a1",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "7f52792aa1b0f9ce",
+      "account_addresses": [
+        "jzAc385Dc2cLiSChazMDUXRoJQQag1vkRGdgNF3X7zZ",
+        "27pPXiXoooN3bpq2JNL7z7R214xEDZqA7UCFa7DvuRM8",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "Boo4onmmf7bh4XNjUCSUaAFWxbBuSJvjYuJ4pRaXnEPg",
+        "6zhJNJSGsTiqB25K2qWDy3fbQfPyQLNmziXCZ61Hzbva",
+        "G595fT4j7Bh6Qhd6YX6qUt1AHutyhgV81kRTHoeuQpTW",
+        "8S8TGtioZ6qKaKFPzTkodr1MLFUQdpSbVtF9WfknKnm",
+        "7gGnXcU84Lm9pTd6DdtcfY49xhRCFEMWBJ6vjCYqz6XA",
+        "H3HFLkQNnE68WEkQQ6Api5tFdjCHcfnBd8ubePoKZRYx",
+        "9kghX2JiSqq6B9jcJ466KDGrrJ7t1JU5mYxteUs1J8rs",
+        "GRPFVDrysjo1t2uWMbWsB4sGiCej8HgBgFQGJebUG4Yy",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3qUKjFzAnjgG6EWJQURW7CzRC4n4yEFNKdmkNFmKLqTW"
+      ],
+      "instruction_data": [
+        127,
+        82,
+        121,
+        42,
+        161,
+        176,
+        249,
+        206,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "d433ef32ae9e8442d4dc55b7a046d8b84c50f7f42e63c9b5f85b45c6ce767689",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "7f52792aa1b0f9ce",
+      "account_addresses": [
+        "jzAc385Dc2cLiSChazMDUXRoJQQag1vkRGdgNF3X7zZ",
+        "27pPXiXoooN3bpq2JNL7z7R214xEDZqA7UCFa7DvuRM8",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "Boo4onmmf7bh4XNjUCSUaAFWxbBuSJvjYuJ4pRaXnEPg",
+        "6zhJNJSGsTiqB25K2qWDy3fbQfPyQLNmziXCZ61Hzbva",
+        "G595fT4j7Bh6Qhd6YX6qUt1AHutyhgV81kRTHoeuQpTW",
+        "8S8TGtioZ6qKaKFPzTkodr1MLFUQdpSbVtF9WfknKnm",
+        "7gGnXcU84Lm9pTd6DdtcfY49xhRCFEMWBJ6vjCYqz6XA",
+        "H3HFLkQNnE68WEkQQ6Api5tFdjCHcfnBd8ubePoKZRYx",
+        "9kghX2JiSqq6B9jcJ466KDGrrJ7t1JU5mYxteUs1J8rs",
+        "GRPFVDrysjo1t2uWMbWsB4sGiCej8HgBgFQGJebUG4Yy",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3qUKjFzAnjgG6EWJQURW7CzRC4n4yEFNKdmkNFmKLqTW"
+      ],
+      "instruction_data": [
+        127,
+        82,
+        121,
+        42,
+        161,
+        176,
+        249,
+        206,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "209c3a2933f7a6a58ca5dc4152b79d79d8b612d69d387d22c251d4a4a645d088",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "7f52792aa1b0f9ce",
+      "account_addresses": [
+        "jzAc385Dc2cLiSChazMDUXRoJQQag1vkRGdgNF3X7zZ",
+        "27pPXiXoooN3bpq2JNL7z7R214xEDZqA7UCFa7DvuRM8",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "Boo4onmmf7bh4XNjUCSUaAFWxbBuSJvjYuJ4pRaXnEPg",
+        "6zhJNJSGsTiqB25K2qWDy3fbQfPyQLNmziXCZ61Hzbva",
+        "G595fT4j7Bh6Qhd6YX6qUt1AHutyhgV81kRTHoeuQpTW",
+        "8S8TGtioZ6qKaKFPzTkodr1MLFUQdpSbVtF9WfknKnm",
+        "7gGnXcU84Lm9pTd6DdtcfY49xhRCFEMWBJ6vjCYqz6XA",
+        "H3HFLkQNnE68WEkQQ6Api5tFdjCHcfnBd8ubePoKZRYx",
+        "9kghX2JiSqq6B9jcJ466KDGrrJ7t1JU5mYxteUs1J8rs",
+        "GRPFVDrysjo1t2uWMbWsB4sGiCej8HgBgFQGJebUG4Yy",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3qUKjFzAnjgG6EWJQURW7CzRC4n4yEFNKdmkNFmKLqTW",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        127,
+        82,
+        121,
+        42,
+        161,
+        176,
+        249,
+        206,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "f66e052b293b150939d819afce4888d177ad57d8ee5922bd887cfdcbd3721e99",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "deadbeefdeadbeef",
+      "account_addresses": [
+        "7zgCrd1aHzWoEYGHQv3vskcvKPhbcdZUgCT3ggjdoHw6",
+        "5T7K316kmDvEiHHcPutLsGd9eexHkcsTvnLqP8tFpB5g"
+      ],
+      "instruction_data": null,
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "3f47dc3a0a1f67dc788c9530a0d241921557250c0da59537a614c99c6d171dd0",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "b59d59438fb63448",
+      "account_addresses": [
+        "CzNbtoYu1s9hQqJKHn2MtnBmCcQVup8p1GxELkKM8T2x",
+        "4Z1a4UPpZud6GgCWEeVm2YVFwa6yibbj7ihrbzmsHb1Y",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "CAhjp6Y7ZQof3DtnEEaBFi4VXEBe6rAvi2WP3giqUm5N",
+        "DgNboKjYyBSxwFfE7xPF1Egxy7tXnVTz9iiPrAkZUBFm",
+        "5cdZFHYKBLhRrnoRTwpsta6PytKxT5jjZ9Geb81ctPEq",
+        "4pSXFETrAG23NE4DquA5AfzUi1MqJY8pzv5z5CFYc5wH",
+        "EwwUGSVFawdWqYfeRHJ7NNnSFLi4XcLGNrMnatZTwei3",
+        "BZJ1pJ3buMnRPEYUUycp55jS9QaEvkRYEYp5nXst5gw5",
+        "6XTHhfwPcq8ks5ZowDbGTg8JDC1CMcYuR6RJ8yFNp8FC",
+        "4Y62NSMRfSCehESjPXEPRm7vVWWUmTBBymj8tADeVgY2",
+        "6wRLRmnbJqxoxVRaHn9dVeafDgH2YyuaN3U5fNpxkF46",
+        "AfGjD3WzCWLfcEycHfQ4p3dZpTR5u8mXrdx8Thi73KGN",
+        "9tNqd7LtajThsWFWVv1epcmiR4hGAmbjf5k3foQSM6qN",
+        "5ev5SxBx4tLSrSsQ7HHrpAQJKuJRWgXDGVJZPG2ephXQ",
+        "DMHUSpPnQTvGFk4X8g2hxpTru7bJAAMAPQYrYcMECnzs",
+        "EeFm7fqmn4Q4DDJ2g71KA1vB6vguMZ65Qu8wquoo6RVd",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "9amGWe2owjk3mTGzomfgYbEkjAXLoMu2RwFqtHDx4Ub3"
+      ],
+      "instruction_data": [
+        181,
+        157,
+        89,
+        67,
+        143,
+        182,
+        52,
+        72,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "dddfe6203312874c8a6512170e86e54a2d11d9182ff97f220ab6a6e4a0575fea",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "b59d59438fb63448",
+      "account_addresses": [
+        "CzNbtoYu1s9hQqJKHn2MtnBmCcQVup8p1GxELkKM8T2x",
+        "4Z1a4UPpZud6GgCWEeVm2YVFwa6yibbj7ihrbzmsHb1Y",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "CAhjp6Y7ZQof3DtnEEaBFi4VXEBe6rAvi2WP3giqUm5N",
+        "DgNboKjYyBSxwFfE7xPF1Egxy7tXnVTz9iiPrAkZUBFm",
+        "5cdZFHYKBLhRrnoRTwpsta6PytKxT5jjZ9Geb81ctPEq",
+        "4pSXFETrAG23NE4DquA5AfzUi1MqJY8pzv5z5CFYc5wH",
+        "EwwUGSVFawdWqYfeRHJ7NNnSFLi4XcLGNrMnatZTwei3",
+        "BZJ1pJ3buMnRPEYUUycp55jS9QaEvkRYEYp5nXst5gw5",
+        "6XTHhfwPcq8ks5ZowDbGTg8JDC1CMcYuR6RJ8yFNp8FC",
+        "4Y62NSMRfSCehESjPXEPRm7vVWWUmTBBymj8tADeVgY2",
+        "6wRLRmnbJqxoxVRaHn9dVeafDgH2YyuaN3U5fNpxkF46",
+        "AfGjD3WzCWLfcEycHfQ4p3dZpTR5u8mXrdx8Thi73KGN",
+        "9tNqd7LtajThsWFWVv1epcmiR4hGAmbjf5k3foQSM6qN",
+        "5ev5SxBx4tLSrSsQ7HHrpAQJKuJRWgXDGVJZPG2ephXQ",
+        "DMHUSpPnQTvGFk4X8g2hxpTru7bJAAMAPQYrYcMECnzs",
+        "EeFm7fqmn4Q4DDJ2g71KA1vB6vguMZ65Qu8wquoo6RVd",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "9amGWe2owjk3mTGzomfgYbEkjAXLoMu2RwFqtHDx4Ub3"
+      ],
+      "instruction_data": [
+        181,
+        157,
+        89,
+        67,
+        143,
+        182,
+        52,
+        72,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "fba7888e38e491e5ec7d843bb37ab97484f090a31643ae718d7c9bedc7fa9f4f",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "b59d59438fb63448",
+      "account_addresses": [
+        "CzNbtoYu1s9hQqJKHn2MtnBmCcQVup8p1GxELkKM8T2x",
+        "4Z1a4UPpZud6GgCWEeVm2YVFwa6yibbj7ihrbzmsHb1Y",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "CAhjp6Y7ZQof3DtnEEaBFi4VXEBe6rAvi2WP3giqUm5N",
+        "DgNboKjYyBSxwFfE7xPF1Egxy7tXnVTz9iiPrAkZUBFm",
+        "5cdZFHYKBLhRrnoRTwpsta6PytKxT5jjZ9Geb81ctPEq",
+        "4pSXFETrAG23NE4DquA5AfzUi1MqJY8pzv5z5CFYc5wH",
+        "EwwUGSVFawdWqYfeRHJ7NNnSFLi4XcLGNrMnatZTwei3",
+        "BZJ1pJ3buMnRPEYUUycp55jS9QaEvkRYEYp5nXst5gw5",
+        "6XTHhfwPcq8ks5ZowDbGTg8JDC1CMcYuR6RJ8yFNp8FC",
+        "4Y62NSMRfSCehESjPXEPRm7vVWWUmTBBymj8tADeVgY2",
+        "6wRLRmnbJqxoxVRaHn9dVeafDgH2YyuaN3U5fNpxkF46",
+        "AfGjD3WzCWLfcEycHfQ4p3dZpTR5u8mXrdx8Thi73KGN",
+        "9tNqd7LtajThsWFWVv1epcmiR4hGAmbjf5k3foQSM6qN",
+        "5ev5SxBx4tLSrSsQ7HHrpAQJKuJRWgXDGVJZPG2ephXQ",
+        "DMHUSpPnQTvGFk4X8g2hxpTru7bJAAMAPQYrYcMECnzs",
+        "EeFm7fqmn4Q4DDJ2g71KA1vB6vguMZ65Qu8wquoo6RVd",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "9amGWe2owjk3mTGzomfgYbEkjAXLoMu2RwFqtHDx4Ub3",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        181,
+        157,
+        89,
+        67,
+        143,
+        182,
+        52,
+        72,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "5df01f67c68d9ee5f15518f7c9d9e72b3a91d70217946a403de950277cde5dc9",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "e4fd83cacf745912",
+      "account_addresses": [
+        "73AmEs9quci9Jwe8DvC9DP9ht4PveHwgFMZmaaRH8Gpv",
+        "4Eiqehnw526cUhftMzz1CnCKMXYVpBaEeQEUwjYZAESH",
+        "Hceh8UnGAPaJvVusXCuH6Q6e6XQYpy5pc7hyD2qPDgRD",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HggwjvqifGfWC52RtqA9jmMCXk8GQidb6P1szXFLvqbp",
+        "EKFQQotfzbQdqNqMqdcpZGPpBBQXjB77tHh4wMEARy6p",
+        "5M9e5Zx9Wj2GLzBr8vnqaYkMxY9uw44H4VoJmYJ7QA8x",
+        "4H2VjNyKrPx2tuV7k29guKsbADbib1iKeHLZ2WuPXzbQ",
+        "DKYsc2opC6poBpHVVnJoUapM211jFytZEjeZojY2QyvX",
+        "3mte7UZ8eggdqdUdwGTHqvt2Fpd86GiZvXdYCLyH3CiZ",
+        "3srPmrFKjAdswXwZKVDw2rhAzakYuuJgjZKdbUWuyxjX",
+        "6PYmra7s9114zbKEtKT3RQdcv8DW3Ne6YWGEuzCsZWka",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "56VW7gCtC7dQ3cVNWJfRDgbXzpPXFN4AKVFkaFsenVde"
+      ],
+      "instruction_data": [
+        228,
+        253,
+        131,
+        202,
+        207,
+        116,
+        89,
+        18,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "2eb5541348016936fb5178d83c95828e0bb23ce5667c2762f58bc2f3a20404ba",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "e4fd83cacf745912",
+      "account_addresses": [
+        "73AmEs9quci9Jwe8DvC9DP9ht4PveHwgFMZmaaRH8Gpv",
+        "4Eiqehnw526cUhftMzz1CnCKMXYVpBaEeQEUwjYZAESH",
+        "Hceh8UnGAPaJvVusXCuH6Q6e6XQYpy5pc7hyD2qPDgRD",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HggwjvqifGfWC52RtqA9jmMCXk8GQidb6P1szXFLvqbp",
+        "EKFQQotfzbQdqNqMqdcpZGPpBBQXjB77tHh4wMEARy6p",
+        "5M9e5Zx9Wj2GLzBr8vnqaYkMxY9uw44H4VoJmYJ7QA8x",
+        "4H2VjNyKrPx2tuV7k29guKsbADbib1iKeHLZ2WuPXzbQ",
+        "DKYsc2opC6poBpHVVnJoUapM211jFytZEjeZojY2QyvX",
+        "3mte7UZ8eggdqdUdwGTHqvt2Fpd86GiZvXdYCLyH3CiZ",
+        "3srPmrFKjAdswXwZKVDw2rhAzakYuuJgjZKdbUWuyxjX",
+        "6PYmra7s9114zbKEtKT3RQdcv8DW3Ne6YWGEuzCsZWka",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "56VW7gCtC7dQ3cVNWJfRDgbXzpPXFN4AKVFkaFsenVde"
+      ],
+      "instruction_data": [
+        228,
+        253,
+        131,
+        202,
+        207,
+        116,
+        89,
+        18,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "b835b484f7b54ca36a5948d6564bd11afefb1cf0671af0152ae53a4b9093b16c",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "e4fd83cacf745912",
+      "account_addresses": [
+        "73AmEs9quci9Jwe8DvC9DP9ht4PveHwgFMZmaaRH8Gpv",
+        "4Eiqehnw526cUhftMzz1CnCKMXYVpBaEeQEUwjYZAESH",
+        "Hceh8UnGAPaJvVusXCuH6Q6e6XQYpy5pc7hyD2qPDgRD",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HggwjvqifGfWC52RtqA9jmMCXk8GQidb6P1szXFLvqbp",
+        "EKFQQotfzbQdqNqMqdcpZGPpBBQXjB77tHh4wMEARy6p",
+        "5M9e5Zx9Wj2GLzBr8vnqaYkMxY9uw44H4VoJmYJ7QA8x",
+        "4H2VjNyKrPx2tuV7k29guKsbADbib1iKeHLZ2WuPXzbQ",
+        "DKYsc2opC6poBpHVVnJoUapM211jFytZEjeZojY2QyvX",
+        "3mte7UZ8eggdqdUdwGTHqvt2Fpd86GiZvXdYCLyH3CiZ",
+        "3srPmrFKjAdswXwZKVDw2rhAzakYuuJgjZKdbUWuyxjX",
+        "6PYmra7s9114zbKEtKT3RQdcv8DW3Ne6YWGEuzCsZWka",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "56VW7gCtC7dQ3cVNWJfRDgbXzpPXFN4AKVFkaFsenVde",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        228,
+        253,
+        131,
+        202,
+        207,
+        116,
+        89,
+        18,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "e862cd0aa297e9bf948e372bae70fef0e467ffdd1c42998bab61a66203de0e1d",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "228edb706d368517",
+      "account_addresses": [
+        "4EPKRUXv6ZdWBExGheiyY1Rcaf4tkTQjAUDqEZEkrEZD",
+        "7FmH4Na4u2BqVbTUDahh1ZtMut8DVPE18WzQBvASjVc1",
+        "DAme2TpuMnNNwuthJ6vARyAGi3JVzb3qZ3jkg3QZXfcL",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "2Fmm8kbeCocB9fyCBWabm6z5jhPUNhyevbHfrAkzKkJU",
+        "4u6Jw7PrZGZpSRdhx5EomzhbmPMmfW6rk6noP8jdDnSJ",
+        "7YmaVM6wA3rnj3LAaxszVcHBphcQ3veVppapKk8a2GFG",
+        "6quG4sx67NkcwjzouPAcyELRoYmKfuFpwqNYbbjKzDv7",
+        "DnMgdeEKXQXfmXiJi5y4zN1M1HsH2sJJYH5jBUiwTEkk",
+        "5NC7K8mmshPV84jRXXScAp5xaG5BLqzhUJb7LiF7m8t7",
+        "A1WQkF2fjPnhX3SF4WGX7CetjjA4WTLS2xA2WRyqsUfs",
+        "8rsKG976EmeBo2E4aeCUD31ZeZrSKW8zV5kio7XfbC9C",
+        "5jv2FugePK79zAUKRu4p3JSjWJKJEbL9cv7kKYeLnnjg",
+        "HG1UihU7W5pMeHZbUMevZDE6R6FdMBQuy6kU6HvYud6j",
+        "9isoWd3ZwxCNto8VaoQcbcxwuUPgoJrhEGcf5KKKrttN",
+        "Ao4GwqCgTw89WbaqKeQNttwhwNbyg5U8K65RGMwdoD2p",
+        "HsEBnFSzEiVuNFhaxnEbqhSDJncS1zPC9vzQcHo3xemh",
+        "iKjW69dtaj7wTcv3XSfz8mKkWGi6oFYDmgZ1bWMnz3g",
+        "GcL8sTnyeEY59yiFbk1cJMFw9xXPn8zPAsenEp4TbP5g",
+        "5jN7qJjSTAnAqFTaJ6WUSfqhNk6VWDkQupinYxkf6Zcg",
+        "9p2umKBg9636TBifzKdST6pfibd82V5VcAZuxECTxytq",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "7VDh4WKYqKjDkofJKLaJEBejxEBEycsGVu7BCoy2wHEi"
+      ],
+      "instruction_data": [
+        34,
+        142,
+        219,
+        112,
+        109,
+        54,
+        133,
+        23,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "8e9406c05906d098318eee0b866851e8bbe7eebd728c8d31b6bdf7c83d20555b",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "228edb706d368517",
+      "account_addresses": [
+        "4EPKRUXv6ZdWBExGheiyY1Rcaf4tkTQjAUDqEZEkrEZD",
+        "7FmH4Na4u2BqVbTUDahh1ZtMut8DVPE18WzQBvASjVc1",
+        "DAme2TpuMnNNwuthJ6vARyAGi3JVzb3qZ3jkg3QZXfcL",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "2Fmm8kbeCocB9fyCBWabm6z5jhPUNhyevbHfrAkzKkJU",
+        "4u6Jw7PrZGZpSRdhx5EomzhbmPMmfW6rk6noP8jdDnSJ",
+        "7YmaVM6wA3rnj3LAaxszVcHBphcQ3veVppapKk8a2GFG",
+        "6quG4sx67NkcwjzouPAcyELRoYmKfuFpwqNYbbjKzDv7",
+        "DnMgdeEKXQXfmXiJi5y4zN1M1HsH2sJJYH5jBUiwTEkk",
+        "5NC7K8mmshPV84jRXXScAp5xaG5BLqzhUJb7LiF7m8t7",
+        "A1WQkF2fjPnhX3SF4WGX7CetjjA4WTLS2xA2WRyqsUfs",
+        "8rsKG976EmeBo2E4aeCUD31ZeZrSKW8zV5kio7XfbC9C",
+        "5jv2FugePK79zAUKRu4p3JSjWJKJEbL9cv7kKYeLnnjg",
+        "HG1UihU7W5pMeHZbUMevZDE6R6FdMBQuy6kU6HvYud6j",
+        "9isoWd3ZwxCNto8VaoQcbcxwuUPgoJrhEGcf5KKKrttN",
+        "Ao4GwqCgTw89WbaqKeQNttwhwNbyg5U8K65RGMwdoD2p",
+        "HsEBnFSzEiVuNFhaxnEbqhSDJncS1zPC9vzQcHo3xemh",
+        "iKjW69dtaj7wTcv3XSfz8mKkWGi6oFYDmgZ1bWMnz3g",
+        "GcL8sTnyeEY59yiFbk1cJMFw9xXPn8zPAsenEp4TbP5g",
+        "5jN7qJjSTAnAqFTaJ6WUSfqhNk6VWDkQupinYxkf6Zcg",
+        "9p2umKBg9636TBifzKdST6pfibd82V5VcAZuxECTxytq",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "7VDh4WKYqKjDkofJKLaJEBejxEBEycsGVu7BCoy2wHEi"
+      ],
+      "instruction_data": [
+        34,
+        142,
+        219,
+        112,
+        109,
+        54,
+        133,
+        23,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "f82a1c71a0049422e6f927d0eb5e85730ad3e6fc50ab09be6e6d801dffdcb457",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "228edb706d368517",
+      "account_addresses": [
+        "4EPKRUXv6ZdWBExGheiyY1Rcaf4tkTQjAUDqEZEkrEZD",
+        "7FmH4Na4u2BqVbTUDahh1ZtMut8DVPE18WzQBvASjVc1",
+        "DAme2TpuMnNNwuthJ6vARyAGi3JVzb3qZ3jkg3QZXfcL",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "2Fmm8kbeCocB9fyCBWabm6z5jhPUNhyevbHfrAkzKkJU",
+        "4u6Jw7PrZGZpSRdhx5EomzhbmPMmfW6rk6noP8jdDnSJ",
+        "7YmaVM6wA3rnj3LAaxszVcHBphcQ3veVppapKk8a2GFG",
+        "6quG4sx67NkcwjzouPAcyELRoYmKfuFpwqNYbbjKzDv7",
+        "DnMgdeEKXQXfmXiJi5y4zN1M1HsH2sJJYH5jBUiwTEkk",
+        "5NC7K8mmshPV84jRXXScAp5xaG5BLqzhUJb7LiF7m8t7",
+        "A1WQkF2fjPnhX3SF4WGX7CetjjA4WTLS2xA2WRyqsUfs",
+        "8rsKG976EmeBo2E4aeCUD31ZeZrSKW8zV5kio7XfbC9C",
+        "5jv2FugePK79zAUKRu4p3JSjWJKJEbL9cv7kKYeLnnjg",
+        "HG1UihU7W5pMeHZbUMevZDE6R6FdMBQuy6kU6HvYud6j",
+        "9isoWd3ZwxCNto8VaoQcbcxwuUPgoJrhEGcf5KKKrttN",
+        "Ao4GwqCgTw89WbaqKeQNttwhwNbyg5U8K65RGMwdoD2p",
+        "HsEBnFSzEiVuNFhaxnEbqhSDJncS1zPC9vzQcHo3xemh",
+        "iKjW69dtaj7wTcv3XSfz8mKkWGi6oFYDmgZ1bWMnz3g",
+        "GcL8sTnyeEY59yiFbk1cJMFw9xXPn8zPAsenEp4TbP5g",
+        "5jN7qJjSTAnAqFTaJ6WUSfqhNk6VWDkQupinYxkf6Zcg",
+        "9p2umKBg9636TBifzKdST6pfibd82V5VcAZuxECTxytq",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "7VDh4WKYqKjDkofJKLaJEBejxEBEycsGVu7BCoy2wHEi",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        34,
+        142,
+        219,
+        112,
+        109,
+        54,
+        133,
+        23,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "d9124e09db6e01578f4081ab02f473ba5fb2c4e78e7041f93ab862ef52136572",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "80dd44c51a9edbab",
+      "account_addresses": [
+        "AjojaU5osLyDYWrH9BMa8uEwweDT9fxsYy9Qenu88qnZ",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "5EC7mocsBYBXHZVqD9U8mCx5DMM9nR2kwihKWMMESmF9",
+        "4NHBVjbjPKCi2Fnuyb79FNXAQegmU4T8ffBBtvj79tsd"
+      ],
+      "instruction_data": [
+        128,
+        221,
+        68,
+        197,
+        26,
+        158,
+        219,
+        171,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "a7b7c45ab5715c8a3452446f43f2e130fab94982711290c8cb8721807ddfe36a",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "80dd44c51a9edbab",
+      "account_addresses": [
+        "AjojaU5osLyDYWrH9BMa8uEwweDT9fxsYy9Qenu88qnZ",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "5EC7mocsBYBXHZVqD9U8mCx5DMM9nR2kwihKWMMESmF9",
+        "4NHBVjbjPKCi2Fnuyb79FNXAQegmU4T8ffBBtvj79tsd"
+      ],
+      "instruction_data": [
+        128,
+        221,
+        68,
+        197,
+        26,
+        158,
+        219,
+        171,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "081b3f0ff2abcc3e39734ef0862c2045a7c02c73667eaee5d6d6991e01d90657",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "80dd44c51a9edbab",
+      "account_addresses": [
+        "AjojaU5osLyDYWrH9BMa8uEwweDT9fxsYy9Qenu88qnZ",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "5EC7mocsBYBXHZVqD9U8mCx5DMM9nR2kwihKWMMESmF9",
+        "4NHBVjbjPKCi2Fnuyb79FNXAQegmU4T8ffBBtvj79tsd",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        128,
+        221,
+        68,
+        197,
+        26,
+        158,
+        219,
+        171,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "d08987e97dad60b6672236f9362d5ac3be20f9948480d56b0a6d4f74d8499399",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "692101032a9ef643",
+      "account_addresses": [
+        "4nMcoPYc2hZdaBytv63rXicZJr8mUt6HFnaKMkuFUmCS",
+        "5zEWf8RDtqiHq9smmS62LbvnUZWeMndwwjJsgMZZpT89",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "FDmvUowsv8fELhNL1zbL3dui8UZVbtAHo5AW5pjyFNK8",
+        "49AvjuPZvRWdyWv8FRkEb3J69eJ22aQYeiLmMzfaYfBC",
+        "GhJGNipcfA42mnXCWSjhaxBG6FjA8Kz8ajN43CKnUHHo",
+        "FVBQAMLobQNxVokZsMNrYouQYC9CdagGvkDNremRWs8R",
+        "48HzcRCtfpg5KwS7s5bAknGDQsQutXn8Nzo1vBjCn8wr",
+        "9FeT9VZThSJaz4GMRdGSXijjssjKGiZAb2xyyXyGZFav",
+        "Fm8y3AYy2iHVYtArhax8wSrBeZb5UpmmPe7w1yxRZGm",
+        "5Mat4zEeJU8g7z7a8DZSMM3bbYR7Z6pWzkWaq34mf2BF",
+        "F69dHDkkfL6hAoR7jGToAVJESstnTQaheuADJoQdNKMF",
+        "EUBZBFNUUTc2aMyeTM2EQMdTf9qMgMbNWua9rKMSv67C",
+        "AwubhcWhSUGb4qR5Noob6kHck4jxAfkdFFh81zceKZ8b",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "542ZMaJThPTdYySF5WxKaN7oSVbT1SKYPQzSdCBHipAV"
+      ],
+      "instruction_data": [
+        105,
+        33,
+        1,
+        3,
+        42,
+        158,
+        246,
+        67,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "ddf7374af1c15223ea7216784d0b041097f1e85e91823d6e22b365c8ddb2035f",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "692101032a9ef643",
+      "account_addresses": [
+        "4nMcoPYc2hZdaBytv63rXicZJr8mUt6HFnaKMkuFUmCS",
+        "5zEWf8RDtqiHq9smmS62LbvnUZWeMndwwjJsgMZZpT89",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "FDmvUowsv8fELhNL1zbL3dui8UZVbtAHo5AW5pjyFNK8",
+        "49AvjuPZvRWdyWv8FRkEb3J69eJ22aQYeiLmMzfaYfBC",
+        "GhJGNipcfA42mnXCWSjhaxBG6FjA8Kz8ajN43CKnUHHo",
+        "FVBQAMLobQNxVokZsMNrYouQYC9CdagGvkDNremRWs8R",
+        "48HzcRCtfpg5KwS7s5bAknGDQsQutXn8Nzo1vBjCn8wr",
+        "9FeT9VZThSJaz4GMRdGSXijjssjKGiZAb2xyyXyGZFav",
+        "Fm8y3AYy2iHVYtArhax8wSrBeZb5UpmmPe7w1yxRZGm",
+        "5Mat4zEeJU8g7z7a8DZSMM3bbYR7Z6pWzkWaq34mf2BF",
+        "F69dHDkkfL6hAoR7jGToAVJESstnTQaheuADJoQdNKMF",
+        "EUBZBFNUUTc2aMyeTM2EQMdTf9qMgMbNWua9rKMSv67C",
+        "AwubhcWhSUGb4qR5Noob6kHck4jxAfkdFFh81zceKZ8b",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "542ZMaJThPTdYySF5WxKaN7oSVbT1SKYPQzSdCBHipAV"
+      ],
+      "instruction_data": [
+        105,
+        33,
+        1,
+        3,
+        42,
+        158,
+        246,
+        67,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "f7d9a420b2cd5d5ef107aa9ded2ce7e34d26aeb1292b452ceac7e7358e2bb861",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "692101032a9ef643",
+      "account_addresses": [
+        "4nMcoPYc2hZdaBytv63rXicZJr8mUt6HFnaKMkuFUmCS",
+        "5zEWf8RDtqiHq9smmS62LbvnUZWeMndwwjJsgMZZpT89",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "FDmvUowsv8fELhNL1zbL3dui8UZVbtAHo5AW5pjyFNK8",
+        "49AvjuPZvRWdyWv8FRkEb3J69eJ22aQYeiLmMzfaYfBC",
+        "GhJGNipcfA42mnXCWSjhaxBG6FjA8Kz8ajN43CKnUHHo",
+        "FVBQAMLobQNxVokZsMNrYouQYC9CdagGvkDNremRWs8R",
+        "48HzcRCtfpg5KwS7s5bAknGDQsQutXn8Nzo1vBjCn8wr",
+        "9FeT9VZThSJaz4GMRdGSXijjssjKGiZAb2xyyXyGZFav",
+        "Fm8y3AYy2iHVYtArhax8wSrBeZb5UpmmPe7w1yxRZGm",
+        "5Mat4zEeJU8g7z7a8DZSMM3bbYR7Z6pWzkWaq34mf2BF",
+        "F69dHDkkfL6hAoR7jGToAVJESstnTQaheuADJoQdNKMF",
+        "EUBZBFNUUTc2aMyeTM2EQMdTf9qMgMbNWua9rKMSv67C",
+        "AwubhcWhSUGb4qR5Noob6kHck4jxAfkdFFh81zceKZ8b",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "542ZMaJThPTdYySF5WxKaN7oSVbT1SKYPQzSdCBHipAV",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        105,
+        33,
+        1,
+        3,
+        42,
+        158,
+        246,
+        67,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "33f311c114abeac175006c7d7cd1d6285fdf79d9306c52d0a666eec3f45b9c58",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "856e9a1df0ce4764",
+      "account_addresses": [
+        "8xrU85z9oXLEhDSNS44sNxaWFCCsYh3uGvG1kNkUuSyP",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "DUJJ9d2Xjd34nU1a7kjG9LV6f9B1feYKKxXfmM64S7xu",
+        "3dtBjQRu7FgPnuUYhcYnrMLneKzpicFRJW8NNL3HVYwf"
+      ],
+      "instruction_data": [
+        133,
+        110,
+        154,
+        29,
+        240,
+        206,
+        71,
+        100,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "32ccf749072bed5dd1a99f84a50d7ed3f4f278d1017d2a4b6ccc907427a7ca93",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "856e9a1df0ce4764",
+      "account_addresses": [
+        "8xrU85z9oXLEhDSNS44sNxaWFCCsYh3uGvG1kNkUuSyP",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "DUJJ9d2Xjd34nU1a7kjG9LV6f9B1feYKKxXfmM64S7xu",
+        "3dtBjQRu7FgPnuUYhcYnrMLneKzpicFRJW8NNL3HVYwf"
+      ],
+      "instruction_data": [
+        133,
+        110,
+        154,
+        29,
+        240,
+        206,
+        71,
+        100,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "865a9e72eca4bad3f19506d4ed35fe28ef7d0763c05e03eca687ed4bba228ca1",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "856e9a1df0ce4764",
+      "account_addresses": [
+        "8xrU85z9oXLEhDSNS44sNxaWFCCsYh3uGvG1kNkUuSyP",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "DUJJ9d2Xjd34nU1a7kjG9LV6f9B1feYKKxXfmM64S7xu",
+        "3dtBjQRu7FgPnuUYhcYnrMLneKzpicFRJW8NNL3HVYwf",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        133,
+        110,
+        154,
+        29,
+        240,
+        206,
+        71,
+        100,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "05d177aa79cbfbabf43ed7a71b737c3e36223fa5581f5bc832a0e7ba0306138a",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "afaf6d1f0d989bed",
+      "account_addresses": [
+        "84CeqcvJzyqvyW35FRDitumBHGpt7Xu4FwJuUigJ5jFW",
+        "AwNeVNwewM8L1xDFK8tB7aehZgXhaq7uGabeT7dCSZ8r",
+        "AhxUYC8f7diF7zESqN2GCxT5tvktBwMnC1e6ypDnRhNd",
+        "84Mr9iVQuTc1tXVYKyWmSL4GS4c2cxqWet8CT4zrV4Uy",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "F4Jr4DZwquLYCKCLjVQAKHf7daSwfQvfhVMKMFt7AHQz",
+        "FvXoKiK3zjwkHQkTijfpESgUppunuzUy5j5deDihQGEQ",
+        "84qDydGrUUC6MnLuZYdWYQm2mzm48oQSeNemhFJ6VCVM",
+        "FX4r1vxAXsSpntcm9PfQGkSbAcADwhJ2sE8qJY7gNsG",
+        "6AD4BUmwFffWRVHAkh2S2kDodawxEHwJRjiUJQXVyvjr",
+        "9Vn4NFkwPqHZva1tgADX4uZ9PBrFaaPDGz4Tm5q7jzB7",
+        "5qHEYQmQyV6kWh6cjPpCixLae9TZr1htbJZ9Xh26uuyu",
+        "2YMSk7WAjhWzVA935qATjaVCRCGS8CaXAkkXVZ4pEiLv",
+        "3vom6gbjNrUGtxSKvFTKW31G7Fw3STr85qGNNnCap1Vo",
+        "H2a3guBMbS5QyPSaPpbtHagxg2LHQw3Y6Z8nwM19PR5J",
+        "FmgfJNGw86AQaPUncoTYhsNUErf9G1sFLjASAzLkwV55",
+        "CjDrjbDK5kwVTZkjPjz62egT49WoA4YCcPfvfZxGDkpz",
+        "V7yykRGm8feWYFvy6xano6BdmFs5fRYDhjR8KYEnMjf",
+        "Dh32PFMPrmvJS8njLeT39LXhHrpiKnRNkqCa76eQwZpa",
+        "9tLykvTZCaDsjQomvLijcDNUaQrd26DQV7UjuPmTGeC8",
+        "AURphRGpc6Qk1SbcYpvRMNNWqrrEDMXzMLYmZUd2LUPe",
+        "CbTR1KpF8jUcvpGxiyw8rEn9TNWYfVtPLTMqL7Jn9qi2",
+        "H5S497saNCjnjticFVwPQ8bk76HDrnqcx7Q5muAF7Fvf",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3CQ1oS8xkqvP6pG5w3m7aJwfgK5o5Sq2zktBX9Hc9Ahi"
+      ],
+      "instruction_data": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "05d1aa66125d9775c31dced8e08be61b14dbdd533f0f1a750bdb7c3cd90995f3",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "afaf6d1f0d989bed",
+      "account_addresses": [
+        "84CeqcvJzyqvyW35FRDitumBHGpt7Xu4FwJuUigJ5jFW",
+        "AwNeVNwewM8L1xDFK8tB7aehZgXhaq7uGabeT7dCSZ8r",
+        "AhxUYC8f7diF7zESqN2GCxT5tvktBwMnC1e6ypDnRhNd",
+        "84Mr9iVQuTc1tXVYKyWmSL4GS4c2cxqWet8CT4zrV4Uy",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "F4Jr4DZwquLYCKCLjVQAKHf7daSwfQvfhVMKMFt7AHQz",
+        "FvXoKiK3zjwkHQkTijfpESgUppunuzUy5j5deDihQGEQ",
+        "84qDydGrUUC6MnLuZYdWYQm2mzm48oQSeNemhFJ6VCVM",
+        "FX4r1vxAXsSpntcm9PfQGkSbAcADwhJ2sE8qJY7gNsG",
+        "6AD4BUmwFffWRVHAkh2S2kDodawxEHwJRjiUJQXVyvjr",
+        "9Vn4NFkwPqHZva1tgADX4uZ9PBrFaaPDGz4Tm5q7jzB7",
+        "5qHEYQmQyV6kWh6cjPpCixLae9TZr1htbJZ9Xh26uuyu",
+        "2YMSk7WAjhWzVA935qATjaVCRCGS8CaXAkkXVZ4pEiLv",
+        "3vom6gbjNrUGtxSKvFTKW31G7Fw3STr85qGNNnCap1Vo",
+        "H2a3guBMbS5QyPSaPpbtHagxg2LHQw3Y6Z8nwM19PR5J",
+        "FmgfJNGw86AQaPUncoTYhsNUErf9G1sFLjASAzLkwV55",
+        "CjDrjbDK5kwVTZkjPjz62egT49WoA4YCcPfvfZxGDkpz",
+        "V7yykRGm8feWYFvy6xano6BdmFs5fRYDhjR8KYEnMjf",
+        "Dh32PFMPrmvJS8njLeT39LXhHrpiKnRNkqCa76eQwZpa",
+        "9tLykvTZCaDsjQomvLijcDNUaQrd26DQV7UjuPmTGeC8",
+        "AURphRGpc6Qk1SbcYpvRMNNWqrrEDMXzMLYmZUd2LUPe",
+        "CbTR1KpF8jUcvpGxiyw8rEn9TNWYfVtPLTMqL7Jn9qi2",
+        "H5S497saNCjnjticFVwPQ8bk76HDrnqcx7Q5muAF7Fvf",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3CQ1oS8xkqvP6pG5w3m7aJwfgK5o5Sq2zktBX9Hc9Ahi"
+      ],
+      "instruction_data": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "3282d6c0d9b1e512538d80c14cc410a66e4b2cff6c4b2c6b7344b72b015f6cbb",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "afaf6d1f0d989bed",
+      "account_addresses": [
+        "84CeqcvJzyqvyW35FRDitumBHGpt7Xu4FwJuUigJ5jFW",
+        "AwNeVNwewM8L1xDFK8tB7aehZgXhaq7uGabeT7dCSZ8r",
+        "AhxUYC8f7diF7zESqN2GCxT5tvktBwMnC1e6ypDnRhNd",
+        "84Mr9iVQuTc1tXVYKyWmSL4GS4c2cxqWet8CT4zrV4Uy",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "F4Jr4DZwquLYCKCLjVQAKHf7daSwfQvfhVMKMFt7AHQz",
+        "FvXoKiK3zjwkHQkTijfpESgUppunuzUy5j5deDihQGEQ",
+        "84qDydGrUUC6MnLuZYdWYQm2mzm48oQSeNemhFJ6VCVM",
+        "FX4r1vxAXsSpntcm9PfQGkSbAcADwhJ2sE8qJY7gNsG",
+        "6AD4BUmwFffWRVHAkh2S2kDodawxEHwJRjiUJQXVyvjr",
+        "9Vn4NFkwPqHZva1tgADX4uZ9PBrFaaPDGz4Tm5q7jzB7",
+        "5qHEYQmQyV6kWh6cjPpCixLae9TZr1htbJZ9Xh26uuyu",
+        "2YMSk7WAjhWzVA935qATjaVCRCGS8CaXAkkXVZ4pEiLv",
+        "3vom6gbjNrUGtxSKvFTKW31G7Fw3STr85qGNNnCap1Vo",
+        "H2a3guBMbS5QyPSaPpbtHagxg2LHQw3Y6Z8nwM19PR5J",
+        "FmgfJNGw86AQaPUncoTYhsNUErf9G1sFLjASAzLkwV55",
+        "CjDrjbDK5kwVTZkjPjz62egT49WoA4YCcPfvfZxGDkpz",
+        "V7yykRGm8feWYFvy6xano6BdmFs5fRYDhjR8KYEnMjf",
+        "Dh32PFMPrmvJS8njLeT39LXhHrpiKnRNkqCa76eQwZpa",
+        "9tLykvTZCaDsjQomvLijcDNUaQrd26DQV7UjuPmTGeC8",
+        "AURphRGpc6Qk1SbcYpvRMNNWqrrEDMXzMLYmZUd2LUPe",
+        "CbTR1KpF8jUcvpGxiyw8rEn9TNWYfVtPLTMqL7Jn9qi2",
+        "H5S497saNCjnjticFVwPQ8bk76HDrnqcx7Q5muAF7Fvf",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3CQ1oS8xkqvP6pG5w3m7aJwfgK5o5Sq2zktBX9Hc9Ahi",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "8d4efef3fe5bb0c06a98d9f99004caa469fe19c7339dc5d30462b859951e1d99",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "dfb3e27d302e274a",
+      "account_addresses": [
+        "F89mARz1g1arhCSn8TKvkSgTtTfC4Ni66eDJBosR9fga",
+        "ESFU1S7cwoLqAsRchBXDvteuGbJYJ63dojtcHyvZLQKG",
+        "4MJtdFrDSbcW5mL2zMiLWA4y4XxWTW1tqQrLSBFB51kH",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "6Pbs1RrDRJnCkqzXN7d25F9SaMTDsL3oXp1sQeRjFekm",
+        "FELSAxch5BmN8hr4tBMirAbTiPyFoAbA5tGPw3j5f7jf",
+        "8pCn3oTcHCBibn4S4c8XGjbZFRsDN7ymazCTXcNFDepG",
+        "7hk81HHqSqasKeR2etu2t2egXki2HH2YLdVrVQ4ZsNf7",
+        "EAeCsvwjDtzqWrVbeMdfAdvF2qxBjQ2bKMv35NW9igQX",
+        "zztUNMFpBzvH92K34RewN5kmiNU2XY5UzsovjB8a5ea",
+        "GbHeHRUxDFErj5wnSqNM4QMtXoXEcKrmFxeA46PWeaSL",
+        "EAGWyHMp8XKvSgn3bKfymnW9VvCEiiyWvsxuKf7W8jAU",
+        "65VcAWD9sNyCVxTRsDDKK8FceBqVA17CG8h3jn6KE5q",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3BoJLNpkU6unQfDfiYWvifM7V2ctEFY4d7rjpLkbuW9r"
+      ],
+      "instruction_data": [
+        223,
+        179,
+        226,
+        125,
+        48,
+        46,
+        39,
+        74,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "9eb5b3f8226c7fac27cb06fec107a568fd599ce2801fe4ce6c1dc1a25cce4f01",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "dfb3e27d302e274a",
+      "account_addresses": [
+        "F89mARz1g1arhCSn8TKvkSgTtTfC4Ni66eDJBosR9fga",
+        "ESFU1S7cwoLqAsRchBXDvteuGbJYJ63dojtcHyvZLQKG",
+        "4MJtdFrDSbcW5mL2zMiLWA4y4XxWTW1tqQrLSBFB51kH",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "6Pbs1RrDRJnCkqzXN7d25F9SaMTDsL3oXp1sQeRjFekm",
+        "FELSAxch5BmN8hr4tBMirAbTiPyFoAbA5tGPw3j5f7jf",
+        "8pCn3oTcHCBibn4S4c8XGjbZFRsDN7ymazCTXcNFDepG",
+        "7hk81HHqSqasKeR2etu2t2egXki2HH2YLdVrVQ4ZsNf7",
+        "EAeCsvwjDtzqWrVbeMdfAdvF2qxBjQ2bKMv35NW9igQX",
+        "zztUNMFpBzvH92K34RewN5kmiNU2XY5UzsovjB8a5ea",
+        "GbHeHRUxDFErj5wnSqNM4QMtXoXEcKrmFxeA46PWeaSL",
+        "EAGWyHMp8XKvSgn3bKfymnW9VvCEiiyWvsxuKf7W8jAU",
+        "65VcAWD9sNyCVxTRsDDKK8FceBqVA17CG8h3jn6KE5q",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3BoJLNpkU6unQfDfiYWvifM7V2ctEFY4d7rjpLkbuW9r"
+      ],
+      "instruction_data": [
+        223,
+        179,
+        226,
+        125,
+        48,
+        46,
+        39,
+        74,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "d8f7d004ab9174a306e2db6c9301559bde6c7a68f892c10f9a9007716f741614",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "dfb3e27d302e274a",
+      "account_addresses": [
+        "F89mARz1g1arhCSn8TKvkSgTtTfC4Ni66eDJBosR9fga",
+        "ESFU1S7cwoLqAsRchBXDvteuGbJYJ63dojtcHyvZLQKG",
+        "4MJtdFrDSbcW5mL2zMiLWA4y4XxWTW1tqQrLSBFB51kH",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "6Pbs1RrDRJnCkqzXN7d25F9SaMTDsL3oXp1sQeRjFekm",
+        "FELSAxch5BmN8hr4tBMirAbTiPyFoAbA5tGPw3j5f7jf",
+        "8pCn3oTcHCBibn4S4c8XGjbZFRsDN7ymazCTXcNFDepG",
+        "7hk81HHqSqasKeR2etu2t2egXki2HH2YLdVrVQ4ZsNf7",
+        "EAeCsvwjDtzqWrVbeMdfAdvF2qxBjQ2bKMv35NW9igQX",
+        "zztUNMFpBzvH92K34RewN5kmiNU2XY5UzsovjB8a5ea",
+        "GbHeHRUxDFErj5wnSqNM4QMtXoXEcKrmFxeA46PWeaSL",
+        "EAGWyHMp8XKvSgn3bKfymnW9VvCEiiyWvsxuKf7W8jAU",
+        "65VcAWD9sNyCVxTRsDDKK8FceBqVA17CG8h3jn6KE5q",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3BoJLNpkU6unQfDfiYWvifM7V2ctEFY4d7rjpLkbuW9r",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        223,
+        179,
+        226,
+        125,
+        48,
+        46,
+        39,
+        74,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "c0ecc5564f1eeeb1b20969e77116c7f7e705de423065c3e731f18d3c2780758b",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "56de82565c144841",
+      "account_addresses": [
+        "EK18gCMLTM3K2W2E9VXQsNwEqTAUbkSp9msjEHm1AjV7",
+        "3sJRfsFimnGzVd7Bo1tRZwiRM3WR8XDqUGL6cBiNyhtz",
+        "ELzpYvXr9dEF8d4LeRuAzG85DkqrZSiuMcg7SucFCbzX",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HFPYmM3sbgN9ieaWnc9PWeG96fzJExjZwqf66JJjKTBz",
+        "GXKK6TvbnGC5tpQ3vuykKjTEpSp25wEjAdYbB6gwS4Mx",
+        "HKoXEApvkNBGdHzqW36L8iN6yzsZcaswMndWtbPohMaX",
+        "C8ZWBuMwu4USXbyH1cfvgtuvvKVwoqeHGE9TeFmqLB8r",
+        "J2fu5M1SvuUbvvxLh2mVTkoakAchrbfApKgfMmt1BhSW",
+        "A4hqFQ3Z5Vajx78sugpQbxoR1iE47gynK9s3fwUQBDNn",
+        "AmidoUPT18XT6757V4BTwtUFGrCz5Azw8Q3kQ8nejtxe",
+        "CPwqBecustry2tCio88tVJXYS1SP8jEGo8zzT23KEi2K",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "5EVyFkDWrLqQrjzKyet7hhQqRabLAaWyS2yBYCaheFKD"
+      ],
+      "instruction_data": [
+        86,
+        222,
+        130,
+        86,
+        92,
+        20,
+        72,
+        65,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "ac62377f2460545f914768b17bcfd5b4331e2fa79e03e16af338c86403933389",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "56de82565c144841",
+      "account_addresses": [
+        "EK18gCMLTM3K2W2E9VXQsNwEqTAUbkSp9msjEHm1AjV7",
+        "3sJRfsFimnGzVd7Bo1tRZwiRM3WR8XDqUGL6cBiNyhtz",
+        "ELzpYvXr9dEF8d4LeRuAzG85DkqrZSiuMcg7SucFCbzX",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HFPYmM3sbgN9ieaWnc9PWeG96fzJExjZwqf66JJjKTBz",
+        "GXKK6TvbnGC5tpQ3vuykKjTEpSp25wEjAdYbB6gwS4Mx",
+        "HKoXEApvkNBGdHzqW36L8iN6yzsZcaswMndWtbPohMaX",
+        "C8ZWBuMwu4USXbyH1cfvgtuvvKVwoqeHGE9TeFmqLB8r",
+        "J2fu5M1SvuUbvvxLh2mVTkoakAchrbfApKgfMmt1BhSW",
+        "A4hqFQ3Z5Vajx78sugpQbxoR1iE47gynK9s3fwUQBDNn",
+        "AmidoUPT18XT6757V4BTwtUFGrCz5Azw8Q3kQ8nejtxe",
+        "CPwqBecustry2tCio88tVJXYS1SP8jEGo8zzT23KEi2K",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "5EVyFkDWrLqQrjzKyet7hhQqRabLAaWyS2yBYCaheFKD"
+      ],
+      "instruction_data": [
+        86,
+        222,
+        130,
+        86,
+        92,
+        20,
+        72,
+        65,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "c488797a29b0f0a73d35dc5a381250faf6a89ef7a930368af6b40e331c6b2a95",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "56de82565c144841",
+      "account_addresses": [
+        "EK18gCMLTM3K2W2E9VXQsNwEqTAUbkSp9msjEHm1AjV7",
+        "3sJRfsFimnGzVd7Bo1tRZwiRM3WR8XDqUGL6cBiNyhtz",
+        "ELzpYvXr9dEF8d4LeRuAzG85DkqrZSiuMcg7SucFCbzX",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HFPYmM3sbgN9ieaWnc9PWeG96fzJExjZwqf66JJjKTBz",
+        "GXKK6TvbnGC5tpQ3vuykKjTEpSp25wEjAdYbB6gwS4Mx",
+        "HKoXEApvkNBGdHzqW36L8iN6yzsZcaswMndWtbPohMaX",
+        "C8ZWBuMwu4USXbyH1cfvgtuvvKVwoqeHGE9TeFmqLB8r",
+        "J2fu5M1SvuUbvvxLh2mVTkoakAchrbfApKgfMmt1BhSW",
+        "A4hqFQ3Z5Vajx78sugpQbxoR1iE47gynK9s3fwUQBDNn",
+        "AmidoUPT18XT6757V4BTwtUFGrCz5Azw8Q3kQ8nejtxe",
+        "CPwqBecustry2tCio88tVJXYS1SP8jEGo8zzT23KEi2K",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "5EVyFkDWrLqQrjzKyet7hhQqRabLAaWyS2yBYCaheFKD",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        86,
+        222,
+        130,
+        86,
+        92,
+        20,
+        72,
+        65,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "17f655f1d4d37a27e67ed56a52440ce0e89340f929208a6f718a6175b1185c40",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "5055d14818ceb16c",
+      "account_addresses": [
+        "bB3cVdfuc4jdB7Hmrhtc9PorcYjsyhjikcPx5wZdFw7",
+        "B7QtydeptmK6hUZg9aDM32pTZGAPS7DE8Gi2VRzbmDzE",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "EnUwziSWGQN1fvK2phUKyN1W6RjoKLdwGois6yzJMhv8",
+        "GvhFsVgWXtGmmxg5MbkY24tnZRZXKu9hJUV6vtcCWdHS",
+        "61WxjcS5mBon2RHED5Z1DxP6nmPahhf3j1VmAMRTREor",
+        "9JPvUBAsrJ5rJyaYAqD2rfxDbEeAEYVKBUiN3ki9i8KQ",
+        "8NKE9Zk47AtLTn5XGNvZFe7fQCqZqvgd5jX1Ly2GAakj",
+        "5RbiCSrMbGXzbGCaqqaTEzfvFAbDp3xgDLFqxkWGFLoY",
+        "C9pPW83qsVZh23GGV1AmmQ6bv45uzeJXmcbh2hs66KnM",
+        "8ng2reAgW78uCdu7TV3TvJuQq1nh5EJ8tb4JPJSooBHR",
+        "HCqzV53ibdqMau9QhXXpqpvs2VxT7jq6ZkWYx3sukLbX",
+        "EH5pMULr3jeuzkCSHjKNfWjPCywsk3kBfcvGiBkaXGfZ",
+        "F7TJN9dX4MchkDpPAjuVUrJGvBvhBxF29N8spRgRt2sR",
+        "GQwqgdX8en5Pddqns4bahqW9tuWgGEUHUYNNrGL4hThS",
+        "4GJLF51PABsAeGjSPiKMMzpnxi1tueDyDB9TFYQrnaiX",
+        "BKYQRa8dcuBqtZ5CAUz6J6ycP7oSpHbMCmmrmu7gLYhL",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3WQJsw4KaAQg59MkLhF1mz8GYXG3zDzvtuQ3ghzUEjXC"
+      ],
+      "instruction_data": [
+        80,
+        85,
+        209,
+        72,
+        24,
+        206,
+        177,
+        108,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "bde33481465a5787af2b93a0fc9158a73b97ed57d83285fb14fdb736c9371e38",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "5055d14818ceb16c",
+      "account_addresses": [
+        "bB3cVdfuc4jdB7Hmrhtc9PorcYjsyhjikcPx5wZdFw7",
+        "B7QtydeptmK6hUZg9aDM32pTZGAPS7DE8Gi2VRzbmDzE",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "EnUwziSWGQN1fvK2phUKyN1W6RjoKLdwGois6yzJMhv8",
+        "GvhFsVgWXtGmmxg5MbkY24tnZRZXKu9hJUV6vtcCWdHS",
+        "61WxjcS5mBon2RHED5Z1DxP6nmPahhf3j1VmAMRTREor",
+        "9JPvUBAsrJ5rJyaYAqD2rfxDbEeAEYVKBUiN3ki9i8KQ",
+        "8NKE9Zk47AtLTn5XGNvZFe7fQCqZqvgd5jX1Ly2GAakj",
+        "5RbiCSrMbGXzbGCaqqaTEzfvFAbDp3xgDLFqxkWGFLoY",
+        "C9pPW83qsVZh23GGV1AmmQ6bv45uzeJXmcbh2hs66KnM",
+        "8ng2reAgW78uCdu7TV3TvJuQq1nh5EJ8tb4JPJSooBHR",
+        "HCqzV53ibdqMau9QhXXpqpvs2VxT7jq6ZkWYx3sukLbX",
+        "EH5pMULr3jeuzkCSHjKNfWjPCywsk3kBfcvGiBkaXGfZ",
+        "F7TJN9dX4MchkDpPAjuVUrJGvBvhBxF29N8spRgRt2sR",
+        "GQwqgdX8en5Pddqns4bahqW9tuWgGEUHUYNNrGL4hThS",
+        "4GJLF51PABsAeGjSPiKMMzpnxi1tueDyDB9TFYQrnaiX",
+        "BKYQRa8dcuBqtZ5CAUz6J6ycP7oSpHbMCmmrmu7gLYhL",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3WQJsw4KaAQg59MkLhF1mz8GYXG3zDzvtuQ3ghzUEjXC"
+      ],
+      "instruction_data": [
+        80,
+        85,
+        209,
+        72,
+        24,
+        206,
+        177,
+        108,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "2902a40db8e70c09e3101c76fb035f5679ce6eb7ef6e7c3e71c26c450487b26e",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "5055d14818ceb16c",
+      "account_addresses": [
+        "bB3cVdfuc4jdB7Hmrhtc9PorcYjsyhjikcPx5wZdFw7",
+        "B7QtydeptmK6hUZg9aDM32pTZGAPS7DE8Gi2VRzbmDzE",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "EnUwziSWGQN1fvK2phUKyN1W6RjoKLdwGois6yzJMhv8",
+        "GvhFsVgWXtGmmxg5MbkY24tnZRZXKu9hJUV6vtcCWdHS",
+        "61WxjcS5mBon2RHED5Z1DxP6nmPahhf3j1VmAMRTREor",
+        "9JPvUBAsrJ5rJyaYAqD2rfxDbEeAEYVKBUiN3ki9i8KQ",
+        "8NKE9Zk47AtLTn5XGNvZFe7fQCqZqvgd5jX1Ly2GAakj",
+        "5RbiCSrMbGXzbGCaqqaTEzfvFAbDp3xgDLFqxkWGFLoY",
+        "C9pPW83qsVZh23GGV1AmmQ6bv45uzeJXmcbh2hs66KnM",
+        "8ng2reAgW78uCdu7TV3TvJuQq1nh5EJ8tb4JPJSooBHR",
+        "HCqzV53ibdqMau9QhXXpqpvs2VxT7jq6ZkWYx3sukLbX",
+        "EH5pMULr3jeuzkCSHjKNfWjPCywsk3kBfcvGiBkaXGfZ",
+        "F7TJN9dX4MchkDpPAjuVUrJGvBvhBxF29N8spRgRt2sR",
+        "GQwqgdX8en5Pddqns4bahqW9tuWgGEUHUYNNrGL4hThS",
+        "4GJLF51PABsAeGjSPiKMMzpnxi1tueDyDB9TFYQrnaiX",
+        "BKYQRa8dcuBqtZ5CAUz6J6ycP7oSpHbMCmmrmu7gLYhL",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "3WQJsw4KaAQg59MkLhF1mz8GYXG3zDzvtuQ3ghzUEjXC",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        80,
+        85,
+        209,
+        72,
+        24,
+        206,
+        177,
+        108,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "39d9199c2cdf442e8aa181626df2d667f1918be372d35aead334689b0b150dda",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "ea674352d0eadba6",
+      "account_addresses": [
+        "9p6eSPPQjPDMCWVyhP6jq1Gsca6gMgRht69BMsVQ58JZ",
+        "A8m9XGpUJ3ct8d7G45NU34gXVUr1xuLKRaTBZWce7ecr",
+        "8wNSKpiVeauV9NC3PFYvfttg5b8XoVf19MjsPRd6QAm",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "Hgex1xp9vBSu9rHpqbPFgcrQJ75EyjeoDWFWfur1PbME",
+        "9MC4suNSKGr8LtQqwAkjVDYuUSqN2YbktxZLwirzR5q6",
+        "98G9NEgMnc7CNukU6VyDGkupiNgg3UodFFD3h2JUH3qb",
+        "DaqesQtxVLZf89ryNfj74f7kQ8kdUHZkQwM4W6dZZmgB",
+        "7ePhwJgXivrtpmVmtDyuPv67md1z2me7K216s5CQmpDB",
+        "EJumXjKpLpifK9jSam5q6HPFc15r8xAAJGNajRkZ2D1T",
+        "FwmGfigUMrbSSmtSswZwLA6qDx97pVtBFDahQBFY7qve",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "5NND36QWNRCt7bwAxc2ZFKKkN13Qn4YruZC8LfvCLDXr"
+      ],
+      "instruction_data": [
+        234,
+        103,
+        67,
+        82,
+        208,
+        234,
+        219,
+        166,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "22808bc2b7635b294f614dccbac6758e2c2cdd4e01ab2568ca54e4d406831986",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "ea674352d0eadba6",
+      "account_addresses": [
+        "9p6eSPPQjPDMCWVyhP6jq1Gsca6gMgRht69BMsVQ58JZ",
+        "A8m9XGpUJ3ct8d7G45NU34gXVUr1xuLKRaTBZWce7ecr",
+        "8wNSKpiVeauV9NC3PFYvfttg5b8XoVf19MjsPRd6QAm",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "Hgex1xp9vBSu9rHpqbPFgcrQJ75EyjeoDWFWfur1PbME",
+        "9MC4suNSKGr8LtQqwAkjVDYuUSqN2YbktxZLwirzR5q6",
+        "98G9NEgMnc7CNukU6VyDGkupiNgg3UodFFD3h2JUH3qb",
+        "DaqesQtxVLZf89ryNfj74f7kQ8kdUHZkQwM4W6dZZmgB",
+        "7ePhwJgXivrtpmVmtDyuPv67md1z2me7K216s5CQmpDB",
+        "EJumXjKpLpifK9jSam5q6HPFc15r8xAAJGNajRkZ2D1T",
+        "FwmGfigUMrbSSmtSswZwLA6qDx97pVtBFDahQBFY7qve",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "5NND36QWNRCt7bwAxc2ZFKKkN13Qn4YruZC8LfvCLDXr"
+      ],
+      "instruction_data": [
+        234,
+        103,
+        67,
+        82,
+        208,
+        234,
+        219,
+        166,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "6112b054e003dbdca7442e5efd8bedd73b822a77898dc3a314d899ea031b0627",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "ea674352d0eadba6",
+      "account_addresses": [
+        "9p6eSPPQjPDMCWVyhP6jq1Gsca6gMgRht69BMsVQ58JZ",
+        "A8m9XGpUJ3ct8d7G45NU34gXVUr1xuLKRaTBZWce7ecr",
+        "8wNSKpiVeauV9NC3PFYvfttg5b8XoVf19MjsPRd6QAm",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "Hgex1xp9vBSu9rHpqbPFgcrQJ75EyjeoDWFWfur1PbME",
+        "9MC4suNSKGr8LtQqwAkjVDYuUSqN2YbktxZLwirzR5q6",
+        "98G9NEgMnc7CNukU6VyDGkupiNgg3UodFFD3h2JUH3qb",
+        "DaqesQtxVLZf89ryNfj74f7kQ8kdUHZkQwM4W6dZZmgB",
+        "7ePhwJgXivrtpmVmtDyuPv67md1z2me7K216s5CQmpDB",
+        "EJumXjKpLpifK9jSam5q6HPFc15r8xAAJGNajRkZ2D1T",
+        "FwmGfigUMrbSSmtSswZwLA6qDx97pVtBFDahQBFY7qve",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "5NND36QWNRCt7bwAxc2ZFKKkN13Qn4YruZC8LfvCLDXr",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        234,
+        103,
+        67,
+        82,
+        208,
+        234,
+        219,
+        166,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "cb928907790af86b91244e594c615fdf57730e9f86136d074b3f39fbe6b3c7a2",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "f2977b8bef57f962",
+      "account_addresses": [
+        "DdvvbNnhkAtdgkYjk8QpVbky6jD4NJdAqXpSX7S5yRJU",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E"
+      ],
+      "instruction_data": [
+        242,
+        151,
+        123,
+        139,
+        239,
+        87,
+        249,
+        98,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "8f9016c194e3a3315ee97de647fbe1ef1d91747421dc4afc4f7a0b2df37bb586",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "f2977b8bef57f962",
+      "account_addresses": [
+        "DdvvbNnhkAtdgkYjk8QpVbky6jD4NJdAqXpSX7S5yRJU",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E"
+      ],
+      "instruction_data": [
+        242,
+        151,
+        123,
+        139,
+        239,
+        87,
+        249,
+        98,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "fa28a2f1d4d80f2638987a41a7d53f04ee64c4f1e12fab6480d6c42163a4b9c7",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "f2977b8bef57f962",
+      "account_addresses": [
+        "DdvvbNnhkAtdgkYjk8QpVbky6jD4NJdAqXpSX7S5yRJU",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        242,
+        151,
+        123,
+        139,
+        239,
+        87,
+        249,
+        98,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "2576efbcb1b82f074d1c7390de98e7a651bfae7a0c2315fd1202af567596f0ec",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "3846ab5803183661",
+      "account_addresses": [
+        "KiojX5B24DCLhqYxUQwyafmjwvBmLpxermimKygEAbu",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HsGHESFTQAcbHf2ZwMqDRVfrTWSwvGU5aqzMwKJgVy7A",
+        "Ffu9hN3fPFcdn6oD96diwf7ht16qXHyUzn92jKaK8mjV",
+        "xFHtbGrQVzcGeQ7hTUNAZH6sFCziMQL2udeWPMu58t5"
+      ],
+      "instruction_data": [
+        56,
+        70,
+        171,
+        88,
+        3,
+        24,
+        54,
+        97,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "edde6878a6a68969586b3202f919fa990b48ecb260b29766b07844253a6763be",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "3846ab5803183661",
+      "account_addresses": [
+        "KiojX5B24DCLhqYxUQwyafmjwvBmLpxermimKygEAbu",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HsGHESFTQAcbHf2ZwMqDRVfrTWSwvGU5aqzMwKJgVy7A",
+        "Ffu9hN3fPFcdn6oD96diwf7ht16qXHyUzn92jKaK8mjV",
+        "xFHtbGrQVzcGeQ7hTUNAZH6sFCziMQL2udeWPMu58t5"
+      ],
+      "instruction_data": [
+        56,
+        70,
+        171,
+        88,
+        3,
+        24,
+        54,
+        97,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "62a5475f7a6e23abfcbc8fd951d4c91201c91e9ff32c0bd8c45fd55f29949cdf",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "3846ab5803183661",
+      "account_addresses": [
+        "KiojX5B24DCLhqYxUQwyafmjwvBmLpxermimKygEAbu",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "HsGHESFTQAcbHf2ZwMqDRVfrTWSwvGU5aqzMwKJgVy7A",
+        "Ffu9hN3fPFcdn6oD96diwf7ht16qXHyUzn92jKaK8mjV",
+        "xFHtbGrQVzcGeQ7hTUNAZH6sFCziMQL2udeWPMu58t5",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        56,
+        70,
+        171,
+        88,
+        3,
+        24,
+        54,
+        97,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "f5872ef2245624f7b97e7350e0c575716e873efb952cc3a4c90bee6d4138fb79",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "937110324058af12",
+      "account_addresses": [
+        "2t4aTT3bHK1WXfeKqVHifkaoVp9BUWDTThNNcKfLYsjb",
+        "AAm48R9HXCjBtnQVtiRbaTiimLzLboEe2FMrTW8S3yrx"
+      ],
+      "instruction_data": [
+        147,
+        113,
+        16,
+        50,
+        64,
+        88,
+        175,
+        18,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "612d3391cd2aac264d9081603f015e6463930da1371264cca5be9875f23ae834",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "937110324058af12",
+      "account_addresses": [
+        "2t4aTT3bHK1WXfeKqVHifkaoVp9BUWDTThNNcKfLYsjb",
+        "AAm48R9HXCjBtnQVtiRbaTiimLzLboEe2FMrTW8S3yrx"
+      ],
+      "instruction_data": [
+        147,
+        113,
+        16,
+        50,
+        64,
+        88,
+        175,
+        18,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "064434d20a54090ce3eed26438ee377927ce8f536892d127810006a6920f1ca7",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "937110324058af12",
+      "account_addresses": [
+        "2t4aTT3bHK1WXfeKqVHifkaoVp9BUWDTThNNcKfLYsjb",
+        "AAm48R9HXCjBtnQVtiRbaTiimLzLboEe2FMrTW8S3yrx",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        147,
+        113,
+        16,
+        50,
+        64,
+        88,
+        175,
+        18,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "75163bb1b323b348befa84d26a9916b3c8884144a4fdfd8cc2f8787de22e6b2e",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "f8c69e91e17587c8",
+      "account_addresses": [
+        "EXApw2UJbCdx3aG7dzeV4yYnb7rbQdUPSgYuBnJekQLC",
+        "GFWPsDCwYzcvLDSPTsgjgutZAmCT8ckcMfbzbvwmcPbv",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "7bHzUAZ47eiyUXShhCyThsouqtmKMLaJkDpcpy7fRUXr",
+        "3kcx2j7GExVewbUFqxeRQP61aEBmn2ebgAiwUDaPRFRv",
+        "9aLecrPBDyR8nTwn5Cb4vUrmDz9uN5orRi9mMRAWZghB",
+        "9qUPzmfc4Y6DxreNZbtRiWZaSNVGhDXeWockU1QaX2Ww",
+        "xGuUxNa4BKJMFVJNQGXugeYs4itjVNhgJqbkbJzdMvV",
+        "2NRXfsxUg5rBr47fLi6BhLSU5h1ifg8dZeCBBJ5boNGr",
+        "4tacYUzY8kaqugV2gzbHkXCv3RBo3H9Xk9ZQMbc3BmWC",
+        "9V8jXhXirDqu716QCruJk1j6R4ym3JHYYuLJNvkk1X6s",
+        "G3P4qMiVNn4w4ifPqbCrmrHd9Vu8ZaqBXYpfCCzXzvvo",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "4b2rTK77Fkp7DSVLJLBiESYxu5rRuteTD3aXhFBzXU43"
+      ],
+      "instruction_data": [
+        248,
+        198,
+        158,
+        145,
+        225,
+        117,
+        135,
+        200,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "17f4709f90b69b2fa5d0b207d58ad9bd67106e5ca650ea9ed2df5e88998003a5",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "f8c69e91e17587c8",
+      "account_addresses": [
+        "EXApw2UJbCdx3aG7dzeV4yYnb7rbQdUPSgYuBnJekQLC",
+        "GFWPsDCwYzcvLDSPTsgjgutZAmCT8ckcMfbzbvwmcPbv",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "7bHzUAZ47eiyUXShhCyThsouqtmKMLaJkDpcpy7fRUXr",
+        "3kcx2j7GExVewbUFqxeRQP61aEBmn2ebgAiwUDaPRFRv",
+        "9aLecrPBDyR8nTwn5Cb4vUrmDz9uN5orRi9mMRAWZghB",
+        "9qUPzmfc4Y6DxreNZbtRiWZaSNVGhDXeWockU1QaX2Ww",
+        "xGuUxNa4BKJMFVJNQGXugeYs4itjVNhgJqbkbJzdMvV",
+        "2NRXfsxUg5rBr47fLi6BhLSU5h1ifg8dZeCBBJ5boNGr",
+        "4tacYUzY8kaqugV2gzbHkXCv3RBo3H9Xk9ZQMbc3BmWC",
+        "9V8jXhXirDqu716QCruJk1j6R4ym3JHYYuLJNvkk1X6s",
+        "G3P4qMiVNn4w4ifPqbCrmrHd9Vu8ZaqBXYpfCCzXzvvo",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "4b2rTK77Fkp7DSVLJLBiESYxu5rRuteTD3aXhFBzXU43"
+      ],
+      "instruction_data": [
+        248,
+        198,
+        158,
+        145,
+        225,
+        117,
+        135,
+        200,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "2e280ea92099c2b6e3a31a32034c3846b3c2164a43e5659e3af4839a2c685ea3",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "swap",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "f8c69e91e17587c8",
+      "account_addresses": [
+        "EXApw2UJbCdx3aG7dzeV4yYnb7rbQdUPSgYuBnJekQLC",
+        "GFWPsDCwYzcvLDSPTsgjgutZAmCT8ckcMfbzbvwmcPbv",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "7bHzUAZ47eiyUXShhCyThsouqtmKMLaJkDpcpy7fRUXr",
+        "3kcx2j7GExVewbUFqxeRQP61aEBmn2ebgAiwUDaPRFRv",
+        "9aLecrPBDyR8nTwn5Cb4vUrmDz9uN5orRi9mMRAWZghB",
+        "9qUPzmfc4Y6DxreNZbtRiWZaSNVGhDXeWockU1QaX2Ww",
+        "xGuUxNa4BKJMFVJNQGXugeYs4itjVNhgJqbkbJzdMvV",
+        "2NRXfsxUg5rBr47fLi6BhLSU5h1ifg8dZeCBBJ5boNGr",
+        "4tacYUzY8kaqugV2gzbHkXCv3RBo3H9Xk9ZQMbc3BmWC",
+        "9V8jXhXirDqu716QCruJk1j6R4ym3JHYYuLJNvkk1X6s",
+        "G3P4qMiVNn4w4ifPqbCrmrHd9Vu8ZaqBXYpfCCzXzvvo",
+        "FWdP9yTogKbuXvEqQNNHYw2TYm38MbinAZ2iTHeZWX8H",
+        "4b2rTK77Fkp7DSVLJLBiESYxu5rRuteTD3aXhFBzXU43",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        248,
+        198,
+        158,
+        145,
+        225,
+        117,
+        135,
+        200,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "9f4bd83616359ae284cfa48b03667d892d0b68d2afaafcd874c82c31b5cb3785",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "0fc49dd971e25919",
+      "account_addresses": [
+        "DuTGqL8CfmCVw13A8wyRUzzWRhvSgiZFds2HSxoytLHp",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "BVGVTxekUJgJVbYrHoX13wN3JjqJyS71a3PwGo5ricob"
+      ],
+      "instruction_data": [
+        15,
+        196,
+        157,
+        217,
+        113,
+        226,
+        89,
+        25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "9b169f908146212540e07716b5d4aa26ba507250e6a889f56ad664ff6e4f8d13",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "0fc49dd971e25919",
+      "account_addresses": [
+        "DuTGqL8CfmCVw13A8wyRUzzWRhvSgiZFds2HSxoytLHp",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "BVGVTxekUJgJVbYrHoX13wN3JjqJyS71a3PwGo5ricob"
+      ],
+      "instruction_data": [
+        15,
+        196,
+        157,
+        217,
+        113,
+        226,
+        89,
+        25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "12482f6389a6c0eef279e948ac310869cb614d0db716a953982893e88692ee56",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "0fc49dd971e25919",
+      "account_addresses": [
+        "DuTGqL8CfmCVw13A8wyRUzzWRhvSgiZFds2HSxoytLHp",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "BVGVTxekUJgJVbYrHoX13wN3JjqJyS71a3PwGo5ricob",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        15,
+        196,
+        157,
+        217,
+        113,
+        226,
+        89,
+        25,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "941f7e96317372cda7f68088ff3774f325de67c11d520bbd580ba044ca1b2a88",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "b08b83c528e17dc8",
+      "account_addresses": [
+        "41xf3nwq2omGT5oyEgd5qquYEaqrTqQkrntaQog8KWBE",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "DvBnKzpBNw7acFadQADXats7Q6EVojPtmfsRZVuv3LT"
+      ],
+      "instruction_data": [
+        176,
+        139,
+        131,
+        197,
+        40,
+        225,
+        125,
+        200,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "fa170a4e651c94c64ef761d32f5f331d02bbb1036d166171fac1c4df2634925c",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "b08b83c528e17dc8",
+      "account_addresses": [
+        "41xf3nwq2omGT5oyEgd5qquYEaqrTqQkrntaQog8KWBE",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "DvBnKzpBNw7acFadQADXats7Q6EVojPtmfsRZVuv3LT"
+      ],
+      "instruction_data": [
+        176,
+        139,
+        131,
+        197,
+        40,
+        225,
+        125,
+        200,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "0da378302499b762ef127a6116d1809c82d6734b4339ddbb2b1f2613ab106612",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "b08b83c528e17dc8",
+      "account_addresses": [
+        "41xf3nwq2omGT5oyEgd5qquYEaqrTqQkrntaQog8KWBE",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "DvBnKzpBNw7acFadQADXats7Q6EVojPtmfsRZVuv3LT",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        176,
+        139,
+        131,
+        197,
+        40,
+        225,
+        125,
+        200,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "c760e7caa3cca8cdb8f13bca7caa530159eb54162249168a60f0e7f90f0ebd4c",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "74b3892f76a741d9",
+      "account_addresses": [
+        "6ZmYjnuRhhAHweb629f7PRYKJxzAtNzGSZmeE3q4q1B3",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "9ADSxF5WrtYJP4m6Q7No2ceXxDEBQxCT53ZF8F3Qw93j"
+      ],
+      "instruction_data": [
+        116,
+        179,
+        137,
+        47,
+        118,
+        167,
+        65,
+        217,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "7c9b11c562b8c2f771fda26d9896a435d58d83a7d41b0b6e31510cb5849a9d6b",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "74b3892f76a741d9",
+      "account_addresses": [
+        "6ZmYjnuRhhAHweb629f7PRYKJxzAtNzGSZmeE3q4q1B3",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "9ADSxF5WrtYJP4m6Q7No2ceXxDEBQxCT53ZF8F3Qw93j"
+      ],
+      "instruction_data": [
+        116,
+        179,
+        137,
+        47,
+        118,
+        167,
+        65,
+        217,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "68915285fad4286448d2faf65d1309b41c1393da390288bbf2ef63ecaf7f603e",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "74b3892f76a741d9",
+      "account_addresses": [
+        "6ZmYjnuRhhAHweb629f7PRYKJxzAtNzGSZmeE3q4q1B3",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "9ADSxF5WrtYJP4m6Q7No2ceXxDEBQxCT53ZF8F3Qw93j",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        116,
+        179,
+        137,
+        47,
+        118,
+        167,
+        65,
+        217,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "e476a053fbb933ab3a5f655a28182a955c7f1ae204c3124ffea64b73b7c26932",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "1ee7a94913a12cfc",
+      "account_addresses": [
+        "9GufmVeLfvCBmYZ1d3UUVCxg37qoaZu7LkRz9PANcpU7",
+        "H125fqaUSrR9iWbojnXMMiLsrESLwSEM2Wdqdt8sUXy1",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E"
+      ],
+      "instruction_data": [
+        30,
+        231,
+        169,
+        73,
+        19,
+        161,
+        44,
+        252,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "fa83cde2ee78a7bb1f91c7085f4c560994eee025e6bdb5d566a7f2bb8faefbbb",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "1ee7a94913a12cfc",
+      "account_addresses": [
+        "9GufmVeLfvCBmYZ1d3UUVCxg37qoaZu7LkRz9PANcpU7",
+        "H125fqaUSrR9iWbojnXMMiLsrESLwSEM2Wdqdt8sUXy1",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E"
+      ],
+      "instruction_data": [
+        30,
+        231,
+        169,
+        73,
+        19,
+        161,
+        44,
+        252,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "a4a236a4da7005f34c8d2a44cffd1f12a1f9ba956acea7389265adb5294bdd0a",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "1ee7a94913a12cfc",
+      "account_addresses": [
+        "9GufmVeLfvCBmYZ1d3UUVCxg37qoaZu7LkRz9PANcpU7",
+        "H125fqaUSrR9iWbojnXMMiLsrESLwSEM2Wdqdt8sUXy1",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        30,
+        231,
+        169,
+        73,
+        19,
+        161,
+        44,
+        252,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "5e69dc7e12ef784e1191d469402289700d3d44725d7616c742fbf442564235f3",
+    "expected_approved": true,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "cbdaadd52b1fd398",
+      "account_addresses": [
+        "CLGtUceMdaxBd47f58JFMnKs24SP7GBVbjJFWBaw81MR",
+        "mUvwRAHTQEZrJpmbCdZuKta461hkB1BXd6gaso2As8p",
+        "56rY7Bdg78A5hndseC4FKMksi4qikA9QYpna2dBG7bRp",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E"
+      ],
+      "instruction_data": [
+        203,
+        218,
+        173,
+        213,
+        43,
+        31,
+        211,
+        152,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "606b8745383643023f284f93fa13f51a57fcbe47fd14e32e9b423374840fa8aa",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "cbdaadd52b1fd398",
+      "account_addresses": [
+        "CLGtUceMdaxBd47f58JFMnKs24SP7GBVbjJFWBaw81MR",
+        "mUvwRAHTQEZrJpmbCdZuKta461hkB1BXd6gaso2As8p",
+        "56rY7Bdg78A5hndseC4FKMksi4qikA9QYpna2dBG7bRp",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E"
+      ],
+      "instruction_data": [
+        203,
+        218,
+        173,
+        213,
+        43,
+        31,
+        211,
+        152,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  },
+  {
+    "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+    "version": "1.0.0",
+    "content_hash": "8d167b0b92632e02df811c96ba723485ef9be692ef4d8d8e82b6a40c4e8181ba",
+    "expected_approved": false,
+    "source": "synthetic-manifest",
+    "deprecated": false,
+    "input": {
+      "proposed_intent": {
+        "intent_type": "transfer",
+        "raw_natural_language": "certification corpus fixture",
+        "confidence_of_parse": 0.9,
+        "extracted_parameters": null
+      },
+      "program_id": "omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE",
+      "protocol_version": "1.0.0",
+      "instruction_discriminator": "cbdaadd52b1fd398",
+      "account_addresses": [
+        "CLGtUceMdaxBd47f58JFMnKs24SP7GBVbjJFWBaw81MR",
+        "mUvwRAHTQEZrJpmbCdZuKta461hkB1BXd6gaso2As8p",
+        "56rY7Bdg78A5hndseC4FKMksi4qikA9QYpna2dBG7bRp",
+        "2SMS1Y4EAyL2dQLpXD6VJCrNbQJ2eQ2pN3qYcX1vim3E",
+        "7zWnKkWXevUF1CDAgSgfTBWpZu8dvvDHqrEVJnrdGHyn",
+        "Gq4A8Rjy8KgWqiRkYu4fkBuQGCk1gcWrJNRCdmvLcK9z",
+        "CXN6NdrDv8Aavg3v5bgP6i21vioZgjq7Mg4mCmSs24co",
+        "ejh5v26TEGq4ZB8f6x379zC54VnBvmmdTMwrE5wMHKF",
+        "5yTCEMsXa4KSNjX6A6iDCUtm8DMJxxvvYmzQvxmKdjQM",
+        "HVFjEvzAgTR7m75fFQH7KNHrju4Y4FeV4GovKYCqMaDz",
+        "7vGDkv56QavKfvLbFAkLT7X1NEbvfQhrxHPFiDCMjvmD",
+        "8Zc1QjMdi6ueDBDikawfBTDwTXEZFdBs21SHeBESFDwh"
+      ],
+      "instruction_data": [
+        203,
+        218,
+        173,
+        213,
+        43,
+        31,
+        211,
+        152,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "cpi_targets": [
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "wallet_profile": {
+        "Custom": {
+          "min_confidence": 0.4,
+          "min_trust_tier": "OfficialManifest"
+        }
+      },
+      "behavior_evidence": {
+        "has_signed_manifest": false,
+        "community_verified_count": 5,
+        "battle_tested_tx_count": 50000,
+        "simulation_match_count": 100
+      },
+      "compute_units": 150,
+      "account_writes": 1,
+      "cpi_hops": 0,
+      "signed_transaction": null,
+      "transaction_instructions": [],
+      "cpi_trace": null,
+      "real_account_metas": [],
+      "uses_versioned_transaction": false,
+      "lookup_table_count": 0,
+      "state_diff": null
+    }
+  }
+]

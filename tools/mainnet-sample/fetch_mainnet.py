@@ -12,6 +12,7 @@ failed, compute units, the addresses its lookup tables resolved to). Nothing is 
 interpretation is the Rust probe's job, so the sample can be re-run against
 two builds of the engine and diffed.
 """
+import http.client
 import json
 import os
 import time
@@ -28,19 +29,31 @@ STRIDE = 400
 PAUSE_S = 2.0
 
 
-def rpc(method, params, timeout=120):
+def rpc(method, params, timeout=120, attempts=4):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
-    req = urllib.request.Request(
-        ENDPOINT, data=body, headers={"Content-Type": "application/json"}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        if e.code == 429:
-            print("  429 from the endpoint — stopping rather than retrying", flush=True)
-            raise SystemExit(0)
-        raise
+    for attempt in range(attempts):
+        req = urllib.request.Request(
+            ENDPOINT, data=body, headers={"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                print("  429 from the endpoint — stopping rather than retrying", flush=True)
+                raise SystemExit(0)
+            raise
+        except (http.client.IncompleteRead, ConnectionError, TimeoutError) as e:
+            # A whole mainnet block is 5-12 MB and the public endpoint drops
+            # the tail often enough that a single truncated read used to end
+            # the run. Retried — this is a short read of the SAME block, not
+            # extra load: one more request, after a pause, and only a few
+            # times.
+            if attempt == attempts - 1:
+                raise
+            print(f"  short read ({type(e).__name__}) — retrying", flush=True)
+            time.sleep(PAUSE_S * (attempt + 2))
+    raise RuntimeError("unreachable")
 
 
 def main():

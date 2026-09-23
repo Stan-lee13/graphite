@@ -101,8 +101,10 @@ pub fn classify_intent(program_id: &str, instruction_name: &str) -> String {
 /// 10-22-account manifest instruction (Marinade liquidUnstake, Raydium
 /// swap_v2/swap_base_input, ...) failed with AccountCountMismatch and was
 /// silently dropped from the live corpus — the exact failure the pinned C56
-/// fixtures expose. 32 bounds the extracted list while covering all 33
-/// manifests (and the registry's own 256-account resource guard).
+/// fixtures expose. 32 bounds the extracted list while covering all 82
+/// manifests — the widest instruction any of them declares takes 31 accounts
+/// (Dynamic Bonding Curve `migrate_meteora_damm`) — and staying well inside
+/// the registry's own 256-account resource guard.
 pub const MAX_ACCOUNTS_PER_INSTRUCTION: usize = 32;
 
 /// Wallet profile used for corpus collection. Deliberately the same Phase-1

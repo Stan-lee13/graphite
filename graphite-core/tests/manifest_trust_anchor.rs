@@ -207,7 +207,7 @@ fn empty_discriminators_are_not_treated_as_ambiguous() {
     );
 }
 
-/// The 33 shipped manifests must themselves satisfy the stricter rule — a
+/// Every shipped manifest must itself satisfy the stricter rule — a
 /// validator nothing passes is not a validator.
 #[test]
 fn every_shipped_seed_manifest_satisfies_the_stricter_validation() {

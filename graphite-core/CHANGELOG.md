@@ -3,6 +3,46 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 18 — the registry is measured] — 2026-09-23
+
+Report: `docs/round18-the-registry-is-measured-2026-09-23.md`.
+
+- **A manifest may no longer award itself a trust tier (P1, fixed)**: `trust_tier` was a string nothing checked, and eight manifests declared `BattleTested` — the tier reserved for 1,000+ verified transactions — with no evidence behind any of them. `protocols/battle_tested_evidence.json` now carries a mainnet measurement for every seed manifest (executable account; ≥1,000 successful transactions carrying the address over a stated window; ≥90% of ≥20 really-observed instructions named by the manifest), and `load_seed_manifests` lowers an unsupported declaration to `OfficialManifest`. The gate reads the raw measurements, never the file's own verdict field. `tests/battle_tested_evidence.rs` (8).
+- **The registry grew from 33 manifests / 803 instructions to 129 / 3,186**, ranked by what mainnet actually runs (80 finalized blocks, 77,589 successful transactions, 569 distinct programs) and generated from each program's **own on-chain Anchor IDL** — 108 of the 569 publish one. 216 instructions were merged into six manifests that had fallen behind their deployed programs (Marginfi v2 4 → 91, Meteora DLMM 17 → 84, Pump.fun 9 → 47). Every auto-onboarded manifest is named `<IDL name> (<address prefix>)`: the IDL names are not unique, and a name alone would let an unrecognised address present itself as the protocol whose name it copied.
+- **An undeclared extra account had a privilege to mismatch (P1, pre-existing, fixed)**: a slot past the end of a manifest's declared list is `remaining_accounts`, but `resolve_accounts` compared the real `AccountMeta` against the `("extra", is_writable: false)` placeholder, so every legitimate writable remaining-account became a blocking `AccountIdentityMismatch` — 429 on Pump AMM, 336 on Pump.fun, 199 on the System Program and 72 on SPL Token over 10,617 real mainnet transactions. `privilege_mismatch::an_undeclared_extra_account_has_no_privilege_to_mismatch`.
+- **The Wormhole manifest named the wrong instruction for two bytes (P2, pre-existing, fixed)**: 29 observed instructions carried tag `08` that nothing could name while the manifest declared `PostMessageUnreliable` at `09` and `VerifySignatures` at `03`. Against the program's own dispatch order `03` is `SetFees` and `09` is `ClosePostedMessage`. Corrected to `07`/`08`.
+- **PDA seeds are grounded only where they can be derived exactly**: a seed whose byte offset sits after an argument of unknown width, and a PDA the IDL says is derived under a DIFFERENT program (an associated token account is derived under the ATA program), now ground nothing rather than something wrong — the C26 rule. Grounded slots 1,571 → 1,140; `AccountIdentityMismatch` over the sample 1,022 → 544.
+- **One list, not two**: `SEED_MANIFESTS` produces both the manifest name and its baked-in contents, replacing the `seed_paths` array plus one `include_str!` match arm per path that aborted the process at startup if they disagreed; `manifest::tests::test_every_protocol_file_is_a_seed_manifest` fails if a file in `protocols/` is never loaded. `is_swap_program` reads `"category": "swap"` from the manifests instead of a second hand-kept list (the trusted-CPI list stays hand-curated, because it RELAXES checks).
+- **The documented protocol table is generated and compared in CI**: `docs/protocol-coverage.md` plus `tests/docs_match_the_registry.rs`. The previous hand-maintained README table named the wrong tier for four programs.
+- **Measured coverage**: on the same 10,617-transaction mainnet sample, the share of non-vote transactions whose primary program Graphite can name went from 20.8% to 44.0%. Message version 1 — refused by name — is 17.2% of that sample.
+
+## [Round 17 — what counts as evidence] — 2026-09-22
+
+Report: `docs/round17-what-counts-as-evidence-2026-09-22.md`. Every finding of
+the Round 15 and Round 16 forensic re-audits closed, each with a regression
+test that fails on the audited commit.
+
+- **A pre-signed artifact is refused at `/verify`** (F-16-01): any non-zero signature slot is a 400, and `scope.transaction_sha256` is the digest of the unsigned frame by construction. L8 answers `RecordedForDifferentBytes` for a cited verdict about other bytes — a discrepancy when that verdict was a refusal — and reports `recorded_verdicts {approved, refused}` for the chain digest (F-16-11).
+- **Only a sound transaction trains the baseline** (F-16-03, F-15-01, F-15-02): recording moved below the verdict and gated on a successful simulation (`err == null` is now part of completeness), no structural-layer failure and a Clear risk summary; keyed on the artifact digest, so the same bytes re-verified are ONE observation. A failed simulation carries `UnobservedCode::SimulationFailed` and L3 never reports it clean (F-16-04).
+- **A uniform history is a band, not a point** (F-16-02): a 25% relative / 1.0 absolute variance floor on both the mean-std and robust paths; flagged-but-clean executions accumulate in a shadow baseline that `/health.frozen_baselines` reports and `graphite evidence promote-shadow` promotes.
+- L2 fails on an unresolved lookup-table position (F-15-05); Check 10's manifest risk metadata is keyed on the instruction's bytes (F-15-03); observed CPI targets from `innerInstructions` are judged like declared ones (F-16-05); the PDA seed-template grammar is closed at manifest load, at registry submission and at verify (F-16-06, F-16-14); a panicking Risk/Verifier/Policy plugin blocks (F-16-07); `min_confidence > 1` is a 400 before the pipeline and the tier axis is clamped (F-16-08, F-15-07); `content_hash` is framed with a domain tag and length prefixes in all four implementations (F-16-09); manifest links are http(s) only (F-16-10); lifecycle history is merged across a rotation (F-15-09).
+
+## [Round 16 — signed before it was shown] — 2026-09-21
+
+Report: `docs/round16-signed-before-it-was-shown-2026-09-21.md`. A full forensic
+audit run against `e95857d`. **No production code changed in this round** — it
+is the measurement that Round 17 acted on. Sixteen findings, two deliberate
+breaks caught, fourteen missing tests named.
+
+## [Round 15 — earned by asking] — 2026-09-20
+
+Report: `docs/round15-earned-by-asking-2026-09-20.md`. A forensic re-audit of
+`21c0a7b`, **report only**: three confirmed defects in how evidence was earned
+(confidence rising by repetition, a failed simulation recorded as trusted
+evidence, an empty label switching off a hard gate), plus the unresolved-ALT
+approval path and two in-repo executors without the residual policy. All closed
+in Round 17.
+
 ## [Round 14 — the prefix and the pin] — 2026-09-20
 
 Report: `docs/round14-the-prefix-and-the-pin-2026-09-20.md`. Found by a forensic

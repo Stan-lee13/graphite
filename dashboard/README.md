@@ -44,7 +44,7 @@ label service.
 | View | Routes read | Content |
 | --- | --- | --- |
 | Overview | `/api/graph`, `/api/protocols/top`, `/api/confidence-history`, `/api/policy-violations`, `/metrics` | The verdict tape, approval and refusal figures, the six most recent refusals (risk vs policy drawn differently), the most exercised programs, and a red band the moment any bypass counter is non-zero |
-| Programs | `/api/graph`, `/api/protocols/top`, `/manifests` | Every program with a manifest, ranked by traffic; a detail pane with the manifest's instructions, discriminators, account roles, expected state changes, risk rules and declared CPI targets |
+| Programs | `/api/graph`, `/api/protocols/top`, `/manifests` | Every program with a manifest, ranked by traffic; a detail pane with the manifest's instructions, discriminators, account roles, expected state changes, risk rules and declared CPI targets. The trust tier shown is the one the Core **applied**, which since Round 18 is lowered from a declared `BattleTested` when the mainnet measurement in `battle_tested_evidence.json` does not support it |
 | Call graph | `/api/graph` | Declared CPI edges in call order; on a phone, the same roles as lists |
 | Verifications | `/api/confidence-history` | Every verdict in trail order, confidence drawn against the Gaming, Trading and Treasury floors |
 | Blocked | `/api/policy-violations` | Refused transactions and requests the Core could not parse |

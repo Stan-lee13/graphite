@@ -1,0 +1,3586 @@
+{
+ "address": "5BD9UAUCRCg6Chv6CS5k4sBHGd7CciWpng9u7iJxJFjx",
+ "metadata": {
+  "name": "escrow",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "accept_default_admin_transfer",
+   "discriminator": [
+    44,
+    180,
+    174,
+    250,
+    31,
+    189,
+    187,
+    8
+   ],
+   "accounts": [
+    {
+     "name": "pending_admin",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "allow_mint",
+   "discriminator": [
+    240,
+    28,
+    240,
+    70,
+    124,
+    240,
+    245,
+    225
+   ],
+   "accounts": [
+    {
+     "name": "token_config_authority",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint_account",
+     "docs": [
+      "The mint to allowlist"
+     ]
+    },
+    {
+     "name": "mint_fee_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "mint_account"
+       }
+      ]
+     }
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "begin_default_admin_transfer",
+   "discriminator": [
+    124,
+    58,
+    200,
+    115,
+    36,
+    158,
+    121,
+    105
+   ],
+   "accounts": [
+    {
+     "name": "default_admin",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "new_admin",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "clear_mint_fee_config",
+   "discriminator": [
+    147,
+    76,
+    233,
+    191,
+    196,
+    52,
+    94,
+    57
+   ],
+   "accounts": [
+    {
+     "name": "token_config_authority",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint_fee_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "mint_fee_config.mint",
+        "account": "MintFeeConfig"
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "create_delegate",
+   "discriminator": [
+    27,
+    99,
+    122,
+    21,
+    236,
+    229,
+    58,
+    10
+   ],
+   "accounts": [
+    {
+     "name": "protocol_config",
+     "docs": [
+      "Protocol configuration - required for pause check"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true
+    },
+    {
+     "name": "mint"
+    },
+    {
+     "name": "mint_fee_config",
+     "docs": [
+      "Mint fee configuration - must exist for allowlist"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ]
+     }
+    },
+    {
+     "name": "escrow_delegate",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         101,
+         115,
+         99,
+         114,
+         111,
+         119,
+         95,
+         100,
+         101,
+         108,
+         101,
+         103,
+         97,
+         116,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "authority"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority_ata",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "authority"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "delegate_signer",
+     "type": "pubkey"
+    },
+    {
+     "name": "remaining_capacity",
+     "type": "u64"
+    },
+    {
+     "name": "max_transfer_size",
+     "type": "u64"
+    },
+    {
+     "name": "expiration",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "deposit",
+   "discriminator": [
+    242,
+    35,
+    198,
+    137,
+    82,
+    225,
+    242,
+    182
+   ],
+   "accounts": [
+    {
+     "name": "escrow_delegate",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         101,
+         115,
+         99,
+         114,
+         111,
+         119,
+         95,
+         100,
+         101,
+         108,
+         101,
+         103,
+         97,
+         116,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "authority"
+       },
+       {
+        "kind": "account",
+        "path": "escrow_delegate.allowed_mint",
+        "account": "EscrowDelegate"
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority"
+    },
+    {
+     "name": "replay_bucket",
+     "writable": true
+    },
+    {
+     "name": "authority_ata",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "authority"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "deposit",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         100,
+         101,
+         112,
+         111,
+         115,
+         105,
+         116
+        ]
+       },
+       {
+        "kind": "arg",
+        "path": "deposit_hash"
+       }
+      ]
+     }
+    },
+    {
+     "name": "escrow_ata",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "deposit"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "mint"
+    },
+    {
+     "name": "protocol_config",
+     "docs": [
+      "Protocol configuration - required for pause check"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint_fee_config",
+     "docs": [
+      "Mint fee configuration - must exist for allowlist"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ]
+     }
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "instructions",
+     "address": "Sysvar1nstructions1111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "deposit_request_hash",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    },
+    {
+     "name": "destination",
+     "type": "string"
+    },
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "reserver",
+     "type": "pubkey"
+    },
+    {
+     "name": "releaser",
+     "type": "pubkey"
+    },
+    {
+     "name": "nonce",
+     "type": "u64"
+    },
+    {
+     "name": "issued_at",
+     "type": "u64"
+    },
+    {
+     "name": "deadline",
+     "type": "u64"
+    },
+    {
+     "name": "deposit_hash",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "disallow_mint",
+   "discriminator": [
+    75,
+    176,
+    193,
+    187,
+    34,
+    158,
+    118,
+    121
+   ],
+   "accounts": [
+    {
+     "name": "token_config_authority",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint_fee_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "mint_fee_config.mint",
+        "account": "MintFeeConfig"
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "initialize_protocol",
+   "discriminator": [
+    188,
+    233,
+    252,
+    106,
+    134,
+    146,
+    202,
+    91
+   ],
+   "accounts": [
+    {
+     "name": "authority",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "program",
+     "docs": [
+      "The escrow program executable account"
+     ],
+     "address": "5BD9UAUCRCg6Chv6CS5k4sBHGd7CciWpng9u7iJxJFjx"
+    },
+    {
+     "name": "program_data",
+     "docs": [
+      "The program metadata account. For loader-v3 this is ProgramData PDA; for",
+      "loader-v4 this is the executable program account itself."
+     ]
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "default_admin",
+     "type": "pubkey"
+    },
+    {
+     "name": "token_config_authority",
+     "type": "pubkey"
+    },
+    {
+     "name": "treasurer",
+     "type": "pubkey"
+    },
+    {
+     "name": "pauser",
+     "type": "pubkey"
+    },
+    {
+     "name": "cluster_id",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    },
+    {
+     "name": "default_admin_delay_seconds",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "pause",
+   "discriminator": [
+    211,
+    22,
+    221,
+    251,
+    74,
+    121,
+    193,
+    47
+   ],
+   "accounts": [
+    {
+     "name": "pauser",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "refund",
+   "discriminator": [
+    2,
+    96,
+    183,
+    251,
+    63,
+    208,
+    46,
+    46
+   ],
+   "accounts": [
+    {
+     "name": "protocol_config",
+     "docs": [
+      "Protocol configuration - required for pause check"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "deposit",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         100,
+         101,
+         112,
+         111,
+         115,
+         105,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "deposit.deposit_hash",
+        "account": "DepositInfo"
+       }
+      ]
+     }
+    },
+    {
+     "name": "escrow_ata",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "deposit"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "depositor"
+    },
+    {
+     "name": "depositor_ata",
+     "docs": [
+      "Depositor's ATA - created if missing to prevent stuck funds"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "depositor"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "mint"
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "instructions",
+     "address": "Sysvar1nstructions1111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "release",
+   "discriminator": [
+    253,
+    249,
+    15,
+    206,
+    28,
+    127,
+    193,
+    241
+   ],
+   "accounts": [
+    {
+     "name": "protocol_config",
+     "docs": [
+      "Protocol configuration - required for pause check"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "deposit",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         100,
+         101,
+         112,
+         111,
+         115,
+         105,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "deposit.deposit_hash",
+        "account": "DepositInfo"
+       }
+      ]
+     }
+    },
+    {
+     "name": "escrow_ata",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "deposit"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "recipient",
+     "docs": [
+      "The recipient from deposit.recipient"
+     ]
+    },
+    {
+     "name": "recipient_ata",
+     "docs": [
+      "Recipient's ATA - created if missing"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "recipient"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "depositor",
+     "docs": [
+      "The original depositor receiving any surplus tokens left in escrow."
+     ]
+    },
+    {
+     "name": "depositor_ata",
+     "docs": [
+      "Depositor ATA used to return surplus tokens donated to escrow after deposit."
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "depositor"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "treasurer",
+     "docs": [
+      "The treasurer from protocol_config"
+     ]
+    },
+    {
+     "name": "treasury_ata",
+     "docs": [
+      "Treasury ATA - created if missing (even for fee=0)"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "treasurer"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "mint"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "mint"
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "token_program"
+    },
+    {
+     "name": "associated_token_program",
+     "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    },
+    {
+     "name": "instructions",
+     "address": "Sysvar1nstructions1111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "renounce_delegate",
+   "discriminator": [
+    173,
+    220,
+    23,
+    201,
+    23,
+    223,
+    231,
+    176
+   ],
+   "accounts": [
+    {
+     "name": "protocol_config",
+     "docs": [
+      "Protocol configuration - required for pause check"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "escrow_delegate",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         101,
+         115,
+         99,
+         114,
+         111,
+         119,
+         95,
+         100,
+         101,
+         108,
+         101,
+         103,
+         97,
+         116,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "escrow_delegate.authority",
+        "account": "EscrowDelegate"
+       },
+       {
+        "kind": "account",
+        "path": "escrow_delegate.allowed_mint",
+        "account": "EscrowDelegate"
+       }
+      ]
+     }
+    },
+    {
+     "name": "delegate_signer",
+     "signer": true
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "reserve",
+   "discriminator": [
+    92,
+    99,
+    244,
+    209,
+    28,
+    65,
+    213,
+    157
+   ],
+   "accounts": [
+    {
+     "name": "deposit",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         100,
+         101,
+         112,
+         111,
+         115,
+         105,
+         116
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "deposit.deposit_hash",
+        "account": "DepositInfo"
+       }
+      ]
+     }
+    },
+    {
+     "name": "protocol_config",
+     "docs": [
+      "Protocol configuration - required for pause check"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "instructions",
+     "address": "Sysvar1nstructions1111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "recipient",
+     "type": "pubkey"
+    },
+    {
+     "name": "quote_hash",
+     "type": {
+      "array": [
+       "u8",
+       32
+      ]
+     }
+    },
+    {
+     "name": "source_amount",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "revoke_delegate",
+   "discriminator": [
+    142,
+    66,
+    98,
+    126,
+    102,
+    60,
+    92,
+    163
+   ],
+   "accounts": [
+    {
+     "name": "protocol_config",
+     "docs": [
+      "Protocol configuration - required for pause check"
+     ],
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "escrow_delegate",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         101,
+         115,
+         99,
+         114,
+         111,
+         119,
+         95,
+         100,
+         101,
+         108,
+         101,
+         103,
+         97,
+         116,
+         101
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "escrow_delegate.authority",
+        "account": "EscrowDelegate"
+       },
+       {
+        "kind": "account",
+        "path": "escrow_delegate.allowed_mint",
+        "account": "EscrowDelegate"
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true
+    },
+    {
+     "name": "authority_ata",
+     "docs": [
+      "The authority's token account where delegation was approved"
+     ],
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "account",
+        "path": "authority"
+       },
+       {
+        "kind": "account",
+        "path": "token_program"
+       },
+       {
+        "kind": "account",
+        "path": "escrow_delegate.allowed_mint",
+        "account": "EscrowDelegate"
+       }
+      ],
+      "program": {
+       "kind": "const",
+       "value": [
+        140,
+        151,
+        37,
+        143,
+        78,
+        36,
+        137,
+        241,
+        187,
+        61,
+        16,
+        41,
+        20,
+        142,
+        13,
+        131,
+        11,
+        90,
+        19,
+        153,
+        218,
+        255,
+        16,
+        132,
+        4,
+        142,
+        123,
+        216,
+        219,
+        233,
+        248,
+        89
+       ]
+      }
+     }
+    },
+    {
+     "name": "payer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "token_program"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "set_default_admin_delay_seconds",
+   "discriminator": [
+    30,
+    19,
+    187,
+    134,
+    127,
+    62,
+    166,
+    1
+   ],
+   "accounts": [
+    {
+     "name": "default_admin",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "new_delay_seconds",
+     "type": "u32"
+    }
+   ]
+  },
+  {
+   "name": "set_mint_fee_config",
+   "discriminator": [
+    114,
+    21,
+    164,
+    205,
+    186,
+    108,
+    59,
+    216
+   ],
+   "accounts": [
+    {
+     "name": "token_config_authority",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "mint_account",
+     "docs": [
+      "The mint (for Token-2022 validation)"
+     ]
+    },
+    {
+     "name": "mint_fee_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         109,
+         105,
+         110,
+         116,
+         95,
+         102,
+         101,
+         101,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       },
+       {
+        "kind": "account",
+        "path": "mint_fee_config.mint",
+        "account": "MintFeeConfig"
+       }
+      ]
+     }
+    },
+    {
+     "name": "token_program"
+    }
+   ],
+   "args": [
+    {
+     "name": "fee_percentage_6",
+     "type": "u64"
+    },
+    {
+     "name": "min_fee_6",
+     "type": "u64"
+    },
+    {
+     "name": "max_fee_6",
+     "type": "u64"
+    }
+   ]
+  },
+  {
+   "name": "set_pauser",
+   "discriminator": [
+    22,
+    198,
+    152,
+    61,
+    2,
+    13,
+    145,
+    238
+   ],
+   "accounts": [
+    {
+     "name": "default_admin",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "new_pauser",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "set_token_config_authority",
+   "discriminator": [
+    47,
+    44,
+    31,
+    224,
+    21,
+    181,
+    23,
+    169
+   ],
+   "accounts": [
+    {
+     "name": "default_admin",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "new_authority",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "set_treasurer",
+   "discriminator": [
+    100,
+    87,
+    30,
+    190,
+    191,
+    14,
+    164,
+    98
+   ],
+   "accounts": [
+    {
+     "name": "default_admin",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": [
+    {
+     "name": "new_treasurer",
+     "type": "pubkey"
+    }
+   ]
+  },
+  {
+   "name": "unpause",
+   "discriminator": [
+    169,
+    144,
+    4,
+    38,
+    10,
+    141,
+    188,
+    255
+   ],
+   "accounts": [
+    {
+     "name": "pauser",
+     "signer": true
+    },
+    {
+     "name": "protocol_config",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         112,
+         114,
+         111,
+         116,
+         111,
+         99,
+         111,
+         108,
+         95,
+         99,
+         111,
+         110,
+         102,
+         105,
+         103
+        ]
+       }
+      ]
+     }
+    }
+   ],
+   "args": []
+  }
+ ],
+ "accounts": [
+  {
+   "name": "DepositInfo",
+   "discriminator": [
+    101,
+    57,
+    220,
+    248,
+    249,
+    192,
+    118,
+    196
+   ]
+  },
+  {
+   "name": "EscrowDelegate",
+   "discriminator": [
+    254,
+    94,
+    75,
+    129,
+    75,
+    230,
+    49,
+    97
+   ]
+  },
+  {
+   "name": "MintFeeConfig",
+   "discriminator": [
+    212,
+    211,
+    101,
+    112,
+    98,
+    36,
+    79,
+    2
+   ]
+  },
+  {
+   "name": "ProtocolConfig",
+   "discriminator": [
+    207,
+    91,
+    250,
+    28,
+    152,
+    179,
+    215,
+    209
+   ]
+  },
+  {
+   "name": "ReplayBucket",
+   "discriminator": [
+    131,
+    240,
+    205,
+    44,
+    126,
+    220,
+    195,
+    8
+   ]
+  }
+ ],
+ "events": [
+  {
+   "name": "DefaultAdminDelayUpdated",
+   "discriminator": [
+    222,
+    149,
+    51,
+    219,
+    253,
+    219,
+    19,
+    47
+   ]
+  },
+  {
+   "name": "DefaultAdminTransferBegun",
+   "discriminator": [
+    236,
+    58,
+    7,
+    225,
+    130,
+    45,
+    38,
+    165
+   ]
+  },
+  {
+   "name": "DefaultAdminTransferred",
+   "discriminator": [
+    204,
+    233,
+    198,
+    81,
+    52,
+    53,
+    78,
+    172
+   ]
+  },
+  {
+   "name": "DelegateRenounced",
+   "discriminator": [
+    101,
+    80,
+    53,
+    194,
+    31,
+    2,
+    190,
+    58
+   ]
+  },
+  {
+   "name": "DelegateRevoked",
+   "discriminator": [
+    10,
+    200,
+    133,
+    29,
+    238,
+    207,
+    193,
+    124
+   ]
+  },
+  {
+   "name": "Deposited",
+   "discriminator": [
+    111,
+    141,
+    26,
+    45,
+    161,
+    35,
+    100,
+    57
+   ]
+  },
+  {
+   "name": "MintAllowed",
+   "discriminator": [
+    80,
+    212,
+    130,
+    120,
+    125,
+    216,
+    111,
+    240
+   ]
+  },
+  {
+   "name": "MintDisallowed",
+   "discriminator": [
+    197,
+    121,
+    232,
+    50,
+    39,
+    80,
+    141,
+    148
+   ]
+  },
+  {
+   "name": "MintFeesCleared",
+   "discriminator": [
+    234,
+    55,
+    246,
+    79,
+    81,
+    6,
+    24,
+    246
+   ]
+  },
+  {
+   "name": "MintFeesUpdated",
+   "discriminator": [
+    44,
+    199,
+    198,
+    247,
+    20,
+    60,
+    136,
+    174
+   ]
+  },
+  {
+   "name": "Paused",
+   "discriminator": [
+    172,
+    248,
+    5,
+    253,
+    49,
+    255,
+    255,
+    232
+   ]
+  },
+  {
+   "name": "PauserUpdated",
+   "discriminator": [
+    62,
+    247,
+    212,
+    132,
+    107,
+    86,
+    165,
+    111
+   ]
+  },
+  {
+   "name": "ProtocolInitialized",
+   "discriminator": [
+    173,
+    122,
+    168,
+    254,
+    9,
+    118,
+    76,
+    132
+   ]
+  },
+  {
+   "name": "Refunded",
+   "discriminator": [
+    35,
+    103,
+    149,
+    246,
+    196,
+    123,
+    221,
+    99
+   ]
+  },
+  {
+   "name": "Released",
+   "discriminator": [
+    232,
+    229,
+    255,
+    136,
+    101,
+    189,
+    15,
+    220
+   ]
+  },
+  {
+   "name": "Reserved",
+   "discriminator": [
+    113,
+    14,
+    94,
+    126,
+    13,
+    203,
+    14,
+    65
+   ]
+  },
+  {
+   "name": "TokenConfigAuthorityUpdated",
+   "discriminator": [
+    189,
+    162,
+    90,
+    251,
+    122,
+    237,
+    44,
+    6
+   ]
+  },
+  {
+   "name": "TreasurerUpdated",
+   "discriminator": [
+    107,
+    48,
+    14,
+    55,
+    213,
+    153,
+    61,
+    210
+   ]
+  },
+  {
+   "name": "Unpaused",
+   "discriminator": [
+    156,
+    150,
+    47,
+    174,
+    120,
+    216,
+    93,
+    117
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "Unauthorized",
+   "msg": "Caller is not authorized for this operation"
+  },
+  {
+   "code": 6001,
+   "name": "RecipientAlreadySet",
+   "msg": "Recipient has already been set"
+  },
+  {
+   "code": 6002,
+   "name": "QuoteHashCannotBeEmpty",
+   "msg": "Offchain quote hash cannot be empty"
+  },
+  {
+   "code": 6003,
+   "name": "RecipientNotSet",
+   "msg": "Recipient has not been set"
+  },
+  {
+   "code": 6004,
+   "name": "MissingSignatureVerification",
+   "msg": "Missing Ed25519 signature verification instruction"
+  },
+  {
+   "code": 6005,
+   "name": "InvalidVerificationInstruction",
+   "msg": "Invalid verification instruction format"
+  },
+  {
+   "code": 6006,
+   "name": "InvalidPublicKey",
+   "msg": "Invalid public key"
+  },
+  {
+   "code": 6007,
+   "name": "InvalidMessage",
+   "msg": "Invalid message format"
+  },
+  {
+   "code": 6008,
+   "name": "InvalidData",
+   "msg": "Invalid data format"
+  },
+  {
+   "code": 6009,
+   "name": "InvalidAuthority",
+   "msg": "Invalid authority"
+  },
+  {
+   "code": 6010,
+   "name": "InvalidCaller",
+   "msg": "Invalid caller"
+  },
+  {
+   "code": 6011,
+   "name": "Expired",
+   "msg": "Operation has expired"
+  },
+  {
+   "code": 6012,
+   "name": "CapacityExceeded",
+   "msg": "Capacity exceeded"
+  },
+  {
+   "code": 6013,
+   "name": "InvalidMint",
+   "msg": "Invalid mint address"
+  },
+  {
+   "code": 6014,
+   "name": "DeadlineExpired",
+   "msg": "Deadline has expired"
+  },
+  {
+   "code": 6015,
+   "name": "TransferSizeExceeded",
+   "msg": "Transfer size exceeds maximum allowed"
+  },
+  {
+   "code": 6016,
+   "name": "InvalidRevoker",
+   "msg": "Invalid revoker address"
+  },
+  {
+   "code": 6017,
+   "name": "AmountMustBeGreaterThanZero",
+   "msg": "Amount must be greater than zero"
+  },
+  {
+   "code": 6018,
+   "name": "DeadlineTooFarInFuture",
+   "msg": "Deadline is too far in the future"
+  },
+  {
+   "code": 6019,
+   "name": "FutureTransaction",
+   "msg": "Transaction timestamp is in the future"
+  },
+  {
+   "code": 6020,
+   "name": "ExpiredTransaction",
+   "msg": "Transaction has expired"
+  },
+  {
+   "code": 6021,
+   "name": "InvalidSlot",
+   "msg": "Invalid nonce slot"
+  },
+  {
+   "code": 6022,
+   "name": "DuplicateTransaction",
+   "msg": "Duplicate transaction - nonce already used"
+  },
+  {
+   "code": 6023,
+   "name": "AlreadyInitialized",
+   "msg": "Protocol already initialized"
+  },
+  {
+   "code": 6024,
+   "name": "ProtocolPaused",
+   "msg": "Protocol is paused"
+  },
+  {
+   "code": 6025,
+   "name": "AdminTransferNotReady",
+   "msg": "Admin transfer not ready - delay not elapsed"
+  },
+  {
+   "code": 6026,
+   "name": "MintNotAllowed",
+   "msg": "Mint not in allowlist"
+  },
+  {
+   "code": 6027,
+   "name": "TransferFeeMintNotAllowed",
+   "msg": "Transfer-fee mints are not allowed"
+  },
+  {
+   "code": 6028,
+   "name": "FeePercentageTooHigh",
+   "msg": "Fee percentage exceeds 100%"
+  },
+  {
+   "code": 6029,
+   "name": "MinFeeGreaterThanMaxFee",
+   "msg": "Minimum fee cannot exceed maximum fee"
+  },
+  {
+   "code": 6030,
+   "name": "MaxFeeSetButPercentageZero",
+   "msg": "Maximum fee requires non-zero percentage"
+  },
+  {
+   "code": 6031,
+   "name": "FeeExceedsAmount",
+   "msg": "Computed fee exceeds deposit amount"
+  },
+  {
+   "code": 6032,
+   "name": "NonExactTransfer",
+   "msg": "Transfer amount mismatch - exact transfer required"
+  },
+  {
+   "code": 6033,
+   "name": "InsufficientEscrowBalance",
+   "msg": "Escrow balance insufficient for intended release amount"
+  },
+  {
+   "code": 6034,
+   "name": "DepositRequestHashCannotBeEmpty",
+   "msg": "The depositor-signed deposit-request commitment cannot be zero"
+  },
+  {
+   "code": 6035,
+   "name": "DestinationEmpty",
+   "msg": "The committed destination cannot be empty"
+  },
+  {
+   "code": 6036,
+   "name": "DestinationTooLong",
+   "msg": "The committed destination exceeds MAX_DESTINATION_LEN bytes"
+  },
+  {
+   "code": 6037,
+   "name": "AmountCannotBeZero",
+   "msg": "The reserved source amount cannot be zero"
+  },
+  {
+   "code": 6038,
+   "name": "SourceAmountExceedsDeposit",
+   "msg": "The reserved source amount exceeds the amount the depositor authorized"
+  },
+  {
+   "code": 6039,
+   "name": "MinFeeNotRepresentable",
+   "msg": "Minimum fee is not representable in this mint's decimals"
+  },
+  {
+   "code": 6040,
+   "name": "MaxFeeNotRepresentable",
+   "msg": "Maximum fee is not representable in this mint's decimals"
+  }
+ ],
+ "types": [
+  {
+   "name": "DefaultAdminDelayUpdated",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "old_delay_seconds",
+      "type": "u32"
+     },
+     {
+      "name": "new_delay_seconds",
+      "type": "u32"
+     }
+    ]
+   }
+  },
+  {
+   "name": "DefaultAdminTransferBegun",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "current_admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "pending_admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "accept_after_ts",
+      "type": "i64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "DefaultAdminTransferred",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "old_admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "new_admin",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "DelegateRenounced",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "delegate",
+      "type": "pubkey"
+     },
+     {
+      "name": "delegate_signer",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "DelegateRevoked",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "delegate",
+      "type": "pubkey"
+     },
+     {
+      "name": "delegate_signer",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "DepositInfo",
+   "docs": [
+    "Per-deposit escrow record.",
+    "",
+    "v3 grew this struct 217 -> 249 bytes by adding `quote_hash`. There is intentionally NO `realloc`",
+    "and NO migration instruction: the layout change is not in-place-migratable, so an in-place program",
+    "upgrade would leave existing 217-byte deposits undeserializable. v3 ships as a fresh redeploy with",
+    "all in-flight deposits drained to a terminal state first, so there are no legacy accounts to",
+    "migrate. See `docs/operations/deployment.md`, which owns the drain, redeploy and re-init",
+    "sequence."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "depositor",
+      "type": "pubkey"
+     },
+     {
+      "name": "mint",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "reserver",
+      "type": "pubkey"
+     },
+     {
+      "name": "releaser",
+      "type": "pubkey"
+     },
+     {
+      "name": "recipient",
+      "type": {
+       "option": "pubkey"
+      }
+     },
+     {
+      "name": "deposit_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "quote_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "deposit_request_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "destination_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "fee_amount",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Deposited",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "deposit_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "depositor",
+      "type": "pubkey"
+     },
+     {
+      "name": "reserver",
+      "type": "pubkey"
+     },
+     {
+      "name": "releaser",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "fee_amount",
+      "type": "u64"
+     },
+     {
+      "name": "nonce",
+      "type": "u64"
+     },
+     {
+      "name": "issued_at",
+      "type": "u64"
+     },
+     {
+      "name": "deadline",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "EscrowDelegate",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "delegate_signer",
+      "type": "pubkey"
+     },
+     {
+      "name": "max_transfer_size",
+      "type": "u64"
+     },
+     {
+      "name": "remaining_capacity",
+      "type": "u64"
+     },
+     {
+      "name": "expiration",
+      "type": "u64"
+     },
+     {
+      "name": "allowed_mint",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MintAllowed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "mint",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MintDisallowed",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "mint",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MintFeeConfig",
+   "docs": [
+    "Per-mint fee configuration and allowlist entry",
+    "Seeds: [\"mint_fee_config\", mint_pubkey]",
+    "Existence of this PDA = mint is allowlisted"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "mint",
+      "docs": [
+       "The mint this config applies to"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "fee_percentage_6",
+      "docs": [
+       "Fee percentage scaled by 1e6 (1_000_000 = 1%, max 100_000_000 = 100%)"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "min_fee_6",
+      "docs": [
+       "Minimum fee in 6-decimal normalized units"
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "max_fee_6",
+      "docs": [
+       "Maximum fee in 6-decimal normalized units (0 = disabled)"
+      ],
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MintFeesCleared",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "mint",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "MintFeesUpdated",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "mint",
+      "type": "pubkey"
+     },
+     {
+      "name": "fee_percentage_6",
+      "type": "u64"
+     },
+     {
+      "name": "min_fee_6",
+      "type": "u64"
+     },
+     {
+      "name": "max_fee_6",
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Paused",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "by",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "PauserUpdated",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "old_pauser",
+      "type": "pubkey"
+     },
+     {
+      "name": "new_pauser",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "ProtocolConfig",
+   "docs": [
+    "Global protocol configuration PDA",
+    "Seeds: [\"protocol_config\"]"
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "default_admin",
+      "docs": [
+       "The default admin with full role management authority"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "token_config_authority",
+      "docs": [
+       "Authority for mint allowlist and fee configuration"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "treasurer",
+      "docs": [
+       "Fee recipient (treasury owner)"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "pauser",
+      "docs": [
+       "Authority for pause/unpause operations"
+      ],
+      "type": "pubkey"
+     },
+     {
+      "name": "paused",
+      "docs": [
+       "Whether protocol operations are paused"
+      ],
+      "type": "bool"
+     },
+     {
+      "name": "cluster_id",
+      "docs": [
+       "Cluster-specific domain separator for signed escrow messages"
+      ],
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "signature_domain_version",
+      "docs": [
+       "Version byte for the escrow signature message schema"
+      ],
+      "type": "u8"
+     },
+     {
+      "name": "default_admin_delay_seconds",
+      "docs": [
+       "Delay in seconds for default admin transfer"
+      ],
+      "type": "u32"
+     },
+     {
+      "name": "pending_default_admin",
+      "docs": [
+       "Pending new default admin (two-step transfer)"
+      ],
+      "type": {
+       "option": "pubkey"
+      }
+     },
+     {
+      "name": "pending_default_admin_accept_after_ts",
+      "docs": [
+       "Timestamp after which pending admin can accept transfer"
+      ],
+      "type": {
+       "option": "i64"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ProtocolInitialized",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "default_admin",
+      "type": "pubkey"
+     },
+     {
+      "name": "token_config_authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "treasurer",
+      "type": "pubkey"
+     },
+     {
+      "name": "pauser",
+      "type": "pubkey"
+     },
+     {
+      "name": "cluster_id",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "signature_domain_version",
+      "type": "u8"
+     },
+     {
+      "name": "default_admin_delay_seconds",
+      "type": "u32"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Refunded",
+   "docs": [
+    "APPEND-ONLY \u2014 see the note on `Released`."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "deposit_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "depositor",
+      "type": "pubkey"
+     },
+     {
+      "name": "amount",
+      "type": "u64"
+     },
+     {
+      "name": "quote_hash",
+      "docs": [
+       "Appended, not inserted \u2014 see the note above."
+      ],
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Released",
+   "docs": [
+    "APPEND-ONLY. Anchor derives an event's discriminator from its NAME, not its layout, so a field",
+    "inserted mid-struct keeps the same discriminator and every un-upgraded positional consumer goes",
+    "on matching it and silently mis-decodes \u2014 reading `quote_hash` as `recipient` and the leading",
+    "bytes of the real pubkey as an amount. Nothing reverts and nothing logs.",
+    "",
+    "New members therefore go at the END, where a stale reader simply stops before them. That is what",
+    "`Reserved` above does, and what `Released`/`Refunded` do here. atum-core's live scanner",
+    "(`core/block-scanner-orchestrator/plugins/solana/plugin.go`) is exactly such a positional reader:",
+    "its `readBytes` errors only on underrun, so trailing bytes are ignored by construction.",
+    "",
+    "Renaming the event is the only safe way to make a layout change breaking, because that is the",
+    "one thing that moves the discriminator."
+   ],
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "deposit_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "recipient",
+      "type": "pubkey"
+     },
+     {
+      "name": "gross_amount",
+      "type": "u64"
+     },
+     {
+      "name": "intended_amount",
+      "type": "u64"
+     },
+     {
+      "name": "surplus_amount",
+      "type": "u64"
+     },
+     {
+      "name": "fee_amount",
+      "type": "u64"
+     },
+     {
+      "name": "net_amount",
+      "type": "u64"
+     },
+     {
+      "name": "quote_hash",
+      "docs": [
+       "Appended, not inserted \u2014 see the note above."
+      ],
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "ReplayBucket",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "bitmaps",
+      "type": {
+       "array": [
+        {
+         "array": [
+          "u64",
+          4
+         ]
+        },
+        2
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Reserved",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "deposit_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "recipient",
+      "type": "pubkey"
+     },
+     {
+      "name": "quote_hash",
+      "type": {
+       "array": [
+        "u8",
+        32
+       ]
+      }
+     },
+     {
+      "name": "source_amount",
+      "docs": [
+       "The amount the payer is actually charged, which reserve narrows",
+       "`DepositInfo.amount` to. Emitted so an indexer can see the charge without replaying the",
+       "reserve preimage, and so the ceiling-vs-charge gap is observable off-chain."
+      ],
+      "type": "u64"
+     },
+     {
+      "name": "fee_amount",
+      "docs": [
+       "Scaled from the deposit-time snapshot to `source_amount`, NOT recomputed from the live",
+       "`MintFeeConfig`: the rate is frozen at deposit and only the amount it applies to narrows.",
+       "`Reserve` carries neither the mint nor the fee config, so recomputation is not merely avoided",
+       "here, it is structurally impossible. Supersedes the ceiling-based value the `Deposited` event",
+       "carried. See `reserve` for why it is scaled, and for the min/max clamp that is deliberately",
+       "not re-evaluated against the smaller amount."
+      ],
+      "type": "u64"
+     }
+    ]
+   }
+  },
+  {
+   "name": "TokenConfigAuthorityUpdated",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "old_authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "new_authority",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "TreasurerUpdated",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "old_treasurer",
+      "type": "pubkey"
+     },
+     {
+      "name": "new_treasurer",
+      "type": "pubkey"
+     }
+    ]
+   }
+  },
+  {
+   "name": "Unpaused",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "by",
+      "type": "pubkey"
+     }
+    ]
+   }
+  }
+ ]
+}

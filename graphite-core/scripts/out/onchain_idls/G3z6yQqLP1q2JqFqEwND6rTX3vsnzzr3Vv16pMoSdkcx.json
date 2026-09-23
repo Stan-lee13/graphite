@@ -1,0 +1,704 @@
+{
+ "address": "G3z6yQqLP1q2JqFqEwND6rTX3vsnzzr3Vv16pMoSdkcx",
+ "metadata": {
+  "name": "crash_game",
+  "version": "0.1.0",
+  "spec": "0.1.0",
+  "description": "Created with Anchor"
+ },
+ "instructions": [
+  {
+   "name": "bet_on_crash",
+   "discriminator": [
+    123,
+    173,
+    140,
+    160,
+    63,
+    180,
+    208,
+    106
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "user",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "authority",
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "round_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "create_blackjack_round",
+   "discriminator": [
+    134,
+    160,
+    161,
+    80,
+    32,
+    99,
+    182,
+    185
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game_state"
+     ]
+    }
+   ],
+   "args": [
+    {
+     "name": "table_id",
+     "type": "string"
+    },
+    {
+     "name": "game_id",
+     "type": "string"
+    },
+    {
+     "name": "hashed_server_seed",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "create_coinflip_round",
+   "discriminator": [
+    36,
+    252,
+    165,
+    9,
+    45,
+    107,
+    249,
+    141
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game_state"
+     ]
+    }
+   ],
+   "args": [
+    {
+     "name": "coinflip_id",
+     "type": "string"
+    },
+    {
+     "name": "server_seed",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "create_crash_round",
+   "discriminator": [
+    82,
+    235,
+    8,
+    123,
+    60,
+    81,
+    39,
+    145
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game_state"
+     ]
+    }
+   ],
+   "args": [
+    {
+     "name": "crash_id",
+     "type": "string"
+    },
+    {
+     "name": "hashed_server_seed",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "create_jackpot_round",
+   "discriminator": [
+    127,
+    31,
+    31,
+    243,
+    177,
+    185,
+    220,
+    241
+   ],
+   "accounts": [
+    {
+     "name": "jackpot_game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         106,
+         97,
+         99,
+         107,
+         112,
+         111,
+         116,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "jackpot_game_state"
+     ]
+    }
+   ],
+   "args": [
+    {
+     "name": "jackpot_id",
+     "type": "string"
+    },
+    {
+     "name": "server_seed",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "end_crash_round",
+   "discriminator": [
+    230,
+    43,
+    65,
+    79,
+    214,
+    165,
+    138,
+    129
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game_state"
+     ]
+    }
+   ],
+   "args": [
+    {
+     "name": "server_seed",
+     "type": "string"
+    },
+    {
+     "name": "public_seed",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "initialize_game_state",
+   "discriminator": [
+    116,
+    71,
+    118,
+    231,
+    37,
+    192,
+    13,
+    38
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "initializer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "initialize_jackpot_game_state",
+   "discriminator": [
+    208,
+    79,
+    128,
+    169,
+    7,
+    253,
+    162,
+    58
+   ],
+   "accounts": [
+    {
+     "name": "jackpot_game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         106,
+         97,
+         99,
+         107,
+         112,
+         111,
+         116,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "initializer",
+     "writable": true,
+     "signer": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": []
+  },
+  {
+   "name": "pay_winning",
+   "discriminator": [
+    228,
+    215,
+    190,
+    55,
+    149,
+    245,
+    112,
+    224
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game_state"
+     ]
+    },
+    {
+     "name": "user",
+     "writable": true
+    },
+    {
+     "name": "system_program",
+     "address": "11111111111111111111111111111111"
+    }
+   ],
+   "args": [
+    {
+     "name": "amount",
+     "type": "u64"
+    },
+    {
+     "name": "user_pubkey",
+     "type": "pubkey"
+    },
+    {
+     "name": "multiplier",
+     "type": "string"
+    },
+    {
+     "name": "round_id",
+     "type": "string"
+    }
+   ]
+  },
+  {
+   "name": "start_crash_round",
+   "discriminator": [
+    18,
+    77,
+    29,
+    169,
+    28,
+    227,
+    101,
+    62
+   ],
+   "accounts": [
+    {
+     "name": "game_state",
+     "writable": true,
+     "pda": {
+      "seeds": [
+       {
+        "kind": "const",
+        "value": [
+         103,
+         97,
+         109,
+         101,
+         95,
+         115,
+         116,
+         97,
+         116,
+         101
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "name": "authority",
+     "signer": true,
+     "relations": [
+      "game_state"
+     ]
+    }
+   ],
+   "args": [
+    {
+     "name": "hashed_server_seed",
+     "type": "string"
+    }
+   ]
+  }
+ ],
+ "accounts": [
+  {
+   "name": "GameState",
+   "discriminator": [
+    144,
+    94,
+    208,
+    172,
+    248,
+    99,
+    134,
+    120
+   ]
+  },
+  {
+   "name": "JackpotGameState",
+   "discriminator": [
+    242,
+    154,
+    183,
+    90,
+    16,
+    164,
+    121,
+    149
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "code": 6000,
+   "name": "Unauthorized",
+   "msg": "You are not authorized to perform this action."
+  },
+  {
+   "code": 6001,
+   "name": "GameNotAcceptingBets",
+   "msg": "The game is not accepting bets."
+  },
+  {
+   "code": 6002,
+   "name": "InvalidStatus",
+   "msg": "The game status is invalid for this action."
+  },
+  {
+   "code": 6003,
+   "name": "InvalidRoundId",
+   "msg": "Invalid round ID provided."
+  }
+ ],
+ "types": [
+  {
+   "name": "GameState",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "crash_id",
+      "type": "string"
+     },
+     {
+      "name": "status",
+      "type": {
+       "defined": {
+        "name": "GameStatus"
+       }
+      }
+     },
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "coinflip_id",
+      "type": "string"
+     },
+     {
+      "name": "server_seed",
+      "type": "string"
+     }
+    ]
+   }
+  },
+  {
+   "name": "GameStatus",
+   "type": {
+    "kind": "enum",
+    "variants": [
+     {
+      "name": "AcceptingBets"
+     },
+     {
+      "name": "InProgress"
+     },
+     {
+      "name": "Finished"
+     }
+    ]
+   }
+  },
+  {
+   "name": "JackpotGameState",
+   "type": {
+    "kind": "struct",
+    "fields": [
+     {
+      "name": "status",
+      "type": {
+       "defined": {
+        "name": "GameStatus"
+       }
+      }
+     },
+     {
+      "name": "authority",
+      "type": "pubkey"
+     },
+     {
+      "name": "jackpot_id",
+      "type": "string"
+     },
+     {
+      "name": "server_seed",
+      "type": "string"
+     }
+    ]
+   }
+  }
+ ]
+}
