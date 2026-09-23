@@ -37,10 +37,13 @@ Instruction identity for risk:   the instruction's own leading bytes, never the 
                                  the bytes so a truncated but truthful label hides nothing (Round 13)
 Authority changes in the diff:   the SPL owner field, mint authority and freeze authority are each watched;
                                  an undeclared change is Critical, so a hand-over that moves no value is seen
-Measured on real mainnet:        10,669 transactions from 8 finalized blocks, 189 programs, run artifact-bound:
-                                 0 parse failures, 0 false refusals from the L2 self-consistency check, and all
-                                 1,087 known-risky-table blocks verified against the named instruction's own
-                                 bytes. Round 13 changed 0 of 9,784 verdicts (`tools/mainnet-sample`)
+Measured on real mainnet:        10,617 transactions from 8 finalized blocks on 2026-09-22, 195 programs, run
+                                 artifact-bound: 0 parse failures and 0 false refusals from the L2
+                                 self-consistency check. The same instrument on 2026-09-17 additionally verified
+                                 all 1,087 known-risky-table blocks against the named instruction's own bytes,
+                                 and showed Round 13 changing 0 of 9,784 verdicts (`tools/mainnet-sample`).
+                                 Round 18's run found two false-positive classes, both now fixed (see the
+                                 enforced table)
 Manifest coverage of the chain:  129 manifests / 3,186 instructions. On a 10,617-transaction mainnet sample,
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%
                                  for the same sample before Round 18. The rest still meet the drainer heuristic
