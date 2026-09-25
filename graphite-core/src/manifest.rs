@@ -229,7 +229,9 @@ impl ManifestRegistry {
             if self.validate(m).is_err() {
                 continue; // fail-closed: skip malformed submissions
             }
-            self.manifests.insert(key, m.clone());
+            let mut m = m.clone();
+            clamp_unmeasured_tier(&mut m);
+            self.manifests.insert(key, m);
             merged += 1;
         }
         merged
@@ -264,7 +266,9 @@ impl ManifestRegistry {
             return Ok(self.clone());
         }
         let mut next = self.clone();
-        next.manifests.insert(key, candidate.clone());
+        let mut candidate = candidate.clone();
+        clamp_unmeasured_tier(&mut candidate);
+        next.manifests.insert(key, candidate);
         Ok(next)
     }
 
@@ -720,6 +724,23 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 
     registry.freeze_as_seed_set();
     registry
+}
+
+/// A manifest that is not a measured seed cannot declare a tier above
+/// `OfficialManifest` (Round 19, F-19-11).
+///
+/// The seed loader already lowers an unearned `BattleTested` against
+/// `battle_tested_evidence.json`; community and candidate manifests skipped
+/// that and kept whatever they declared. The verdict never
+/// used it — manifest tiers are capped at `OfficialManifest` on the verdict
+/// path — but `graph_snapshot` and `graphite protocol` showed it, and an
+/// operator reads those. A tier is computed from evidence (P7); a string in a
+/// submission is not evidence.
+fn clamp_unmeasured_tier(manifest: &mut ProtocolManifest) {
+    const ABOVE_OFFICIAL: [&str; 3] = ["SimulationValidated", "CommunityVerified", "BattleTested"];
+    if ABOVE_OFFICIAL.contains(&manifest.trust_tier.as_str()) {
+        manifest.trust_tier = "OfficialManifest".to_string();
+    }
 }
 
 #[cfg(test)]

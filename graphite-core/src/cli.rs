@@ -381,7 +381,10 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             // server blocked it. A missing directory is the normal first-run
             // case and starts a fresh store.
             let data_dir = data_dir_path(None);
-            let mut core = GraphiteCore::with_data_dir(data_dir.clone());
+            // Read-only (Round 19, F-19-12): `verify` inspects the server's
+            // store and may run beside it, so it takes no lock and writes
+            // nothing back.
+            let mut core = GraphiteCore::open_data_dir_read_only(&data_dir)?;
             let quarantined = core.quarantined_programs().len();
             if quarantined > 0 {
                 eprintln!(
@@ -713,14 +716,14 @@ fn load_corpus_for_seed(
 
 /// Build the same core `verify` uses, so an explanation cannot disagree with a
 /// verdict. Shared by `verify` and `explain`.
-fn operator_core() -> GraphiteCore {
+fn operator_core() -> Result<GraphiteCore, String> {
     let data_dir = data_dir_path(None);
-    let mut core = GraphiteCore::with_data_dir(data_dir);
+    let mut core = GraphiteCore::open_data_dir_read_only(&data_dir)?;
     let registry_path = registry_state_path(None);
     if let Ok(engine) = load_registry(&registry_path) {
         core.merge_community_manifests(&engine);
     }
-    core
+    Ok(core)
 }
 
 fn tier_label(tier: TrustTier) -> String {
@@ -735,7 +738,7 @@ fn run_explain(
     if let Some(p) = resolve_profile(profile)? {
         input.wallet_profile = p;
     }
-    let core = operator_core();
+    let core = operator_core()?;
     let result = core.verify(&input)?;
     let (min_confidence, min_tier) = input.wallet_profile.thresholds();
 
@@ -876,7 +879,7 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
             program_id,
         } => {
             let dir = data_dir_path(data_dir);
-            let mut core = GraphiteCore::with_data_dir(dir.clone());
+            let mut core = GraphiteCore::open_data_dir_read_only(&dir)?;
             let registry_path = registry_state_path(None);
             if let Ok(engine) = load_registry(&registry_path) {
                 core.merge_community_manifests(&engine);
@@ -998,7 +1001,7 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
                 .map_err(|e| format!("parsing {}: {e}", path.display()))?,
                 None => {
                     let dir = data_dir_path(data_dir);
-                    let mut core = GraphiteCore::with_data_dir(dir);
+                    let mut core = GraphiteCore::open_data_dir_read_only(&dir)?;
                     if let Ok(engine) = load_registry(&registry_state_path(None)) {
                         core.merge_community_manifests(&engine);
                     }
@@ -1251,7 +1254,7 @@ fn run_execution(
     crate::rpc_client::validate_endpoint(&endpoint).map_err(|e| format!("--rpc-url: {e}"))?;
 
     let dir = data_dir_path(data_dir);
-    let mut core = GraphiteCore::with_data_dir(dir.clone());
+    let mut core = GraphiteCore::open_data_dir_read_only(&dir)?;
     core.attach_rpc_client(crate::rpc_client::SolanaRpcClient::new(
         crate::rpc_client::RpcConfig {
             endpoint,
@@ -1411,7 +1414,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 return Err("nothing to seed - supply at least one evidence flag".into());
             }
             let dir = data_dir_path(data_dir);
-            let mut core = GraphiteCore::with_data_dir(dir.clone());
+            let mut core = GraphiteCore::open_data_dir(dir.clone())?;
             let evidence = BehaviorEvidence {
                 has_signed_manifest: signed_manifest,
                 community_verified_count: community_verified,
@@ -1489,7 +1492,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 return Err("means and deviations must be non-negative".into());
             }
             let dir = data_dir_path(data_dir);
-            let core = GraphiteCore::with_data_dir(dir.clone());
+            let core = GraphiteCore::open_data_dir(dir.clone())?;
             core.seed_simulation_baseline(
                 &program_id,
                 crate::simulation_integrity::ComputeBaseline {
@@ -1525,7 +1528,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             program_id,
         } => {
             let dir = data_dir_path(data_dir);
-            let core = GraphiteCore::with_data_dir(dir.clone());
+            let core = GraphiteCore::open_data_dir_read_only(&dir)?;
             match core.program_behavior(&program_id) {
                 Some(b) => {
                     println!("{program_id}");
@@ -1562,7 +1565,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 return Err("--program must not be empty".into());
             }
             let dir = data_dir_path(data_dir);
-            let core = GraphiteCore::with_data_dir(dir.clone());
+            let core = GraphiteCore::open_data_dir(dir.clone())?;
             let promoted = core.promote_shadow_baseline(&program_id)?;
             println!("PROMOTED {program_id}");
             println!(
@@ -1595,14 +1598,19 @@ fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Er
             reason,
         } => {
             let dir = data_dir_path(data_dir);
-            let core = GraphiteCore::with_data_dir(dir.clone());
-            core.quarantine_program(&program_id, &reason)?;
+            // Takes the data directory's lock (Round 19, F-19-12): beside a
+            // running server this refuses, rather than writing a snapshot the
+            // server's next one would overwrite. Use POST /admin/quarantine
+            // against a running server.
+            let core = GraphiteCore::open_data_dir(dir.clone())?;
+            core.quarantine_program_durably(&program_id, &reason)?
+                .map_err(|e| format!("the quarantine was not written to disk: {e}"))?;
             println!("QUARANTINED {program_id} — {}", reason.trim());
             println!(
                 "trust tier forced to Unknown until lifted; graph: {}",
                 dir.display()
             );
-            println!("A running server keeps its own copy in memory — restart it, or use POST /admin/quarantine.");
+            println!("No server holds this data directory; the next one started on it enforces this quarantine.");
             Ok(())
         }
         QuarantineAction::Lift {
@@ -1610,15 +1618,16 @@ fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Er
             program_id,
         } => {
             let dir = data_dir_path(data_dir);
-            let core = GraphiteCore::with_data_dir(dir.clone());
-            core.lift_program_quarantine(&program_id)?;
+            let core = GraphiteCore::open_data_dir(dir.clone())?;
+            core.lift_program_quarantine_durably(&program_id)?
+                .map_err(|e| format!("the lift was not written to disk: {e}"))?;
             println!("LIFTED {program_id} — tier recomputed from evidence (P7)");
             println!("graph: {}", dir.display());
             Ok(())
         }
         QuarantineAction::List { data_dir } => {
             let dir = data_dir_path(data_dir);
-            let core = GraphiteCore::with_data_dir(dir.clone());
+            let core = GraphiteCore::open_data_dir_read_only(&dir)?;
             let active = core.quarantined_programs();
             if active.is_empty() {
                 println!("no programs are quarantined ({})", dir.display());

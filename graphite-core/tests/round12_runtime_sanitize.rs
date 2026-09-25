@@ -25,6 +25,13 @@
 //! crates; the oracle keeps proving the property against the crates
 //! themselves.
 
+// The pipeline test below needs tokio (a network-capable feature); without
+// one, the helpers only it uses are unused.
+#![cfg_attr(
+    not(any(feature = "rpc", feature = "cli")),
+    allow(unused_imports, dead_code)
+)]
+
 use graphite_core::policy_engine::WalletProfile;
 use graphite_core::semantic_graph_store::BehaviorEvidence;
 use graphite_core::tx_artifact::{parse_transaction, ArtifactParseError};
@@ -281,6 +288,8 @@ fn describe(artifact: Vec<u8>, program_id: &str) -> VerificationInput {
 /// parse reason, is not approved, and — the point — is not explained as
 /// anything else. Before Round 12 this exact frame passed L2 as "1 of its
 /// account(s) arrive through address lookup tables".
+// tokio is a dependency only of the network-capable features.
+#[cfg(any(feature = "rpc", feature = "cli"))]
 #[tokio::test]
 async fn a_frame_the_runtime_refuses_fails_l2_with_the_reason() {
     let core = GraphiteCore::new();
@@ -320,9 +329,11 @@ async fn a_frame_the_runtime_refuses_fails_l2_with_the_reason() {
     }
 }
 
-/// The v1 message format is live on devnet (2026-09; block 499429420 carried
-/// 7 of 60). Graphite does not parse it and must refuse it by name, never
-/// read it as something else.
+/// A v1 message behind a legacy/v0 signature count is not a v1 transaction.
+/// Graphite parses v1 since Round 19 (F-19-V1), but only as a v1 FRAME —
+/// `0x81` first, signatures last (`tests/round19_v1_transactions.rs`). The
+/// runtime's decoder refuses this shape ("invalid message version"), and
+/// Graphite must refuse it by name, never read it as something else.
 #[test]
 fn a_version_1_message_is_refused_by_name() {
     let mut frame = v0(2, &[0, 1], &[(0, 1)]);

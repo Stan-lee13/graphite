@@ -127,8 +127,14 @@ func VerifyContentHash(tx AuditBindParams, contentHash string) error {
 }
 
 // ProjectionFromInstruction builds the hash projection from a real
-// instruction's raw bytes. The discriminator is the first 8 bytes of the
-// instruction data, hex-encoded — matching how the core derives it.
+// instruction's raw bytes, with the discriminator taken as the first 8 bytes
+// of the data, hex-encoded — the Anchor convention.
+//
+// That is wrong for every native program: System instructions carry a 4-byte
+// tag and SPL Token a 1-byte one, so for a System transfer this yields
+// `0200000040420f00` (the tag plus half the lamport amount) and a hash that can
+// never match the Core's. Use ProjectionFromInstructionWithDiscriminator for
+// anything that is not an Anchor program.
 func ProjectionFromInstruction(programID string, data []byte, accounts []string) AuditBindParams {
 	n := len(data)
 	if n > 8 {
@@ -146,9 +152,67 @@ func ProjectionFromInstruction(programID string, data []byte, accounts []string)
 	}
 }
 
+// ProjectionFromInstructionWithDiscriminator builds the hash projection with
+// the discriminator EXACTLY as it was sent to Graphite as
+// instruction_discriminator — required for native programs.
+//
+// Round 19 (F-19-C4): the SolanaAgentKit integration's version, ported. The
+// SDK had kept the 8-byte-only derivation after the integration fixed it, so a
+// Go caller binding a native-program instruction either could not pass the
+// check at all or reconstructed the projection by hand — the
+// snapshot-instead-of-live-object pattern that opened the TOCTOU window the
+// integration closed.
+//
+// GFX-001 (2026-09-17 forensic audit), carried over with it: the declared
+// discriminator must be a prefix of the data it claims to describe. A label
+// that is not is a projection of a different instruction, and the Core fails
+// L2 on the same contradiction. Case and a 0x prefix are tolerated in the
+// comparison; the projection keeps the string as given, because it must
+// reproduce what was sent.
+func ProjectionFromInstructionWithDiscriminator(programID, discriminator string, data []byte, accounts []string) (AuditBindParams, error) {
+	declared := strings.ToLower(discriminator)
+	if strings.HasPrefix(declared, "0x") {
+		declared = declared[2:]
+	}
+	actual := hex.EncodeToString(data)
+	if declared != "" && !strings.HasPrefix(actual, declared) {
+		shown := actual
+		if len(shown) > 32 {
+			shown = shown[:32] + "…"
+		}
+		return AuditBindParams{}, fmt.Errorf(
+			"%w: declared discriminator %s is not a prefix of this instruction's data (%s). "+
+				"The label and the bytes describe different instructions. ABORTING",
+			ErrAuditBind, declared, shown)
+	}
+	var instructionData []byte
+	if len(data) > 0 {
+		instructionData = data
+	}
+	return AuditBindParams{
+		ProgramID:                programID,
+		InstructionDiscriminator: discriminator,
+		AccountAddresses:         accounts,
+		InstructionData:          instructionData,
+	}, nil
+}
+
 // VerifyInstruction verifies a real instruction payload against the approved
-// content_hash. Convenience wrapper over ProjectionFromInstruction +
-// VerifyContentHash.
+// content_hash, deriving the discriminator from the first 8 data bytes (the
+// Anchor convention). For native programs use
+// VerifyInstructionWithDiscriminator.
 func VerifyInstruction(programID string, data []byte, accounts []string, contentHash string) error {
 	return VerifyContentHash(ProjectionFromInstruction(programID, data, accounts), contentHash)
+}
+
+// VerifyInstructionWithDiscriminator verifies a real instruction payload
+// against the approved content_hash using the discriminator exactly as it was
+// sent to Graphite (Round 19, F-19-C4). Refuses a discriminator that is not a
+// prefix of the data (GFX-001).
+func VerifyInstructionWithDiscriminator(programID, discriminator string, data []byte, accounts []string, contentHash string) error {
+	p, err := ProjectionFromInstructionWithDiscriminator(programID, discriminator, data, accounts)
+	if err != nil {
+		return err
+	}
+	return VerifyContentHash(p, contentHash)
 }

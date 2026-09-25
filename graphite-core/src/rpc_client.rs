@@ -338,6 +338,44 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
             Some(out)
         });
 
+    // The inner instructions themselves (Round 19, F-19-22): program, accounts,
+    // data and stack height, so the pipeline can rebuild the CPI tree the
+    // simulator ACTUALLY executed instead of relying on a trace the caller
+    // chose whether to send. Same completeness rule as the indexes above: one
+    // unreadable instruction makes the whole set unknown.
+    let inner_instructions: Option<Vec<ObservedInnerInstruction>> = value
+        .get("innerInstructions")
+        .and_then(|v| v.as_array())
+        .and_then(|groups| {
+            let mut out = Vec::new();
+            for g in groups {
+                let top_level_index = u8::try_from(g.get("index")?.as_u64()?).ok()?;
+                for ix in g.get("instructions")?.as_array()? {
+                    let program_id_index =
+                        u8::try_from(ix.get("programIdIndex")?.as_u64()?).ok()?;
+                    let accounts = ix
+                        .get("accounts")?
+                        .as_array()?
+                        .iter()
+                        .map(|a| a.as_u64().and_then(|a| u8::try_from(a).ok()))
+                        .collect::<Option<Vec<u8>>>()?;
+                    let data = bs58::decode(ix.get("data")?.as_str()?).into_vec().ok()?;
+                    let stack_height = match ix.get("stackHeight") {
+                        None | Some(serde_json::Value::Null) => None,
+                        Some(h) => Some(u32::try_from(h.as_u64()?).ok()?),
+                    };
+                    out.push(ObservedInnerInstruction {
+                        top_level_index,
+                        program_id_index,
+                        accounts,
+                        data,
+                        stack_height,
+                    });
+                }
+            }
+            Some(out)
+        });
+
     // Non-canonical fields, compared and reported — never adopted.
     //
     // Silence is the wrong response to a provider volunteering a number under a
@@ -447,6 +485,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         artifact_account_count,
         slot: None,
         inner_program_indexes,
+        inner_instructions,
     })
 }
 
@@ -626,6 +665,26 @@ pub struct SimulationResult {
     /// was absent or any group was unreadable — unknown, never empty.
     #[serde(default)]
     pub inner_program_indexes: Option<Vec<u8>>,
+    /// Every inner instruction the simulator executed, in order, with the
+    /// top-level instruction it ran under (Round 19, F-19-22). `None` when
+    /// `innerInstructions` was absent or any entry was unreadable.
+    #[serde(default)]
+    pub inner_instructions: Option<Vec<ObservedInnerInstruction>>,
+}
+
+/// One inner (CPI) instruction from a `simulateTransaction` response, in the
+/// response's compiled form: indexes into the transaction's full account list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservedInnerInstruction {
+    /// The top-level instruction this CPI ran under (`innerInstructions[].index`).
+    pub top_level_index: u8,
+    pub program_id_index: u8,
+    pub accounts: Vec<u8>,
+    pub data: Vec<u8>,
+    /// `stackHeight`: 2 for a CPI made directly by the top-level instruction,
+    /// 3 for one made by that callee, and so on. `None` from an RPC that does
+    /// not report it.
+    pub stack_height: Option<u32>,
 }
 
 /// The `loadedAddresses` half of a `simulateTransaction` response: the accounts
@@ -1191,10 +1250,9 @@ impl SolanaRpcClient {
     /// version-1 transactions since 2026-09 (block 499429420: 7 of 60), and
     /// an RPC refuses the WHOLE block to a client that caps at 0 — so every
     /// block with one v1 transaction in it was unreadable and the live corpus
-    /// found nothing. The v1 entries come back with `"version": 1` and are
-    /// skipped by `live_corpus::tx_to_input`; Graphite does not parse the
-    /// format yet and refuses it (`UnsupportedVersion`) wherever it meets
-    /// the bytes.
+    /// found nothing. The v1 entries come back with `"version": 1`; Graphite
+    /// parses v1 frames from their bytes (Round 19), and the JSON-shaped
+    /// `live_corpus::tx_to_input` still skips them (see there).
     pub async fn get_block(&self, slot: u64) -> Result<serde_json::Value, RpcError> {
         let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getBlock","params":[slot,{"encoding":"json","transactionDetails":"full","maxSupportedTransactionVersion":1,"rewards":false}]});
         let result = self.post_rpc(body).await?;
@@ -1224,7 +1282,7 @@ impl SolanaRpcClient {
     pub async fn get_transaction(&self, signature: &str) -> Result<serde_json::Value, RpcError> {
         let body = serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
-            "params": [signature, {"encoding": "json", "maxSupportedTransactionVersion": 0}]
+            "params": [signature, {"encoding": "json", "maxSupportedTransactionVersion": 1}]
         });
         self.post_rpc(body).await
     }
@@ -1259,7 +1317,7 @@ impl SolanaRpcClient {
     ) -> Result<Option<ChainTransaction>, RpcError> {
         let body = serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
-            "params": [signature, {"encoding": "base64", "maxSupportedTransactionVersion": 0}]
+            "params": [signature, {"encoding": "base64", "maxSupportedTransactionVersion": 1}]
         });
         let result = self.post_rpc(body).await?;
         if result.is_null() {

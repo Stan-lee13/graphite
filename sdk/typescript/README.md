@@ -1,6 +1,6 @@
 # @graphite/sdk
 
-Thin TypeScript SDK starter for calling a Graphite verification service.
+Thin TypeScript SDK for calling a Graphite verification service.
 
 The client expects a `POST /verify` endpoint that accepts a `ProposedIntent`
 payload and returns a `VerificationResult`.
@@ -35,7 +35,23 @@ whose verdict L8 could never join to the chain's bytes. With it, the verdict's `
 signing — the reference implementation is `BoundTransaction.signApproved` in
 `integrations/solana-agent-kit/artifact.ts`.
 
+**`verifyTransactionDigest(bytes, result)` (Round 19)** is that check for any executor
+that is not the reference bridge: it throws unless `result` is an approval, its scope is
+`artifact_bound`, and `scope.transaction_sha256` is the SHA-256 of `bytes` (signed or
+unsigned — signature slots are zeroed before hashing, as the Core does). Call it on the
+exact bytes immediately before signing or submitting. `transactionDigest(bytes)` and
+`readSignatureCount(bytes)` are exported for callers that need the pieces; the Go SDK
+has the same three as `VerifyTransactionDigest`, `TransactionDigest` and
+`ReadSignatureCount`.
+
+**Transport.** `baseUrl` must be `https://`, or `http://` to a loopback host
+(localhost, 127.0.0.0/8, [::1]); anything else is refused at construction so the API key
+is never sent in cleartext (Round 19). Go's `CheckBaseURL` enforces the same rule.
+
 `verifyInstruction` / `content_hash` in this SDK re-hash one instruction's projection.
+For a native program (System, SPL Token, …) pass `discriminator` exactly as it was sent
+to Graphite; the projection checks it is a prefix of the data rather than guessing an
+eight-byte Anchor selector (Round 19).
 That is a secondary, instruction-level check and the audit/L8 join key; it cannot see
 the fee payer, blockhash, signer set or sibling instructions, so it is not a substitute
 for the digest.

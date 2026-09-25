@@ -1032,6 +1032,11 @@ mod tests {
 
     /// Give a program an earned tier inside a CORE's own graph, so the wallet
     /// profile's tier floor is not what decides every fixture's verdict.
+    // Used only by the tests gated on a network-capable feature.
+    #[cfg_attr(
+        not(any(feature = "rpc", feature = "server", feature = "cli")),
+        allow(dead_code)
+    )]
     fn seed_tier(core: &mut GraphiteCore, program_id: &str) {
         core.seed_behavior(Behavior {
             program_id: program_id.to_string(),
@@ -1055,6 +1060,11 @@ mod tests {
     /// manifest the submission would install — the minimum a first submission
     /// needs to clear the P10 gate. Mirrors what a real onboarding flow does:
     /// replay the program against the candidate manifest, pin what you saw.
+    // Used only by the tests gated on a network-capable feature.
+    #[cfg_attr(
+        not(any(feature = "rpc", feature = "server", feature = "cli")),
+        allow(dead_code)
+    )]
     fn onboarding_corpus(core: &GraphiteCore, submission: &ManifestSubmission) -> RegressionCorpus {
         let program = submission.manifest.protocol.program_id.clone();
         let candidate_core = core

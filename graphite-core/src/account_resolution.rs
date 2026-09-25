@@ -180,7 +180,7 @@ pub fn resolve_accounts(
         Some(m) => m,
         None => {
             // Unknown protocol — resolve with best-effort roles
-            return Ok(resolve_unknown(&pubkeys, &input.program_id));
+            return Ok(resolve_unknown(&pubkeys, &input.real_account_metas));
         }
     };
 
@@ -373,15 +373,26 @@ pub fn resolve_accounts(
 }
 
 /// Best-effort resolution for unknown protocols (Constitution P12).
-fn resolve_unknown(pubkeys: &[Pubkey], _program_id: &str) -> AccountResolutionResult {
+///
+/// Privileges come from the transaction's own account metas when there is one
+/// per account (`effective_metas`: the artifact's, else the caller's). Without
+/// them every account is treated as WRITABLE, because the one consumer that
+/// matters here is L4's state diff, which observes the writable accounts: an
+/// account assumed read-only is an account nobody looks at (Round 19,
+/// F-19-05). Until this round every account of an unknown program was
+/// read-only, so a diff built over a declared sibling's accounts passed L4
+/// without ever reading the unknown program's own writes.
+fn resolve_unknown(pubkeys: &[Pubkey], metas: &[RealAccountMeta]) -> AccountResolutionResult {
+    let grounded = metas.len() == pubkeys.len() && !pubkeys.is_empty();
     let resolved: Vec<ResolvedAccount> = pubkeys
         .iter()
-        .map(|pk| ResolvedAccount {
+        .enumerate()
+        .map(|(i, pk)| ResolvedAccount {
             address: pk.to_base58(),
             role: "unknown".to_string(),
             is_pda: !solana_types::is_on_curve(pk),
-            is_signer: false,
-            is_writable: false,
+            is_signer: grounded && metas[i].is_signer,
+            is_writable: !grounded || metas[i].is_writable,
             pda_seeds: vec![],
             identity: AccountIdentity::Unverified,
             expected_address_mismatch: false,

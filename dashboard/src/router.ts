@@ -35,7 +35,19 @@ export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   const view = parts[0] ?? "overview";
   if (!VIEWS.has(view)) return { view: "overview" };
-  const program = parts[1] ? decodeURIComponent(parts[1]) : undefined;
+  let program: string | undefined;
+  if (parts[1]) {
+    // Round 19 (F-19-C6): `decodeURIComponent` throws URIError on a malformed
+    // escape (`#/programs/%E0%A4%A`, a lone `%`). It ran inside the route
+    // state initialiser and the hashchange handler, so one bad link blanked
+    // the whole console. A program id that does not decode names no program:
+    // the view opens with nothing selected, the same as an unknown id.
+    try {
+      program = decodeURIComponent(parts[1]);
+    } catch {
+      program = undefined;
+    }
+  }
   return program ? { view: view as View, program } : { view: view as View };
 }
 

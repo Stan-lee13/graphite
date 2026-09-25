@@ -103,6 +103,9 @@ fn v0_frame_with_lookup(table: &str, instructions: &[(u8, Vec<u8>, Vec<u8>)]) ->
 /// `u64::MAX` for the table to be considered live, then a packed address array.
 fn lookup_table_account(entry: &str) -> String {
     let mut data = vec![0u8; 56];
+    // Type tag 1: an initialized `ProgramState::LookupTable`, as every real
+    // table carries (Round 19 refuses any other tag).
+    data[0..4].copy_from_slice(&1u32.to_le_bytes());
     data[4..12].copy_from_slice(&u64::MAX.to_le_bytes());
     data.extend_from_slice(&bs58::decode(entry).into_vec().expect("valid base58"));
     use base64::Engine;

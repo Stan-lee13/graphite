@@ -11,6 +11,7 @@ use graphite_core::semantic_graph_store::{Behavior, BehaviorEvidence, TrustTier}
 use graphite_core::simulation_integrity::ComputeBaseline;
 use graphite_core::verification::{GraphiteCore, ProposedIntent, VerificationInput};
 use graphite_core::WalletProfile;
+#[cfg(feature = "cli")]
 use std::path::PathBuf;
 #[cfg(feature = "cli")]
 use std::process::Command;
@@ -377,6 +378,7 @@ fn graphite_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_graphite"))
 }
 
+#[cfg(feature = "cli")]
 fn write_input(tmp: &std::path::Path, name: &str, profile: &str) -> PathBuf {
     let json = format!(
         r#"{{

@@ -6,58 +6,71 @@
 // Gating a transaction safely — the complete pattern. Every step matters; the
 // short version that omits them is how integrations end up insecure.
 //
+// Graphite verifies BEFORE signing, so what you send it is the transaction
+// serialized with every signature slot empty (64 zero bytes each) — the
+// unsigned artifact. The Core answers 400 to an artifact whose slots are
+// filled: signed bytes mean the signing already happened. Round 19 (F-19-C3)
+// rewrote this pattern around VerifyTransactionDigest, which binds the WHOLE
+// transaction — fee payer, blockhash, signer set, header and every
+// instruction — where VerifyInstruction binds one instruction and cannot see
+// an appended one.
+//
 //	client := graphite.NewClientWithAPIKey("https://graphite.internal", apiKey)
 //
+//	unsigned := tx.SerializeUnsigned() // your library's serializer, slots zeroed
+//	input.SignedTransaction = unsigned  // the field name predates the rule: UNSIGNED bytes
 //	result, err := client.Verify(input)
 //	if err != nil {
-//	    // A transport error, timeout, or non-200 means VERIFICATION DID NOT
-//	    // HAPPEN. It is never an implicit pass — abort.
+//	    // A transport error, timeout, refused base URL, or non-200 means
+//	    // VERIFICATION DID NOT HAPPEN. It is never an implicit pass — abort.
 //	    return fmt.Errorf("graphite verification unavailable: %w", err)
 //	}
 //
 //	// Approved is the only field carrying a DECISION — Confidence,
 //	// PolicyVerdict and RiskVerdict are evidence for audit and explanation,
-//	// never a gate. But Approved alone does not say WHAT was verified, so an
-//	// integration that can move funds checks the scope as well.
+//	// never a gate.
 //	if !result.Approved {
 //	    return fmt.Errorf("blocked by Graphite: %s", result.Summary)
-//	}
-//	if !result.IsArtifactBound() {
-//	    // The verdict describes metadata you supplied; nothing in it
-//	    // constrains the transaction that gets signed. Either supply
-//	    // SignedTransaction so Graphite can bind the artifact, or bind the
-//	    // instruction yourself with AuditBind below. A nil scope means an
-//	    // older server did not say — unknown, not safe.
-//	    return fmt.Errorf("verdict is not artifact-bound; unobserved: %v", result.Unobserved())
 //	}
 //
 //	// Refuse every residual you have not accepted BY NAME (Round 17). An
 //	// artifact-bound approval still lists what Graphite could have observed
 //	// and did not — a simulation that never ran, a lookup table it could
 //	// not resolve. Two codes are inherent to every such verdict and pass;
-//	// everything else is an observation that did not happen, and executing
-//	// on it is executing on what was not checked. `accepted` is the
-//	// deployment's own list (the bridge reads GRAPHITE_ACCEPT_UNOBSERVED).
-//	if codes, ok := result.NonInherentUnobserved(); !ok {
+//	// everything else is an observation that did not happen. `accepted` is
+//	// the deployment's own list (the bridge reads GRAPHITE_ACCEPT_UNOBSERVED).
+//	codes, ok := result.NonInherentUnobserved()
+//	if !ok {
 //	    return fmt.Errorf("server reported residuals without codes; refusing")
-//	} else {
-//	    for _, c := range codes {
-//	        if !accepted[c] {
-//	            return fmt.Errorf("residual %q not accepted by this deployment; refusing to sign", c)
-//	        }
+//	}
+//	for _, c := range codes {
+//	    if !accepted[c] {
+//	        return fmt.Errorf("residual %q not accepted by this deployment; refusing to sign", c)
 //	    }
 //	}
 //
-//	// Bind what was verified to what you are about to submit. Graphite
-//	// verifies BEFORE signing, so without this the instruction can still be
-//	// mutated in between (compromised RPC proxy, malicious wallet adapter, a
-//	// race in your own pipeline) and the verification would not have covered
-//	// the bytes that actually execute.
-//	if err := graphite.VerifyInstruction(programID, data, accounts, result.ContentHash); err != nil {
-//	    return err // mutated between verification and submission — do not sign
+//	// Bind the verdict to the exact transaction. VerifyTransactionDigest
+//	// refuses anything but an approved, artifact-bound verdict (a nil or
+//	// descriptive Scope is unknown, not safe), then recomputes
+//	// Scope.TransactionSHA256 over the bytes you hold. Run it on the SIGNED
+//	// bytes, immediately before submitting: signature slots are zeroed before
+//	// hashing, so signing does not change the digest, and checking the bytes
+//	// that will actually go out covers the window between verification and
+//	// submission — a compromised RPC proxy, a malicious wallet adapter, a
+//	// race in your own pipeline.
+//	signed := sign(unsigned)
+//	if err := graphite.VerifyTransactionDigest(signed, result); err != nil {
+//	    return err // not the transaction Graphite approved — do not submit
 //	}
 //
-//	// ...only now sign and submit.
+//	// ...only now submit `signed`, and nothing else.
+//
+// A descriptive verdict (no SignedTransaction supplied) binds no transaction
+// at all; VerifyTransactionDigest refuses it. If all you can supply is a
+// description, VerifyInstructionWithDiscriminator binds the one instruction
+// you described — pass the discriminator exactly as sent, which native
+// programs require (System 4-byte tags, SPL Token 1-byte tags) — and
+// everything else in the transaction is unexamined.
 //
 // This SDK communicates with the Graphite Core HTTP server (Rust/axum).
 // It does NOT make any security decisions — all verification happens in Core.
@@ -68,8 +81,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -193,9 +209,15 @@ type VerificationInput struct {
 	ComputeUnits             uint64           `json:"compute_units"`
 	AccountWrites            uint32           `json:"account_writes"`
 	CPIHops                  uint32           `json:"cpi_hops"`
-	// SignedTransaction is the optional fully-signed transaction blob (JSON
-	// array of bytes, NOT base64 — serde Vec<u8>). The Core simulates this
-	// exact blob for the most accurate L3 result.
+	// SignedTransaction is the serialized transaction artifact, UNSIGNED:
+	// every signature slot must be 64 zero bytes. Despite the name it is not a
+	// signed blob — Graphite verifies before signing, and the Core answers 400
+	// to an artifact with a filled slot, because signed bytes mean the signing
+	// already happened (Round 17, F-16-01; this doc corrected in Round 19,
+	// F-19-C3). When supplied the verdict is artifact_bound, the Core simulates
+	// these exact bytes, and Scope.TransactionSHA256 is their digest — check it
+	// with VerifyTransactionDigest. JSON array of bytes, NOT base64 (serde
+	// Vec<u8>).
 	SignedTransaction ByteArray `json:"signed_transaction,omitempty"`
 	// TransactionInstructions is the Phase 2 COMPLETE instruction list (2+
 	// entries trigger multi-instruction mass-drain pattern analysis).
@@ -530,7 +552,11 @@ func (c *Client) Verify(input *VerificationInput) (*VerificationResult, error) {
 		return nil, fmt.Errorf("marshal input: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/verify", bytes.NewReader(body))
+	endpoint, err := c.endpoint("/verify")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -558,7 +584,11 @@ func (c *Client) Verify(input *VerificationInput) (*VerificationResult, error) {
 
 // Health checks if the Core server is running.
 func (c *Client) Health() error {
-	resp, err := c.HTTPClient.Get(c.BaseURL + "/health")
+	endpoint, err := c.endpoint("/health")
+	if err != nil {
+		return err
+	}
+	resp, err := c.HTTPClient.Get(endpoint)
 	if err != nil {
 		return err
 	}
@@ -571,7 +601,11 @@ func (c *Client) Health() error {
 
 // ListManifests returns all loaded protocol manifests, typed.
 func (c *Client) ListManifests() ([]ProtocolManifest, error) {
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/manifests", nil)
+	endpoint, err := c.endpoint("/manifests")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -583,11 +617,83 @@ func (c *Client) ListManifests() ([]ProtocolManifest, error) {
 	}
 	defer resp.Body.Close()
 
+	// Round 19 (F-19-C6): the status was ignored, so a 401 (wrong key), 429
+	// or 503 body was handed to the JSON decoder — an error object decodes
+	// into an empty or partial list, and a caller got "no manifests" instead
+	// of "that request failed". Every other call refuses non-200; so does
+	// this one.
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("list manifests failed (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
 	var manifests []ProtocolManifest
 	if err := json.NewDecoder(resp.Body).Decode(&manifests); err != nil {
 		return nil, err
 	}
 	return manifests, nil
+}
+
+// CheckBaseURL refuses a Core base URL that would carry the API key, or a
+// verdict, in cleartext across a network.
+//
+// Round 19 (F-19-C6): the client accepted any http:// URL and sent
+// `Authorization: Bearer <key>` to it. On anything but the local machine that
+// puts the operator key on the wire in the clear — and lets anyone on the
+// path rewrite `"approved": false` into `"approved": true`. https:// is always
+// accepted; http:// only for a loopback host: localhost, 127.0.0.0/8, or ::1.
+func CheckBaseURL(baseURL string) error {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return fmt.Errorf("graphite base URL %q is not a valid URL: %w", baseURL, err)
+	}
+	switch u.Scheme {
+	case "https":
+		if u.Host == "" {
+			return fmt.Errorf("graphite base URL %q has no host", baseURL)
+		}
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf(
+			"graphite base URL %q is plain http:// to a non-loopback host: the API key and every "+
+				"verdict would cross the network unencrypted, where a verdict can be rewritten in "+
+				"flight. Use https://, or http:// only to localhost / 127.0.0.0/8 / [::1] (Round 19, F-19-C6)",
+			baseURL)
+	default:
+		return fmt.Errorf("graphite base URL must be https:// (or http:// to loopback), got %q", baseURL)
+	}
+}
+
+// isLoopbackHost reports whether a hostname is the local machine. Only
+// canonical forms count: "localhost", a dotted-quad IPv4 in 127.0.0.0/8, or
+// the IPv6 loopback. Go's URL parser does not canonicalise "127.1", so that
+// spelling is refused rather than guessed at.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	if v4 := ip.To4(); v4 != nil {
+		// net.ParseIP accepts only canonical dotted-quad for IPv4.
+		return v4[0] == 127
+	}
+	return ip.Equal(net.IPv6loopback)
+}
+
+// endpoint joins the base URL and path after enforcing CheckBaseURL. Checked
+// on every request, not once at construction: BaseURL is an exported field a
+// caller can set directly, and NewClient has no error to return.
+func (c *Client) endpoint(path string) (string, error) {
+	if err := CheckBaseURL(c.BaseURL); err != nil {
+		return "", err
+	}
+	return strings.TrimRight(c.BaseURL, "/") + path, nil
 }
 
 // setAuth attaches the Bearer API key when one is configured.

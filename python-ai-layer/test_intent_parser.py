@@ -16,10 +16,14 @@ import os
 import json
 import glob
 import time
+import http.client
+import socket
+import threading
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 from intent_parser import parse_intent, IntentParserHandler
+import intent_parser as _ip
 
 
 def _bounded_body(cl_value):
@@ -507,6 +511,104 @@ def test_performance_smoke():
     assert per_sec > 10_000, f"labeler too slow: {per_sec:,.0f} parses/sec"
 
 
+# ---------------------------------------------------------------------------
+# Round 19 (F-19-C5): the server binds loopback, and one slow client cannot
+# stall it. Real sockets on 127.0.0.1, ephemeral ports.
+# ---------------------------------------------------------------------------
+
+
+def _serve(handler_timeout=None):
+    """Start the real server on an ephemeral loopback port; returns
+    (server, port). `handler_timeout` shortens the per-read timeout for the
+    test that waits it out."""
+    handler = _ip.IntentParserHandler
+    if handler_timeout is not None:
+        handler = type("ShortTimeoutHandler", (_ip.IntentParserHandler,), {"timeout": handler_timeout})
+    server = _ip.make_server("127.0.0.1", 0)
+    server.RequestHandlerClass = handler
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1]
+
+
+def _stall(port, declared=100, sent=10):
+    """A client that declares `declared` body bytes, sends `sent`, and waits."""
+    s = socket.create_connection(("127.0.0.1", port), timeout=30)
+    s.sendall(
+        b"POST /parse HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+        + f"Content-Length: {declared}\r\n\r\n".encode()
+        + b"x" * sent
+    )
+    return s
+
+
+def test_bind_host_defaults_to_loopback():
+    assert _ip.resolve_bind_host({}) == "127.0.0.1"
+    assert _ip.resolve_bind_host({"GRAPHITE_AI_LAYER_HOST": ""}) == "127.0.0.1"
+    assert _ip.resolve_bind_host({"GRAPHITE_AI_LAYER_HOST": "  "}) == "127.0.0.1"
+    # Only an explicit setting widens it.
+    assert _ip.resolve_bind_host({"GRAPHITE_AI_LAYER_HOST": "0.0.0.0"}) == "0.0.0.0"
+    print("✓ test_bind_host_defaults_to_loopback passed")
+
+
+def test_a_stalled_client_does_not_stall_other_callers():
+    server, port = _serve()
+    stalled = _stall(port)
+    try:
+        # Give the server time to be blocked on the stalled body, if it can be.
+        time.sleep(0.3)
+        started = time.monotonic()
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("POST", "/parse", body=json.dumps({"text": "Swap 1 SOL for USDC"}),
+                     headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        elapsed = time.monotonic() - started
+        assert resp.status == 200, resp.status
+        assert body["intent_type"] == "swap"
+        assert elapsed < 3.0, f"an honest caller waited {elapsed:.1f}s behind a stalled one"
+    finally:
+        stalled.close()
+        server.shutdown()
+        server.server_close()
+    print("✓ test_a_stalled_client_does_not_stall_other_callers passed")
+
+
+def test_a_short_body_times_out_and_is_refused():
+    # The real handler carries a finite per-read timeout; the functional check
+    # below shortens it only so the test does not wait the full 10 s.
+    assert _ip.IntentParserHandler.timeout is not None
+    assert 0 < _ip.IntentParserHandler.timeout <= 30
+    server, port = _serve(handler_timeout=0.5)
+    stalled = _stall(port)
+    try:
+        started = time.monotonic()
+        reply = stalled.recv(4096)
+        elapsed = time.monotonic() - started
+        assert reply.startswith(b"HTTP/1.0 408") or reply.startswith(b"HTTP/1.1 408"), reply[:40]
+        assert elapsed < 5.0, f"the stalled request was held {elapsed:.1f}s"
+    finally:
+        stalled.close()
+        server.shutdown()
+        server.server_close()
+    print("✓ test_a_short_body_times_out_and_is_refused passed")
+
+
+def test_the_body_cap_holds_on_the_real_server():
+    server, port = _serve()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        # Declared over the cap: refused from the header alone, before any read.
+        conn.putrequest("POST", "/parse")
+        conn.putheader("Content-Length", str(_ip.MAX_BODY_BYTES + 1))
+        conn.endheaders()
+        resp = conn.getresponse()
+        assert resp.status == 413, resp.status
+    finally:
+        server.shutdown()
+        server.server_close()
+    print("✓ test_the_body_cap_holds_on_the_real_server passed")
+
+
 if __name__ == "__main__":
     test_bounded_body_rejects_oversized_and_malformed_content_length()
     test_transfer_intent()
@@ -535,4 +637,8 @@ if __name__ == "__main__":
     test_protocol_candidates_grounded()
     test_transfer_candidates()
     test_performance_smoke()
+    test_bind_host_defaults_to_loopback()
+    test_a_stalled_client_does_not_stall_other_callers()
+    test_a_short_body_times_out_and_is_refused()
+    test_the_body_cap_holds_on_the_real_server()
     print("\n✅ All AI layer tests passed.")

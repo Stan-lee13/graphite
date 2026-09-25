@@ -299,10 +299,19 @@ async fn a_missing_nonce_account_fails_l2() {
 #[tokio::test]
 async fn an_unreachable_rpc_fails_l2_rather_than_skipping_the_check() {
     let s = shape();
-    // A listener that is bound and immediately dropped: connection refused.
+    // A listener that answers nothing: every connection is accepted and
+    // closed at once. It stays bound for the life of the test — a port that
+    // is bound and dropped can be taken by another test's mock server in the
+    // same binary, which then answers, and the "unreachable" RPC is not.
     let dead = {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        format!("http://{}", l.local_addr().unwrap())
+        let addr = l.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in l.incoming() {
+                drop(stream);
+            }
+        });
+        format!("http://{addr}")
     };
     let r = verify(&dead, &s, true).await;
     let (status, reason) = l2(&r);

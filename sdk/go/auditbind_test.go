@@ -182,3 +182,74 @@ func TestShortAndEmptyInstructionDataDoNotPanic(t *testing.T) {
 		}
 	}
 }
+
+// ── Native programs: an explicit discriminator (Round 19, F-19-C4) ─────────
+
+// transfer1M is a real System transfer of 1_000_000 lamports: u32 LE 2, then
+// u64 LE amount.
+var transfer1M = []byte{2, 0, 0, 0, 0x40, 0x42, 0x0f, 0, 0, 0, 0, 0}
+
+// The third cross-language vector, pinned in the SolanaAgentKit suite
+// (toctou-signing-boundary.test.ts) and the TypeScript SDK (auditbind.test.ts)
+// as the hash graphite-core computes for this System transfer, framed v2.
+func TestContentHashMatchesRustVectorNativeTransfer(t *testing.T) {
+	p, err := ProjectionFromInstructionWithDiscriminator(systemProgram, transferDiscriminator, transfer1M, []string{fromAddr, toAddr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.InstructionDiscriminator != transferDiscriminator {
+		t.Fatalf("an explicit discriminator must win over the 8-byte guess: %s", p.InstructionDiscriminator)
+	}
+	// framed v2: domain || len-prefixed program, disc 02000000, [from, to], 12 data bytes, no CPI
+	if got, want := ComputeContentHash(p), "6d302e018b2b91ce"; got != want {
+		t.Fatalf("cross-language hash drift: got %s, want %s", got, want)
+	}
+	if err := VerifyInstructionWithDiscriminator(systemProgram, transferDiscriminator, transfer1M, []string{fromAddr, toAddr}, "6d302e018b2b91ce"); err != nil {
+		t.Fatalf("the native transfer must verify against the Core's hash: %v", err)
+	}
+	// The Anchor 8-byte guess reads half the amount into the discriminator.
+	guessed := ProjectionFromInstruction(systemProgram, transfer1M, []string{fromAddr, toAddr})
+	if guessed.InstructionDiscriminator != "0200000040420f00" || ComputeContentHash(guessed) == "6d302e018b2b91ce" {
+		t.Fatalf("the 8-byte fallback has silently changed meaning: %+v", guessed)
+	}
+}
+
+func TestSPLTokenOneByteDiscriminatorBinds(t *testing.T) {
+	const splToken = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+	// TransferChecked: tag 12, u64 amount, u8 decimals.
+	data := []byte{12, 0x10, 0x27, 0, 0, 0, 0, 0, 0, 6}
+	approved := ComputeContentHash(AuditBindParams{
+		ProgramID:                splToken,
+		InstructionDiscriminator: "0c",
+		AccountAddresses:         []string{fromAddr, toAddr},
+		InstructionData:          data,
+	})
+	if err := VerifyInstructionWithDiscriminator(splToken, "0c", data, []string{fromAddr, toAddr}, approved); err != nil {
+		t.Fatalf("a 1-byte SPL Token discriminator must bind: %v", err)
+	}
+	if err := VerifyInstruction(splToken, data, []string{fromAddr, toAddr}, approved); err == nil {
+		t.Fatal("the 8-byte guess cannot reproduce a native program's hash")
+	}
+}
+
+// GFX-001 (2026-09-17 forensic audit): an explicit discriminator that is not a
+// prefix of the data describes a different instruction.
+func TestDiscriminatorThatIsNotADataPrefixIsRefused(t *testing.T) {
+	const splToken = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+	setAuthority := append([]byte{0x06, 0x02, 0x01}, make([]byte, 32)...)
+	if _, err := ProjectionFromInstructionWithDiscriminator(splToken, "ff", setAuthority, []string{fromAddr}); !errors.Is(err, ErrAuditBind) {
+		t.Fatalf("a mismatched label must be refused, got %v", err)
+	}
+	if err := VerifyInstructionWithDiscriminator(systemProgram, "03000000", transfer1M, []string{fromAddr, toAddr}, "6d302e018b2b91ce"); !errors.Is(err, ErrAuditBind) {
+		t.Fatalf("a mismatched label must be refused before hashing, got %v", err)
+	}
+	if _, err := ProjectionFromInstructionWithDiscriminator(systemProgram, "02000000", []byte{2}, []string{fromAddr}); err == nil {
+		t.Fatal("a discriminator longer than the data cannot be its prefix")
+	}
+	// Case and a 0x prefix are normalised for the comparison; the projection
+	// keeps the string as sent, because it must reproduce what Graphite hashed.
+	p, err := ProjectionFromInstructionWithDiscriminator(splToken, "0x06", setAuthority, []string{fromAddr})
+	if err != nil || p.InstructionDiscriminator != "0x06" {
+		t.Fatalf("0x06 over a 0x06-prefixed payload must pass unchanged: %+v, %v", p, err)
+	}
+}

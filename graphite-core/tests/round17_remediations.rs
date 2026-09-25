@@ -98,32 +98,33 @@ fn tx_other_blockhash() -> Vec<u8> {
     with_payer(bytes(&corpus_entry("legacy_other_blockhash")["raw"]))
 }
 
-/// The same transaction under a different recent blockhash: a DISTINCT
-/// transaction (different bytes, different digest) carrying the same
-/// instruction — what earning a baseline honestly looks like.
-fn variant(raw: &[u8], i: u8) -> Vec<u8> {
-    let m = graphite_core::tx_artifact::parse_transaction(raw).expect("frame parses");
-    let bh = bs58::decode(&m.recent_blockhash).into_vec().unwrap();
-    // Search the MESSAGE, not the frame: the corpus blockhash is all zeros
-    // and so is the empty signature slot in front of it.
-    let msg = message_bytes(raw).expect("message");
-    let msg_start = raw.len() - msg.len();
-    let pos = msg
-        .windows(32)
-        .rposition(|w| w == bh.as_slice())
-        .expect("blockhash is in the message");
+/// The same transfer for another amount: a DIFFERENT transaction, and one
+/// the simulator executes differently (Round 19: a transaction that differs
+/// only in its blockhash is the same simulation, and one observation).
+fn with_amount(raw: &[u8], lamports: u64) -> Vec<u8> {
+    let old = transfer_data(2_000_000);
+    let pos = raw
+        .windows(old.len())
+        .position(|w| w == old.as_slice())
+        .expect("the corpus transfer carries 2,000,000 lamports");
     let mut out = raw.to_vec();
-    out[msg_start + pos] ^= i.wrapping_add(1);
+    out[pos..pos + old.len()].copy_from_slice(&transfer_data(lamports));
     out
+}
+
+/// `describe` for `with_amount(tx_a(), lamports)`: the description matches
+/// the bytes, so L2 locates the instruction.
+fn describe_amount(lamports: u64) -> VerificationInput {
+    let mut input = describe(with_amount(&tx_a(), lamports));
+    input.instruction_data = Some(transfer_data(lamports));
+    input
 }
 
 /// Earn the Gaming floor the way a deployment does: distinct approved
 /// transactions of this program, each an observation.
 async fn earn_baseline(core: &GraphiteCore) {
-    for i in 0..3u8 {
-        let _ = core
-            .verify_async(&describe(variant(&tx_a(), 0x40 + i)))
-            .await;
+    for i in 1..=3u64 {
+        let _ = core.verify_async(&describe_amount(2_000_000 + i)).await;
     }
 }
 
@@ -614,9 +615,18 @@ async fn identical_approved_bytes_are_one_observation() {
         before + 1,
         "four calls about one transaction are one sample"
     );
-    // A genuinely different transaction (another blockhash) is one more.
+    // Round 19 (F-19-01): the same transfer under another blockhash is the
+    // same simulation — the simulator replaces the blockhash — and is NOT one
+    // more. Round 17 asserted it was.
     let r = core
         .verify_async(&describe(tx_other_blockhash()))
+        .await
+        .unwrap();
+    assert!(r.approved, "{}", r.summary);
+    assert_eq!(samples(&core, SYSTEM), before + 1);
+    // A genuinely different transaction (another amount) is one more.
+    let r = core
+        .verify_async(&describe_amount(2_000_100))
         .await
         .unwrap();
     assert!(r.approved, "{}", r.summary);
@@ -654,8 +664,10 @@ async fn ten_identical_samples_do_not_refuse_the_eleventh_at_plus_one_cu() {
     );
 
     knobs.lock().unwrap().units = 600;
+    // A different transaction (Round 19: another blockhash would be the same
+    // observation as the call above).
     let r = core
-        .verify_async(&describe(tx_other_blockhash()))
+        .verify_async(&describe_amount(2_000_050))
         .await
         .unwrap();
     assert_ne!(

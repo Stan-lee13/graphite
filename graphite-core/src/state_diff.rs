@@ -800,6 +800,9 @@ impl DeclaredEffects {
             ..Self::default()
         };
         for raw in expected_state_changes {
+            if raw == UNDESCRIBED_INSTRUCTION_EFFECTS {
+                continue;
+            }
             let c = raw.to_lowercase();
             // Value leaving an account.
             if c.contains("debit")
@@ -849,7 +852,12 @@ impl DeclaredEffects {
                 e.freeze = true;
             }
         }
+        // An undescribed instruction is interpretable: it promises nothing.
+        let only_undescribed = expected_state_changes
+            .iter()
+            .all(|s| s == UNDESCRIBED_INSTRUCTION_EFFECTS);
         e.unrecognised = !e.absent
+            && !only_undescribed
             && !(e.debit
                 || e.credit
                 || e.close
@@ -862,6 +870,22 @@ impl DeclaredEffects {
         e
     }
 }
+
+/// The declared effects of an instruction the manifest does not describe
+/// (Round 19, F-19-04).
+///
+/// A known program's unknown instruction used to be given the prose
+/// "Protocol-level state changes", which `DeclaredEffects::parse` cannot
+/// interpret — and an uninterpretable declaration downgrades every undeclared
+/// value movement from Critical to a warning. So the one instruction Graphite
+/// knew nothing about was judged MORE leniently than every instruction it
+/// knew: a Token-2022 extension instruction (tag 0x19 and up is not in the
+/// manifest) could debit the signer's tokens and L4 reported a warning. The
+/// manifest describes nothing for this instruction, and nothing is exactly
+/// what it promises: this marker parses as an interpretable declaration of no
+/// effects, so a measured token debit is a finding the verdict must answer.
+pub const UNDESCRIBED_INSTRUCTION_EFFECTS: &str =
+    "graphite: this instruction is not described by the manifest, so it declares no effects";
 
 /// The layer's verdict on a diff.
 #[derive(Debug, Clone, PartialEq, Eq)]

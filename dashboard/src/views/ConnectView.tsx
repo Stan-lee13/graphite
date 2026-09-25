@@ -192,6 +192,9 @@ function Report({ report, hasKey }: { report: ConnectionReport; hasKey: boolean 
               Core reached, version <span translate="no">{report.version}</span>
               {report.degraded ? ", reporting itself degraded" : ""}
             </>
+          ) : report.reachError?.kind === "insecure" ? (
+            // Round 19 (F-19-C6): refused before sending, not unreachable.
+            <>{report.reachError.message}</>
           ) : (
             <>
               No answer from <code translate="no">/health</code>. Check the address; if the Core is up, add

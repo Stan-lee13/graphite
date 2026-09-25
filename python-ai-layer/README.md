@@ -42,7 +42,8 @@ full advisory labeler:
 ## Usage
 
 ```bash
-# Run as HTTP server on :8081
+# Run as HTTP server on 127.0.0.1:8081 (loopback only; set
+# GRAPHITE_AI_LAYER_HOST to bind elsewhere, e.g. inside a container)
 python3 intent_parser.py --serve
 
 # Label a single intent
@@ -83,6 +84,13 @@ confidence score. Conflating these two numbers is a Constitution P1 violation.
   the process only as the JSON response.
 - Server hardening: 64 KiB body cap, robust Content-Length parsing (413/400,
   never an unbounded read), non-dict bodies rejected.
+- Round 19 (F-19-C5): binds `127.0.0.1` by default (it used to bind `0.0.0.0`,
+  exposing an unauthenticated service whose answer feeds transfer construction);
+  one thread per request (`ThreadingHTTPServer`) and a 10 s socket timeout, so
+  a client that declares a body and never sends it cannot stall every other
+  caller. The bridge no longer trusts this service's parse for a transfer: it
+  re-derives amount and destination from the user's own text and refuses a
+  parse that disagrees (`integrations/solana-agent-kit/intent-grounding.ts`).
 
 ## Tests
 
@@ -92,6 +100,6 @@ python3 -m pytest test_intent_parser.py -v
 python3 test_intent_parser.py
 ```
 
-27 tests: every intent class, parameter extraction, risk hints, confidence
+31 tests: every intent class, parameter extraction, risk hints, confidence
 components, manifest grounding (no fabricated IDs), determinism, the P1
 invariant, and a performance smoke test (must exceed 10k parses/sec).

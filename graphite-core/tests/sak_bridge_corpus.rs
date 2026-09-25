@@ -417,6 +417,12 @@ fn every_byte_level_mutation_is_read_the_same_way_on_both_sides() {
                     ArtifactParseError::ProgramIsFeePayer { .. } => "program is the fee payer",
                     ArtifactParseError::EmptyLookup { .. } => "empty lookup",
                     ArtifactParseError::TooManyAccounts { .. } => "more than 256 accounts",
+                    // Round 19: the bank's lock validation, which neither
+                    // web3.js nor sanitize applies.
+                    ArtifactParseError::DuplicateAccountKey { .. } => "account loaded twice",
+                    // Round 19 (F-19-V1): a v1 frame's own rules — a
+                    // mutation that turns the first byte into 0x81.
+                    ArtifactParseError::V1Refused(_) => "v1 rule",
                 };
                 *graphite_stricter.entry(why).or_insert(0) += 1;
             }

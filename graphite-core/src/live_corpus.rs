@@ -173,10 +173,13 @@ pub fn expand_account_keys(msg: &serde_json::Value) -> Option<Vec<String>> {
 }
 
 pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<VerificationInput> {
-    // A version-1 transaction (live on devnet since 2026-09) is a format
-    // Graphite does not parse yet; its JSON has a different message shape
-    // and an input built from it would describe a transaction the gate
-    // refuses. Skipped, not guessed (Round 12).
+    // A version-1 transaction. Graphite parses v1 from its BYTES since
+    // Round 19 (`tx_artifact::parse_v1`, checked against agave by the
+    // runtime oracle), and `tests/mainnet_conformance.rs` verifies v1 rows
+    // from their base64. This builder reads the RPC's `encoding: json`
+    // shape instead, whose v1 layout (config values, no lookup tables) has
+    // not been checked against a real response here — so v1 is skipped
+    // rather than guessed (Round 12).
     if tx.get("version").and_then(|v| v.as_u64()) == Some(1) {
         return None;
     }

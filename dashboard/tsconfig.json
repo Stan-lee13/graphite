@@ -16,5 +16,8 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests run under Node's own type stripping (npm test), with node:test;
+  // the console's types are browser-only, so they are not type-checked here.
+  "exclude": ["src/**/*.test.ts"]
 }

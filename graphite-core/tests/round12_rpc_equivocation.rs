@@ -566,10 +566,16 @@ async fn a_positive_conclusion_needs_the_witness_to_agree() {
     assert!(w.detail.contains("99999"), "{}", w.detail);
 
     // An unreachable witness: no second source, no conclusion.
+    // Owned for the life of the test and answering nothing: a port that is
+    // bound and dropped can be taken by another test's mock in this binary.
     let closed = {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let a = l.local_addr().unwrap();
-        drop(l);
+        std::thread::spawn(move || {
+            for stream in l.incoming() {
+                drop(stream);
+            }
+        });
         format!("http://{a}")
     };
     let mut core = core_at(&primary);

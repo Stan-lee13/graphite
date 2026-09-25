@@ -191,3 +191,68 @@ test("an instruction with no data still hashes consistently", () => {
   const approved = computeContentHash(projectionFromInstruction(ix));
   verifyInstruction(ix, approved);
 });
+
+// ── Native programs: an explicit discriminator (Round 19, F-19-C4) ─────────
+
+/** A real System transfer of 1_000_000 lamports: u32 LE 2, then u64 LE amount. */
+const TRANSFER_1M = new Uint8Array([2, 0, 0, 0, 0x40, 0x42, 0x0f, 0, 0, 0, 0, 0]);
+
+test("the 6d302e018b2b91ce vector: a native transfer projected with its 4-byte discriminator", () => {
+  // The third cross-language vector. Pinned in the SolanaAgentKit suite
+  // (toctou-signing-boundary.test.ts) and the Go SDK (auditbind_test.go) as
+  // the hash graphite-core computes for this System transfer, framed v2.
+  const projected = projectionFromInstruction({
+    programId: SYSTEM_PROGRAM,
+    data: TRANSFER_1M,
+    accounts: [FROM, TO],
+    discriminator: TRANSFER_DISCRIMINATOR,
+  });
+  assert.equal(projected.instructionDiscriminator, TRANSFER_DISCRIMINATOR);
+  assert.equal(computeContentHash(projected), "6d302e018b2b91ce");
+  verifyInstruction(
+    { programId: SYSTEM_PROGRAM, data: TRANSFER_1M, accounts: [FROM, TO], discriminator: TRANSFER_DISCRIMINATOR },
+    "6d302e018b2b91ce",
+  );
+  // Without it the Anchor 8-byte guess reads half the amount into the
+  // discriminator and can never reproduce the Core's hash.
+  const guessed = projectionFromInstruction({ programId: SYSTEM_PROGRAM, data: TRANSFER_1M, accounts: [FROM, TO] });
+  assert.equal(guessed.instructionDiscriminator, "0200000040420f00");
+  assert.notEqual(computeContentHash(guessed), "6d302e018b2b91ce");
+});
+
+test("an SPL Token 1-byte discriminator binds its instruction", () => {
+  const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  // TransferChecked: tag 12, u64 amount, u8 decimals.
+  const data = new Uint8Array([12, 0x10, 0x27, 0, 0, 0, 0, 0, 0, 6]);
+  const ix = { programId: SPL_TOKEN, data, accounts: [FROM, TO], discriminator: "0c" };
+  const approved = computeContentHash({
+    programId: SPL_TOKEN,
+    instructionDiscriminator: "0c",
+    accountAddresses: [FROM, TO],
+    instructionData: Array.from(data),
+  });
+  verifyInstruction(ix, approved);
+  assert.throws(() => verifyInstruction({ ...ix, discriminator: undefined }, approved), AuditBindError);
+});
+
+test("GFX-001: an explicit discriminator that is not a prefix of the data is refused", () => {
+  const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+  const setAuthority = new Uint8Array([0x06, 0x02, 0x01, ...new Array(32).fill(0xaa)]);
+  assert.throws(
+    () => projectionFromInstruction({ programId: SPL_TOKEN, data: setAuthority, accounts: [FROM, TO], discriminator: "ff" }),
+    /not a prefix of this instruction/,
+  );
+  assert.throws(
+    () => verifyInstruction({ programId: SYSTEM_PROGRAM, data: TRANSFER_1M, accounts: [FROM, TO], discriminator: "03000000" }, "6d302e018b2b91ce"),
+    AuditBindError,
+  );
+  // Case and a 0x prefix are normalised for the comparison; the projection
+  // keeps the string as sent, because it must reproduce what Graphite hashed.
+  const ok = projectionFromInstruction({ programId: SPL_TOKEN, data: setAuthority, accounts: [FROM, TO], discriminator: "0x06" });
+  assert.equal(ok.instructionDiscriminator, "0x06");
+  // A discriminator longer than the data cannot be its prefix.
+  assert.throws(
+    () => projectionFromInstruction({ programId: SYSTEM_PROGRAM, data: new Uint8Array([2]), accounts: [FROM], discriminator: "02000000" }),
+    /not a prefix/,
+  );
+});

@@ -80,13 +80,59 @@ export function validateVerificationResult(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Whether a URL hostname is the local machine: `localhost`, 127.0.0.0/8, or
+ * `::1`. The WHATWG URL parser has already canonicalised the host (`127.1`
+ * and `0x7f.0.0.1` both arrive as `127.0.0.1`; IPv6 arrives bracketed), so
+ * this compares canonical forms only.
+ */
+export function isLoopbackHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h === "[::1]" || h === "::1") return true;
+  const m = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  return m !== null && m.slice(1).every((o) => Number(o) <= 255);
+}
+
+/**
+ * Refuse a Core base URL that would carry the API key, or a verdict, in
+ * cleartext across a network.
+ *
+ * Round 19 (F-19-C6): the client accepted any `http://` URL and sent
+ * `Authorization: Bearer <key>` to it. On anything but the local machine that
+ * puts the operator key on the wire in the clear — and lets anyone on the path
+ * rewrite `approved: false` into `approved: true`, which no amount of
+ * client-side shape checking can detect. `https://` is always accepted;
+ * `http://` only for a loopback host (a local dev Core, a test harness).
+ * Throws with the reason; returns the URL without a trailing slash.
+ */
+export function assertSecureBaseUrl(baseUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error(`Graphite base URL ${JSON.stringify(baseUrl)} is not a valid URL`);
+  }
+  if (url.protocol === "https:") return baseUrl.replace(/\/$/, "");
+  if (url.protocol === "http:") {
+    if (isLoopbackHost(url.hostname)) return baseUrl.replace(/\/$/, "");
+    throw new Error(
+      `Graphite base URL ${url.origin} is plain http:// to a non-loopback host. The API key ` +
+        "and every verdict would cross the network unencrypted, where a verdict can be rewritten " +
+        "in flight. Use https://, or http:// only to localhost / 127.0.0.0/8 / [::1] " +
+        "(Round 19, F-19-C6).",
+    );
+  }
+  throw new Error(`Graphite base URL must be https:// (or http:// to loopback), got ${url.protocol}`);
+}
+
 export class GraphiteClient {
   private baseUrl: string;
   private apiKey?: string;
   private timeoutMs: number;
 
   constructor(options: GraphiteClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/$/, "");
+    // Refused at construction, before any request can carry the key.
+    this.baseUrl = assertSecureBaseUrl(options.baseUrl);
     this.apiKey = options.apiKey?.trim() || undefined;
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }

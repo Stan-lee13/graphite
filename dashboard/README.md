@@ -59,6 +59,7 @@ npm ci
 npm run dev        # dev server on :5173, proxies the Core's routes to :7331
 npm run build      # typecheck + production build → dist/
 npm run typecheck  # tsc --noEmit only
+npm test           # node --test (Node 22+): transport and router
 ```
 
 - The dev proxy target is `http://localhost:7331` by default; override with
@@ -67,10 +68,16 @@ npm run typecheck  # tsc --noEmit only
   address is set at runtime on the Connection screen (or pre-set at build
   time with `VITE_GRAPHITE_API`); direct cross-origin access needs the
   console's origin in `GRAPHITE_CORS_ORIGINS` on the Core.
+- The console refuses to send its key to a plain `http://` Core that is not
+  on loopback (localhost, 127.0.0.0/8, [::1]); use `https://` for anything
+  else (Round 19, `src/transport.ts`). A malformed `%` escape in the URL hash
+  is treated as an unknown route rather than crashing the router.
 
 ## The API key
 
-A Core has one key, `GRAPHITE_API_KEY`, chosen by whoever starts it. There
+A Core has one verify key, `GRAPHITE_API_KEY`, chosen by whoever starts it.
+(A second, optional operator key, `GRAPHITE_ADMIN_API_KEY`, guards
+`/admin/*`; the console never calls those routes and never needs it.) There
 is no sign-up and no key service:
 
 1. The operator generates a secret of at least 32 characters

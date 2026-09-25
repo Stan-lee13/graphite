@@ -121,9 +121,9 @@ fn core_against(rpc: &HostileRpc) -> GraphiteCore {
 // counts as evidence: a request that fails L2 (an unreadable artifact does)
 // trains nothing, and the same bytes re-verified are ONE observation. So the
 // artifact is the SAK corpus's real `legacy_single_transfer`, described
-// exactly, and every call varies its recent blockhash — a distinct
-// transaction carrying the same instruction, which is what honest traffic
-// that earns a baseline looks like.
+// exactly. Round 19 (F-19-01): a fresh recent blockhash is NOT a distinct
+// observation — the simulator replaces it — so the transactions that earn a
+// baseline send different amounts, which is what honest traffic looks like.
 fn corpus_transfer() -> (Vec<u8>, Vec<String>) {
     let raw: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/artifacts/sak_bridge_corpus.json"))
@@ -150,25 +150,10 @@ fn corpus_transfer() -> (Vec<u8>, Vec<String>) {
     (bytes, keys)
 }
 
-static SOUND_ARTIFACT_VARIANT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-/// The corpus transfer under a fresh recent blockhash: a distinct transaction
-/// every call.
+/// The corpus transfer exactly as the corpus carries it, which
+/// `sound_transfer_data` describes.
 fn sound_artifact() -> Vec<u8> {
-    let (raw, _) = corpus_transfer();
-    let m = graphite_core::tx_artifact::parse_transaction(&raw).expect("frame parses");
-    let bh = bs58::decode(&m.recent_blockhash).into_vec().unwrap();
-    let msg = graphite_core::tx_artifact::message_bytes(&raw).expect("message");
-    let msg_start = raw.len() - msg.len();
-    let pos = msg
-        .windows(32)
-        .rposition(|w| w == bh.as_slice())
-        .expect("blockhash is in the message");
-    let i = SOUND_ARTIFACT_VARIANT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let mut out = raw;
-    out[msg_start + pos] ^= i.wrapping_add(1);
-    out[msg_start + pos + 1] ^= i >> 4;
-    out
+    corpus_transfer().0
 }
 
 fn sound_transfer_data() -> Vec<u8> {
@@ -754,10 +739,18 @@ async fn non_integer_balances_do_not_pass_as_a_complete_observation() {
 /// access to the response contents at all.
 #[tokio::test]
 async fn an_unreachable_rpc_never_yields_a_passing_state_check() {
-    // Bind and immediately drop, so the port is closed rather than hanging.
+    // A port owned for the life of the test that closes every connection
+    // unanswered. Binding and dropping it instead let another test's mock in
+    // this binary take the port and answer.
     let dead = {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap()
+        let addr = l.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in l.incoming() {
+                drop(stream);
+            }
+        });
+        addr
     };
     let mut core = GraphiteCore::new();
     core.attach_rpc_client(SolanaRpcClient::new(RpcConfig {

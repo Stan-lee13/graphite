@@ -112,13 +112,13 @@ pub struct ComputeBaseline {
     /// Bounded recent CPI-hop samples (C28 robust baseline)
     #[serde(default)]
     pub recent_cpi_hops: Vec<u32>,
-    /// The artifact digests of the most recent observations, bounded by
-    /// `ROBUST_WINDOW`. Round 17 (F-15-01): the same approved bytes
-    /// re-verified do not add a sample, so `sample_count` — and with it the
-    /// `SimulationMatch` confidence signal — counts distinct transactions
-    /// rather than calls.
-    #[serde(default)]
-    pub recent_observation_keys: Vec<String>,
+    // Which observations this baseline has already counted is not kept here
+    // any more. Round 17 kept the last `ROBUST_WINDOW` artifact digests on the
+    // baseline itself, so an identity counted 257 observations ago counted
+    // again (Round 19, F-19-03); the exact, non-aging memory now lives beside
+    // the baseline in `SemanticGraphStore` (`ObservationMemory`). A snapshot
+    // written by an older build still loads: serde ignores the retired
+    // `recent_observation_keys` field.
 }
 
 /// Input for simulation integrity check.
@@ -265,6 +265,7 @@ pub fn check_simulation_integrity(
     if signal_is_observed(
         input.baseline.mean_account_writes,
         input.baseline.std_account_writes,
+        input.baseline.recent_account_writes.len(),
     ) {
         if let Some(z) = mean_std_z(
             input.simulation_usage.account_writes as f64,
@@ -291,7 +292,11 @@ pub fn check_simulation_integrity(
     }
 
     // Signal 3: CPI hops.
-    if signal_is_observed(input.baseline.mean_cpi_hops, input.baseline.std_cpi_hops) {
+    if signal_is_observed(
+        input.baseline.mean_cpi_hops,
+        input.baseline.std_cpi_hops,
+        input.baseline.recent_cpi_hops.len(),
+    ) {
         if let Some(z) = mean_std_z(
             input.simulation_usage.cpi_hops as f64,
             input.baseline.mean_cpi_hops,
@@ -434,9 +439,23 @@ pub const MAX_TRANSACTION_COMPUTE_UNITS: u64 = 1_400_000;
 /// Written as an early return rather than a compound boolean because the two
 /// cases have nothing to do with each other and reading them as one expression
 /// obscures that.
-fn signal_is_observed(mean: f64, std: f64) -> bool {
+///
+/// Round 19 (F-19-21): "every sample was zero" is NOT the same as "never
+/// measured" any more. Every observation the accumulator records carries a
+/// measured write count and a measured CPI-hop count (`rpc_sim_ok` requires
+/// both), and each is pushed onto the robust window. So a program whose
+/// history holds MIN_SAMPLES samples of zero CPI hops has been OBSERVED to
+/// make no CPIs — and a simulation of it that suddenly makes three is the
+/// divergence this layer exists to see. Treating that history as unobserved
+/// skipped the signal entirely. The mean/std-only test still applies to a
+/// baseline with an empty window: one written by a build that predates the
+/// window, whose zeros really are unpopulated counters.
+fn signal_is_observed(mean: f64, std: f64, window_samples: usize) -> bool {
     if mean.is_nan() {
         return false;
+    }
+    if window_samples >= MIN_SAMPLES as usize {
+        return true;
     }
     !(std == 0.0 && mean == 0.0)
 }
@@ -499,6 +518,56 @@ pub fn update_baseline(
 
 #[cfg(test)]
 mod tests {
+    /// Round 19 (F-19-21): a history of MIN_SAMPLES observed zero-hop
+    /// executions judges a simulation that suddenly makes three CPI hops.
+    #[test]
+    fn an_observed_zero_is_judged_not_skipped() {
+        let mut baseline = ComputeBaseline::default();
+        for _ in 0..MIN_SAMPLES {
+            update_baseline(&mut baseline, 5_000, 2, 0);
+        }
+        let judged = |hops: u32| {
+            check_simulation_integrity(&SimulationIntegrityInput {
+                program_id: "P".to_string(),
+                simulation_usage: ComputeUsage {
+                    compute_units: 5_000,
+                    account_writes: 2,
+                    cpi_hops: hops,
+                },
+                baseline: baseline.clone(),
+                divergence_threshold: 2.0,
+            })
+            .unwrap()
+        };
+        assert!(!judged(0).flagged, "the same shape is consistent");
+        let r = judged(3);
+        assert!(
+            r.flagged,
+            "three CPI hops from a program never seen to make one"
+        );
+        assert!(r.reason.unwrap().contains("CPI hop"));
+        // A baseline written before the window existed: its zeros are
+        // unpopulated counters, and the signal is still not judged.
+        let mut legacy = baseline.clone();
+        legacy.recent_cpi_hops.clear();
+        legacy.recent_account_writes.clear();
+        legacy.recent_compute_units.clear();
+        assert!(
+            !check_simulation_integrity(&SimulationIntegrityInput {
+                program_id: "P".to_string(),
+                simulation_usage: ComputeUsage {
+                    compute_units: 5_000,
+                    account_writes: 2,
+                    cpi_hops: 3,
+                },
+                baseline: legacy,
+                divergence_threshold: 2.0,
+            })
+            .unwrap()
+            .flagged
+        );
+    }
+
     use super::*;
 
     #[test]

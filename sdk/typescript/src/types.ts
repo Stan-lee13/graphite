@@ -64,8 +64,14 @@ export interface VerificationInput {
   compute_units?: number;
   account_writes?: number;
   cpi_hops?: number;
-  /** Optional fully-signed transaction blob (binary). When provided, the
-   *  Core's RPC client simulates this exact blob (most accurate L3 result).
+  /** The serialized transaction artifact, UNSIGNED: every signature slot must
+   *  be 64 zero bytes. Despite the field's name it is not a signed blob —
+   *  Graphite verifies before signing, and since Round 17 (F-16-01) the Core
+   *  answers 400 to an artifact with a filled slot, because signed bytes mean
+   *  the signing already happened (Round 19, F-19-C3 corrected this doc). When
+   *  provided the verdict is `artifact_bound`, the Core's RPC client simulates
+   *  these exact bytes, and `scope.transaction_sha256` is their digest — check
+   *  it with `verifyTransactionDigest` before signing or submitting.
    *  Serialized as a JSON array of bytes, NOT base64 (serde Vec<u8>). */
   signed_transaction?: number[];
   /** Phase 2: the COMPLETE list of instructions in the transaction, including

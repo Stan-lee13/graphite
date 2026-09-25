@@ -14,8 +14,14 @@ publish = false
 [dependencies]
 graphite-core = { path = "../../graphite-core", default-features = false }
 # The runtime's wire decoder and sanitizer, from the agave crates themselves.
-solana-transaction = { version = "5.0.0", features = ["serde"] }
-solana-message = { version = "5.0.0", features = ["serde"] }
+solana-transaction = { version = "5.0.0", features = ["serde", "wincode"] }
+solana-message = { version = "5.0.0", features = ["serde", "wincode"] }
+# The v1 (SIMD-0385) wire format has no serde/bincode encoding at all: the
+# crates' serde impl for `VersionedMessage::V1` is documented as "does not
+# match the wire format". The runtime decodes v1 frames with the crates' own
+# wincode `SchemaRead` for `VersionedTransaction`, so the oracle does too
+# (Round 19, F-19-V1). Same major as the one solana-transaction 5.0 pins.
+wincode = { version = "0.6.0", default-features = false, features = ["derive", "alloc", "std"] }
 solana-sanitize = "3.0.1"
 # The runtime's packet decoder is bincode 1 with fixint encoding, a 1232-byte
 # limit and trailing bytes rejected (`solana_packet::Packet::deserialize_slice`).

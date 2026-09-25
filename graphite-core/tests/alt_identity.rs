@@ -37,6 +37,9 @@ fn b58(s: &str) -> [u8; 32] {
 fn table_account(addresses: &[&str]) -> Vec<u8> {
     let mut data = vec![0u8; LOOKUP_TABLE_META_SIZE];
     // deactivation_slot = u64::MAX means "not deactivating".
+    // Type tag 1: an initialized `ProgramState::LookupTable`, as every real
+    // table carries (Round 19 refuses any other tag).
+    data[0..4].copy_from_slice(&1u32.to_le_bytes());
     data[4..12].copy_from_slice(&u64::MAX.to_le_bytes());
     for a in addresses {
         data.extend_from_slice(&b58(a));
@@ -54,6 +57,7 @@ fn message_with(lookups: Vec<AddressTableLookup>) -> ArtifactMessage {
         writable: vec![TABLE.to_string()],
         instructions: vec![],
         lookups,
+        v1_config: None,
     }
 }
 

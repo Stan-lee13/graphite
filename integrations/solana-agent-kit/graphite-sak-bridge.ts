@@ -7,7 +7,9 @@
  * v2 improvements:
  *   1. RPC SIMULATION — calls simulateTransaction BEFORE verification to get real compute_units,
  *      account_writes, and cpi_hops, which feed the Simulation Integrity check (L3) and the
- *      audit trail. NOTE: these do NOT boost the confidence score in Phase 1 — the Core
+ *      audit trail. The simulated transaction is UNSIGNED (Round 19, F-19-C1 — see
+ *      rpc-simulator.ts): nothing is signed before a verdict exists.
+ *      NOTE: these do NOT boost the confidence score in Phase 1 — the Core
  *      intentionally zeroes the SimulationMatch/HistoricalVolume/CommunityVerification signal
  *      values (Constitution G4: request-body evidence is attacker-controlled) and caps trust
  *      tiers at the manifest's declared tier (P7). The achievable Phase 1 confidence for a
@@ -19,22 +21,33 @@
  *      and compares against the verified content_hash. Blocks execution if the transaction was
  *      mutated in the TOCTOU window. The earlier "|"-joined/commas encoding never matched the
  *      Rust side and always aborted — this version mirrors the Core exactly.
- *   3. SAK plugins are loaded statically (rpc-websockets exports patched for compatibility).
- *      Runtime fallback to raw web3.js if plugin initialization fails.
+ *   3. SAK plugins are loaded when the agent is created, each one on its own (rpc-websockets
+ *      exports patched for compatibility). A plugin that fails to load is skipped with a
+ *      warning; the bridge's own paths never depend on one.
+ *   4. SAK NEVER HOLDS THE KEY (Round 19, F-19-C2 — see gated-wallet.ts). SolanaAgentKit is
+ *      given a wallet with the public key only, whose every signing method refuses. The only
+ *      code that signs with the wallet key is BoundTransaction.signApproved, after an
+ *      artifact-bound approval.
  */
 
-import {
-  SolanaAgentKit,
-  KeypairWallet,
-} from "solana-agent-kit";
-import TokenPlugin from "@solana-agent-kit/plugin-token";
-import DefiPlugin from "@solana-agent-kit/plugin-defi";
+import { SolanaAgentKit } from "solana-agent-kit";
 // `sendAndConfirmTransaction` is deliberately NOT imported: it prepares the
 // transaction it is given, including fetching a blockhash when one is missing,
 // and a mutation after approval is a mutation however benign. Signing goes
 // through `signSubmitAndConfirm`, which submits bytes that are already final.
-import { Keypair, Connection, SystemProgram, Transaction, PublicKey, TransactionInstruction } from "@solana/web3.js";
+import { Keypair, Connection, SystemProgram, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
+
+// Round 19 (F-19-C1): simulation is unsigned by construction; the class
+// lives in its own dependency-light module so its tests run without SAK.
+import { RpcSimulator, assertEverySignatureSlotEmpty } from "./rpc-simulator.js";
+export { RpcSimulator, assertEverySignatureSlotEmpty };
+// Round 19 (F-19-C2): the wallet SAK is given cannot sign.
+import { VerificationGatedWallet, UngatedSigningRefused, GATED_SIGNING_PATH } from "./gated-wallet.js";
+export { VerificationGatedWallet, UngatedSigningRefused, GATED_SIGNING_PATH };
+// Round 19 (F-19-C5): the AI layer's answer is checked against the user's text.
+import { assertEcho, groundTransferIntent, IntentGroundingError } from "./intent-grounding.js";
+export { assertEcho, groundTransferIntent, IntentGroundingError };
 
 // AuditBind lives in ./auditbind.ts — a dependency-free module (Node crypto
 // only) so its cross-language pinned-vector tests run without the SAK tree.
@@ -93,7 +106,12 @@ export interface ExecutionOutcome {
   verifiedExecution: boolean;
   verification: VerificationResult;
   signature?: string;
-  /** Present on the opt-out path, naming what was not verified. */
+  /**
+   * Named what the unverified swap opt-out did not verify. Never set since
+   * Round 19 (F-19-C2): the opt-out executed through SAK's builder, SAK no
+   * longer holds a key that can sign, and so the opt-out no longer exists.
+   * Kept on the type so callers that read it still compile.
+   */
   unverifiedReason?: string;
   /**
    * What happened after the verdict, stage by stage — the residuals the
@@ -105,60 +123,60 @@ export interface ExecutionOutcome {
 }
 
 /**
- * The exact value the swap opt-out requires.
+ * The phrase the retired swap opt-out required.
  *
- * Not "1", "true" or "yes". A bare `=1` is what gets copied from a README,
- * inherited from a shell profile, or left in a `.env` after a test; a phrase
- * that says what it does is not set by accident.
+ * Round 19 (F-19-C2): the opt-out executed swaps through SAK's own builder,
+ * which signed with the wallet key SAK used to hold. SAK now holds no key that
+ * can sign, so there is no unverified execution path left to opt into. The
+ * constant stays exported so a deployment that still sets
+ * `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION` to it is told, by name, that the
+ * setting no longer does anything — rather than having it silently ignored.
  */
 export const UNVERIFIED_SWAP_OPT_IN = "I_ACCEPT_UNVERIFIED_SWAP_EXECUTION";
 
 /**
- * RPC Simulation helper — calls simulateTransaction to get real resource usage.
- * The compute/writes/hops feed the Core's Simulation Integrity check (L3) and
- * the audit trail. NOTE: in Phase 1 they do NOT boost the confidence score (the
- * Core zeroes the SimulationMatch signal value — Constitution G4); the trusted
- * simulation signal arrives in Phase 2 via the Core's own RPC client.
+ * Environment variables the bridge reads, and the names an older `.env.example`
+ * used for two of them.
+ *
+ * Round 19 (F-19-C6): the example file said `GRAPHITE_SERVER_URL` and
+ * `AI_LAYER_URL` while the code read `GRAPHITE_CORE_URL` and
+ * `GRAPHITE_AI_LAYER_URL`. An operator who copied the example pointed the
+ * bridge at a Core and an AI layer it never used: both silently defaulted to
+ * localhost. A legacy name set without its replacement is now a startup error.
  */
-export class RpcSimulator {
-  private connection: Connection;
-  constructor(rpcUrl: string) { this.connection = new Connection(rpcUrl, "confirmed"); }
+export const LEGACY_ENV_NAMES: ReadonlyArray<readonly [legacy: string, current: string]> = [
+  ["GRAPHITE_SERVER_URL", "GRAPHITE_CORE_URL"],
+  ["AI_LAYER_URL", "GRAPHITE_AI_LAYER_URL"],
+];
 
-  async simulate(params: {
-    instructions: TransactionInstruction[];
-    signers: Keypair[];
-  }): Promise<{ computeUnits: number; accountWrites: number; cpiHops: number; logs: string[]; success: boolean }> {
-    try {
-      // simulateTransaction handles blockhash + signing internally when signers are passed
-      const tx = new Transaction({ feePayer: params.signers[0].publicKey });
-      tx.add(...params.instructions);
-      const simulation = await this.connection.simulateTransaction(tx, params.signers);
-      if (simulation.value.err) {
-        console.warn("[RpcSimulator] Simulation returned error:", JSON.stringify(simulation.value.err).slice(0, 80));
-        return { computeUnits: 0, accountWrites: 0, cpiHops: 0, logs: simulation.value.logs ?? [], success: false };
-      }
-      const logs = simulation.value.logs ?? [];
-      let computeUnits = 0;
-      const cuMatch = logs.find((l: string) => l.includes("consumed"));
-      if (cuMatch) { const m = cuMatch.match(/consumed (\d+)/); if (m) computeUnits = parseInt(m[1]); }
-      // Count writable accounts from instructions (fallback if simulation doesn't report)
-      let accountWrites = 0;
-      if (simulation.value.accounts) accountWrites = simulation.value.accounts.filter((a: any) => a).length;
-      if (accountWrites === 0) {
-        const writableAccounts = new Set<string>();
-        for (const ix of params.instructions) for (const key of ix.keys) if (key.isWritable) {
-          const pk = typeof key.pubkey === 'string' ? key.pubkey : key.pubkey.toBase58();
-          writableAccounts.add(pk);
-        }
-        accountWrites = writableAccounts.size;
-      }
-      let cpiHops = 0;
-      for (const log of logs) { const m = log.match(/Program \w+ invoke \[(\d+)\]/); if (m) { const l = parseInt(m[1]); if (l > cpiHops) cpiHops = l; } }
-      return { computeUnits, accountWrites, cpiHops, logs, success: true };
-    } catch (err) {
-      console.warn("[RpcSimulator] Simulation failed:", (err as Error).message);
-      return { computeUnits: 0, accountWrites: 0, cpiHops: 0, logs: [], success: false };
+export function assertNoLegacyEnvNames(env: Record<string, string | undefined> = process.env): void {
+  for (const [legacy, current] of LEGACY_ENV_NAMES) {
+    if (env[legacy] !== undefined && env[current] === undefined) {
+      throw new Error(
+        `[Graphite] ${legacy} is set but the bridge reads ${current}. Rename it: without the ` +
+          `current name the bridge would silently fall back to its localhost default and talk to ` +
+          `a service you did not configure (Round 19, F-19-C6). REFUSING TO START.`,
+      );
     }
+  }
+}
+
+/**
+ * Load one SAK plugin, or say why not.
+ *
+ * The plugins used to be static imports, which made "fall back to raw web3.js
+ * if plugin initialization fails" untrue: a plugin whose module failed to link
+ * (the installed @solana-agent-kit/plugin-token and plugin-defi both fail on a
+ * missing `@pump-fun/pump-sdk` export) took the whole bridge down at import,
+ * verified paths included. Loaded here, a broken plugin costs only that
+ * plugin's methods — and since Round 19 (F-19-C2) none of them can sign anyway.
+ */
+async function loadPlugin(name: string, load: () => Promise<{ default: unknown }>): Promise<unknown | null> {
+  try {
+    return (await load()).default;
+  } catch (err) {
+    console.warn(`[Graphite] SAK plugin ${name} did not load — skipping it:`, (err as Error).message?.slice(0, 120));
+    return null;
   }
 }
 
@@ -244,14 +262,19 @@ export class VerifiedSakAgent {
      */
     acceptUnobserved?: string[];
   }): Promise<VerifiedSakAgent> {
+    // Before any default is applied: a legacy variable name must not quietly
+    // become "use localhost" (Round 19, F-19-C6).
+    assertNoLegacyEnvNames();
     const privateKey = config?.privateKey ?? process.env.SOLANA_PRIVATE_KEY;
     const rpcUrl = config?.rpcUrl ?? process.env.SOLANA_RPC_URL;
     const openAiApiKey = config?.openAiApiKey ?? process.env.OPENAI_API_KEY;
     const graphiteCoreUrl = config?.graphiteCoreUrl ?? process.env.GRAPHITE_CORE_URL ?? "http://localhost:7331";
     // Secured Core deployments require the Bearer key on /verify and /manifests.
     const graphiteApiKey = config?.graphiteApiKey ?? process.env.GRAPHITE_API_KEY;
-    // The Python AI Layer listens on 8081 by default (intent_parser.py --serve).
-    const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://localhost:8081";
+    // The Python AI Layer listens on 127.0.0.1:8081 by default (intent_parser.py
+    // --serve). An IP literal, not "localhost": since Round 19 (F-19-C5) the
+    // layer binds IPv4 loopback only, and "localhost" can resolve to ::1 first.
+    const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://127.0.0.1:8081";
     // Phase 1 calibration: with the three evidence-derived confidence signals
     // intentionally zeroed (Constitution G4 — request-body evidence is
     // attacker-controlled) and trust tiers capped at OfficialManifest (P7), the
@@ -272,15 +295,35 @@ export class VerifiedSakAgent {
     const walletPublicKey = walletKeypair.publicKey.toBase58();
     const connection = new Connection(rpcUrl, "confirmed");
 
-    // Initialize SAK agent with plugins — fallback to raw web3.js if runtime init fails
+    // Initialize the SAK agent — fallback to raw web3.js if runtime init fails.
+    //
+    // Round 19 (F-19-C2): SAK is given the PUBLIC key and nothing else. It
+    // used to get `new KeypairWallet(walletKeypair)`, and with it the ability
+    // to sign and send any transaction any plugin method or LLM-driven SAK
+    // tool built, plus `signMessage` over arbitrary bytes — none of it through
+    // Graphite. `VerificationGatedWallet` refuses every signing method, so
+    // SAK's read-only uses keep working and everything that would sign fails
+    // with an error naming the verified path.
     let sakAgent: SolanaAgentKit | null = null;
     try {
       if (!openAiApiKey) throw new Error("OPENAI_API_KEY required for SAK");
-      const wallet = new KeypairWallet(walletKeypair);
-      sakAgent = new SolanaAgentKit(wallet, rpcUrl, { OPENAI_API_KEY: openAiApiKey })
-        .use(TokenPlugin)
-        .use(DefiPlugin);
-      console.log("[Graphite] SAK agent initialized with TokenPlugin + DefiPlugin");
+      const wallet = new VerificationGatedWallet(walletKeypair.publicKey);
+      let agent = new SolanaAgentKit(wallet, rpcUrl, { OPENAI_API_KEY: openAiApiKey });
+      const loaded: string[] = [];
+      for (const [name, load] of [
+        ["TokenPlugin", () => import("@solana-agent-kit/plugin-token")],
+        ["DefiPlugin", () => import("@solana-agent-kit/plugin-defi")],
+      ] as const) {
+        const plugin = await loadPlugin(name, load);
+        if (plugin) {
+          agent = agent.use(plugin);
+          loaded.push(name);
+        }
+      }
+      sakAgent = agent;
+      console.log(
+        `[Graphite] SAK agent initialized (signing refused — gated wallet) with ${loaded.length ? loaded.join(" + ") : "no plugins"}`,
+      );
     } catch (err) {
       console.warn("[Graphite] SAK init failed — falling back to raw web3.js:", (err as Error).message?.slice(0, 80));
     }
@@ -314,8 +357,12 @@ export class VerifiedSakAgent {
       intent_type: string; raw_natural_language: string; confidence_of_parse: number;
       extracted_parameters?: { input_token?: string; output_token?: string; amount?: string; destination?: string; slippage_bps?: number; };
     };
+    // Round 19 (F-19-C5): the answer must be an answer to THIS request. The
+    // text the Core sees as the user's words is the bridge's own copy, never
+    // the AI layer's echo of it.
+    assertEcho(naturalLanguage, result.raw_natural_language);
     return {
-      intent_type: result.intent_type as any, raw_natural_language: result.raw_natural_language,
+      intent_type: result.intent_type as any, raw_natural_language: naturalLanguage,
       confidence_of_parse: result.confidence_of_parse, extracted_parameters: result.extracted_parameters,
     };
   }
@@ -357,7 +404,11 @@ export class VerifiedSakAgent {
     let computeUnits = 0, accountWrites = 0, cpiHops = 0;
     if (params.instructions && params.instructions.length > 0) {
       console.log("[Graphite] Running RPC simulation to feed the Simulation Integrity check...");
-      const sim = await this.simulator.simulate({ instructions: params.instructions, signers: [this.walletKeypair] });
+      // Round 19 (F-19-C1): the fee payer's PUBLIC key, never the keypair.
+      // This used to pass `signers: [this.walletKeypair]`, which made web3.js
+      // sign the transfer on a live blockhash and send the signed bytes to the
+      // RPC before Graphite had decided anything.
+      const sim = await this.simulator.simulate({ instructions: params.instructions, feePayer: this.walletKeypair.publicKey });
       computeUnits = sim.computeUnits; accountWrites = sim.accountWrites; cpiHops = sim.cpiHops;
       console.log(`[Graphite] Simulation: CU=${computeUnits}, writes=${accountWrites}, CPI=${cpiHops}, success=${sim.success}`);
     }
@@ -488,14 +539,34 @@ export class VerifiedSakAgent {
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
 
-    const params = proposedIntent.extracted_parameters;
-    if (!params?.amount) throw new Error("Transfer requires amount");
-    const destination = params?.destination || "";
-    if (!destination) throw new Error("Transfer requires destination address");
+    // Round 19 (F-19-C5): destination and amount are taken from the user's
+    // own text, and the AI layer's reading is accepted only where it matches
+    // that text exactly. Both used to come from the AI layer's response alone
+    // — and the same response went to the Core as `proposed_intent`, so the
+    // Core's transaction-versus-intent check compared the response with
+    // itself. The amount is converted to lamports on the string, not through
+    // `parseFloat(...) * 1e9`.
+    const grounded = groundTransferIntent(naturalLanguage, proposedIntent.extracted_parameters);
+    const destination = grounded.destination;
+    // The intent the Core compares against is rebuilt from the grounded
+    // values and the bridge's own copy of the request.
+    const groundedIntent: ProposedIntent = {
+      ...proposedIntent,
+      raw_natural_language: naturalLanguage,
+      extracted_parameters: {
+        ...proposedIntent.extracted_parameters,
+        amount: grounded.amountText,
+        destination: grounded.destination,
+        input_token: "SOL",
+      },
+    };
 
     const destPubkey = new PublicKey(destination);
-    const lamports = Math.floor(parseFloat(params.amount) * 1e9);
-    const transferIx = SystemProgram.transfer({ fromPubkey: this.walletKeypair.publicKey, toPubkey: destPubkey, lamports });
+    const transferIx = SystemProgram.transfer({
+      fromPubkey: this.walletKeypair.publicKey,
+      toPubkey: destPubkey,
+      lamports: grounded.lamports,
+    });
 
     const SYSTEM_PROGRAM = "11111111111111111111111111111111";
     const TRANSFER_DISCRIMINATOR = "02000000";
@@ -525,7 +596,7 @@ export class VerifiedSakAgent {
     });
     const verification = await this.verifyTransaction({
       programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
-      accountAddresses: [this.walletPublicKey, destination], proposedIntent, instructions: [transferIx],
+      accountAddresses: [this.walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
       instructionData: transferData,
       bound,
     });
@@ -637,12 +708,12 @@ export class VerifiedSakAgent {
    * That is not a residual window; it is a verdict about a transaction that
    * does not exist, printed next to the execution of one that does.
    *
-   * The escape hatch survives, inverted and named for what it does:
-   * `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION` set to the exact opt-in phrase
-   * `UNVERIFIED_SWAP_OPT_IN`. An operator who genuinely
-   * needs SAK's router and accepts that Graphite is not verifying the submitted
-   * instruction can set it, and the warning says exactly which properties went
-   * unobserved.
+   * The escape hatch that survived that change — `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION`
+   * set to `UNVERIFIED_SWAP_OPT_IN`, which handed the swap to SAK's builder —
+   * is gone as of Round 19 (F-19-C2). It could only execute because SAK held
+   * the wallet key; SAK now holds a wallet that refuses to sign, so the
+   * opt-out had nothing left to execute with. A swap is a payload the bridge
+   * verifies and signs itself, or it is refused.
    *
    * Privilege grounding (P1 fix, 2026-09-05 audit, "signer/writable metadata
    * is not grounded in actual transaction AccountMeta data", CLOSED for the
@@ -670,52 +741,53 @@ export class VerifiedSakAgent {
     // pinned fixture sig 57TAjPZXt49F9rSVZNEu… slot 438012579, SUCCESS). The
     // legacy `route` discriminator (e517cb977ae3ad2a) is also live but legacy.
     const JUPITER_SWAP_DISCRIMINATOR = "bb64facc31c4af14";
-    // Fail closed by default. `GRAPHITE_SWAP_STRICT=1` is still honoured for
-    // compatibility, but it is now redundant: strict IS the default.
-    const allowUnverified =
-      process.env.GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION === UNVERIFIED_SWAP_OPT_IN &&
-      process.env.GRAPHITE_SWAP_STRICT !== "1";
-    if (!payload && !allowUnverified) {
+    // No payload, no swap. Round 19 (F-19-C2): the unverified opt-out that
+    // used to live here executed through SAK's builder with the key SAK held;
+    // SAK holds no signing key now, so there is nothing to opt into. An
+    // operator who still sets the opt-in phrase is told so by name rather
+    // than having it silently ignored.
+    if (!payload) {
+      const optOutStillSet =
+        process.env.GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION === UNVERIFIED_SWAP_OPT_IN;
       throw new Error(
         "[Graphite] a swap requires a built payload (programId / discriminator / accounts with " +
           "isSigner+isWritable / instructionData) so the instruction that is verified is the " +
           "instruction that is submitted. Without it Graphite would be asked to verify a " +
           "one-account projection while SAK's builder submits a different instruction entirely — " +
           "no destination, no vaults, no amounts, nothing about the real swap observed. " +
-          "Build the route first and pass it, or set GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION={UNVERIFIED_SWAP_OPT_IN} " +
-          "to execute swaps Graphite has not verified. ABORTING."
+          "Build the route first and pass it. " +
+          (optOutStillSet
+            ? `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=${UNVERIFIED_SWAP_OPT_IN} is set, but that ` +
+              "opt-out was retired in Round 19 (F-19-C2): SAK's wallet cannot sign, so there is no " +
+              "unverified execution path. "
+            : "") +
+          "ABORTING."
       );
     }
-    const accountAddresses = payload?.accounts.map((a) => a.pubkey) ?? [this.walletPublicKey];
+    const accountAddresses = payload.accounts.map((a) => a.pubkey);
     // P1 fix (2026-09-05 audit): the bound payload already carries the REAL
     // per-account isSigner/isWritable flags (that's what buildInstructionFromPayload
     // uses to construct the actual on-chain instruction) — forward them as
     // real_account_metas so the Core cross-checks them against the manifest's
     // declared expectations, not just the account addresses.
-    const realAccountMetas = payload?.accounts.map((a) => ({ is_signer: a.isSigner, is_writable: a.isWritable }));
+    const realAccountMetas = payload.accounts.map((a) => ({ is_signer: a.isSigner, is_writable: a.isWritable }));
     // Built once, from the payload, before verification — the same construction
     // that used to happen after approval.
-    let boundSwap: BoundTransaction | undefined;
-    if (payload) {
-      const { blockhash, lastValidBlockHeight } =
-        await this.connection.getLatestBlockhash();
-      boundSwap = BoundTransaction.build({
-        instructions: [buildInstructionFromPayload(payload)],
-        feePayer: this.walletKeypair.publicKey,
-        recentBlockhash: blockhash,
-        lastValidBlockHeight,
-      });
-    }
+    const { blockhash, lastValidBlockHeight } =
+      await this.connection.getLatestBlockhash();
+    const boundSwap = BoundTransaction.build({
+      instructions: [buildInstructionFromPayload(payload)],
+      feePayer: this.walletKeypair.publicKey,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+    });
     const verification = await this.verifyTransaction({
-      programId: payload?.programId ?? JUPITER_V6_PROGRAM,
-      instructionDiscriminator: payload?.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
+      programId: payload.programId ?? JUPITER_V6_PROGRAM,
+      instructionDiscriminator: payload.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
       accountAddresses, proposedIntent,
-      instructionData: payload?.instructionData,
+      instructionData: payload.instructionData,
       realAccountMetas,
       // The transaction that will be signed, not a copy of its instructions.
-      // Without a payload there is nothing to build and the verification stays
-      // descriptive — which the abort above already treats as the unverified
-      // case.
       bound: boundSwap,
     });
 
@@ -723,99 +795,42 @@ export class VerifiedSakAgent {
     if (!verification.approved) { console.log("[Graphite] Swap BLOCKED."); return { executed: false, verifiedExecution: false, verification }; }
     reportVerificationScope(verification, "swap");
 
-    if (payload) {
-      // Bind the EXACT instruction that will be submitted (full data + accounts).
-      AuditBind.verifyInstruction(
-        {
-          programId: payload.programId,
-          data: Uint8Array.from(payload.instructionData ?? []),
-          accounts: accountAddresses,
-        },
-        verification.content_hash ?? verification.audit_trail_id,
-      );
-      console.log("[Graphite] Swap payload bound to AuditBind (instruction data + full account list).");
-
-      // TOCTOU closure: submit the SAME instruction that was just bound —
-      // never SAK's internal rebuild. buildInstructionFromPayload uses the
-      // identical (programId, accounts, instructionData) fields that were
-      // just hashed above, so what executes is byte-identical to what was
-      // verified by construction, not by trusting a second code path to
-      // agree with the first.
-      // `boundSwap` holds the instruction built from this same payload before
-      // verification, and its bytes are what Graphite verified. Rebuilding here
-      // would reintroduce the copy-versus-original gap one level down.
-      if (!boundSwap) {
-        throw new Error(
-          "[Graphite] a payload was supplied but no bound transaction was built; refusing to sign an unverified construction",
-        );
-      }
-      console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction directly (bypassing SAK's builder)...");
-      const lifecycle = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
-      console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
-      return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
-    }
-
-    // Only reachable with GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION set to the
-    // exact opt-in phrase.
-    //
-    // The AuditBind call below is deliberately NOT made. It would re-hash the
-    // three constants this method just sent to Graphite and print "Hash
-    // verified", which is a check that cannot fail and therefore tells the
-    // operator nothing — the exact shape of the defect found at the transfer
-    // path on 2026-09-08. A check that cannot fail is worse than no check,
-    // because it reads like assurance in the log.
-    console.warn(
-      [
-        "[Graphite] EXECUTING A SWAP GRAPHITE DID NOT VERIFY.",
-        `  GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=${UNVERIFIED_SWAP_OPT_IN} is set.`,
-        "  Verified: the wallet address, the Jupiter program id, and the swap discriminator.",
-        "  NOT observed: destination token account, vaults, authority, every other account,",
-        "  the instruction data, the amounts, the slippage, and the route.",
-        "  SAK's internal builder will construct and submit an instruction this verdict does",
-        "  not describe. AuditBind is intentionally not run here: binding a projection that",
-        "  cannot disagree with itself would print assurance without providing any.",
-      ].join(String.fromCharCode(10)),
+    // Bind the EXACT instruction that will be submitted (full data + accounts).
+    AuditBind.verifyInstruction(
+      {
+        programId: payload.programId,
+        data: Uint8Array.from(payload.instructionData ?? []),
+        accounts: accountAddresses,
+      },
+      verification.content_hash ?? verification.audit_trail_id,
     );
+    console.log("[Graphite] Swap payload bound to AuditBind (instruction data + full account list).");
 
-    if (!this.sakAgent) throw new Error("Swap requires SAK plugins. Use executeTransfer for raw web3.js mode.");
-
-    console.log("[Graphite] Executing the swap through SAK's builder — unverified, see the warning above...");
-    const result = await (this.sakAgent as any).methods.swap(
-      params.input_token, params.output_token, params.amount, params.slippage_bps ?? 300,
-    );
-    console.log(`[SAK] Swap executed: ${result.signature ?? result}`);
-    // On the trail as what it is: a submission the caller performed under the
-    // opt-out, against a verdict that never saw the submitted instruction. A
-    // failure to record is reported, not hidden — the swap has already gone
-    // out and nothing here can change that.
-    if (typeof result?.signature === "string") {
-      try {
-        await this.graphite.recordLifecycleEvent({
-          event_type: "submission",
-          content_hash: verification.content_hash,
-          audit_trail_id: verification.audit_trail_id,
-          transaction_signature: result.signature,
-          reported_by: this.reporter(),
-          detail: `UNVERIFIED: ${UNVERIFIED_SWAP_OPT_IN} — SAK's builder constructed the submitted instruction; the verdict is descriptive`,
-        });
-      } catch (e) {
-        console.warn(`[Graphite] WARNING — the unverified submission was NOT recorded: ${(e as Error).message}`);
-      }
-    }
-    // Machine-readable, so a caller cannot mistake this for a verified
-    // execution however it reads the log.
-    return {
-      executed: true,
-      verifiedExecution: false,
-      verification,
-      signature: result.signature,
-      unverifiedReason:
-        "GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION opt-in: SAK's builder constructed and " +
-        "submitted an instruction Graphite did not verify — destination, vaults, authority, " +
-        "amounts, slippage and route were not observed",
-    };
+    // TOCTOU closure: submit the SAME instruction that was just bound —
+    // never SAK's internal rebuild. buildInstructionFromPayload uses the
+    // identical (programId, accounts, instructionData) fields that were
+    // just hashed above, so what executes is byte-identical to what was
+    // verified by construction, not by trusting a second code path to
+    // agree with the first.
+    // `boundSwap` holds the instruction built from this same payload before
+    // verification, and its bytes are what Graphite verified. Rebuilding here
+    // would reintroduce the copy-versus-original gap one level down.
+    console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction directly (bypassing SAK's builder)...");
+    const lifecycle = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
+    console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
+    return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
   }
 
+  /**
+   * The SolanaAgentKit agent, for READ-ONLY use (balances, prices, lookups).
+   *
+   * Round 19 (F-19-C2): this used to return an agent holding the wallet's
+   * secret key, so any caller — or any LLM tool built from the agent — could
+   * sign and send around the gate. The agent returned now is built on
+   * `VerificationGatedWallet`: every signing method throws
+   * `UngatedSigningRefused`. To move funds, use `executeTransfer` or
+   * `executeSwap(payload)`.
+   */
   getSakAgent(): SolanaAgentKit | null { return this.sakAgent; }
   getGraphiteClient(): GraphiteClient { return this.graphite; }
   getConnection(): Connection { return this.connection; }

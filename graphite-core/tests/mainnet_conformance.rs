@@ -149,7 +149,8 @@ fn risky_prefix(program: &str, data: &[u8]) -> bool {
 #[derive(Default)]
 struct Tally {
     rows: usize,
-    v1_skipped: usize,
+    /// Version-1 rows, verified like every other row since Round 19.
+    v1_rows: usize,
     parse_failed: BTreeMap<String, usize>,
     unresolvable_accounts: usize,
     no_usable_instruction: usize,
@@ -187,10 +188,17 @@ fn l2_class(reason: &str) -> &'static str {
         "discriminator contradicts its own data (ROUND 13 — FALSE POSITIVE)"
     } else if reason.contains("cannot begin with a discriminator longer than itself") {
         "declaration longer than the data (ROUND 13 — FALSE POSITIVE)"
+    } else if reason.contains("do not single out one of them") {
+        "described instruction indistinguishable from an identical copy"
     } else if reason.contains("no instruction matching what is being verified") {
         "described instruction not located in the artifact"
     } else if reason.contains("does not describe") || reason.contains("describe none of") {
         "sibling coverage incomplete"
+    } else if reason.contains("address lookup tables that were not resolved") {
+        // This harness attaches no RPC, so the Core cannot fetch a v0
+        // transaction's tables, and an unidentified account position fails
+        // L2 (Round 17, F-15-05). Correct, and a property of the harness.
+        "lookup tables unresolved (no RPC in this harness)"
     } else if reason.contains("DURABLE-NONCE") {
         "durable nonce refused"
     } else if reason.contains("could not be parsed") {
@@ -245,9 +253,9 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
         t.rows += 1;
         let slot = row["slot"].as_u64().unwrap_or(0);
         if row["version"].as_str() == Some("1") {
-            // Graphite refuses v1 by name; the chain is now carrying them.
-            t.v1_skipped += 1;
-            continue;
+            // Parsed and verified since Round 19; counted so the report says
+            // how much of the sample the format is.
+            t.v1_rows += 1;
         }
         let Ok(bytes) = base64::engine::general_purpose::STANDARD
             .decode(row["b64"].as_str().unwrap_or_default())
@@ -378,7 +386,7 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
             ),
             transaction_instructions: siblings,
             cpi_trace: None,
-            uses_versioned_transaction: message.version == Some(0),
+            uses_versioned_transaction: message.version.is_some(),
             lookup_table_count: message.lookups.len() as u32,
             real_account_metas: vec![],
             state_diff: None,
@@ -413,6 +421,25 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
         let l2_label = if l2.status == LayerStatus::Failed {
             let class = l2_class(&l2.reason);
             *t.l2_failed.entry(class.to_string()).or_default() += 1;
+            let unexplained = matches!(
+                class,
+                "other"
+                    | "described instruction not located in the artifact"
+                    | "described instruction indistinguishable from an identical copy"
+                    | "sibling coverage incomplete"
+            );
+            if unexplained
+                && std::env::var("GRAPHITE_MAINNET_SHOW_L2").is_ok()
+                && t.l2_failed.get(class).copied().unwrap_or(0) <= 6
+            {
+                // An unclassified L2 refusal of traffic the chain executed is
+                // worth reading, not only counting.
+                eprintln!(
+                    "[L2 {class}] slot {slot} program {} disc {disc}
+  {}",
+                    ix.program_id, l2.reason
+                );
+            }
             if class.contains("ROUND 13") {
                 t.l2_discriminator_contradiction += 1;
                 eprintln!(
@@ -506,7 +533,7 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
     // ── The report ──────────────────────────────────────────────────────────
     println!("\n=== Graphite against unseen mainnet traffic ===");
     println!("transactions in sample        {}", t.rows);
-    println!("  version 1 (Graphite refuses){:>6}", t.v1_skipped);
+    println!("  of which version 1          {:>6}", t.v1_rows);
     println!(
         "  parse failed               {:>6}  {:?}",
         t.parse_failed.values().sum::<usize>(),
@@ -601,7 +628,7 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
          of its discriminators — the regrounded discriminator is over-matching: {:?}",
         &t.risk_blocked_without_risky_bytes[..t.risk_blocked_without_risky_bytes.len().min(10)]
     );
-    let parse_attempts = t.rows - t.v1_skipped;
+    let parse_attempts = t.rows;
     let parse_failures: usize = t.parse_failed.values().sum();
     assert!(
         parse_failures * 100 < parse_attempts,

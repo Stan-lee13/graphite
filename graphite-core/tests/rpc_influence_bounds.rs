@@ -103,9 +103,9 @@ fn core_with_rpc(endpoint: &str) -> GraphiteCore {
 // counts as evidence: a request that fails L2 (an unreadable artifact does)
 // trains nothing, and the same bytes re-verified are ONE observation. So the
 // artifact is the SAK corpus's real `legacy_single_transfer`, described
-// exactly, and every call varies its recent blockhash — a distinct
-// transaction carrying the same instruction, which is what honest traffic
-// that earns a baseline looks like.
+// exactly. Round 19 (F-19-01): a fresh recent blockhash is NOT a distinct
+// observation — the simulator replaces it — so the transactions that earn a
+// baseline send different amounts, which is what honest traffic looks like.
 fn corpus_transfer() -> (Vec<u8>, Vec<String>) {
     let raw: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/artifacts/sak_bridge_corpus.json"))
@@ -132,25 +132,29 @@ fn corpus_transfer() -> (Vec<u8>, Vec<String>) {
     (bytes, keys)
 }
 
-static SOUND_ARTIFACT_VARIANT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static SOUND_ARTIFACT_VARIANT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// The corpus transfer under a fresh recent blockhash: a distinct transaction
-/// every call.
+/// The corpus transfer exactly as the corpus carries it (2,000,000 lamports),
+/// which `sound_transfer_data` describes.
 fn sound_artifact() -> Vec<u8> {
+    corpus_transfer().0
+}
+
+/// A distinct transfer — the corpus transfer sending a different amount —
+/// and the instruction data that describes it exactly.
+fn distinct_transfer() -> (Vec<u8>, Vec<u8>) {
     let (raw, _) = corpus_transfer();
-    let m = graphite_core::tx_artifact::parse_transaction(&raw).expect("frame parses");
-    let bh = bs58::decode(&m.recent_blockhash).into_vec().unwrap();
-    let msg = graphite_core::tx_artifact::message_bytes(&raw).expect("message");
-    let msg_start = raw.len() - msg.len();
-    let pos = msg
-        .windows(32)
-        .rposition(|w| w == bh.as_slice())
-        .expect("blockhash is in the message");
+    let old = sound_transfer_data();
     let i = SOUND_ARTIFACT_VARIANT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let mut new = vec![2, 0, 0, 0];
+    new.extend_from_slice(&(2_000_001 + i).to_le_bytes());
+    let pos = raw
+        .windows(old.len())
+        .position(|w| w == old.as_slice())
+        .expect("corpus transfer data");
     let mut out = raw;
-    out[msg_start + pos] ^= i.wrapping_add(1);
-    out[msg_start + pos + 1] ^= i >> 4;
-    out
+    out[pos..pos + old.len()].copy_from_slice(&new);
+    (out, new)
 }
 
 fn sound_transfer_data() -> Vec<u8> {
@@ -203,10 +207,13 @@ async fn after_baseline_is_earned(
     tx: &VerificationInput,
 ) -> VerificationResult {
     // Twelve DISTINCT transactions (Round 17: the same bytes re-verified are
-    // one observation), then the verdict on the one under test.
+    // one observation; Round 19: so is the same transaction under a fresh
+    // blockhash), then the verdict on the one under test.
     for _ in 0..12 {
         let mut fresh = tx.clone();
-        fresh.signed_transaction = Some(sound_artifact());
+        let (artifact, data) = distinct_transfer();
+        fresh.signed_transaction = Some(artifact);
+        fresh.instruction_data = Some(data);
         let _ = core.verify_async(&fresh).await;
     }
     core.verify_async(tx).await.expect("verification must run")

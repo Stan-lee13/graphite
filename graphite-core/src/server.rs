@@ -122,6 +122,10 @@ struct AppState {
     core: Arc<GraphiteCore>,
     /// Bearer API key; `None` only under `GRAPHITE_DEV_MODE=1` on loopback.
     api_key: Option<Arc<String>>,
+    /// The OPERATOR key for `/admin/*` (`GRAPHITE_ADMIN_API_KEY`), distinct
+    /// from the verify key. `None` disables the operator surface entirely
+    /// (Round 19, F-19-13).
+    admin_key: Option<Arc<String>>,
     audit: Option<AuditLog>,
     /// Community Manifest Registry engine (read-only dashboard view — P4).
     registry_engine: Arc<crate::manifest_registry::ManifestRegistryEngine>,
@@ -270,12 +274,17 @@ impl RateLimiter {
         if is_new {
             inner.order.push_back(ip);
         }
+        // The bucket holds at least one whole token (Round 19, F-19-16): at a
+        // configured rate below 1 req/s a bucket capped at `per_second` never
+        // reached 1.0 and every request was refused. The rate is still the
+        // refill; only the burst has a floor.
+        let capacity = self.per_second.max(1.0);
         let bucket = inner.buckets.entry(ip).or_insert_with(|| Bucket {
-            tokens: self.per_second,
+            tokens: capacity,
             last: now,
         });
         let elapsed = now.duration_since(bucket.last).as_secs_f64();
-        bucket.tokens = (bucket.tokens + elapsed * self.per_second).min(self.per_second);
+        bucket.tokens = (bucket.tokens + elapsed * self.per_second).min(capacity);
         bucket.last = now;
         if bucket.tokens >= 1.0 {
             bucket.tokens -= 1.0;
@@ -328,6 +337,25 @@ fn ct_eq(a: &str, b: &str) -> bool {
 /// the configured hop count (i.e. the request did not traverse the expected
 /// proxy chain), we fall back to the direct peer address rather than trusting
 /// a partial chain — fail-safe, never fail-open (P12).
+/// The key a client is rate-limited under (Round 19, F-19-16).
+///
+/// An IPv6 client is limited per /64, not per address: a single host is
+/// routinely handed a whole /64, so keying on the full address gave one
+/// client 2^64 fresh buckets — the limit did not apply, and the bucket map
+/// churned at its cap. IPv4 (and IPv4-mapped IPv6) is limited per address.
+fn rate_limit_key(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(_) => ip,
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => {
+                let s = v6.segments();
+                IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
+            }
+        },
+    }
+}
+
 fn client_ip(
     req: &axum::http::Request<axum::body::Body>,
     addr: SocketAddr,
@@ -359,6 +387,8 @@ fn client_ip(
     addr.ip()
 }
 
+pub use crate::verification::{lock_data_dir, DATA_DIR_LOCK};
+
 /// Verify the data directory is actually WRITABLE, not merely present.
 ///
 /// DURABILITY (CRITICAL, 2026-09-05 deployment audit): the standard container
@@ -376,42 +406,6 @@ fn client_ip(
 /// condition (response 5), not a degrade-and-continue one — so this returns
 /// an error and the server refuses to start, loudly, with a message naming
 /// the likely cause.
-/// The name of the lock file one server holds on its data directory.
-pub const DATA_DIR_LOCK: &str = "graphite.lock";
-
-/// Take the data directory for this process, exclusively.
-///
-/// Two servers on one data directory do not share a trail: each holds its
-/// own in-memory index of the active audit file, built at open and
-/// maintained by its own appends, so a verification one process records is
-/// invisible to the other's L8 and lifecycle lookups — `NoVerificationOnRecord`
-/// for a transaction that was verified — and both rewrite the semantic-graph
-/// snapshot over each other. Nothing failed loudly; the second process
-/// simply reconciled against half a trail (Round 12). An advisory exclusive
-/// lock on `graphite.lock`, held for the life of the process and released by
-/// the OS on any exit, makes the second start refuse instead.
-fn lock_data_dir(dir: &std::path::Path) -> Result<std::fs::File, Box<dyn std::error::Error>> {
-    let path = dir.join(DATA_DIR_LOCK);
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&path)?;
-    match file.try_lock() {
-        Ok(()) => Ok(file),
-        Err(std::fs::TryLockError::WouldBlock) => Err(format!(
-            "data directory {} is held by another Graphite process ({DATA_DIR_LOCK} is locked).              Two servers on one data directory keep two disjoint views of the audit trail and              overwrite each other's semantic-graph snapshot; give each its own GRAPHITE_DATA_DIR              or stop the other process.",
-            dir.display()
-        )
-        .into()),
-        Err(std::fs::TryLockError::Error(e)) => Err(format!(
-            "data directory {} could not be locked ({DATA_DIR_LOCK}): {e}",
-            dir.display()
-        )
-        .into()),
-    }
-}
-
 fn probe_data_dir_writable(dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     let probe = dir.join(".graphite-write-probe");
     match std::fs::write(&probe, b"graphite") {
@@ -533,6 +527,37 @@ pub fn auth_posture(
     Ok(AuthPosture::DevModeLoopback)
 }
 
+/// The operator key from `GRAPHITE_ADMIN_API_KEY` (Round 19, F-19-13).
+///
+/// Optional: without it the `/admin/*` surface is disabled. When set it must
+/// be as long as a verify key and must NOT equal it — an operator key that is
+/// the verify key is no separation at all, and a server that accepted it
+/// would report a posture it does not have.
+pub fn operator_key_posture(
+    admin_key: Option<&str>,
+    api_key: Option<&str>,
+) -> Result<Option<Arc<String>>, String> {
+    let Some(admin) = admin_key.map(str::trim).filter(|k| !k.is_empty()) else {
+        return Ok(None);
+    };
+    let chars = admin.chars().count();
+    if chars < MIN_API_KEY_CHARS {
+        return Err(format!(
+            "refusing to start: GRAPHITE_ADMIN_API_KEY is {chars} characters; at least \
+             {MIN_API_KEY_CHARS} are required. Generate one with `openssl rand -hex 32`."
+        ));
+    }
+    if api_key.map(str::trim) == Some(admin) {
+        return Err(
+            "refusing to start: GRAPHITE_ADMIN_API_KEY equals GRAPHITE_API_KEY. The operator key \
+             must be a different secret from the key agents verify with, or the operator surface \
+             is open to every agent."
+                .to_string(),
+        );
+    }
+    Ok(Some(Arc::new(admin.to_string())))
+}
+
 /// Whether `GRAPHITE_DEV_MODE` is set to an affirmative value.
 pub fn dev_mode_from_env() -> bool {
     std::env::var(DEV_MODE_ENV)
@@ -567,10 +592,9 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // the audit trail is a P9 guarantee, not a nice-to-have, so probe it now
     // and refuse to start rather than serve traffic with no audit trail.
     probe_data_dir_writable(&data_dir)?;
-    // Held until the process exits; see `lock_data_dir`.
-    let _data_dir_lock = lock_data_dir(&data_dir)?;
-
-    let mut core = GraphiteCore::with_data_dir(data_dir.clone());
+    // Takes the directory's lock (held by the core for the life of the
+    // process) and refuses a corrupt snapshot. See `GraphiteCore::open_data_dir`.
+    let mut core = GraphiteCore::open_data_dir(data_dir.clone())?;
 
     // Durable-nonce transactions: refused at L2 unless the operator opts in,
     // and then only after the nonce account is verified on-chain. See
@@ -592,8 +616,15 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     if let Ok(dir) = std::env::var("GRAPHITE_PLUGINS_DIR") {
         if !dir.is_empty() {
             match core.attach_plugins_dir(std::path::Path::new(&dir)) {
+                // Round 19 (F-19-26): say what "skipped" means. A manifest
+                // is the review gate for activating a plugin from this
+                // directory; the reviewed, in-tree built-ins are registered
+                // by the core itself and stay active whatever a manifest
+                // here says about them — a file in a directory must not be
+                // able to switch off a check. The log used to read as though
+                // a rejected manifest had disabled one.
                 Ok(summary) => tracing_log(&format!(
-                    "plugins: {} registered, {} pending (skipped), {} rejected (skipped) from {}",
+                    "plugins: {} registered, {} pending (not activated), {} rejected (not activated) from {}; the built-in plugins are always active and are not governed by manifests in this directory",
                     summary.registered, summary.skipped_pending, summary.skipped_rejected, dir
                 )),
                 // Round 17 (F-16-07): an operator who configured a plugin
@@ -724,6 +755,10 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         AuthPosture::ApiKey(key) => Some(key.clone()),
         AuthPosture::DevModeLoopback => None,
     };
+    let admin_key = operator_key_posture(
+        std::env::var("GRAPHITE_ADMIN_API_KEY").ok().as_deref(),
+        api_key.as_deref().map(String::as_str),
+    )?;
 
     // Round 17 (F-16-15): `inf` disabled the limiter and `NaN` collapsed it
     // to the 0.1 req/s floor. A non-finite or non-positive value is a
@@ -895,6 +930,7 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     let state = AppState {
         core: Arc::new(core),
         api_key: api_key.clone(),
+        admin_key: admin_key.clone(),
         audit,
         registry_engine: Arc::new(registry_engine),
         rate: RateLimiter::new(rate_per_sec),
@@ -1011,6 +1047,19 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         .route("/api/policy-violations", get(policy_violations_handler))
         .route("/api/protocols/top", get(top_protocols_handler))
         .route("/api/registry", get(registry_handler))
+        // Order (Round 19, F-19-14). Each `route_layer` wraps the ones added
+        // before it, so the LAST one here runs FIRST: rate limit, then auth,
+        // then the concurrency permit. This was the reverse — the permit was
+        // taken before the caller was authenticated or rate-limited, and a
+        // refusal held it while the body drained, so 32 unauthenticated
+        // connections trickling a body could hold every permit for the full
+        // request timeout and shed all real traffic (and /health) with 503.
+        // Now a request costs a permit only once it is authenticated, within
+        // its rate, and fully received.
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            concurrency_limit_middleware,
+        ))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -1018,12 +1067,6 @@ fn build_app(state: AppState, cors_origins: Vec<HeaderValue>) -> Router {
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
-        ))
-        // Outermost of the two: shed before spending anything on the request,
-        // including the per-IP bookkeeping.
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            concurrency_limit_middleware,
         ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -1067,9 +1110,29 @@ async fn refuse_after_draining(
     req: axum::http::Request<axum::body::Body>,
     response: Response,
 ) -> Response {
-    let _ = axum::body::to_bytes(req.into_body(), MAX_BODY_SIZE).await;
+    // Bounded in TIME as well as size (Round 19, F-19-14): a refused client
+    // that trickles its body is not owed ten seconds of this server. Past the
+    // bound the connection is closed; a well-behaved client has long since
+    // sent its body, and one that has not gets a reset instead of a status.
+    let _ = tokio::time::timeout(
+        REFUSAL_DRAIN_TIMEOUT,
+        axum::body::to_bytes(req.into_body(), MAX_BODY_SIZE),
+    )
+    .await;
+    let mut response = response;
+    response
+        .headers_mut()
+        .insert(header::CONNECTION, HeaderValue::from_static("close"));
     response
 }
+
+/// How long a refused request's body may take to drain (see
+/// `refuse_after_draining`).
+const REFUSAL_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// How long an admitted request's body may take to arrive before a
+/// verification permit is spent on it (see `concurrency_limit_middleware`).
+const BODY_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn auth_middleware(
     State(state): State<AppState>,
@@ -1077,6 +1140,42 @@ async fn auth_middleware(
     next: Next,
 ) -> Response {
     if req.uri().path() == "/health" {
+        return next.run(req).await;
+    }
+    // The operator surface answers only to the operator key (Round 19,
+    // F-19-13). The verify key is held by the agent — the component the
+    // threat model already assumes can be prompt-injected — and it used to
+    // open `/admin/quarantine` too, so the party a quarantine protects against
+    // could lift it. Without an operator key configured the surface does not
+    // exist, in dev mode as well.
+    if req.uri().path().starts_with("/admin/") {
+        let provided = req
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .unwrap_or("");
+        let refusal = match &state.admin_key {
+            None => Some((
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": "operator endpoints are disabled: GRAPHITE_ADMIN_API_KEY is not configured",
+                    "hint": "set GRAPHITE_ADMIN_API_KEY (distinct from GRAPHITE_API_KEY) to enable /admin/*",
+                })),
+            )),
+            Some(admin) if !ct_eq(provided, admin.as_str()) => Some((
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "error": "unauthorized",
+                    "hint": "operator endpoints require the operator key (GRAPHITE_ADMIN_API_KEY); the verify key is not accepted here",
+                })),
+            )),
+            Some(_) => None,
+        };
+        if let Some(refusal) = refusal {
+            Metrics::inc(&state.metrics.auth_failures);
+            return refuse_after_draining(req, refusal.into_response()).await;
+        }
         return next.run(req).await;
     }
     if let Some(key) = &state.api_key {
@@ -1109,7 +1208,7 @@ async fn rate_limit_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    let ip = client_ip(&req, addr, state.trust_proxy_hops);
+    let ip = rate_limit_key(client_ip(&req, addr, state.trust_proxy_hops));
     if !state.rate.check(ip) {
         Metrics::inc(&state.metrics.rate_limited);
         let refusal = (
@@ -1141,6 +1240,39 @@ async fn concurrency_limit_middleware(
     req: axum::http::Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    // Receive the body BEFORE taking a permit (Round 19, F-19-14): a permit
+    // is a unit of verification capacity, and a client that is still sending
+    // is not using any. A body that does not arrive within
+    // BODY_READ_TIMEOUT is refused with 408 and never costs a permit.
+    let (parts, body) = req.into_parts();
+    let bytes =
+        match tokio::time::timeout(BODY_READ_TIMEOUT, axum::body::to_bytes(body, MAX_BODY_SIZE))
+            .await
+        {
+            Ok(Ok(bytes)) => bytes,
+            Ok(Err(_)) => {
+                return (
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    Json(serde_json::json!({ "error": "request body too large or malformed" })),
+                )
+                    .into_response();
+            }
+            Err(_) => {
+                let mut response = (
+                StatusCode::REQUEST_TIMEOUT,
+                Json(serde_json::json!({
+                    "error": "request body not received in time",
+                    "hint": format!("the body must arrive within {}s", BODY_READ_TIMEOUT.as_secs()),
+                })),
+            )
+                .into_response();
+                response
+                    .headers_mut()
+                    .insert(header::CONNECTION, HeaderValue::from_static("close"));
+                return response;
+            }
+        };
+    let req = axum::http::Request::from_parts(parts, axum::body::Body::from(bytes));
     let permit = match Arc::clone(&state.inflight).try_acquire_owned() {
         Ok(p) => p,
         Err(_) => {
@@ -1361,8 +1493,15 @@ fn enforce_wallet_profile(
     // not a policy; it used to travel through the whole pipeline and come
     // back as a 500 from the policy engine. Malformed input is a 400, and
     // it is refused before anything is simulated or recorded.
+    //
+    // Round 19 (F-19-27): the same for a bar BELOW 0.0, NaN or infinite. They
+    // were clamped up to the weakest built-in by default — safe — but passed
+    // straight through under GRAPHITE_ALLOW_PERMISSIVE_PROFILES, carrying a
+    // NaN into the policy comparison. The operator's own
+    // `custom:<x>:<tier>` pin already refused all of them; the request path
+    // now agrees with it in every mode.
     if let WalletProfile::Custom { min_confidence, .. } = requested {
-        if min_confidence.is_finite() && min_confidence > 1.0 {
+        if !(0.0..=1.0).contains(&min_confidence) {
             return Err(format!(
                 "wallet_profile.Custom.min_confidence must be within [0.0, 1.0], got {min_confidence}"
             ));
@@ -1731,7 +1870,15 @@ async fn verify_handler(
 /// to operators — `audit.writes_failed` is what makes it alertable.
 async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let audit = state.audit.as_ref().map(|a| a.health());
-    let persistence = state.core.persistence_health();
+    let mut persistence = state.core.persistence_health();
+    // `/health` answers without a key (load balancers), so it says THAT the
+    // last snapshot failed, not the error text — which carries the data
+    // directory's absolute path (Round 19, F-19-19). The text is in the log
+    // and at the authenticated /metrics.
+    if persistence.last_error.is_some() {
+        persistence.last_error =
+            Some("snapshot failed; the error is in the server log".to_string());
+    }
     // Every reason a node is degraded, by name. An operator paged on
     // `degraded: true` should not have to diff counters to learn why.
     let mut reasons: Vec<&str> = Vec::new();
@@ -2176,12 +2323,30 @@ async fn execution_handler(
     // P9: the reconciliation is a lifecycle-grade fact about a transaction
     // Graphite verified, and a discrepancy is the single most important thing
     // this system can record. It goes on the same append-only trail.
-    let exact_attribution = matches!(
+    // Round 19 (F-19-17): this row is written as OBSERVED by Graphite, so
+    // the keys that link it to a verification must be ones Graphite
+    // observed: the chain's bytes, bound to this signature. An attribution
+    // through the caller's `audit_trail_id` or `transaction_sha256` is the
+    // caller's claim — with a fabricated signature and a victim's id (listed
+    // by /api/confidence-history) it wrote a Graphite-attested link between
+    // the two, and the victim's honest report then read as the conflict.
+    // Such a claim is still recorded, in the detail and labelled as one,
+    // and it is not indexed.
+    let chain_attributed = matches!(
         result.attribution,
         crate::verification::ExecutionAttribution::Chain
-            | crate::verification::ExecutionAttribution::AuditTrailId
-            | crate::verification::ExecutionAttribution::TransactionSha256
     );
+    let caller_claims: Vec<String> = [
+        body.audit_trail_id
+            .as_deref()
+            .map(|v| format!("audit_trail_id {}", v.trim())),
+        body.transaction_sha256
+            .as_deref()
+            .map(|v| format!("transaction_sha256 {}", v.trim())),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let recorded = match audit {
         Some(log) => log.append_lifecycle(&LifecycleEventRecord {
             event_type: LifecycleEvent::Confirmation,
@@ -2201,26 +2366,30 @@ async fn execution_handler(
             // the trail then reports as a conflict against a truthful
             // report (found by the Round 12 probe). The detail still says
             // what was resolved and by which key.
-            transaction_sha256: result
-                .chain_transaction_sha256
-                .clone()
-                .or_else(|| {
-                    exact_attribution
-                        .then(|| result.recorded_transaction_sha256.clone())
-                        .flatten()
-                })
-                .or_else(|| body.transaction_sha256.clone()),
-            audit_trail_id: if exact_attribution {
+            transaction_sha256: result.chain_transaction_sha256.clone().or_else(|| {
+                chain_attributed
+                    .then(|| result.recorded_transaction_sha256.clone())
+                    .flatten()
+            }),
+            audit_trail_id: if chain_attributed {
                 result.recorded_audit_trail_id.clone()
             } else {
-                body.audit_trail_id.clone()
+                None
             },
             transaction_signature: Some(signature.clone()),
             reported_by: body.reported_by.clone(),
             detail: Some(format!(
-                "L8 reconciliation: {:?}; attribution: {:?}{}{}",
+                "L8 reconciliation: {:?}; attribution: {:?}{}{}{}",
                 result.reconciliation,
                 result.attribution,
+                if caller_claims.is_empty() || chain_attributed {
+                    String::new()
+                } else {
+                    format!(
+                        "; linked by the caller's claim, not by chain bytes (not indexed): {}",
+                        caller_claims.join(", ")
+                    )
+                },
                 if result.caller_keys_disagree.is_empty() {
                     String::new()
                 } else {
@@ -2357,17 +2526,37 @@ struct QuarantineBody {
 /// reach the port. The server already refuses to bind a non-loopback address
 /// without a key; this refuses the operation itself even on loopback.
 fn require_operator_auth(state: &AppState) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    if state.api_key.is_some() {
+    // `auth_middleware` has already required the operator key on `/admin/*`;
+    // this is the handler's own refusal, so an operator action can never run
+    // on an instance with no operator key even if it is routed differently.
+    if state.admin_key.is_some() {
         return Ok(());
     }
     Err((
         StatusCode::FORBIDDEN,
         Json(serde_json::json!({
-            "error": "operator endpoints require GRAPHITE_API_KEY to be configured",
-            "hint": "an unauthenticated instance must not expose a switch that can withdraw any program from trust",
+            "error": "operator endpoints require GRAPHITE_ADMIN_API_KEY to be configured",
+            "hint": "an instance without an operator key must not expose a switch that can withdraw any program from trust",
         })),
     ))
 }
+
+/// A short, stable identifier for the operator key: the first 8 bytes of its
+/// SHA-256, hex. Recorded on the audit trail as who acted, so the record
+/// names a credential rather than whatever `reported_by` string the caller
+/// chose (Round 19, F-19-13). It identifies a key without disclosing it.
+fn operator_key_id(state: &AppState) -> String {
+    use sha2::{Digest, Sha256};
+    match &state.admin_key {
+        Some(k) => hex::encode(&Sha256::digest(k.as_bytes())[..8]),
+        None => "none".to_string(),
+    }
+}
+
+/// The longest quarantine reason recorded. A reason is an advisory id and a
+/// sentence, not a document; unbounded, one call could append a megabyte to
+/// a record that is kept forever and rewritten with every snapshot.
+const MAX_QUARANTINE_REASON_CHARS: usize = 1024;
 
 /// Withdraw a program from trust, or restore it (ARCHITECTURE.md 3.8).
 ///
@@ -2402,24 +2591,72 @@ async fn quarantine_handler(
             Json(serde_json::json!({ "error": "program_id is required" })),
         ));
     }
-
-    let outcome = if body.lift {
-        state.core.lift_program_quarantine(&program_id)
-    } else {
-        let reason = body.reason.clone().unwrap_or_default();
-        state.core.quarantine_program(&program_id, &reason)
-    };
-
-    if let Err(e) = outcome {
-        // These are caller-fixable (unknown program, not quarantined, missing
-        // reason), so the detail is genuinely useful — unlike an internal
-        // error, whose detail is never disclosed.
+    // Round 19 (F-19-15): a program id is a 32-byte base58 public key.
+    // Anything else can never match a program the gate verifies, and every
+    // accepted call appends a record that lives forever.
+    if crate::solana_types::Pubkey::from_base58(&program_id).is_err() {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
-                "error": e.to_string(),
+                "error": "program_id is not a base58-encoded 32-byte public key",
                 "error_type": "QuarantineRejected",
             })),
+        ));
+    }
+    if body
+        .reason
+        .as_deref()
+        .is_some_and(|r| r.trim().chars().count() > MAX_QUARANTINE_REASON_CHARS)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("reason is longer than {MAX_QUARANTINE_REASON_CHARS} characters"),
+                "error_type": "QuarantineRejected",
+            })),
+        ));
+    }
+    // Idempotent: quarantining a program that is already quarantined changes
+    // nothing and appends nothing.
+    let already = state
+        .core
+        .quarantined_programs()
+        .iter()
+        .any(|(p, _)| p == &program_id);
+    if !body.lift && already {
+        return Ok(Json(serde_json::json!({
+            "program_id": program_id,
+            "quarantined": true,
+            "already_quarantined": true,
+            "note": "the program was already quarantined; nothing was changed or recorded",
+        })));
+    }
+
+    let outcome = if body.lift {
+        state.core.lift_program_quarantine_durably(&program_id)
+    } else {
+        let reason = body.reason.clone().unwrap_or_default();
+        state.core.quarantine_program_durably(&program_id, &reason)
+    };
+
+    let persisted = match outcome {
+        Ok(persisted) => persisted,
+        Err(e) => {
+            // These are caller-fixable (unknown program, not quarantined,
+            // missing reason), so the detail is genuinely useful — unlike an
+            // internal error, whose detail is never disclosed.
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": e.to_string(),
+                    "error_type": "QuarantineRejected",
+                })),
+            ));
+        }
+    };
+    if let Err(e) = &persisted {
+        tracing_server_error(&format!(
+            "operator action on {program_id} is in force but NOT persisted; it ends at the next restart: {e}"
         ));
     }
 
@@ -2441,7 +2678,16 @@ async fn quarantine_handler(
             content_hash: program_id.clone(),
             audit_trail_id: None,
             transaction_signature: None,
-            reported_by: body.reported_by.clone(),
+            // Who acted is the credential that authorized it; the caller's
+            // own label is kept, marked as a claim.
+            reported_by: Some(match body.reported_by.as_deref().map(str::trim) {
+                Some(label) if !label.is_empty() => format!(
+                    "operator key {} (label claimed by caller: {})",
+                    operator_key_id(&state),
+                    label.chars().take(128).collect::<String>()
+                ),
+                _ => format!("operator key {}", operator_key_id(&state)),
+            }),
             detail: Some(if body.lift {
                 format!("quarantine lifted for {program_id}")
             } else {
@@ -2486,7 +2732,9 @@ async fn quarantine_handler(
         } else {
             "verification forces Unknown and hard-blocks while quarantined"
         },
-        "persisted": true,
+        // Whether the change reached disk. It is in force either way; one
+        // that is not persisted ends at the next restart (Round 19, F-19-12).
+        "persisted": persisted.is_ok(),
         "audit_recorded": audit_recorded,
     })))
 }
@@ -2672,21 +2920,39 @@ async fn lifecycle_event_handler(
         .as_deref()
         .map(str::trim)
         .map(String::from);
-    let (found, verdict_on_record_key) = if let Some(id) = &audit_trail_id {
-        (
-            log.find_verification(VerificationKey::AuditTrailId(id)),
-            VerificationKeyKind::AuditTrailId,
-        )
-    } else if let Some(t) = &transaction_sha256 {
-        (
-            log.find_verification(VerificationKey::TransactionSha256(t)),
-            VerificationKeyKind::TransactionSha256,
-        )
-    } else {
-        (
-            log.find_verification(VerificationKey::ContentHash(&content_hash)),
-            VerificationKeyKind::ContentHash,
-        )
+    // On the blocking pool (Round 19, F-19-18): an unknown key is looked up
+    // through every archive.
+    let (found, verdict_on_record_key) = {
+        let log = log.clone();
+        let audit_trail_id = audit_trail_id.clone();
+        let transaction_sha256 = transaction_sha256.clone();
+        let content_hash = content_hash.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Some(id) = &audit_trail_id {
+                (
+                    log.find_verification(VerificationKey::AuditTrailId(id)),
+                    VerificationKeyKind::AuditTrailId,
+                )
+            } else if let Some(t) = &transaction_sha256 {
+                (
+                    log.find_verification(VerificationKey::TransactionSha256(t)),
+                    VerificationKeyKind::TransactionSha256,
+                )
+            } else {
+                (
+                    log.find_verification(VerificationKey::ContentHash(&content_hash)),
+                    VerificationKeyKind::ContentHash,
+                )
+            }
+        })
+        .await
+        .map_err(|join| {
+            tracing_server_error(&format!("audit lookup did not complete: {join}"));
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "internal server error" })),
+            )
+        })?
     };
     if let Some(r) = &found {
         let mut disagree = Vec::new();
@@ -2749,11 +3015,29 @@ async fn lifecycle_event_handler(
     // of order is still a report — except that the two findings that mean a
     // report is FALSE are logged as loudly as a discrepancy, because one of
     // the two reports must be.
-    let history = log.lifecycle_history(crate::durable::LifecycleKey {
-        audit_trail_id: audit_trail_id.as_deref(),
-        transaction_sha256: transaction_sha256.as_deref(),
-        transaction_signature: transaction_signature.as_deref(),
-    });
+    let history = {
+        let log = log.clone();
+        let audit_trail_id = audit_trail_id.clone();
+        let transaction_sha256 = transaction_sha256.clone();
+        let transaction_signature = transaction_signature.clone();
+        tokio::task::spawn_blocking(move || {
+            log.lifecycle_history(crate::durable::LifecycleKey {
+                audit_trail_id: audit_trail_id.as_deref(),
+                transaction_sha256: transaction_sha256.as_deref(),
+                transaction_signature: transaction_signature.as_deref(),
+            })
+        })
+        .await
+        .map_err(|join| {
+            tracing_server_error(&format!(
+                "lifecycle history lookup did not complete: {join}"
+            ));
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "internal server error" })),
+            )
+        })?
+    };
     let sequence_anomalies =
         lifecycle_sequence_anomalies(body.event_type, transaction_signature.as_deref(), &history);
     if !sequence_anomalies.is_empty() {
@@ -3425,6 +3709,7 @@ mod tests {
         let state = AppState {
             core: Arc::new(core),
             api_key: None,
+            admin_key: None,
             audit: Some(audit),
             registry_engine: Arc::new(crate::manifest_registry::ManifestRegistryEngine::new()),
             rate: RateLimiter::new(1000.0),
@@ -3618,12 +3903,17 @@ mod tests {
 
     const SYSTEM: &str = "11111111111111111111111111111111";
 
+    /// A state with BOTH keys, returning the OPERATOR key (Round 19: the
+    /// verify key no longer opens `/admin/*`).
     fn keyed_state() -> (AppState, std::path::PathBuf, String) {
         let (mut state, dir) = test_state();
         let key = "operator-test-key".to_string();
-        state.api_key = Some(Arc::new(key.clone()));
+        state.api_key = Some(Arc::new(VERIFY_TEST_KEY.to_string()));
+        state.admin_key = Some(Arc::new(key.clone()));
         (state, dir, key)
     }
+
+    const VERIFY_TEST_KEY: &str = "verify-test-key";
 
     #[tokio::test]
     async fn quarantine_endpoint_blocks_the_program_and_persists_it() {
@@ -3860,6 +4150,203 @@ mod tests {
         )
         .await;
         assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    /// Round 19 (F-19-13): the VERIFY key does not open the operator
+    /// surface. It is the key an agent holds, and the agent is the party a
+    /// quarantine protects against.
+    #[tokio::test]
+    async fn the_verify_key_cannot_lift_or_add_a_quarantine() {
+        let (state, _dir, admin) = keyed_state();
+        let core = state.core.clone();
+        let app = build_app(state, vec![]);
+        let (status, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&admin),
+            serde_json::json!({"program_id": SYSTEM, "reason": "GHSA-2026-0001"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK, "the operator key works");
+        for body in [
+            serde_json::json!({"program_id": SYSTEM, "lift": true}),
+            serde_json::json!({"program_id": TOKEN_PROGRAM, "reason": "griefing"}),
+        ] {
+            let (status, json) =
+                post_json(&app, "/admin/quarantine", Some(VERIFY_TEST_KEY), body).await;
+            assert_eq!(status, axum::http::StatusCode::UNAUTHORIZED, "{json}");
+        }
+        let still: Vec<String> = core
+            .quarantined_programs()
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        assert_eq!(
+            still,
+            vec![SYSTEM.to_string()],
+            "nothing the verify key sent took effect"
+        );
+    }
+
+    const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+    /// Round 19 (F-19-13): without an operator key there is no operator
+    /// surface, the verify key included.
+    #[tokio::test]
+    async fn without_an_operator_key_the_admin_surface_is_disabled() {
+        let (mut state, _dir) = test_state();
+        state.api_key = Some(Arc::new(VERIFY_TEST_KEY.to_string()));
+        let app = build_app(state, vec![]);
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(VERIFY_TEST_KEY),
+            serde_json::json!({"program_id": SYSTEM, "reason": "x"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::FORBIDDEN, "{json}");
+        assert!(
+            json["error"]
+                .as_str()
+                .unwrap()
+                .contains("GRAPHITE_ADMIN_API_KEY"),
+            "{json}"
+        );
+    }
+
+    /// Round 19 (F-19-13): the operator key must be long and must not be the
+    /// verify key.
+    #[test]
+    fn the_operator_key_is_refused_when_short_or_equal_to_the_verify_key() {
+        let verify = "v".repeat(40);
+        assert!(operator_key_posture(None, Some(&verify)).unwrap().is_none());
+        assert!(operator_key_posture(Some("   "), Some(&verify))
+            .unwrap()
+            .is_none());
+        assert!(operator_key_posture(Some("short"), Some(&verify)).is_err());
+        let same = operator_key_posture(Some(&verify), Some(&verify)).unwrap_err();
+        assert!(same.contains("equals GRAPHITE_API_KEY"), "{same}");
+        let admin = "a".repeat(40);
+        let got = operator_key_posture(Some(&admin), Some(&verify)).unwrap();
+        assert_eq!(got.as_deref().map(String::as_str), Some(admin.as_str()));
+    }
+
+    /// Round 19 (F-19-15): the operator surface validates what it appends
+    /// forever, and a repeat quarantine appends nothing.
+    #[tokio::test]
+    async fn quarantine_input_is_validated_and_idempotent() {
+        let (state, _dir, admin) = keyed_state();
+        let core = state.core.clone();
+        let app = build_app(state, vec![]);
+        let (status, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&admin),
+            serde_json::json!({"program_id": "not-a-program", "reason": "x"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+        let (status, _) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&admin),
+            serde_json::json!({
+                "program_id": SYSTEM,
+                "reason": "r".repeat(MAX_QUARANTINE_REASON_CHARS + 1),
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+        for _ in 0..3 {
+            let (status, _) = post_json(
+                &app,
+                "/admin/quarantine",
+                Some(&admin),
+                serde_json::json!({"program_id": SYSTEM, "reason": "incident"}),
+            )
+            .await;
+            assert_eq!(status, axum::http::StatusCode::OK);
+        }
+        let quarantine_records = core
+            .behavior_history(SYSTEM)
+            .into_iter()
+            .filter(|b| b.quarantined)
+            .count();
+        assert_eq!(
+            quarantine_records, 1,
+            "three identical quarantines append one record"
+        );
+    }
+
+    /// Round 19 (F-19-14): an unauthenticated client trickling a body cannot
+    /// hold a verification permit. Served on a real loopback socket with ONE
+    /// permit: while an unauthenticated request sits with half its body sent,
+    /// the permit stays free, and the request is refused with 401.
+    #[tokio::test]
+    async fn an_unauthenticated_slow_body_does_not_hold_a_permit() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut state, _dir) = test_state();
+        state.api_key = Some(Arc::new(VERIFY_TEST_KEY.to_string()));
+        state.inflight = Arc::new(tokio::sync::Semaphore::new(1));
+        state.inflight_limit = 1;
+        let inflight = state.inflight.clone();
+        let app = build_app(state, vec![]);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            .unwrap();
+        });
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        stream
+            .write_all(
+                b"POST /verify HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{\"program_id\":",
+            )
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            inflight.available_permits(),
+            1,
+            "the unauthenticated, unfinished request holds no permit"
+        );
+        let mut buf = vec![0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(5), stream.read(&mut buf))
+            .await
+            .expect("the refusal arrives within the drain bound")
+            .unwrap();
+        let head = String::from_utf8_lossy(&buf[..n]);
+        assert!(head.starts_with("HTTP/1.1 401"), "{head}");
+    }
+
+    /// Round 19 (F-19-16): IPv6 clients share a bucket per /64; IPv4 per
+    /// address; IPv4-mapped IPv6 is IPv4.
+    #[test]
+    fn rate_limit_keys_ipv6_by_slash_64() {
+        let a: IpAddr = "2001:db8:1:2:aaaa::1".parse().unwrap();
+        let b: IpAddr = "2001:db8:1:2:ffff:ffff:ffff:ffff".parse().unwrap();
+        let c: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        assert_eq!(rate_limit_key(a), rate_limit_key(b));
+        assert_ne!(rate_limit_key(a), rate_limit_key(c));
+        let mapped: IpAddr = "::ffff:192.0.2.7".parse().unwrap();
+        assert_eq!(
+            rate_limit_key(mapped),
+            "192.0.2.7".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    /// Round 19 (F-19-16): a configured rate below 1 req/s still admits a
+    /// request per bucket; it used to refuse every one.
+    #[test]
+    fn a_sub_one_rate_still_admits_requests() {
+        let limiter = RateLimiter::new(0.5);
+        let ip: IpAddr = "192.0.2.1".parse().unwrap();
+        assert!(limiter.check(ip), "the first request is admitted");
+        assert!(!limiter.check(ip), "the second, immediately after, is not");
     }
 
     #[tokio::test]
@@ -4311,28 +4798,50 @@ mod tests {
         );
     }
 
-    /// NaN/infinite thresholds must not slip through the numeric comparison.
+    /// NaN, infinite and negative thresholds are not policies: refused as
+    /// malformed in every mode — default, permissive and pinned (Round 19,
+    /// F-19-27; until then they were clamped by default and passed through
+    /// under GRAPHITE_ALLOW_PERMISSIVE_PROFILES).
     #[test]
-    fn non_finite_custom_thresholds_are_clamped() {
-        for bad in [f64::NAN, f64::NEG_INFINITY, -1.0] {
-            let (effective, note) = enforce_wallet_profile(
-                WalletProfile::Custom {
-                    min_confidence: bad,
-                    min_trust_tier: TrustTier::Unknown,
-                },
-                None,
-                false,
-            )
-            .unwrap();
-            match effective {
-                WalletProfile::Custom { min_confidence, .. } => assert!(
-                    min_confidence >= WEAKEST_BUILTIN_MIN_CONFIDENCE,
-                    "non-finite/negative threshold {bad} must be clamped"
-                ),
-                other => panic!("expected Custom, got {other:?}"),
+    fn non_finite_or_negative_custom_thresholds_are_refused_in_every_mode() {
+        for bad in [f64::NAN, f64::NEG_INFINITY, f64::INFINITY, -1.0, -0.0001] {
+            for (pinned, permissive) in [
+                (None, false),
+                (None, true),
+                (Some(WalletProfile::Treasury), false),
+            ] {
+                let r = enforce_wallet_profile(
+                    WalletProfile::Custom {
+                        min_confidence: bad,
+                        min_trust_tier: TrustTier::Unknown,
+                    },
+                    pinned,
+                    permissive,
+                );
+                assert!(
+                    r.is_err(),
+                    "threshold {bad} (pinned={pinned:?}, permissive={permissive}) must be refused: {r:?}"
+                );
             }
-            assert!(note.is_some());
         }
+        // Exactly 0.0 is legal (the most permissive bar) and, by default,
+        // is raised to the weakest built-in with the override disclosed.
+        let (effective, note) = enforce_wallet_profile(
+            WalletProfile::Custom {
+                min_confidence: 0.0,
+                min_trust_tier: TrustTier::Unknown,
+            },
+            None,
+            false,
+        )
+        .unwrap();
+        match effective {
+            WalletProfile::Custom { min_confidence, .. } => {
+                assert!(min_confidence >= WEAKEST_BUILTIN_MIN_CONFIDENCE)
+            }
+            other => panic!("expected Custom, got {other:?}"),
+        }
+        assert!(note.is_some());
     }
 
     /// A legitimately strict Custom profile must pass through untouched — the

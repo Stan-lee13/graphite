@@ -305,7 +305,7 @@ jobs:
         run: go test ./...
 
   dashboard:
-    name: Dashboard — typecheck + production build
+    name: Dashboard — typecheck, tests + production build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -314,13 +314,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          # 22: the dashboard's unit tests (Round 19 — the plain-HTTP
+          # refusal and the router's malformed-escape handling) run under
+          # Node's built-in type stripping, which Node 20 does not have.
+          node-version: 22
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - name: Install
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Tests
+        run: npm test
       - name: Build
         run: npm run build
 

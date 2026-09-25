@@ -20,7 +20,14 @@ pub enum SolanaTypeError {
     InvalidLength(usize),
     #[error("PDA derivation exhausted all 256 nonces")]
     PdaExhausted,
+    #[error("PDA seeds outside the runtime's limits: {0}")]
+    SeedLimit(String),
 }
+
+/// The runtime's per-seed length limit (`solana_pubkey::MAX_SEED_LEN`).
+pub const MAX_SEED_LEN: usize = 32;
+/// The runtime's seed-count limit including the bump (`MAX_SEEDS`).
+pub const MAX_SEEDS: usize = 16;
 
 /// A Solana public key — 32 bytes, base58-encoded onchain.
 #[derive(
@@ -126,6 +133,24 @@ pub fn find_program_address(
     seeds: &[&[u8]],
     program_id: &Pubkey,
 ) -> Result<(Pubkey, u8), SolanaTypeError> {
+    // The runtime's limits (Round 19, F-19-09): at most MAX_SEEDS seeds
+    // including the bump, each at most MAX_SEED_LEN bytes. Past them
+    // `create_program_address` returns `MaxSeedLengthExceeded`, so no program
+    // can ever sign for such an address — and a manifest seed template that
+    // produced one would let Graphite "confirm" a PDA the protocol cannot
+    // have derived.
+    if seeds.len() >= MAX_SEEDS {
+        return Err(SolanaTypeError::SeedLimit(format!(
+            "{} seeds plus the bump exceed the runtime's {MAX_SEEDS}",
+            seeds.len()
+        )));
+    }
+    if let Some(long) = seeds.iter().find(|s| s.len() > MAX_SEED_LEN) {
+        return Err(SolanaTypeError::SeedLimit(format!(
+            "a {}-byte seed exceeds the runtime's {MAX_SEED_LEN}-byte limit",
+            long.len()
+        )));
+    }
     for nonce in (0u8..=255).rev() {
         let mut hasher = Sha256::new();
         for seed in seeds {

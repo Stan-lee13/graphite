@@ -187,23 +187,18 @@ fn describe(artifact: Vec<u8>, data: Option<Vec<u8>>) -> VerificationInput {
     }
 }
 
-/// The same transaction under a different recent blockhash: a DISTINCT
-/// transaction (different bytes, different digest) carrying the same
-/// instruction. Round 17: the same bytes re-verified are ONE observation, so
-/// a baseline is earned the way a deployment earns it — from distinct
-/// transactions — rather than by asking about one transaction three times.
-fn variant(raw: &[u8], i: u8) -> Vec<u8> {
-    let m = graphite_core::tx_artifact::parse_transaction(raw).expect("frame parses");
-    let bh = bs58::decode(&m.recent_blockhash).into_vec().unwrap();
-    let msg = graphite_core::tx_artifact::message_bytes(raw).expect("message");
-    let msg_start = raw.len() - msg.len();
-    let pos = msg
-        .windows(32)
-        .rposition(|w| w == bh.as_slice())
-        .expect("blockhash is in the message");
-    let mut out = raw.to_vec();
-    out[msg_start + pos] ^= i.wrapping_add(1);
-    out
+/// Earn the Gaming floor from distinct transfers of the program (other
+/// amounts), each honestly described. Round 19 (F-19-01): the same transfer
+/// under another blockhash is one simulation and earns once.
+async fn earn_baseline(core: &GraphiteCore) {
+    for i in 1..=3u64 {
+        let lamports = 2_000_000 + i;
+        let mut data = vec![2, 0, 0, 0];
+        data.extend_from_slice(&lamports.to_le_bytes());
+        let _ = core
+            .verify_async(&describe(transfer_of(lamports), Some(data)))
+            .await;
+    }
 }
 
 fn transfer_data() -> Vec<u8> {
@@ -241,14 +236,7 @@ async fn the_honest_request_with_data_is_approved_and_bound() {
     // The simulation-match signal grows with RPC-verified observations; a
     // fresh core sits just under the Gaming threshold on its first call, so
     // the baseline is earned first, exactly as a deployed core would.
-    for i in 0..3u8 {
-        let _ = core
-            .verify_async(&describe(
-                variant(&bytes(&honest["raw"]), i),
-                Some(transfer_data()),
-            ))
-            .await;
-    }
+    earn_baseline(&core).await;
     let r = core
         .verify_async(&describe(bytes(&honest["raw"]), Some(transfer_data())))
         .await
@@ -279,14 +267,7 @@ async fn an_artifact_without_identifying_data_fails_l2_instead_of_skipping_the_c
     let honest = corpus_entry("legacy_single_transfer");
     // Warm the baseline so that, were L2 to pass, the verdict WOULD be an
     // approval — the block below has to come from the hard gate.
-    for i in 0..3u8 {
-        let _ = core
-            .verify_async(&describe(
-                variant(&bytes(&honest["raw"]), i),
-                Some(transfer_data()),
-            ))
-            .await;
-    }
+    earn_baseline(&core).await;
     // No data: the instruction cannot be located. Four bytes (the
     // discriminator alone): a prefix is not the instruction, and nothing in
     // the message carries exactly those four bytes.
@@ -425,15 +406,7 @@ fn transfer_of(lamports: u64) -> Vec<u8> {
 #[tokio::test]
 async fn a_hundred_sol_artifact_under_a_small_transfer_description_is_refused() {
     let core = core_at(&cluster());
-    let honest = corpus_entry("legacy_single_transfer");
-    for i in 0..3u8 {
-        let _ = core
-            .verify_async(&describe(
-                variant(&bytes(&honest["raw"]), i),
-                Some(transfer_data()),
-            ))
-            .await;
-    }
+    earn_baseline(&core).await;
     let artifact = transfer_of(100_000_000_000);
     assert!(graphite_core::tx_artifact::parse_transaction(&artifact).is_ok());
     let r = core

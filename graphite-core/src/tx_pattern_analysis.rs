@@ -88,6 +88,12 @@ pub const COMPUTE_BUDGET_PROGRAM: &str = "ComputeBudget1111111111111111111111111
 // manifest convention `input.starts_with(needle)`).
 pub const DISC_TRANSFER: &str = "03";
 pub const DISC_TRANSFER_CHECKED: &str = "0c";
+/// Token-2022 `TransferFeeExtension::TransferCheckedWithFee`: extension
+/// instruction 26, sub-instruction 1. Accounts `[source, mint, destination,
+/// authority]` — the same layout as TransferChecked (Round 19, F-19-24).
+pub const DISC_TRANSFER_CHECKED_WITH_FEE: &str = "1a01";
+/// System `TransferWithSeed` (u32 11). Accounts `[from, base, to]`.
+pub const DISC_SYSTEM_TRANSFER_WITH_SEED: &str = "0b000000";
 pub const DISC_APPROVE: &str = "04";
 pub const DISC_APPROVE_CHECKED: &str = "0d";
 pub const DISC_SET_AUTHORITY: &str = "06";
@@ -109,15 +115,29 @@ fn is_token_program(program_id: &str) -> bool {
     program_id == TOKEN_PROGRAM || program_id == TOKEN_2022_PROGRAM
 }
 
-/// Transfer-family instruction (Transfer or TransferChecked) on a token
-/// program, or a System Program transfer.
+/// Transfer-family instruction on a token program (Transfer,
+/// TransferChecked, and Token-2022 TransferCheckedWithFee), or a System
+/// Program transfer (Transfer, TransferWithSeed).
+///
+/// Round 19 (F-19-24): the two "with" variants move value exactly like the
+/// plain ones and were invisible to the sweep rule, so four or more transfer-fee
+/// Token-2022 balances swept to one address did not add up to a sweep.
 fn is_transfer_instruction(ix: &TransactionInstruction) -> bool {
     if ix.program_id == SYSTEM_PROGRAM {
-        return disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_TRANSFER);
+        return disc_matches(&ix.instruction_discriminator, DISC_SYSTEM_TRANSFER)
+            || disc_matches(
+                &ix.instruction_discriminator,
+                DISC_SYSTEM_TRANSFER_WITH_SEED,
+            );
     }
     if is_token_program(&ix.program_id) {
         return disc_matches(&ix.instruction_discriminator, DISC_TRANSFER)
-            || disc_matches(&ix.instruction_discriminator, DISC_TRANSFER_CHECKED);
+            || disc_matches(&ix.instruction_discriminator, DISC_TRANSFER_CHECKED)
+            || (ix.program_id == TOKEN_2022_PROGRAM
+                && disc_matches(
+                    &ix.instruction_discriminator,
+                    DISC_TRANSFER_CHECKED_WITH_FEE,
+                ));
     }
     false
 }
@@ -168,7 +188,11 @@ fn transfer_destination(ix: &TransactionInstruction) -> Option<&str> {
     if !is_transfer_instruction(ix) {
         return None;
     }
-    let idx = if disc_matches(&ix.instruction_discriminator, DISC_TRANSFER_CHECKED) {
+    let d = &ix.instruction_discriminator;
+    let idx = if disc_matches(d, DISC_TRANSFER_CHECKED)
+        || disc_matches(d, DISC_TRANSFER_CHECKED_WITH_FEE)
+        || (ix.program_id == SYSTEM_PROGRAM && disc_matches(d, DISC_SYSTEM_TRANSFER_WITH_SEED))
+    {
         2
     } else {
         1
@@ -639,6 +663,62 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
     findings
 }
 
+/// `analyze_cpi_trace` over the tree the SIMULATOR executed (Round 19,
+/// F-19-22).
+///
+/// Every structural rule applies as it does to a declared trace — re-entry
+/// along one path, a sweep fan-out, a vanity-impersonated callee, excessive
+/// depth. One rule is weighed differently: an unregistered program deep in
+/// the tree. On a declared trace that is a block, because the caller chose to
+/// describe the route and named unverified code in it. On the observed tree
+/// of a MANIFESTED root it is a warning, because it is simply what an
+/// aggregator's route looks like on a real chain (an AMM Graphite has not
+/// onboarded) and the Risk Engine's Check 1b already weighs such a callee the
+/// same way. Under a root with no manifest it stays a block — Check 1 blocks
+/// any CPI from such a root, and this names where in the tree it happened.
+pub fn analyze_observed_cpi_trace(
+    trace: &CpiTraceNode,
+    known_programs: &[String],
+    root_manifested: bool,
+) -> Vec<PatternFinding> {
+    if !root_manifested {
+        return analyze_cpi_trace(trace, known_programs);
+    }
+    let mut unknown: Vec<(String, u32)> = Vec::new();
+    let mut stack: Vec<&CpiTraceNode> = trace.children.iter().collect();
+    while let Some(node) = stack.pop() {
+        if !known_programs.iter().any(|k| k == &node.program_id) {
+            unknown.push((node.program_id.clone(), node.depth));
+        }
+        stack.extend(node.children.iter());
+    }
+    unknown.sort();
+    unknown.dedup();
+    let mut known = known_programs.to_vec();
+    known.extend(unknown.iter().map(|(p, _)| p.clone()));
+    // Impersonation is judged against the REAL known set: widening `known`
+    // with the unknown callees must not make a vanity address "known".
+    let mut findings: Vec<PatternFinding> = analyze_cpi_trace(trace, &known)
+        .into_iter()
+        .filter(|f| !f.reason.contains("vanity-impersonates"))
+        .collect();
+    findings.extend(
+        analyze_cpi_trace(trace, known_programs)
+            .into_iter()
+            .filter(|f| f.reason.contains("vanity-impersonates")),
+    );
+    for (program, depth) in unknown {
+        findings.push(PatternFinding {
+            pattern: "CpiTraceAnomaly".to_string(),
+            severity: PatternSeverity::Warning,
+            reason: format!(
+                "the simulator executed program {program} at CPI depth {depth}, which is not in the manifest registry or the well-known system programs"
+            ),
+        });
+    }
+    findings
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -661,6 +741,25 @@ mod tests {
     const MINT3: &str = "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytf3jPxZ7P";
 
     // ── Multi-instruction rules ─────────────────────────────────────────────
+
+    /// Round 19 (F-19-24): transfer-fee Token-2022 transfers and System
+    /// TransferWithSeed count toward a sweep, with their destinations read
+    /// from index 2.
+    #[test]
+    fn with_fee_and_with_seed_transfers_are_transfers() {
+        let with_fee = ix(TOKEN_2022_PROGRAM, "1a01", &[SOURCE, MINT, DEST, SOURCE]);
+        assert!(is_transfer_instruction(&with_fee));
+        assert_eq!(transfer_destination(&with_fee), Some(DEST));
+        let with_seed = ix(SYSTEM_PROGRAM, "0b000000", &[SOURCE, MINT, DEST2]);
+        assert!(is_transfer_instruction(&with_seed));
+        assert_eq!(transfer_destination(&with_seed), Some(DEST2));
+        // 1a01 on the legacy token program is not this instruction.
+        assert!(!is_transfer_instruction(&ix(
+            TOKEN_PROGRAM,
+            "1a01",
+            &[SOURCE, MINT, DEST]
+        )));
+    }
 
     #[test]
     fn single_instruction_is_risk_engine_domain() {
@@ -918,6 +1017,44 @@ mod tests {
     }
 
     // ── CPI trace rules ─────────────────────────────────────────────────────
+
+    /// Round 19 (F-19-22): on the OBSERVED tree of a manifested root an
+    /// unregistered callee is a warning; under an unmanifested root it
+    /// blocks; a vanity-impersonated callee blocks either way.
+    #[test]
+    fn observed_trace_weighs_unknown_callees_by_the_root() {
+        const ROOT: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+        const AMM: &str = "AmmUnknown1111111111111111111111111111111111";
+        let known = vec![ROOT.to_string(), TOKEN_PROGRAM.to_string()];
+        let tree = node(
+            ROOT,
+            0,
+            vec![node(AMM, 1, vec![node(TOKEN_PROGRAM, 2, vec![])])],
+        );
+        let manifested = analyze_observed_cpi_trace(&tree, &known, true);
+        assert!(
+            manifested
+                .iter()
+                .all(|f| f.severity == PatternSeverity::Warning),
+            "{manifested:?}"
+        );
+        assert!(manifested.iter().any(|f| f.reason.contains(AMM)));
+        let unmanifested = analyze_observed_cpi_trace(&tree, &known, false);
+        assert!(unmanifested
+            .iter()
+            .any(|f| f.severity == PatternSeverity::Blocked));
+        // TokenkegQ...-prefixed impostor under a manifested root.
+        let impostor = "TokenkegQzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+        let spoof = node(ROOT, 0, vec![node(impostor, 1, vec![])]);
+        let findings = analyze_observed_cpi_trace(&spoof, &known, true);
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.severity == PatternSeverity::Blocked
+                    && f.reason.contains("vanity-impersonates")),
+            "{findings:?}"
+        );
+    }
 
     fn node(program: &str, depth: u32, children: Vec<CpiTraceNode>) -> CpiTraceNode {
         CpiTraceNode {

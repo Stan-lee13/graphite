@@ -475,6 +475,82 @@ fn observed_cpi_callees(
     Some(out)
 }
 
+/// The CPI tree of top-level instruction `primary`, rebuilt from the
+/// simulator's inner instructions (Round 19, F-19-22).
+///
+/// Indexes resolve through the transaction's full account list (static keys,
+/// then the loaded writable, then the loaded read-only addresses) exactly as
+/// `observed_cpi_callees` resolves them. Nesting comes from `stackHeight`
+/// (2 = called by the top-level instruction, 3 = by that callee, ...); a
+/// report without it is read as a flat list of direct callees, and a height
+/// that jumps more than one level is clamped to the next level, so no
+/// executed call is ever dropped from the tree. `None` when any index cannot
+/// be resolved — an unknown tree is not an empty one.
+#[cfg(feature = "rpc")]
+fn observed_cpi_tree_of(
+    message: &crate::tx_artifact::ArtifactMessage,
+    loaded: Option<&crate::rpc_client::LoadedAddresses>,
+    inner: &[crate::rpc_client::ObservedInnerInstruction],
+    primary: usize,
+) -> Option<crate::tx_pattern_analysis::CpiTraceNode> {
+    use crate::tx_pattern_analysis::CpiTraceNode;
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = loaded {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    let resolve = |idx: &[u8]| -> Option<Vec<String>> {
+        idx.iter()
+            .map(|i| keys.get(usize::from(*i)).map(|k| k.to_string()))
+            .collect()
+    };
+    let top = message.instructions.get(primary)?;
+    let mut flat: Vec<CpiTraceNode> = Vec::new();
+    let mut previous_depth = 0u32;
+    for ix in inner
+        .iter()
+        .filter(|ix| usize::from(ix.top_level_index) == primary)
+    {
+        let reported = ix
+            .stack_height
+            .map(|h| h.saturating_sub(1))
+            .unwrap_or(1)
+            .max(1);
+        let depth = reported.min(previous_depth + 1);
+        previous_depth = depth;
+        flat.push(CpiTraceNode {
+            program_id: keys.get(usize::from(ix.program_id_index))?.to_string(),
+            instruction_discriminator: hex::encode(&ix.data[..ix.data.len().min(8)]),
+            depth,
+            account_addresses: resolve(&ix.accounts)?,
+            children: Vec::new(),
+        });
+    }
+    fn nest(
+        items: &mut std::iter::Peekable<std::vec::IntoIter<CpiTraceNode>>,
+        depth: u32,
+    ) -> Vec<CpiTraceNode> {
+        let mut out = Vec::new();
+        while let Some(next) = items.peek() {
+            if next.depth < depth {
+                break;
+            }
+            let mut node = items.next().expect("peeked");
+            node.children = nest(items, depth + 1);
+            out.push(node);
+        }
+        out
+    }
+    let mut items = flat.into_iter().peekable();
+    Some(CpiTraceNode {
+        program_id: top.program_id.clone(),
+        instruction_discriminator: hex::encode(&top.data[..top.data.len().min(8)]),
+        depth: 0,
+        account_addresses: top.accounts.iter().flatten().cloned().collect(),
+        children: nest(&mut items, 1),
+    })
+}
+
 /// Whether a caller's declared discriminator contradicts the instruction data
 /// the same caller supplied for it, and if so, how.
 ///
@@ -492,9 +568,16 @@ fn observed_cpi_callees(
 /// names — declare `0600000000000000` over a one-byte SetAuthority — read
 /// from the other side: bytes that cannot begin with the thing they are
 /// declared to begin with.
+///
+/// EMPTY data is the shortest data there is, and it is a contradiction too
+/// (Round 19, F-19-07). It used to return `None` here, and the manifest lookup
+/// fell back to the label for empty bytes, so an artifact carrying a
+/// zero-length instruction could be verified as whichever instruction the
+/// label named — its pinned accounts, its PDA seeds, its risk class — while
+/// the bytes about to be signed carried no instruction data at all.
 fn declared_discriminator_contradicts_data(declared: &str, data: Option<&[u8]>) -> Option<String> {
     let data = data?;
-    if data.is_empty() || declared.is_empty() {
+    if declared.is_empty() {
         return None;
     }
     let disc_bytes = hex::decode(declared.trim_start_matches("0x")).ok()?;
@@ -525,16 +608,24 @@ fn declared_discriminator_contradicts_data(declared: &str, data: Option<&[u8]>) 
 /// account list position by position — the same three things that identify the
 /// primary instruction, applied to a sibling.
 ///
-/// An empty discriminator matches nothing. It is the shape of a declaration
-/// that names a program and says nothing about what is being called, and
-/// treating it as a match would let "describe your siblings" be satisfied by
-/// declaring the program alone.
+/// An empty discriminator describes only an instruction whose data IS empty.
+/// Against any other instruction it is the shape of a declaration that names a
+/// program and says nothing about what is being called, and treating it as a
+/// match would let "describe your siblings" be satisfied by declaring the
+/// program alone. Against an instruction that carries no data it is exact —
+/// program, (no) data and every account position — and refusing it made the
+/// legacy associated-token-account `create` impossible to declare, which
+/// refused real mainnet trades that open a token account first (Round 19,
+/// F-19-28).
 fn declaration_describes(
     declared: &crate::tx_pattern_analysis::TransactionInstruction,
     actual: &crate::tx_artifact::ArtifactInstruction,
     actual_accounts: &[Option<String>],
 ) -> bool {
-    if declared.instruction_discriminator.is_empty() || declared.program_id != actual.program_id {
+    if declared.program_id != actual.program_id {
+        return false;
+    }
+    if declared.instruction_discriminator.is_empty() && !actual.data.is_empty() {
         return false;
     }
     if !hex::encode(&actual.data).starts_with(&declared.instruction_discriminator.to_lowercase()) {
@@ -1662,6 +1753,54 @@ const SEMANTIC_GRAPH_FILENAME: &str = "semantic_graph.json";
 /// rename so the committed snapshot is complete on the device, not only in
 /// the page cache; and the rename is atomic, so readers only ever see
 /// complete documents.
+/// The name of the lock file one process holds on its data directory.
+pub const DATA_DIR_LOCK: &str = "graphite.lock";
+
+/// Take a data directory for this process, exclusively.
+///
+/// Two writers on one data directory do not share a trail: each holds its own
+/// in-memory index of the active audit file and both rewrite the
+/// semantic-graph snapshot over each other (Round 12, servers; Round 19, the
+/// CLI). An advisory exclusive lock on `graphite.lock`, released by the OS on
+/// any exit, makes the second writer refuse instead.
+pub fn lock_data_dir(dir: &std::path::Path) -> Result<std::fs::File, String> {
+    let path = dir.join(DATA_DIR_LOCK);
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|e| format!("opening {}: {e}", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(std::fs::TryLockError::WouldBlock) => Err(format!(
+            "data directory {} is held by another Graphite process ({DATA_DIR_LOCK} is locked). Two writers on one data directory keep two disjoint views of the audit trail and overwrite each other's semantic-graph snapshot. Stop the other process, give each its own GRAPHITE_DATA_DIR, or — for a quarantine on a running server — use POST /admin/quarantine.",
+            dir.display()
+        )),
+        Err(std::fs::TryLockError::Error(e)) => Err(format!(
+            "data directory {} could not be locked ({DATA_DIR_LOCK}): {e}",
+            dir.display()
+        )),
+    }
+}
+
+/// Load `semantic_graph.json` from `dir`: `None` when there is none yet, an
+/// error when there is one that cannot be read or parsed (Round 19, F-19-12).
+fn load_snapshot_strict(dir: &std::path::Path) -> Result<Option<SemanticGraphStore>, String> {
+    let path = dir.join(SEMANTIC_GRAPH_FILENAME);
+    let json = match std::fs::read_to_string(&path) {
+        Ok(json) => json,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("reading {}: {e}", path.display())),
+    };
+    SemanticGraphStore::from_json(&json).map(Some).map_err(|e| {
+        format!(
+            "the semantic graph snapshot at {} is corrupt ({e}). It holds every quarantine and every earned baseline, and starting fresh would lift the quarantines without a word; Graphite refuses to. Restore it from a backup, or move it aside to start fresh deliberately.",
+            path.display()
+        )
+    })
+}
+
 fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String> {
     use std::io::Write as _;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1688,14 +1827,49 @@ fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String>
 }
 
 /// Shared counters for the semantic-graph snapshot, surfaced by /health.
+///
+/// Also the snapshot SEQUENCER (Round 19, F-19-12). A snapshot is serialized
+/// under the graph lock and written on a blocking thread, and two of them in
+/// flight could commit in either order: a verification's snapshot serialized
+/// just before an operator's quarantine could land just after it, and the
+/// file on disk would no longer contain the quarantine — the next restart
+/// would silently lift it. Every snapshot now takes a generation number while
+/// the graph lock is held, so generations follow the order of the states they
+/// capture, and a write commits only if nothing newer has been committed.
 #[derive(Debug, Default)]
 struct PersistenceCounters {
     snapshots_ok: std::sync::atomic::AtomicU64,
     snapshots_failed: std::sync::atomic::AtomicU64,
     last_error: Mutex<Option<String>>,
+    /// The generation the next snapshot will carry.
+    next_generation: std::sync::atomic::AtomicU64,
+    /// The newest generation on disk. Held for the whole write, so writes are
+    /// serialized and an older one that loses the race is skipped, not
+    /// committed over a newer one.
+    committed_generation: Mutex<u64>,
 }
 
 impl PersistenceCounters {
+    /// Commit `json` (the state at `generation`) unless a newer state is
+    /// already on disk. Returns the outcome it recorded.
+    fn commit(&self, path: &std::path::Path, json: &str, generation: u64) -> Result<(), String> {
+        let mut committed = self
+            .committed_generation
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if *committed >= generation {
+            // A newer state is already durable. Writing this one would roll
+            // the file back; not writing it loses nothing.
+            return Ok(());
+        }
+        let outcome = persist_json_atomic(path, json);
+        if outcome.is_ok() {
+            *committed = generation;
+        }
+        self.record(outcome.clone());
+        outcome
+    }
+
     fn record(&self, outcome: Result<(), String>) {
         use std::sync::atomic::Ordering;
         match outcome {
@@ -1784,6 +1958,9 @@ pub struct GraphiteCore {
     data_dir: Option<PathBuf>,
     /// Snapshot outcomes, shared across clones so /health sees every write.
     persistence: Arc<PersistenceCounters>,
+    /// The exclusive lock on `data_dir`, held for as long as any clone of
+    /// this core lives (Round 19, F-19-12). Set by `open_data_dir`.
+    data_dir_lock: Option<Arc<std::fs::File>>,
     /// P8 plugin orchestrator (sole caller of every plugin).
     plugins: crate::plugin_orchestrator::PluginOrchestrator,
     /// Total wall-clock one verification may spend on RPC. See `RpcBudget`.
@@ -1914,6 +2091,7 @@ impl GraphiteCore {
             inclusion_witness: None,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
+            data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
@@ -1934,6 +2112,7 @@ impl GraphiteCore {
             inclusion_witness: None,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
+            data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
@@ -1951,6 +2130,7 @@ impl GraphiteCore {
             inclusion_witness: None,
             data_dir: None,
             persistence: Arc::new(PersistenceCounters::default()),
+            data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
@@ -1967,17 +2147,8 @@ impl GraphiteCore {
         if let Err(e) = std::fs::create_dir_all(&data_dir) {
             tracing::warn!("failed to create data dir {}: {}", data_dir.display(), e);
         }
-        // Clean up stale temp files left by a crash mid-snapshot (they are
-        // uniquely named per write; only the atomic rename commits).
-        if let Ok(entries) = std::fs::read_dir(&data_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                if name.starts_with("semantic_graph.json.tmp.") {
-                    let _ = std::fs::remove_file(entry.path());
-                }
-            }
-        }
+        // Stale temp files are cleared only by `open_data_dir`, which holds
+        // the directory's lock; without it they may be a live writer's.
         let path = data_dir.join("semantic_graph.json");
         match std::fs::read_to_string(&path) {
             Ok(json) => match SemanticGraphStore::from_json(&json) {
@@ -1994,6 +2165,63 @@ impl GraphiteCore {
             Err(_) => { /* no snapshot yet — fresh store */ }
         }
         core
+    }
+
+    /// Open a data directory for WRITING: take its exclusive lock, clear the
+    /// temp files a crashed snapshot left behind, and load the snapshot —
+    /// refusing a corrupt one (Round 19, F-19-12).
+    ///
+    /// This is how the server and every CLI command that changes state open
+    /// the store. Until Round 19 the CLI used `with_data_dir`, which took no
+    /// lock: `graphite quarantine add` wrote the snapshot beside a running
+    /// server, the server's next snapshot overwrote it, and the quarantine the
+    /// CLI had just reported was gone — while its own message told the
+    /// operator to restart the server, which completed the loss. And
+    /// `with_data_dir` deleted every `semantic_graph.json.tmp.*` it found,
+    /// including a running server's in-flight write.
+    ///
+    /// A corrupt snapshot is an error, not a fresh start. The snapshot holds
+    /// every quarantine and every earned baseline; starting fresh would lift
+    /// the quarantines silently and the next snapshot would overwrite the
+    /// evidence. The operator can move the file aside to start fresh on
+    /// purpose.
+    pub fn open_data_dir(data_dir: PathBuf) -> Result<Self, String> {
+        std::fs::create_dir_all(&data_dir)
+            .map_err(|e| format!("creating data directory {}: {e}", data_dir.display()))?;
+        let lock = lock_data_dir(&data_dir)?;
+        if let Ok(entries) = std::fs::read_dir(&data_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if name
+                    .to_string_lossy()
+                    .starts_with("semantic_graph.json.tmp.")
+                {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
+        let mut core = Self::new();
+        if let Some(store) = load_snapshot_strict(&data_dir)? {
+            core.semantic_graph = Arc::new(Mutex::new(store));
+        }
+        core.data_dir = Some(data_dir);
+        core.data_dir_lock = Some(Arc::new(lock));
+        Ok(core)
+    }
+
+    /// Open a data directory to READ it: no lock, no cleanup, and no data
+    /// directory attached, so nothing this core does is ever written back.
+    /// For CLI commands that only inspect (`quarantine list`, `evidence show`,
+    /// `protocol status`, `verify`, `explain`) and so may run beside a server.
+    /// A corrupt snapshot is an error here too: an inspection that reports an
+    /// empty store would say "nothing is quarantined" about a store that
+    /// could not be read.
+    pub fn open_data_dir_read_only(data_dir: &std::path::Path) -> Result<Self, String> {
+        let mut core = Self::new();
+        if let Some(store) = load_snapshot_strict(data_dir)? {
+            core.semantic_graph = Arc::new(Mutex::new(store));
+        }
+        Ok(core)
     }
 
     /// Interior-mutable handle to the semantic graph, shared across clones.
@@ -2103,16 +2331,36 @@ impl GraphiteCore {
     /// files — the final rename is atomic, so the committed snapshot is always
     /// one complete JSON document. The static `.tmp` path this replaces meant
     /// two racing writers could interleave on the same temp file.
-    fn persist_state(&self) {
-        let Some(dir) = self.data_dir.as_ref() else {
-            return;
+    /// The current state, serialized, with its generation — taken under the
+    /// graph lock so generations follow state order (see
+    /// `PersistenceCounters`). `None` without a data directory.
+    fn snapshot_for_persist(&self) -> Option<Result<(PathBuf, String, u64), String>> {
+        let dir = self.data_dir.as_ref()?;
+        let graph = self.graph();
+        let json = match graph.to_json() {
+            Ok(json) => json,
+            Err(e) => return Some(Err(format!("serialize semantic graph: {e}"))),
         };
-        let Ok(json) = self.graph().to_json() else {
-            tracing::warn!("failed to serialize semantic graph");
-            return;
-        };
-        let path = dir.join(SEMANTIC_GRAPH_FILENAME);
-        self.persistence.record(persist_json_atomic(&path, &json));
+        let generation = self
+            .persistence
+            .next_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        drop(graph);
+        Some(Ok((dir.join(SEMANTIC_GRAPH_FILENAME), json, generation)))
+    }
+
+    /// Snapshot now, synchronously. `Ok` also when there is no data directory
+    /// (nothing to persist to); `Err` names why the state is not durable.
+    fn persist_state(&self) -> Result<(), String> {
+        match self.snapshot_for_persist() {
+            None => Ok(()),
+            Some(Err(e)) => {
+                self.persistence.record(Err(e.clone()));
+                Err(e)
+            }
+            Some(Ok((path, json, generation))) => self.persistence.commit(&path, &json, generation),
+        }
     }
 
     /// Whether snapshots are landing on disk. See [`PersistenceHealth`].
@@ -2138,20 +2386,21 @@ impl GraphiteCore {
     /// under the runtime worker — a starvation vector when under load).
     #[cfg(feature = "rpc")]
     async fn persist_state_async(&self) {
-        let Some(dir) = self.data_dir.clone() else {
-            return;
+        let (path, json, generation) = match self.snapshot_for_persist() {
+            None => return,
+            Some(Err(e)) => {
+                self.persistence.record(Err(e));
+                return;
+            }
+            Some(Ok(snapshot)) => snapshot,
         };
-        let Ok(json) = self.graph().to_json() else {
-            tracing::warn!("failed to serialize semantic graph");
-            return;
-        };
-        let path = dir.join(SEMANTIC_GRAPH_FILENAME);
-        let outcome =
-            match tokio::task::spawn_blocking(move || persist_json_atomic(&path, &json)).await {
-                Ok(outcome) => outcome,
-                Err(join) => Err(format!("snapshot task did not complete: {join}")),
-            };
-        self.persistence.record(outcome);
+        let counters = Arc::clone(&self.persistence);
+        if let Err(join) =
+            tokio::task::spawn_blocking(move || counters.commit(&path, &json, generation)).await
+        {
+            self.persistence
+                .record(Err(format!("snapshot task did not complete: {join}")));
+        }
     }
 
     /// Attach an RPC client for Phase 2 features (simulation, on-chain checks).
@@ -2419,48 +2668,78 @@ impl GraphiteCore {
         // caller cited an exact `audit_trail_id`, that record is fetched too —
         // not to attribute the execution to it, but to say that the caller's
         // verdict is about other bytes (`RecordedForDifferentBytes`).
-        let mut cited_for_other_bytes: Option<AuditRecord> = None;
-        let mut recorded_verdicts: Option<RecordedVerdicts> = None;
-        let (recorded, attribution) = match audit {
-            None => (None, ExecutionAttribution::None),
-            Some(_) if chain_bytes_rejected.is_some() => (None, ExecutionAttribution::None),
+        //
+        // Round 19 (F-19-18): these lookups read the audit trail — the active
+        // file and, for a key it does not hold, every archive — so they run on
+        // the blocking pool. On the async runtime they pinned a worker for as
+        // long as the scan took, and one caller sending unknown signatures
+        // could stall every other request on a two-worker deployment.
+        let lookup = match audit {
+            None => None,
+            Some(_) if chain_bytes_rejected.is_some() => None,
             Some(log) => {
-                if let Some(digest) = &chain_transaction_sha256 {
-                    let found = log.find_verification(VerificationKey::TransactionSha256(digest));
-                    let (approved, refused) =
-                        log.count_verifications(VerificationKey::TransactionSha256(digest));
-                    if approved + refused > 0 {
-                        recorded_verdicts = Some(RecordedVerdicts { approved, refused });
-                    }
-                    if found.is_none() {
-                        if let Some(id) = keys.audit_trail_id {
-                            cited_for_other_bytes = log
-                                .find_verification(VerificationKey::AuditTrailId(id))
-                                .filter(|r| r.transaction_sha256.as_deref() != Some(digest));
+                let log = log.clone();
+                let digest = chain_transaction_sha256.clone();
+                let audit_trail_id = keys.audit_trail_id.map(str::to_owned);
+                let transaction_sha256 = keys.transaction_sha256.map(str::to_owned);
+                let content_hash = keys.content_hash.map(str::to_owned);
+                let scan = tokio::task::spawn_blocking(move || {
+                    let mut cited_for_other_bytes: Option<AuditRecord> = None;
+                    let mut recorded_verdicts: Option<RecordedVerdicts> = None;
+                    let (found, attribution) = if let Some(digest) = &digest {
+                        let found =
+                            log.find_verification(VerificationKey::TransactionSha256(digest));
+                        let (approved, refused) =
+                            log.count_verifications(VerificationKey::TransactionSha256(digest));
+                        if approved + refused > 0 {
+                            recorded_verdicts = Some(RecordedVerdicts { approved, refused });
                         }
-                    }
-                    (found, ExecutionAttribution::Chain)
-                } else if let Some(id) = keys.audit_trail_id {
-                    (
-                        log.find_verification(VerificationKey::AuditTrailId(id)),
-                        ExecutionAttribution::AuditTrailId,
-                    )
-                } else if let Some(tx) = keys.transaction_sha256 {
-                    (
-                        log.find_verification(VerificationKey::TransactionSha256(tx)),
-                        ExecutionAttribution::TransactionSha256,
-                    )
-                } else if let Some(hash) = keys.content_hash {
-                    // The LAST verification for this content hash: the most
-                    // recent decision about SOME transaction carrying this
-                    // instruction. Whole trail, every archive.
-                    (
-                        log.find_verification(VerificationKey::ContentHash(hash)),
-                        ExecutionAttribution::ContentHash,
-                    )
-                } else {
-                    (None, ExecutionAttribution::None)
-                }
+                        if found.is_none() {
+                            if let Some(id) = &audit_trail_id {
+                                cited_for_other_bytes = log
+                                    .find_verification(VerificationKey::AuditTrailId(id))
+                                    .filter(|r| r.transaction_sha256.as_deref() != Some(digest));
+                            }
+                        }
+                        (found, ExecutionAttribution::Chain)
+                    } else if let Some(id) = &audit_trail_id {
+                        (
+                            log.find_verification(VerificationKey::AuditTrailId(id)),
+                            ExecutionAttribution::AuditTrailId,
+                        )
+                    } else if let Some(tx) = &transaction_sha256 {
+                        (
+                            log.find_verification(VerificationKey::TransactionSha256(tx)),
+                            ExecutionAttribution::TransactionSha256,
+                        )
+                    } else if let Some(hash) = &content_hash {
+                        // The LAST verification for this content hash: the
+                        // most recent decision about SOME transaction
+                        // carrying this instruction. Whole trail, every
+                        // archive.
+                        (
+                            log.find_verification(VerificationKey::ContentHash(hash)),
+                            ExecutionAttribution::ContentHash,
+                        )
+                    } else {
+                        (None, ExecutionAttribution::None)
+                    };
+                    (found, attribution, recorded_verdicts, cited_for_other_bytes)
+                });
+                Some(scan.await)
+            }
+        };
+        // A scan that did not complete is an internal failure, and L8 does not
+        // answer "nothing on record" for a trail it could not read.
+        let (recorded, attribution, recorded_verdicts, cited_for_other_bytes) = match lookup {
+            None => (None, ExecutionAttribution::None, None, None),
+            Some(Ok(found)) => found,
+            // Only a panic inside the scan gets here. It is re-raised, so the
+            // server answers 500 (CatchPanicLayer) rather than a verdict built
+            // on a trail it did not read.
+            Some(Err(join)) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+            Some(Err(join)) => {
+                panic!("the audit trail lookup for {signature} did not complete: {join}")
             }
         };
 
@@ -2754,7 +3033,7 @@ impl GraphiteCore {
     /// is enabled).
     pub fn seed_behavior(&mut self, behavior: Behavior) -> Result<(), VerificationError> {
         self.graph().append(behavior)?;
-        self.persist_state();
+        let _ = self.persist_state();
         Ok(())
     }
 
@@ -2781,6 +3060,22 @@ impl GraphiteCore {
         program_id: &str,
         reason: &str,
     ) -> Result<(), VerificationError> {
+        self.quarantine_program_durably(program_id, reason)
+            .map(|_| ())
+    }
+
+    /// `quarantine_program`, reporting whether the quarantine reached disk.
+    ///
+    /// The quarantine is in force either way — the in-memory graph is what
+    /// verification reads — but one that is not on disk ends at the next
+    /// restart, and the operator has to be told which of the two they have.
+    /// `/admin/quarantine` answered `"persisted": true` unconditionally until
+    /// Round 19 (F-19-12).
+    pub fn quarantine_program_durably(
+        &self,
+        program_id: &str,
+        reason: &str,
+    ) -> Result<Result<(), String>, VerificationError> {
         if reason.trim().is_empty() {
             return Err(VerificationError::InvalidInput(
                 "quarantine requires a non-empty reason — an unexplained withdrawal of trust is \
@@ -2791,8 +3086,7 @@ impl GraphiteCore {
         self.graph()
             .quarantine(program_id, reason.trim().to_string())
             .map_err(VerificationError::SemanticGraph)?;
-        self.persist_state();
-        Ok(())
+        Ok(self.persist_state())
     }
 
     /// Trusted operator API: lift an active quarantine, restoring the tier the
@@ -2800,11 +3094,18 @@ impl GraphiteCore {
     ///
     /// Errors when the program has no record or is not currently quarantined.
     pub fn lift_program_quarantine(&self, program_id: &str) -> Result<(), VerificationError> {
+        self.lift_program_quarantine_durably(program_id).map(|_| ())
+    }
+
+    /// `lift_program_quarantine`, reporting whether the lift reached disk.
+    pub fn lift_program_quarantine_durably(
+        &self,
+        program_id: &str,
+    ) -> Result<Result<(), String>, VerificationError> {
         self.graph()
             .lift_quarantine(program_id)
             .map_err(VerificationError::SemanticGraph)?;
-        self.persist_state();
-        Ok(())
+        Ok(self.persist_state())
     }
 
     /// The program's latest EARNED behaviour record, if it has one.
@@ -2818,6 +3119,16 @@ impl GraphiteCore {
     /// which is a different fact from "tier Unknown".
     pub fn program_behavior(&self, program_id: &str) -> Option<Behavior> {
         self.graph().get(program_id).cloned()
+    }
+
+    /// Every behaviour record ever appended for `program_id`, oldest first
+    /// (P4: the history is the record — quarantines and lifts included).
+    pub fn behavior_history(&self, program_id: &str) -> Vec<Behavior> {
+        self.graph()
+            .get_all_versions(program_id)
+            .into_iter()
+            .cloned()
+            .collect()
     }
 
     /// Every currently quarantined program with its reason, in program-id
@@ -2854,7 +3165,7 @@ impl GraphiteCore {
         self.graph()
             .seed_simulation_baseline(program_id, baseline)
             .map_err(VerificationError::SemanticGraph)?;
-        self.persist_state();
+        let _ = self.persist_state();
         Ok(())
     }
 
@@ -2896,7 +3207,7 @@ impl GraphiteCore {
             .graph()
             .promote_shadow_baseline(program_id)
             .map_err(VerificationError::SemanticGraph)?;
-        self.persist_state();
+        let _ = self.persist_state();
         Ok(promoted)
     }
 
@@ -3399,7 +3710,9 @@ impl GraphiteCore {
                             .into_iter()
                             .collect();
                         InstructionRiskContext {
-                            expected_state_changes: vec!["Protocol-level state changes".to_string()],
+                            expected_state_changes: vec![
+                                crate::state_diff::UNDESCRIBED_INSTRUCTION_EFFECTS.to_string(),
+                            ],
                             allowed_cpis: union_cpis,
                             expected_account_count: None,
                             variable_accounts: false,
@@ -3752,11 +4065,21 @@ impl GraphiteCore {
         // declaration is otherwise risk-assessed and matched against every
         // artifact instruction.
         if let Some(artifact) = &input.signed_transaction {
-            if artifact.len() > crate::tx_artifact::MAX_TRANSACTION_BYTES {
+            // The bound for THIS frame's format (Round 19): a v1 frame may be
+            // up to 4,096 bytes, every other frame is bounded by the packet.
+            // Most real v1 transactions are larger than a packet, so the
+            // packet bound here would refuse the format wholesale.
+            let bound = crate::tx_artifact::max_frame_bytes(artifact);
+            if artifact.len() > bound {
                 return Err(VerificationError::InvalidInput(format!(
-                    "signed_transaction is {} bytes; a Solana transaction is at most {} bytes (PACKET_DATA_SIZE) and the network refuses anything larger",
+                    "signed_transaction is {} bytes; a Solana transaction of this format is at most {} bytes ({}) and the network refuses anything larger",
                     artifact.len(),
-                    crate::tx_artifact::MAX_TRANSACTION_BYTES
+                    bound,
+                    if crate::tx_artifact::is_v1_frame(artifact) {
+                        "the v1 frame bound"
+                    } else {
+                        "PACKET_DATA_SIZE"
+                    }
                 )));
             }
             // Round 17 (F-16-01): Graphite verifies BEFORE signing, and the
@@ -4016,9 +4339,14 @@ impl GraphiteCore {
         // That is a reason to judge its RISK conservatively; it is not a reason
         // to stop checking whether its accounts are the accounts the protocol
         // requires.
+        // Supplied data is the key even when it is empty (Round 19, F-19-07):
+        // an empty key matches no manifest instruction, so zero bytes are
+        // judged as the undescribed instruction they are, never as the one the
+        // label names. Only a request with no data at all falls back to the
+        // label, and that request is descriptive.
         let effective_discriminator = match input.instruction_data.as_deref() {
-            Some(data) if !data.is_empty() => hex::encode(&data[..data.len().min(8)]),
-            _ => input.instruction_discriminator.clone(),
+            Some(data) => hex::encode(&data[..data.len().min(8)]),
+            None => input.instruction_discriminator.clone(),
         };
 
         // Step 1: Account Resolution
@@ -4055,6 +4383,18 @@ impl GraphiteCore {
                 // The confidence will be lower because InstructionMatch signal won't fire,
                 // but the protocol is still trusted (ManifestMatch fires).
                 // This replaces the previous P12-violating hard-block.
+                //
+                // Round 19 (F-19-04): the privileges are the transaction's
+                // own, not a guess. This built account 0 as the only writable
+                // account, and L4's diff observes only writable accounts — so
+                // an instruction the manifest does not describe had every
+                // account after the first left out of the state diff, and a
+                // change there (a token balance, an authority, an owner) was
+                // never compared while L4 reported a complete diff. With a
+                // full set of metas (the artifact's, else the caller's) each
+                // account carries its real flags; without them every account
+                // is observed.
+                let grounded = effective_metas.len() == input.account_addresses.len();
                 crate::account_resolution::AccountResolutionResult {
                     manifest_found: true,
                     resolution_order: (0..input.account_addresses.len()).collect(),
@@ -4072,8 +4412,12 @@ impl GraphiteCore {
                                 "readonly".to_string()
                             },
                             is_pda: false,
-                            is_signer: i == 0,
-                            is_writable: i == 0,
+                            is_signer: if grounded {
+                                effective_metas[i].is_signer
+                            } else {
+                                i == 0
+                            },
+                            is_writable: !grounded || effective_metas[i].is_writable,
                             pda_seeds: vec![],
                             identity: crate::account_resolution::AccountIdentity::Unverified,
                             expected_address_mismatch: false,
@@ -4133,6 +4477,10 @@ impl GraphiteCore {
         // `scope` reports it, so a consumer knows whether "artifact_bound"
         // rests on a located instruction or on a failed L2.
         let mut artifact_instruction_located = false;
+        // Which instruction of the message it is, once located (Round 19:
+        // the observed CPI tree is rooted there).
+        #[cfg(feature = "rpc")]
+        let mut located_index: Option<usize> = None;
         // The declared siblings, re-keyed on the bytes they describe, once the
         // artifact has said which instruction each one is (GFX-106). `None`
         // means there was no readable artifact to key them on, in which case
@@ -4166,7 +4514,7 @@ impl GraphiteCore {
                         "L2_InstructionVerification",
                         LayerStatus::Failed,
                         format!(
-                            "the supplied transaction could not be parsed as a legacy or v0 Solana message ({e}). Graphite makes no claim about bytes it cannot read: an artifact-bound verdict requires the described instruction to be located in the message, and there is no message to locate it in"
+                            "the supplied transaction could not be parsed as a legacy, v0 or v1 Solana message ({e}). Graphite makes no claim about bytes it cannot read: an artifact-bound verdict requires the described instruction to be located in the message, and there is no message to locate it in"
                         ),
                     ),
                     Ok(_) if data.is_none() => PipelineLayerResult::new(
@@ -4185,6 +4533,10 @@ impl GraphiteCore {
                         );
                         if c.matched_instruction.is_some() {
                             artifact_instruction_located = true;
+                            #[cfg(feature = "rpc")]
+                            {
+                                located_index = c.matched_instruction;
+                            }
                         }
                         // GFX-106: the bytes each declaration actually names,
                         // captured here because this is the only place that
@@ -4203,6 +4555,17 @@ impl GraphiteCore {
                             ));
                         }
                         match c.matched_instruction {
+                            None if c.same_program_and_data > 1 => PipelineLayerResult::new(
+                                "L2_InstructionVerification",
+                                LayerStatus::Failed,
+                                format!(
+                                    "{} of the transaction's {} instructions call {} with exactly the described {} bytes of data, and the described accounts do not single out one of them, so which instruction this verdict is about cannot be established. A verdict about one of two indistinguishable instructions would be a guess presented as a fact",
+                                    c.same_program_and_data,
+                                    message.instructions.len(),
+                                    input.program_id,
+                                    data.len()
+                                ),
+                            ),
                             None => PipelineLayerResult::new(
                                 "L2_InstructionVerification",
                                 LayerStatus::Failed,
@@ -4429,7 +4792,10 @@ impl GraphiteCore {
                             .collect::<std::collections::BTreeSet<_>>()
                             .into_iter()
                             .collect();
-                        (vec!["Protocol-level state changes".to_string()], union_cpis)
+                        (
+                            vec![crate::state_diff::UNDESCRIBED_INSTRUCTION_EFFECTS.to_string()],
+                            union_cpis,
+                        )
                     }
                 }
             }
@@ -4657,26 +5023,26 @@ impl GraphiteCore {
             .as_ref()
             .filter(|b| !b.is_empty())
             .and_then(|b| crate::tx_artifact::parse_transaction(b).ok())
-            .map(|m| {
-                (
-                    m.version == Some(0),
-                    m.alt_table_count(),
-                    m.alt_account_count(),
-                )
-            });
+            .map(|m| (m.version, m.alt_table_count(), m.alt_account_count()));
 
         match artifact_shape {
-            Some((is_v0, tables, accounts)) => {
-                if is_v0 && tables > 0 {
+            Some((version, tables, accounts)) => {
+                // "Versioned" is every message with a version prefix: v0 and,
+                // since Round 19, v1. Only v0 carries lookup tables.
+                let is_versioned = version.is_some();
+                if version == Some(0) && tables > 0 {
                     risk_warnings.push(format!(
                         "the transaction is a versioned (v0) message reaching {accounts} account(s) through {tables} address lookup table(s), read from the transaction itself"
                     ));
                 }
-                if input.uses_versioned_transaction != is_v0 {
+                if input.uses_versioned_transaction != is_versioned {
                     risk_warnings.push(format!(
                         "the request declares uses_versioned_transaction={} and the transaction is {} — the declaration does not describe these bytes",
                         input.uses_versioned_transaction,
-                        if is_v0 { "a versioned (v0) message" } else { "a legacy message" }
+                        match version {
+                            Some(v) => format!("a versioned (v{v}) message"),
+                            None => "a legacy message".to_string(),
+                        }
                     ));
                 }
                 if input.lookup_table_count as usize != tables {
@@ -5127,15 +5493,20 @@ impl GraphiteCore {
         // "clean", and the verdict names the failure as its own residual
         // (`UnobservedCode::SimulationFailed`) instead of folding it into
         // `no_state_diff` (F-15-02, F-16-03, F-16-04).
-        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
         let mut sim_err: Option<String> = None;
         // The CPI callees the simulator actually executed, mapped from the
         // response's `innerInstructions[*].programIdIndex` through the
         // transaction's full account list (Round 17, F-16-05). `None` when
         // there was no simulation, no readable message, no `innerInstructions`
         // or an index the account list cannot place — unknown, never empty.
-        #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
         let mut observed_cpi_programs: Option<Vec<String>> = None;
+        // The primary instruction's CPI tree as the simulator executed it
+        // (Round 19, F-19-22). `None` without a clean simulation, a located
+        // instruction, or a readable inner-instruction report.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
+        let mut observed_cpi_tree: Option<crate::tx_pattern_analysis::CpiTraceNode> = None;
         // Graphite's OWN state diff, built from RPC. When this is Some it takes
         // precedence over anything the caller supplied — measured evidence
         // outranks a claim about evidence (P5).
@@ -5163,14 +5534,21 @@ impl GraphiteCore {
         let mut alt_observations: Vec<String> = Vec::new();
         #[cfg(feature = "rpc")]
         {
-            if let Some(client) = &self.rpc_client {
-                // Prefer a fully-signed transaction blob when provided;
-                // otherwise fall back to instruction_data as a minimal payload.
-                let tx_bytes = input
-                    .signed_transaction
-                    .as_ref()
-                    .cloned()
-                    .unwrap_or_else(|| input.instruction_data.clone().unwrap_or_default());
+            // Only the artifact is simulated (Round 19, F-19-02). Without one
+            // this used to fall back to sending `instruction_data` as if it
+            // were a transaction: whatever the simulator made of those bytes
+            // was then certified as "Simulation integrity clean
+            // (RPC-verified)" for the described program and, with no artifact
+            // to key it on, recorded as a new observation on every repeat of
+            // the same request — twelve identical descriptive requests took a
+            // baseline from 5 samples to 16 (measured). A descriptive request
+            // has nothing to execute: L3 says so and nothing is recorded.
+            let artifact_to_simulate = input
+                .signed_transaction
+                .as_ref()
+                .filter(|bytes| !bytes.is_empty());
+            if let (Some(client), Some(tx_bytes)) = (&self.rpc_client, artifact_to_simulate) {
+                let tx_bytes = tx_bytes.clone();
 
                 // Only a fully-signed transaction can be simulated for its
                 // effect on account state. A bare instruction_data payload is
@@ -5318,6 +5696,21 @@ impl GraphiteCore {
                                 sim_res.loaded_addresses.as_ref(),
                                 sim_res.inner_program_indexes.as_deref(),
                             );
+                            observed_cpi_tree = match (
+                                artifact_message.as_ref(),
+                                located_index,
+                                sim_res.inner_instructions.as_deref(),
+                            ) {
+                                (Some(message), Some(primary), Some(inner)) => {
+                                    observed_cpi_tree_of(
+                                        message,
+                                        sim_res.loaded_addresses.as_ref(),
+                                        inner,
+                                        primary,
+                                    )
+                                }
+                                _ => None,
+                            };
                         }
                         // Round 17: `err == null` is part of completeness. A
                         // failed execution reports real-looking compute units
@@ -5522,8 +5915,24 @@ impl GraphiteCore {
                                     for a in &input.account_addresses {
                                         described.insert(a.as_str());
                                     }
+                                    // A declared CPI target describes an
+                                    // account only when the simulator saw
+                                    // the call (Round 19, F-19-10): a
+                                    // caller-written list of program ids
+                                    // was otherwise a way to name any
+                                    // account "described". With no callee
+                                    // report from the simulator there is
+                                    // nothing to check it against and the
+                                    // declaration stands, as before.
+                                    let cpi_described = |t: &str| {
+                                        observed_cpi_programs
+                                            .as_ref()
+                                            .is_none_or(|seen| seen.iter().any(|s| s == t))
+                                    };
                                     for t in &input.cpi_targets {
-                                        described.insert(t.as_str());
+                                        if cpi_described(t) {
+                                            described.insert(t.as_str());
+                                        }
                                     }
                                     for ix in &input.transaction_instructions {
                                         described.insert(ix.program_id.as_str());
@@ -5531,7 +5940,9 @@ impl GraphiteCore {
                                             described.insert(a.as_str());
                                         }
                                         for t in &ix.cpi_targets {
-                                            described.insert(t.as_str());
+                                            if cpi_described(t) {
+                                                described.insert(t.as_str());
+                                            }
                                         }
                                     }
                                     let universe = sim_res
@@ -5802,6 +6213,52 @@ impl GraphiteCore {
             _ => (risk_summary, risk_warnings),
         };
 
+        // Round 19 (F-19-22): the CPI-trace rules on the tree the simulator
+        // executed. They used to run only on `input.cpi_trace`, which is
+        // optional and which the reference bridge never sends — so whether
+        // the re-entry, sweep and impersonation rules ran at all was the
+        // judged party's choice. A declared trace is still analysed above;
+        // this adds the observed one, whatever was declared.
+        #[cfg(feature = "rpc")]
+        let (risk_summary, risk_warnings) = {
+            let mut risk_warnings = risk_warnings;
+            let risk_summary = match &observed_cpi_tree {
+                Some(tree) if !tree.children.is_empty() => {
+                    let mut known: Vec<String> = crate::tx_pattern_analysis::system_programs();
+                    known.extend(
+                        self.registry
+                            .list()
+                            .iter()
+                            .map(|m| m.protocol.program_id.clone()),
+                    );
+                    let findings = crate::tx_pattern_analysis::analyze_observed_cpi_trace(
+                        tree,
+                        &known,
+                        manifest_found,
+                    );
+                    let mut summary = risk_summary;
+                    for f in findings {
+                        let finding = RiskFinding {
+                            pattern: f.pattern.clone(),
+                            reason: format!("observed CPI trace: {}", f.reason),
+                        };
+                        match f.severity {
+                            crate::tx_pattern_analysis::PatternSeverity::Blocked => {
+                                summary.status = "Blocked".to_string();
+                                summary.findings.push(finding);
+                            }
+                            crate::tx_pattern_analysis::PatternSeverity::Warning => {
+                                risk_warnings.push(finding.reason);
+                            }
+                        }
+                    }
+                    summary
+                }
+                _ => risk_summary,
+            };
+            (risk_summary, risk_warnings)
+        };
+
         // A quarantined program is a hard block, not merely a tier downgrade.
         //
         // Forcing the tier to Unknown alone is not enough: a permissive profile
@@ -5858,8 +6315,27 @@ impl GraphiteCore {
         // expectation. Same condition `account_resolution` uses to decide
         // whether the real metas are usable at all — only grounded privileges
         // can support a block (P12).
-        let privileges_grounded = input.real_account_metas.len() == input.account_addresses.len()
+        //
+        // Round 19 (F-19-06): the metas resolution actually used —
+        // `effective_metas`, the artifact's whenever the bytes could say. This
+        // read `input.real_account_metas`, so a caller who sent an artifact
+        // and left the metas out made an undeclared write to a read-only
+        // account a warning instead of Critical, by omission.
+        let privileges_grounded = effective_metas.len() == input.account_addresses.len()
             && !input.account_addresses.is_empty();
+        // The fee payer is the message's, when there is a message. The first
+        // resolved signer is the manifest's idea of one, and the fee exemption
+        // below belongs to the account that actually pays.
+        let fee_payer_for_diff: Option<String> = artifact_message
+            .as_ref()
+            .map(|m| m.fee_payer.clone())
+            .or_else(|| {
+                resolution
+                    .resolved_accounts
+                    .iter()
+                    .find(|a| a.is_signer)
+                    .map(|a| a.address.clone())
+            });
 
         // L4: State Verification.
         //
@@ -5873,11 +6349,7 @@ impl GraphiteCore {
                 &expected_state_changes,
                 &resolution.resolved_accounts,
                 privileges_grounded,
-                resolution
-                    .resolved_accounts
-                    .iter()
-                    .find(|a| a.is_signer)
-                    .map(|a| a.address.as_str()),
+                fee_payer_for_diff.as_deref(),
             ),
             None => {
                 let mut fallback = self.verify_state(
@@ -6215,34 +6687,33 @@ impl GraphiteCore {
         // samples is visible (`/health` reports programs whose shadow has
         // reached MIN_SAMPLES) and recoverable (`graphite graph promote-shadow`)
         // rather than permanent.
+        //
+        // Round 19: and an observation has an identity or it is not one.
+        // It is keyed on `simulation_identity` — the bytes the simulator
+        // actually executed, blockhash excluded, because the simulator
+        // replaces it (F-19-01) — and it is recorded only when the described
+        // instruction was LOCATED in those bytes, so the usage measured is
+        // provably usage of a transaction that invokes this program with this
+        // instruction (F-19-02). No identity, no observation: the unkeyed
+        // path that let one request be counted on every repeat is gone from
+        // the pipeline, and `record_simulation` without a key is left to the
+        // operator API.
         #[cfg(feature = "rpc")]
-        if rpc_sim_ok {
-            // Keyed on the artifact digest (F-15-01): the same bytes seen
-            // twice are one observation, not two.
+        if rpc_sim_ok && artifact_instruction_located {
             let observation_key = input
                 .signed_transaction
                 .as_deref()
-                .filter(|b| !b.is_empty())
-                .map(|b| {
-                    use sha2::{Digest, Sha256};
-                    hex::encode(Sha256::digest(
-                        crate::tx_artifact::unsigned_artifact(b).unwrap_or_else(|_| b.to_vec()),
-                    ))
-                });
-            if sim_flagged == Some(true) {
-                self.graph().record_shadow_simulation(
-                    &input.program_id,
-                    &usage,
-                    observation_key.as_deref(),
-                );
-                self.persist_state_async().await;
-            } else if !structural_layer_failed && risk_summary.status == "Clear" {
-                self.graph().record_simulation_keyed(
-                    &input.program_id,
-                    &usage,
-                    observation_key.as_deref(),
-                );
-                self.persist_state_async().await;
+                .and_then(|b| crate::tx_artifact::simulation_identity(b).ok());
+            if let Some(key) = observation_key.as_deref() {
+                if sim_flagged == Some(true) {
+                    self.graph()
+                        .record_shadow_simulation(&input.program_id, &usage, Some(key));
+                    self.persist_state_async().await;
+                } else if !structural_layer_failed && risk_summary.status == "Clear" {
+                    self.graph()
+                        .record_simulation_keyed(&input.program_id, &usage, Some(key));
+                    self.persist_state_async().await;
+                }
             }
         }
 
@@ -6349,6 +6820,9 @@ impl GraphiteCore {
                 let failed_simulation = sim_err.as_deref();
                 #[cfg(not(feature = "rpc"))]
                 let failed_simulation: Option<&str> = None;
+                // Without the rpc feature `failed_simulation` is a literal
+                // `None`, and clippy says so about the arm that reads it.
+                #[cfg_attr(not(feature = "rpc"), allow(clippy::unnecessary_literal_unwrap))]
                 let base = match (sim_flagged, sim_divergence) {
                     // Round 17 (F-16-04): a simulation that errored is neither
                     // "clean" nor "not RPC-verified" — it ran, and it said
@@ -6412,7 +6886,14 @@ impl GraphiteCore {
                                     false
                                 }
                             };
-                            if !has_rpc {
+                            let has_artifact = input
+                                .signed_transaction
+                                .as_ref()
+                                .is_some_and(|b| !b.is_empty());
+                            if has_rpc && !has_artifact {
+                                "No simulation: no transaction artifact was supplied. Graphite simulates only the exact bytes that will be signed; a descriptive request has nothing to execute, so compute usage was not measured and nothing was recorded as evidence (P12: no evidence, no verdict)."
+                                    .to_string()
+                            } else if !has_rpc {
                                 "No simulation: no RPC endpoint configured (set GRAPHITE_RPC_URL).                                  Compute usage cannot be verified, so no divergence verdict is                                  possible (P12: no evidence, no verdict)."
                                     .to_string()
                             } else {
@@ -6903,6 +7384,90 @@ fn generate_summary(
 
 #[cfg(test)]
 mod tests {
+    /// Round 19 (F-19-12): a snapshot never commits over a newer one. The
+    /// verification snapshot serialized before a quarantine used to be able
+    /// to land after it, and the file then lacked the quarantine.
+    #[test]
+    fn an_older_snapshot_never_overwrites_a_newer_one() {
+        let dir = std::env::temp_dir().join(format!(
+            "graphite-r19-seq-{}-{}",
+            std::process::id(),
+            crate::durable::now_utc_rfc3339().replace([':', '.'], "-")
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(SEMANTIC_GRAPH_FILENAME);
+        let counters = PersistenceCounters::default();
+        counters
+            .commit(&path, "{\"state\":\"with the quarantine\"}", 2)
+            .unwrap();
+        counters
+            .commit(&path, "{\"state\":\"before the quarantine\"}", 1)
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{\"state\":\"with the quarantine\"}",
+            "generation 1 lost the race and was skipped"
+        );
+        counters.commit(&path, "{\"state\":\"newer\"}", 3).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{\"state\":\"newer\"}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Round 19 (F-19-22): the observed CPI tree nests by stack height,
+    /// keeps only the primary's calls, clamps a skipped level, and refuses an
+    /// index it cannot resolve.
+    #[cfg(feature = "rpc")]
+    #[test]
+    fn the_observed_cpi_tree_is_rebuilt_from_stack_heights() {
+        use crate::rpc_client::ObservedInnerInstruction;
+        let raw: serde_json::Value =
+            serde_json::from_str(include_str!("../fixtures/artifacts/sak_bridge_corpus.json"))
+                .unwrap();
+        let entry = raw["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == "legacy_single_transfer")
+            .unwrap();
+        let bytes: Vec<u8> = entry["raw"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| n.as_u64().unwrap() as u8)
+            .collect();
+        let message = crate::tx_artifact::parse_transaction(&bytes).unwrap();
+        let inner = |top: u8, program: u8, height: Option<u32>| ObservedInnerInstruction {
+            top_level_index: top,
+            program_id_index: program,
+            accounts: vec![0, 1],
+            data: vec![3, 0, 0, 0],
+            stack_height: height,
+        };
+        let calls = vec![
+            inner(0, 2, Some(2)),
+            inner(0, 1, Some(3)),
+            inner(0, 2, Some(5)), // jumps two levels: clamped to depth 3
+            inner(0, 2, Some(2)),
+            inner(1, 2, Some(2)), // another top-level instruction's call
+        ];
+        let tree = observed_cpi_tree_of(&message, None, &calls, 0).unwrap();
+        assert_eq!(tree.depth, 0);
+        assert_eq!(tree.children.len(), 2, "two direct callees of the primary");
+        assert_eq!(tree.children[0].children.len(), 1);
+        assert_eq!(tree.children[0].children[0].children.len(), 1);
+        assert_eq!(tree.children[0].children[0].children[0].depth, 3);
+        assert_eq!(tree.children[0].instruction_discriminator, "03000000");
+        // Without stack heights every call is a direct callee.
+        let flat = observed_cpi_tree_of(&message, None, &[inner(0, 2, None), inner(0, 1, None)], 0)
+            .unwrap();
+        assert_eq!(flat.children.len(), 2);
+        // An index outside the account list: unknown, not empty.
+        assert!(observed_cpi_tree_of(&message, None, &[inner(0, 200, Some(2))], 0).is_none());
+    }
+
     use super::*;
 
     fn make_input(program: &str, disc: &str, accounts: &[&str]) -> VerificationInput {

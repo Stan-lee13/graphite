@@ -4,13 +4,22 @@
 
 declare module "solana-agent-kit" {
   export class SolanaAgentKit {
-    constructor(wallet: unknown, rpcUrl: string, config: Record<string, string>);
+    constructor(wallet: unknown, rpcUrl: string, config: Record<string, string | boolean>);
     use(plugin: unknown): this;
     methods: Record<string, (...args: unknown[]) => Promise<unknown>>;
+    wallet: {
+      publicKey: unknown;
+      signTransaction(tx: unknown): Promise<unknown>;
+      signAllTransactions(txs: unknown[]): Promise<unknown[]>;
+      signAndSendTransaction(tx: unknown, options?: unknown): Promise<{ signature: string }>;
+      signMessage(message: Uint8Array): Promise<Uint8Array>;
+    };
   }
   export class KeypairWallet {
-    constructor(keypair: unknown);
+    constructor(keypair: unknown, rpcUrl?: string);
   }
+  /** SAK's own sign-or-send helper, used by plugin actions (solana-agent-kit 2.x). */
+  export function signOrSendTX(agent: SolanaAgentKit, tx: unknown, otherKeypairs?: unknown[]): Promise<unknown>;
 }
 
 declare module "@solana-agent-kit/plugin-token" {

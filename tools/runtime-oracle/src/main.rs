@@ -29,12 +29,22 @@
 //! of malformed header, index, length, encoding and frame the format allows,
 //! plus raw byte damage on top. Deterministic per seed; the seed and the
 //! iteration count are printed so any run can be reproduced.
+//!
+//! Round 19 (F-19-V1): v1 frames (SIMD-0385) too. v1 has no bincode/serde
+//! wire encoding — the crates' serde impl for `VersionedMessage::V1` says it
+//! "does not match the wire format" — so v1 frames are decoded by the crates'
+//! wincode `SchemaRead for VersionedTransaction`, the decoder that defines
+//! the format. A second seeded generator builds v1 frames with every field
+//! legal or broken, and a systematic pass mutates valid v1 frames field by
+//! field, byte by byte and length by length.
 
 use bincode::Options;
 use graphite_core::tx_artifact::{
-    message_bytes, parse_transaction, ArtifactMessage, ArtifactParseError, MAX_TRANSACTION_BYTES,
+    filled_signature_slots, message_bytes, parse_transaction, simulation_identity,
+    unsigned_artifact, ArtifactMessage, ArtifactParseError, MAX_TRANSACTION_BYTES,
+    MAX_V1_TRANSACTION_BYTES,
 };
-use solana_message::{VersionedMessage, MESSAGE_VERSION_PREFIX};
+use solana_message::{v1, VersionedMessage, MESSAGE_VERSION_PREFIX};
 use solana_transaction::versioned::VersionedTransaction;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -43,16 +53,57 @@ use std::path::PathBuf;
 #[derive(Debug)]
 enum RuntimeVerdict {
     Accepted(VersionedTransaction),
-    /// bincode refused the frame (short, trailing, alias, overflow, …).
+    /// The decoder refused the frame (short, trailing, alias, overflow, …).
     Undecodable(String),
     /// Decoded, but `VersionedTransaction::sanitize` refused it.
     Unsanitary(String),
 }
 
-/// The validator's packet decoder: `solana_packet::Packet::deserialize_slice`
-/// is `bincode::options().with_limit(PACKET_DATA_SIZE).with_fixint_encoding()
-/// .reject_trailing_bytes()`.
+/// The crates' own wire decoder for a whole frame: wincode
+/// `SchemaRead for VersionedTransaction`, which dispatches on the first byte
+/// (below 0x80: legacy/v0 signature count; 0x81: v1; anything else refused).
+/// Trailing bytes refused, as the packet decoder has always refused them
+/// (`reject_trailing_bytes`) and as `v1::MessageError::TrailingData` names.
+/// Graphite refuses trailing bytes whatever the runtime does, so this choice
+/// can move a frame between "both reject" and "Graphite stricter", never into
+/// "Graphite looser".
+fn wincode_decode(bytes: &[u8]) -> Result<VersionedTransaction, String> {
+    wincode::deserialize_exact::<VersionedTransaction>(bytes).map_err(|e| format!("wincode: {e}"))
+}
+
+/// The runtime's verdict on a byte string.
+///
+/// A v1 frame (first byte `0x81`): bounded by `v1::MAX_TRANSACTION_SIZE`
+/// (4096 bytes, signatures included — enforced by the network, not by the
+/// decoder, so modelled here explicitly), decoded by wincode, sanitized.
+///
+/// Anything else: the validator's packet decoder,
+/// `solana_packet::Packet::deserialize_slice` =
+/// `bincode::options().with_limit(PACKET_DATA_SIZE).with_fixint_encoding()
+/// .reject_trailing_bytes()`, AND the wincode decoder — a frame counts as
+/// accepted only when both accept it. That makes the modelled runtime at
+/// least as strict as either decoder, which is the conservative direction
+/// for the property this binary exists for: a stricter model can only find
+/// MORE frames Graphite accepts and the runtime refuses. (It matters for one
+/// shape: bincode's serde path reads a v1 message behind a signature count
+/// in a non-wire serde layout, which wincode — and the validator — refuse
+/// as "invalid message version".)
 fn runtime_decode(bytes: &[u8]) -> RuntimeVerdict {
+    if bytes.first() == Some(&v1::V1_PREFIX) {
+        if bytes.len() > v1::MAX_TRANSACTION_SIZE {
+            return RuntimeVerdict::Undecodable(format!(
+                "exceeds the {}-byte v1 MAX_TRANSACTION_SIZE",
+                v1::MAX_TRANSACTION_SIZE
+            ));
+        }
+        return match wincode_decode(bytes) {
+            Err(e) => RuntimeVerdict::Undecodable(e),
+            Ok(tx) => match tx.sanitize() {
+                Ok(()) => RuntimeVerdict::Accepted(tx),
+                Err(e) => RuntimeVerdict::Unsanitary(format!("{e:?}")),
+            },
+        };
+    }
     if bytes.len() > MAX_TRANSACTION_BYTES {
         return RuntimeVerdict::Undecodable(format!(
             "exceeds the {MAX_TRANSACTION_BYTES}-byte packet"
@@ -65,20 +116,26 @@ fn runtime_decode(bytes: &[u8]) -> RuntimeVerdict {
         .deserialize(bytes);
     match decoded {
         Err(e) => RuntimeVerdict::Undecodable(e.to_string()),
-        Ok(tx) => match tx.sanitize() {
-            Ok(()) => RuntimeVerdict::Accepted(tx),
-            Err(e) => RuntimeVerdict::Unsanitary(format!("{e:?}")),
-        },
+        Ok(tx) => {
+            if let Err(e) = wincode_decode(bytes) {
+                return RuntimeVerdict::Undecodable(e);
+            }
+            match tx.sanitize() {
+                Ok(()) => RuntimeVerdict::Accepted(tx),
+                Err(e) => RuntimeVerdict::Unsanitary(format!("{e:?}")),
+            }
+        }
     }
 }
 
-/// A short, stable label for a Graphite refusal, for the breakdown.
+/// A short, stable label for a Graphite refusal, for the breakdown. A v1
+/// rule is labelled by the rule, so the breakdown says which one.
 fn graphite_reason(e: &ArtifactParseError) -> String {
-    let s = format!("{e:?}");
-    s.split(|c: char| c == '(' || c == '{' || c == ' ')
-        .next()
-        .unwrap_or("?")
-        .to_string()
+    let head = |s: &str| s.split(['(', '{', ' ']).next().unwrap_or("?").to_string();
+    match e {
+        ArtifactParseError::V1Refused(v) => format!("V1Refused::{}", head(&format!("{v:?}"))),
+        other => head(&format!("{other:?}")),
+    }
 }
 
 struct Tally {
@@ -92,6 +149,9 @@ struct Tally {
     /// Both accepted but disagreed about the transaction. Fatal.
     disagreements: Vec<String>,
     runtime_reasons: BTreeMap<String, u64>,
+    /// Graphite's reasons where both refuse, so a run shows every Graphite
+    /// rule (the v1 ones included) was actually exercised.
+    graphite_reasons: BTreeMap<String, u64>,
 }
 
 impl Tally {
@@ -104,6 +164,7 @@ impl Tally {
             graphite_stricter_examples: BTreeMap::new(),
             disagreements: Vec::new(),
             runtime_reasons: BTreeMap::new(),
+            graphite_reasons: BTreeMap::new(),
         }
     }
 
@@ -143,15 +204,23 @@ impl Tally {
                     .entry(reason)
                     .or_insert_with(|| format!("{label}: {e}"));
             }
-            (Err(_), RuntimeVerdict::Undecodable(why)) => {
+            (Err(e), RuntimeVerdict::Undecodable(why)) => {
                 self.both_reject += 1;
+                *self
+                    .graphite_reasons
+                    .entry(graphite_reason(&e))
+                    .or_insert(0) += 1;
                 *self
                     .runtime_reasons
                     .entry(format!("decode: {}", short_reason(&why)))
                     .or_insert(0) += 1;
             }
-            (Err(_), RuntimeVerdict::Unsanitary(why)) => {
+            (Err(e), RuntimeVerdict::Unsanitary(why)) => {
                 self.both_reject += 1;
+                *self
+                    .graphite_reasons
+                    .entry(graphite_reason(&e))
+                    .or_insert(0) += 1;
                 *self
                     .runtime_reasons
                     .entry(format!("sanitize: {why}"))
@@ -162,7 +231,15 @@ impl Tally {
 }
 
 fn short_reason(why: &str) -> String {
-    // bincode's messages embed offsets and lengths; keep the kind only.
+    // bincode's messages embed offsets and lengths; keep the kind only. The
+    // wincode decoder's are prefixed "wincode: ", so keep one more field.
+    if let Some(rest) = why.strip_prefix("wincode: ") {
+        let head: String = rest
+            .chars()
+            .take_while(|c| *c != ':' && *c != '(' && !c.is_ascii_digit())
+            .collect();
+        return format!("wincode {}", head.trim());
+    }
     let head: String = why.chars().take_while(|c| *c != ':' && *c != '(').collect();
     head.trim().to_string()
 }
@@ -173,8 +250,11 @@ fn same_transaction(
     parsed: &ArtifactMessage,
     tx: &VersionedTransaction,
 ) -> Result<(), String> {
-    // The message as the runtime would serialize it (bincode 1, fixint).
-    let runtime_message = bincode::serialize(&tx.message).map_err(|e| format!("serialize: {e}"))?;
+    // The message as the runtime serializes it for signing:
+    // `VersionedMessage::serialize()` (wincode; for v1 that is `0x81` + the
+    // body, the bytes `VersionedTransaction::try_new` signs). For legacy and
+    // v0 the bincode encoding must be the same bytes too.
+    let runtime_message = tx.message.serialize();
     let graphite_message = message_bytes(bytes).map_err(|e| format!("message_bytes: {e}"))?;
     if runtime_message.as_slice() != graphite_message {
         return Err(format!(
@@ -183,14 +263,70 @@ fn same_transaction(
             graphite_message.len()
         ));
     }
+    if !matches!(tx.message, VersionedMessage::V1(_)) {
+        let bincode_message =
+            bincode::serialize(&tx.message).map_err(|e| format!("serialize: {e}"))?;
+        if bincode_message != runtime_message {
+            return Err("bincode and wincode serialize the message differently".to_string());
+        }
+    }
+    // The signature slots, wherever the format keeps them: the frame with
+    // the runtime's signatures zeroed is Graphite's unsigned artifact, and
+    // Graphite counts exactly the runtime's non-zero signatures.
+    let mut zeroed = tx.clone();
+    for s in zeroed.signatures.iter_mut() {
+        *s = Default::default();
+    }
+    let runtime_unsigned =
+        wincode::serialize(&zeroed).map_err(|e| format!("wincode serialize: {e}"))?;
+    let graphite_unsigned =
+        unsigned_artifact(bytes).map_err(|e| format!("unsigned_artifact: {e}"))?;
+    if runtime_unsigned != graphite_unsigned {
+        return Err(
+            "unsigned artifact differs from the frame with the runtime's signatures zeroed"
+                .to_string(),
+        );
+    }
+    let runtime_filled = tx
+        .signatures
+        .iter()
+        .filter(|s| s.as_ref().iter().any(|b| *b != 0))
+        .count();
+    if filled_signature_slots(bytes) != Ok(runtime_filled) {
+        return Err(format!(
+            "filled signature slots: runtime {runtime_filled}, Graphite {:?}",
+            filled_signature_slots(bytes)
+        ));
+    }
+    simulation_identity(bytes).map_err(|e| format!("simulation_identity: {e}"))?;
     let version = match &tx.message {
         VersionedMessage::Legacy(_) => None,
         VersionedMessage::V0(_) => Some(0u8),
-        // The crates define a V1 format (4096-byte transactions, a config
-        // mask, a heap size). Graphite refuses it as `UnsupportedVersion`
-        // until it is implemented, so both accepting one is itself a bug.
         VersionedMessage::V1(_) => Some(1u8),
     };
+    // The v1 header's config values (Round 19, F-19-V1).
+    let runtime_config = match &tx.message {
+        VersionedMessage::V1(m) => Some((
+            m.config.priority_fee,
+            m.config.compute_unit_limit,
+            m.config.loaded_accounts_data_size_limit,
+            m.config.heap_size,
+        )),
+        _ => None,
+    };
+    let graphite_config = parsed.v1_config.map(|c| {
+        (
+            c.priority_fee,
+            c.compute_unit_limit,
+            c.loaded_accounts_data_size_limit,
+            c.heap_size,
+        )
+    });
+    if runtime_config != graphite_config {
+        return Err(format!(
+            "v1 config: runtime {runtime_config:?}, Graphite {graphite_config:?}"
+        ));
+    }
     if parsed.version != version {
         return Err(format!(
             "version: runtime {version:?}, Graphite {:?}",
@@ -618,6 +754,359 @@ fn generate(rng: &mut Rng) -> Vec<u8> {
     out
 }
 
+// ─── The v1 generator (Round 19, F-19-V1) ─────────────────────────────────────
+
+/// One v1 frame, field by field, so the generator and the systematic pass
+/// can break exactly the field they mean to.
+#[derive(Clone)]
+struct V1Frame {
+    prefix: u8,
+    header: [u8; 3],
+    mask: u32,
+    lifetime: [u8; 32],
+    /// Written as the count bytes; normally `instructions.len()`.
+    declared_instructions: u8,
+    /// Written as the count bytes; normally `keys.len()`.
+    declared_keys: u8,
+    keys: Vec<[u8; 32]>,
+    /// The raw config-value bytes, written as given.
+    config: Vec<u8>,
+    /// (program index, account indexes, data)
+    instructions: Vec<(u8, Vec<u8>, Vec<u8>)>,
+    /// Signature slots written after the message.
+    slots: usize,
+}
+
+impl V1Frame {
+    fn bytes(&self, rng: &mut Rng) -> Vec<u8> {
+        let mut out = vec![self.prefix];
+        out.extend_from_slice(&self.header);
+        out.extend_from_slice(&self.mask.to_le_bytes());
+        out.extend_from_slice(&self.lifetime);
+        out.push(self.declared_instructions);
+        out.push(self.declared_keys);
+        for k in &self.keys {
+            out.extend_from_slice(k);
+        }
+        out.extend_from_slice(&self.config);
+        for (program, accounts, data) in &self.instructions {
+            out.push(*program);
+            out.push(accounts.len().min(255) as u8);
+            out.extend_from_slice(&(data.len().min(u16::MAX as usize) as u16).to_le_bytes());
+        }
+        for (_, accounts, data) in &self.instructions {
+            out.extend_from_slice(accounts);
+            out.extend_from_slice(data);
+        }
+        for _ in 0..self.slots {
+            out.extend_from_slice(&rng.fill(64));
+        }
+        out
+    }
+}
+
+/// The config-value bytes a mask implies, in bit order, with the heap size
+/// legal unless `hostile_heap`.
+fn v1_config_bytes(rng: &mut Rng, mask: u32, hostile_heap: bool) -> Vec<u8> {
+    let mut out = Vec::new();
+    if mask & 0b11 == 0b11 {
+        out.extend_from_slice(&rng.next().to_le_bytes());
+    }
+    if mask & 0b100 != 0 {
+        out.extend_from_slice(&(rng.next() as u32).to_le_bytes());
+    }
+    if mask & 0b1000 != 0 {
+        out.extend_from_slice(&(rng.next() as u32).to_le_bytes());
+    }
+    if mask & 0b1_0000 != 0 {
+        let heap: u32 = if hostile_heap {
+            match rng.below(5) {
+                0 => rng.next() as u32,
+                1 => 32 * 1024 - 1024,
+                2 => 256 * 1024 + 1024,
+                3 => (32 + rng.below(225) as u32) * 1024 + 1 + rng.below(1023) as u32,
+                _ => 0,
+            }
+        } else {
+            (32 + rng.below(225) as u32) * 1024
+        };
+        out.extend_from_slice(&heap.to_le_bytes());
+    }
+    out
+}
+
+/// Build one v1 frame. Half are legal by construction; the rest break one
+/// or more of the format's rules — header arithmetic, the config mask and
+/// values, the three count limits, duplicate keys, index ranges, the
+/// declared counts, the signature array, the size bound — with raw byte
+/// damage on top.
+fn generate_v1(rng: &mut Rng) -> Vec<u8> {
+    let well_formed = rng.chance(2);
+    let bad = |rng: &mut Rng, one_in: u64| !well_formed && rng.chance(one_in);
+
+    let signers: usize = if bad(rng, 10) {
+        [0usize, 12, 13, 64, 255][rng.below(5) as usize]
+    } else {
+        1 + rng.below(4) as usize
+    };
+    let readonly_signed: usize = if bad(rng, 10) {
+        signers + rng.below(2) as usize
+    } else {
+        rng.below(signers.max(1) as u64) as usize
+    };
+    let readonly_unsigned: usize = if bad(rng, 10) {
+        200 + rng.below(56) as usize
+    } else {
+        rng.below(4) as usize
+    };
+    let mut key_count: usize = signers + readonly_unsigned + 1 + rng.below(5) as usize;
+    if rng.chance(20) {
+        key_count = 60 + rng.below(5) as usize; // at the 64-address limit
+    }
+    if bad(rng, 8) {
+        key_count = match rng.below(3) {
+            0 => 65 + rng.below(10) as usize,
+            1 => (signers + readonly_unsigned).saturating_sub(1),
+            _ => 0,
+        };
+    }
+    let key_count = key_count.min(255);
+    let mut keys: Vec<[u8; 32]> = (0..key_count)
+        .map(|_| {
+            let mut k = [0u8; 32];
+            k.copy_from_slice(&rng.fill(32));
+            k
+        })
+        .collect();
+    if key_count >= 2 && bad(rng, 10) {
+        let a = rng.below(key_count as u64) as usize;
+        let b = rng.below(key_count as u64) as usize;
+        keys[a] = keys[b];
+    }
+
+    // Mask: a legal subset (the fee as a pair), or unknown/partial bits.
+    let mut mask: u32 = 0;
+    if rng.chance(2) {
+        mask |= 0b11;
+    }
+    for bit in [0b100u32, 0b1000, 0b1_0000] {
+        if rng.chance(2) {
+            mask |= bit;
+        }
+    }
+    if bad(rng, 8) {
+        mask = match rng.below(3) {
+            0 => mask | (1u32 << (5 + rng.below(27))),
+            1 => (mask & !0b11) | [0b01u32, 0b10][rng.below(2) as usize],
+            _ => rng.next() as u32,
+        };
+    }
+    let hostile_heap = bad(rng, 6);
+    let config = v1_config_bytes(rng, mask, hostile_heap);
+
+    let mut instruction_count: usize = rng.below(6) as usize;
+    if rng.chance(25) {
+        instruction_count = 60 + rng.below(5) as usize; // at the 64 limit
+    }
+    if bad(rng, 12) {
+        instruction_count = 65 + rng.below(5) as usize;
+    }
+    let big_data = rng.chance(6);
+    let mut instructions = Vec::with_capacity(instruction_count);
+    for _ in 0..instruction_count {
+        let program: u8 = if bad(rng, 10) {
+            [0usize, key_count, 255][rng.below(3) as usize].min(255) as u8
+        } else {
+            (1 + rng.below(key_count.saturating_sub(1).max(1) as u64)) as u8
+        };
+        let accounts: Vec<u8> = (0..rng.below(6))
+            .map(|_| {
+                if bad(rng, 12) {
+                    [key_count, 255][rng.below(2) as usize].min(255) as u8
+                } else {
+                    rng.below(key_count.max(1) as u64) as u8
+                }
+            })
+            .collect();
+        let data_len = if big_data && instruction_count <= 4 {
+            // Past the 1232-byte packet and up to the 4096-byte bound.
+            200 + rng.below(1000) as usize
+        } else {
+            rng.below(40) as usize
+        };
+        instructions.push((program, accounts, rng.fill(data_len)));
+    }
+
+    let mut frame = V1Frame {
+        prefix: v1::V1_PREFIX,
+        header: [
+            signers.min(255) as u8,
+            readonly_signed.min(255) as u8,
+            readonly_unsigned.min(255) as u8,
+        ],
+        mask,
+        lifetime: {
+            let mut l = [0u8; 32];
+            l.copy_from_slice(&rng.fill(32));
+            l
+        },
+        declared_instructions: instruction_count.min(255) as u8,
+        declared_keys: key_count.min(255) as u8,
+        keys,
+        config,
+        instructions,
+        slots: signers.min(255),
+    };
+    if bad(rng, 12) {
+        frame.declared_instructions = frame.declared_instructions.wrapping_add(1);
+    }
+    if bad(rng, 12) {
+        frame.declared_keys = frame.declared_keys.wrapping_sub(1);
+    }
+    if bad(rng, 8) {
+        frame.slots = match rng.below(3) {
+            0 => frame.slots.saturating_sub(1),
+            1 => frame.slots + 1,
+            _ => 0,
+        };
+    }
+    if bad(rng, 30) {
+        frame.prefix = [0x80u8, 0x82, 0xff, 0x7f][rng.below(4) as usize];
+    }
+    let mut out = frame.bytes(rng);
+
+    match if well_formed { 9 } else { rng.below(10) } {
+        0 if !out.is_empty() => {
+            let at = rng.below(out.len() as u64) as usize;
+            out.truncate(at);
+        }
+        1 if !out.is_empty() => {
+            let at = rng.below(out.len() as u64) as usize;
+            out[at] ^= 1 << rng.below(8);
+        }
+        2 => {
+            let n = 1 + rng.below(4) as usize;
+            out.extend_from_slice(&rng.fill(n));
+        }
+        3 => {
+            // Pad into the region either side of the 4096-byte bound.
+            let to = 4094 + rng.below(5) as usize;
+            if to > out.len() {
+                out.resize(to, 0);
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// A handful of valid v1 frames and every systematic single change to each:
+/// every truncation; every byte XOR 0xff; every value of every fixed-position
+/// byte (prefix, header, mask, the two counts); every mask bit; one byte
+/// appended; one signature slot removed and one added; the frame padded to
+/// 4096 and 4097 bytes inside its last instruction's data.
+fn run_v1_systematic(tally: &mut Tally, seed: u64) -> usize {
+    let mut rng = Rng((seed ^ 0x0051_3D00_0385) | 1);
+    let mut frames = 0usize;
+    let mut check = |tally: &mut Tally, label: String, bytes: &[u8]| {
+        tally.check(&label, bytes);
+        frames += 1;
+    };
+    for base_index in 0..8u64 {
+        let signers = 1 + (base_index % 3) as usize;
+        let keys: Vec<[u8; 32]> = (0..signers + 3)
+            .map(|_| {
+                let mut k = [0u8; 32];
+                k.copy_from_slice(&rng.fill(32));
+                k
+            })
+            .collect();
+        let mask = [
+            0u32, 0b11, 0b111, 0b1111, 0b1_1111, 0b1_1100, 0b1100, 0b1_0000,
+        ][base_index as usize];
+        let config = v1_config_bytes(&mut rng, mask, false);
+        let key_count = keys.len();
+        let instructions: Vec<(u8, Vec<u8>, Vec<u8>)> = (0..1 + base_index % 3)
+            .map(|_| {
+                let program = (1 + rng.below(key_count as u64 - 1)) as u8;
+                let accounts = (0..rng.below(4))
+                    .map(|_| rng.below(key_count as u64) as u8)
+                    .collect();
+                let data_len = rng.below(24) as usize;
+                (program, accounts, rng.fill(data_len))
+            })
+            .collect();
+        let base = V1Frame {
+            prefix: v1::V1_PREFIX,
+            header: [
+                signers as u8,
+                (base_index % 2) as u8 * (signers as u8 - 1),
+                1,
+            ],
+            mask,
+            lifetime: [base_index as u8; 32],
+            declared_instructions: instructions.len() as u8,
+            declared_keys: key_count as u8,
+            keys,
+            config,
+            instructions,
+            slots: signers,
+        };
+        let raw = base.bytes(&mut rng);
+        let name = format!("v1 systematic base {base_index}");
+        check(tally, name.clone(), &raw);
+
+        for len in 0..raw.len() {
+            check(tally, format!("{name} truncate {len}"), &raw[..len]);
+        }
+        for at in 0..raw.len() {
+            let mut m = raw.clone();
+            m[at] ^= 0xff;
+            check(tally, format!("{name} flip {at}"), &m);
+        }
+        // Fixed positions: prefix, header, mask, and the two counts.
+        for at in (0..8).chain([40, 41]) {
+            for value in 0..=255u8 {
+                let mut m = raw.clone();
+                m[at] = value;
+                check(tally, format!("{name} byte {at}={value}"), &m);
+            }
+        }
+        for bit in 0..32 {
+            let mut f = base.clone();
+            f.mask ^= 1 << bit;
+            f.config = v1_config_bytes(&mut rng, f.mask, false);
+            check(tally, format!("{name} mask bit {bit}"), &f.bytes(&mut rng));
+            // The same mask with the values the ORIGINAL mask implied.
+            let mut g = base.clone();
+            g.mask ^= 1 << bit;
+            check(
+                tally,
+                format!("{name} mask bit {bit} stale values"),
+                &g.bytes(&mut rng),
+            );
+        }
+        let mut m = raw.clone();
+        m.push(0);
+        check(tally, format!("{name} append"), &m);
+        for slots in [0, base.slots - 1, base.slots + 1] {
+            let mut f = base.clone();
+            f.slots = slots;
+            check(tally, format!("{name} slots {slots}"), &f.bytes(&mut rng));
+        }
+        for target in [1232usize, 1233, 4095, 4096, 4097] {
+            let mut f = base.clone();
+            let grow = target - raw.len();
+            if let Some(last) = f.instructions.last_mut() {
+                last.2.extend(std::iter::repeat_n(0xAB, grow));
+            }
+            let bytes = f.bytes(&mut rng);
+            check(tally, format!("{name} padded to {}", bytes.len()), &bytes);
+        }
+    }
+    frames
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
@@ -635,6 +1124,34 @@ fn main() {
         }
     }
 
+    // Graphite's v1 constants are the crates' own (Round 19, F-19-V1).
+    assert_eq!(MAX_V1_TRANSACTION_BYTES, v1::MAX_TRANSACTION_SIZE);
+    assert_eq!(
+        graphite_core::tx_artifact::V1_PREFIX,
+        v1::V1_PREFIX,
+        "v1 prefix"
+    );
+    assert_eq!(
+        graphite_core::tx_artifact::V1_MAX_SIGNATURES,
+        usize::from(v1::MAX_SIGNATURES)
+    );
+    assert_eq!(
+        graphite_core::tx_artifact::V1_MAX_ADDRESSES,
+        usize::from(v1::MAX_ADDRESSES)
+    );
+    assert_eq!(
+        graphite_core::tx_artifact::V1_MAX_INSTRUCTIONS,
+        usize::from(v1::MAX_INSTRUCTIONS)
+    );
+    assert_eq!(
+        graphite_core::tx_artifact::V1_MIN_HEAP_SIZE,
+        v1::MIN_HEAP_SIZE
+    );
+    assert_eq!(
+        graphite_core::tx_artifact::V1_MAX_HEAP_SIZE,
+        v1::MAX_HEAP_SIZE
+    );
+
     let mut tally = Tally::new();
     let (entries, mutations) = run_corpus(&corpus, &mut tally);
     println!("corpus: {entries} shapes, {mutations} mutations");
@@ -651,11 +1168,35 @@ fn main() {
     }
     println!("generated: {iterations} transactions from seed {seed}; {generated_accepted} well-formed by both");
 
+    // v1 (Round 19, F-19-V1), from its own stream so the legacy/v0 sequence
+    // for a given seed is unchanged.
+    let v1_systematic = run_v1_systematic(&mut tally, seed);
+    println!("v1 systematic: {v1_systematic} single-change frames from 8 valid bases");
+    let mut rng_v1 = Rng((seed ^ 0x0000_5131_D038_5000) | 1);
+    let mut v1_accepted = 0u64;
+    let mut v1_over_packet = 0u64;
+    for i in 0..iterations {
+        let bytes = generate_v1(&mut rng_v1);
+        let before = tally.both_accept;
+        tally.check(&format!("generated v1 #{i} seed {seed}"), &bytes);
+        if tally.both_accept > before {
+            v1_accepted += 1;
+            if bytes.len() > MAX_TRANSACTION_BYTES {
+                v1_over_packet += 1;
+            }
+        }
+    }
+    println!("generated v1: {iterations} frames from seed {seed}; {v1_accepted} well-formed by both, {v1_over_packet} of them past the 1232-byte packet");
+
     println!();
     println!("both accept:  {}", tally.both_accept);
     println!("both reject:  {}", tally.both_reject);
     println!("runtime refusal reasons where both reject:");
     for (k, v) in &tally.runtime_reasons {
+        println!("  {v:>8}  {k}");
+    }
+    println!("Graphite's reasons where both reject:");
+    for (k, v) in &tally.graphite_reasons {
         println!("  {v:>8}  {k}");
     }
     println!("Graphite stricter than the runtime, by Graphite's reason:");

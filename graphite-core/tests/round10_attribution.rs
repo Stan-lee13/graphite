@@ -123,23 +123,23 @@ fn transfer_data(lamports: u64) -> Vec<u8> {
     d
 }
 
-/// The same transaction under a different recent blockhash: a DISTINCT
-/// transaction (different bytes, different digest) carrying the same
-/// instruction. Round 17: the same bytes re-verified are ONE observation, so
-/// a baseline is earned the way a deployment earns it — from distinct
-/// transactions — rather than by asking about one transaction three times.
-fn variant(raw: &[u8], i: u8) -> Vec<u8> {
-    let m = graphite_core::tx_artifact::parse_transaction(raw).expect("frame parses");
-    let bh = bs58::decode(&m.recent_blockhash).into_vec().unwrap();
-    let msg = graphite_core::tx_artifact::message_bytes(raw).expect("message");
-    let msg_start = raw.len() - msg.len();
-    let pos = msg
-        .windows(32)
-        .rposition(|w| w == bh.as_slice())
-        .expect("blockhash is in the message");
-    let mut out = raw.to_vec();
-    out[msg_start + pos] ^= i.wrapping_add(1);
-    out
+/// A different transfer of the same program (another amount) for earning the
+/// baseline. Round 19 (F-19-01): the same transfer under another blockhash is
+/// one simulation, so it earns once; a baseline is earned from transactions
+/// that execute differently.
+fn earning(i: u8) -> VerificationInput {
+    let lamports = 2_000_001 + u64::from(i);
+    let old = transfer_data(2_000_000);
+    let raw = tx_a();
+    let pos = raw
+        .windows(old.len())
+        .position(|w| w == old.as_slice())
+        .expect("the corpus transfer carries 2,000,000 lamports");
+    let mut artifact = raw;
+    artifact[pos..pos + old.len()].copy_from_slice(&transfer_data(lamports));
+    let mut input = describe(artifact);
+    input.instruction_data = Some(transfer_data(lamports));
+    input
 }
 
 /// A: the corpus's `legacy_single_transfer`, unsigned, as web3.js serialized
@@ -385,7 +385,7 @@ async fn a_then_b(
     VerificationResult,
 ) {
     for i in 0..3u8 {
-        let _ = core.verify_async(&describe(variant(&tx_a(), i))).await;
+        let _ = core.verify_async(&earning(i)).await;
     }
     let (log, dir) = temp_log("ab");
     let b = verify_and_record(core, &log, tx_b()).await;
@@ -700,7 +700,7 @@ async fn every_key_is_exact_across_rotation_and_concurrency() {
     let chain: ChainBytes = Arc::new(Mutex::new(None));
     let core = Arc::new(core_at(&cluster(chain)));
     for i in 0..3u8 {
-        let _ = core.verify_async(&describe(variant(&tx_a(), i))).await;
+        let _ = core.verify_async(&earning(i)).await;
     }
     let d = std::env::temp_dir().join(format!("graphite-r10-rot-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);

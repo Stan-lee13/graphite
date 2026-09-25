@@ -115,9 +115,9 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] 1,000+ meaningful regression fixtures (2,181 corpus, C41)
 - [x] Real holdout evaluation with independent labels (38 fixtures, 0 FN, C41)
 
-## Hardening Rounds (2026-09-05 → 2026-09-22) — reports in `docs/`
+## Hardening Rounds (2026-09-05 → 2026-09-24) — reports in `docs/`
 
-Eighteen rounds run after Phase 2, each driven by an adversarial review of the
+Nineteen rounds run after Phase 2, each driven by an adversarial review of the
 previous commit and each closed with reproductions committed as tests and every
 fix reverted once to prove its test fails without it. Status of every guarantee:
 [docs/CURRENT.md](docs/CURRENT.md).
@@ -150,7 +150,9 @@ fix reverted once to prove its test fails without it. Status of every guarantee:
 - [x] A uniform compute history is a ±25% band, not a point; flagged-but-clean executions accumulate in a shadow baseline `/health` reports and an operator promotes (Round 17)
 - [x] Blocking plugins fail closed on panic; `min_confidence > 1` is a 400 before the pipeline; the PDA seed-template grammar is closed at manifest load, at registry submission and at verify (Round 17)
 - [x] **The registry is measured, not asserted (Round 18):** the Solana program inventory ranked from real mainnet blocks; 98 programs onboarded from their own on-chain Anchor IDLs; `protocols/battle_tested_evidence.json` records identity, volume and how much of each program's REAL traffic its manifest can name; `load_seed_manifests` lowers any `BattleTested` the measurement does not support
-- [x] 1,549 Rust tests at Round 17 (319 featureless), 100 TypeScript, CI green on every commit since `f10e4ab`
+- [x] **What one observation is, and who may sign (Round 19):** the baseline identity ignores the blockhash the simulator replaces (a refused transfer was approved on its third ask with only the blockhash changed); only the artifact is simulated; exact per-program observation memory; the CPI-trace rules run on the tree the simulator reports; every writable account of an undescribed instruction is diffed; a separate operator key for `/admin/*`; the concurrency permit taken after rate, auth and body; one writer per data directory with ordered snapshots; the reference bridge no longer signs before the verdict and SolanaAgentKit holds no key that can sign
+- [x] **Message version 1 parsed (Round 19):** never looser than agave's decoder (runtime oracle, both CI seeds, zero looser frames); 3,302 of 3,302 real mainnet v1 transactions read and bound
+- [x] 1,628 Rust tests at Round 19 (327 featureless, 1,415 cli-only), 119 in the SAK integration, 32 in the TS SDK, 34 Go, 31 Python, 6 dashboard; CI green on every commit since `f10e4ab`
 
 ## Phase 3 (Production) — what gates it
 
@@ -160,7 +162,7 @@ the public service. Owner decisions are marked.
 - [ ] **Independent third-party audit** — every report so far is internal engineering work and says so (owner)
 - [ ] **Branch protection on `main`** — required CI, no force-push; today CI is advisory because the branch accepts direct pushes (owner)
 - [ ] Token-2022 `TransferFee` modelled so fee-bearing mints stop blocking
-- [ ] **Message version 1 parsed.** The format is refused by name today, which is fail-closed and correct, but 17.2% of the 10,617 transactions in the Round 18 mainnet sample were v1 — Graphite cannot verify them at all (`tools/mainnet-sample`)
+- [x] **Message version 1 parsed** — done in Round 19 (it was 17.0% of the 19,458-transaction mainnet sample of 2026-09-23 and refused by name until then); the v1 config values are parsed and bounded but not yet surfaced in verdicts
 - [ ] **Manifest coverage of the traffic that has no published IDL.** Round 18 took the manifested share of non-vote mainnet transactions from 20.8% to 44.0% by onboarding every heavily used program that publishes its own on-chain Anchor IDL. The programs that now dominate the unmanifested remainder do not publish one, so they need a different, per-protocol route
 - [x] A hard L2 failure on an unparseable artifact — done in Round 9: no `instruction_data`, or an artifact that does not parse, fails L2
 - [x] Graphite's parser checked against Solana's own decoder over the mutation corpus — done in Round 12 (`tools/runtime-oracle`, in CI over the corpus and 600,000 generated frames); this line contradicted the Round 12 entry above for six rounds

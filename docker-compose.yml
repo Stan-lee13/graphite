@@ -6,6 +6,8 @@
 #     publicly without auth. See "Scaling & TLS" in README.md.
 #   - `GRAPHITE_API_KEY` is REQUIRED (compose refuses to start without it, and
 #     the server itself refuses to bind a non-loopback address without one).
+#   - `GRAPHITE_ADMIN_API_KEY` (optional, from .env) enables /admin/*; it must
+#     differ from GRAPHITE_API_KEY. Unset, the operator endpoints are disabled.
 #   - State (audit log + semantic graph) lives on the `graphite-data` volume.
 #     The server probes that volume for writability at startup and refuses to
 #     boot if it cannot write — it will never serve traffic with no audit

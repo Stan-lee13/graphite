@@ -102,7 +102,6 @@ fn the_maximal_three_byte_encoding_is_refused() {
 fn non_minimal_encodings_are_still_refused_as_non_canonical() {
     for encoding in [
         &[0x80, 0x00][..],       // 0 spelled in two bytes
-        &[0x81, 0x00][..],       // 1 spelled in two bytes
         &[0xFF, 0x80, 0x00][..], // 127 spelled in three
     ] {
         assert!(
@@ -112,6 +111,70 @@ fn non_minimal_encodings_are_still_refused_as_non_canonical() {
             ),
             "{encoding:?} is not minimally encoded and must be refused as such: {:?}",
             with_signature_count(encoding)
+        );
+    }
+    // `0x81 0x00` — 1 spelled in two bytes — can no longer be pinned at the
+    // signature-count position: since Round 19 (F-19-V1) a FIRST byte of
+    // 0x81 is the v1 frame discriminator, exactly as the runtime's
+    // `VersionedTransaction` decoder dispatches (solana-transaction 5.0,
+    // `discriminator == V1_PREFIX`). So it is pinned where a length is still
+    // a compact-u16 — a legacy account-key count — and the two bytes at the
+    // start of a frame must still be refused (there, as a v1 frame).
+    for encoding in [
+        &[0x81, 0x00][..],       // 1 spelled in two bytes
+        &[0x80, 0x00][..],       // 0 spelled in two bytes
+        &[0xFF, 0x80, 0x00][..], // 127 spelled in three
+    ] {
+        assert!(
+            matches!(
+                with_account_key_count(encoding),
+                Err(ArtifactParseError::NonCanonicalLength { offset: 68 })
+            ),
+            "{encoding:?} as an account-key count is not minimally encoded and must be refused as such: {:?}",
+            with_account_key_count(encoding)
+        );
+    }
+    assert!(
+        with_signature_count(&[0x81, 0x00]).is_err(),
+        "0x81 0x00 + zeros is not a transaction in any format"
+    );
+}
+
+/// A legacy frame — one zero signature slot, header `[1, 0, 0]` — whose
+/// account-key count (at byte 68) is `encoded`, followed by zeros. The count
+/// sits after a single-byte signature count, so it is a compact-u16 in every
+/// frame format the runtime defines.
+fn with_account_key_count(encoded: &[u8]) -> Result<(), ArtifactParseError> {
+    let mut bytes = vec![1u8];
+    bytes.resize(65, 0);
+    bytes.extend_from_slice(&[1, 0, 0]);
+    bytes.extend_from_slice(encoded);
+    bytes.extend_from_slice(&[0u8; 8]);
+    parse_transaction(&bytes).map(|_| ())
+}
+
+/// The range bound, pinned at the account-key count too: 65,535 is read as a
+/// number (and then runs out of bytes), 65,536 and 2,097,151 are refused as
+/// lengths — so the property does not depend on the signature-count position,
+/// whose first byte the frame dispatch now also reads (Round 19, F-19-V1).
+#[test]
+fn the_u16_bound_holds_at_a_non_leading_length() {
+    let err = with_account_key_count(&[0xFF, 0xFF, 0x03]).expect_err("nothing follows");
+    assert!(
+        matches!(
+            err,
+            ArtifactParseError::LengthExceedsInput { .. } | ArtifactParseError::Truncated { .. }
+        ),
+        "65535 must be accepted as a length: {err}"
+    );
+    for (encoding, value) in [
+        (&[0x80u8, 0x80, 0x04][..], 65_536usize),
+        (&[0xFF, 0xFF, 0x7F][..], 2_097_151),
+    ] {
+        assert_eq!(
+            with_account_key_count(encoding),
+            Err(ArtifactParseError::LengthNotU16 { offset: 68, value }),
+            "{encoding:?}"
         );
     }
 }

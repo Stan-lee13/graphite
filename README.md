@@ -11,7 +11,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 **Current status, in one place: [docs/CURRENT.md](docs/CURRENT.md).** Every dated report under `docs/` is a historical record and points there.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1562_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1628_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-129-blue?style=flat-square)](docs/protocol-coverage.md)
@@ -66,13 +66,13 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,455 tests — zero setup (1,465 total; 10 network-dependent tests ignored
-# unless run explicitly with a live RPC)
+# Run 1,628 tests — zero setup (1,642 total; 14 ignored: network- or
+# sample-dependent, plus one soak benchmark, run explicitly with --ignored)
 cargo test --release
-# summed across the test binaries: 1455 passed; 0 failed; 10 ignored
+# summed across the test binaries: 1628 passed; 0 failed; 14 ignored
 
 # The same gate CI runs on the feature matrix: the library with no features
-# (301 tests) and the cli-only build (1,281) must pass too.
+# (327 tests) and the cli-only build (1,415) must pass too.
 cargo test --release --no-default-features --lib
 cargo test --release --no-default-features --features cli
 
@@ -99,7 +99,7 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 
 **Current status:** L1–L7 run inside every `/verify` call. L3 and L4 are live against real Solana RPC when `GRAPHITE_RPC_URL` is set — L3 simulates and accumulates its own baseline, L4 builds a real pre/post account diff. L8 runs after submission, because that is when there is an execution to verify: call `POST /verify/execution` (or `graphite execution`) with the `content_hash` and the signature, and it reconciles the chain against the verdict Graphite recorded — across the whole audit trail, rotated archives included. The outcome that matters is `BlockedButExecuted` — a transaction Graphite refused that was submitted anyway, which no layer inside a verification request can detect. Live-validated against mainnet.
 
-**The transaction itself, not a description of it.** When the caller supplies `signed_transaction` (the serialized bytes, signature slots empty), Graphite parses the wire format itself — legacy and v0, address lookup tables fetched and resolved, privileges read from the header rather than from the caller — and returns `scope.kind = "artifact_bound"` with `transaction_sha256` over those exact bytes. L2 then requires that the described instruction is *in* the bytes, positionally, and that every sibling instruction is declared. Without the bytes the verdict is `descriptive`: an honest statement about what the caller said, constraining nothing about what gets signed.
+**The transaction itself, not a description of it.** When the caller supplies `signed_transaction` (the serialized bytes, signature slots empty), Graphite parses the wire format itself — legacy, v0 and (since Round 19) v1, address lookup tables fetched and resolved, privileges read from the header rather than from the caller — and returns `scope.kind = "artifact_bound"` with `transaction_sha256` over those exact bytes. L2 then requires that the described instruction is *in* the bytes, positionally, and that every sibling instruction is declared. Without the bytes the verdict is `descriptive`: an honest statement about what the caller said, constraining nothing about what gets signed.
 
 ---
 
@@ -117,7 +117,7 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 | **CompositionalDrainPattern** | Deep CPI chains (5+) from untrusted roots, or repeated program revisits |
 | **Impersonation** | Fund movement to/from vanity addresses impersonating official system accounts (SolPhishHunter class) |
 | **MultiInstructionDrain** | Coordinated mass-drain across multiple instructions in one tx (approve-then-transfer, authority-hijack-then-drain, close-and-sweep, mass multi-transfer sweep) |
-| **CpiTraceAnomaly** | Malicious shape in hierarchical CPI trace — unknown program, repeated revisits, or vanity-impersonated program in the tree |
+| **CpiTraceAnomaly** | Malicious shape in hierarchical CPI trace — unknown program, repeated revisits, a same-instruction sweep across many account sets, or vanity-impersonated program in the tree. Judged on the call tree the Core's own simulation reports (`innerInstructions`), not only on one a caller declares (Round 19) |
 
 All 11 patterns are real detection logic — not stubs, not placeholders. Nine are emitted by the single-instruction risk engine (`risk_engine.rs`); `MultiInstructionDrain` and `CpiTraceAnomaly` are emitted by the transaction-level and CPI-trace analyzers (`tx_pattern_analysis.rs`) and mapped onto the same `RiskPattern` enum in the orchestrator.
 
@@ -180,7 +180,7 @@ graphite/
 │   │   ├── plugins/               ← Built-in: FakeRewardsDrainer (L7), EventLogger (analytics)
 │   │   ├── live_corpus.rs         ← Live RPC fixture seeding + devnet verification
 │   │   ├── rpc_client.rs          ← Solana RPC client (L3 simulation + L8 execution)
-│   │   ├── tx_artifact.rs         ← Wire-format parser (legacy + v0), ALT resolution, durable-nonce detection
+│   │   ├── tx_artifact.rs         ← Wire-format parser (legacy, v0, v1), ALT resolution, durable-nonce detection, simulation identity
 │   │   ├── state_diff.rs          ← L4 pre/post diff, SPL Token / Token-2022 decoding + extension classification
 │   │   ├── durable.rs             ← Append-only audit trail: fdatasync per record, rotation, whole-trail reads
 │   │   ├── solana_types.rs        ← PDA derivation, base58, type primitives
@@ -190,7 +190,7 @@ graphite/
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
 │   ├── protocols/                 ← 129 JSON protocol manifests (3,186 instructions)
 │   │                                 + battle_tested_evidence.json: the mainnet measurement behind each tier
-│   └── tests/                     ← 1,455 tests (unit + adversarial + exploit + RPC trust boundary + live RPC)
+│   └── tests/                     ← 1,628 tests (unit + adversarial + exploit + RPC trust boundary + live RPC + real mainnet)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -250,6 +250,7 @@ unauthenticated instance — and even then only on a loopback address.
 | Env var | Default | Purpose |
 |---------|---------|---------|
 | `GRAPHITE_API_KEY` | *(required)* | Bearer token required on every route except `/health` (constant-time compared). **Startup refuses without it** unless `GRAPHITE_DEV_MODE=1`. |
+| `GRAPHITE_ADMIN_API_KEY` | *(unset: `/admin/*` disabled)* | Operator key for `/admin/quarantine` (Round 19). Must be at least 32 characters and **different from `GRAPHITE_API_KEY`** — startup refuses otherwise. The verify key is never accepted on `/admin/*`, so an agent (or a prompt-injected one) holding the verify key cannot lift a quarantine. Unset, `/admin/*` answers `403`. Audit rows name the key id that acted. |
 | `GRAPHITE_DEV_MODE` | `0` | `1` permits an **unauthenticated** instance for local development, and only when bound to loopback (`127.0.0.1` / `::1`). Never set this on a reachable address; the server refuses the combination. |
 | `GRAPHITE_MAX_CONCURRENT` | `32` | Verifications allowed in flight at once. Excess is shed immediately with `503` + `Retry-After` rather than accepted and left to expire at the 10s request timeout — a request that dies at the timeout carries no verdict and no audit record. Distinct from the per-IP `429`: `429` means one caller is asking too often, `503` means the instance is saturated. Both are counted separately at `/metrics`. Raise it when the upstream RPC can sustain more. |
 | `GRAPHITE_RATE_LIMIT` | `30` | Per-IP token bucket, requests/second. Returns `429` when exceeded. |
@@ -617,12 +618,12 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 | **AI never decides** | Python AI layer is advisory only — Core verification is deterministic (P1) |
 | **Deterministic** | `content_hash` = SHA-256 of transaction config — same input, same output (P2) |
 | **Compositional drain detection** | Both duplicate AND unique-program deep CPI chains caught |
-| **Trusted simulation baselines** | Baselines live in the semantic-graph accumulator (earned via RPC-verified usage or operator-seeded) — the request body **cannot** supply one (anti-poisoning) |
-| **Transaction identity** | With `signed_transaction` supplied: wire format parsed (legacy + v0), `transaction_sha256` over the exact bytes, L2 requires the described instruction to be in the bytes positionally and every sibling declared, privileges read from the header and resolved lookup tables — never from the caller |
+| **Trusted simulation baselines** | Baselines live in the semantic-graph accumulator (earned via RPC-verified usage or operator-seeded) — the request body **cannot** supply one (anti-poisoning) An observation is one distinct execution: keyed on the frame with its signatures and blockhash zeroed, remembered exactly per program, and recorded only from the transaction artifact itself — a fresh blockhash or a repeated descriptive request earns nothing (Round 19). |
+| **Transaction identity** | With `signed_transaction` supplied: wire format parsed (legacy, v0 and v1 — never looser than agave's decoder), `transaction_sha256` over the exact bytes, L2 requires the described instruction to be in the bytes positionally and every sibling declared, privileges read from the header and resolved lookup tables — never from the caller |
 | **Address lookup tables** | Fetched, owner-checked, decoded; runtime account numbering rebuilt (static ++ writable ++ readonly); all-or-nothing — an unresolved table is disclosed as unobserved, never treated as empty |
 | **Token-2022** | Extensions classified, not modelled: transfer-semantics, authority and unknown extensions block; an unreadable extension region blocks; informational extensions warn |
 | **Durable nonces** | Detected by the runtime's rule; refused at L2 by default; opt-in only after on-chain nonce verification |
-| **Wire-format bounds** | Canonical compact-u16 (≤ 65,535, minimal encoding), trailing bytes refused, indexes bounds-checked, nothing over the 1232-byte packet — the same rules on the TypeScript side, asserted equal across 1,647 byte-level mutations in CI |
+| **Wire-format bounds** | Canonical compact-u16 (≤ 65,535, minimal encoding), trailing bytes refused, indexes bounds-checked, nothing over the format's size bound (1232-byte packet for legacy/v0, 4,096 bytes for v1) — the same rules on the TypeScript side, asserted equal across 1,647 byte-level mutations in CI |
 | **The described instruction is located, or L2 fails** | An artifact without `instruction_data`, or one that does not parse, fails L2; `artifact_bound` never claims a comparison L2 did not make (Round 9: a 100 SOL transfer was approved under a 0.002 SOL description by omitting the optional field) |
 | **Residuals are gated at execution** | `scope.unobserved_codes` names each residual; the bridge's `ResidualPolicy` refuses any non-inherent one the operator has not accepted in `GRAPHITE_ACCEPT_UNOBSERVED` |
 | **Lifecycle on the trail** | The bridge records signing before it submits (and aborts if it cannot), submission after, and runs L8 at the end; every caller-reported row carries the server's `verdict_on_record` and is bounded on disk |
@@ -631,7 +632,7 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 | **The parser is never looser than the runtime** | `tools/runtime-oracle` decodes the corpus, its 1,659 mutations and 600,000 generated frames with the agave crates as a validator's packet path does; Graphite parses nothing the runtime's `sanitize` refuses (program index 0, out-of-range account indexes, empty lookups, > 256 accounts — all found and closed in Round 12) and reads every accepted transaction identically. Runs in CI on every push |
 | **The lifecycle trail knows its own order** | Every caller-reported row is checked against the rows already on record for the same transaction: a retry is named `duplicate`, a stage out of order or without its predecessor is named, and a second signature for one transaction is a `signature conflict` logged as loudly as a discrepancy. Recorded, never refused (Round 12) |
 | **RPC evidence provenance** | Simulation writes/CPI hops derived only from canonical response fields; non-standard provider fields that disagree are reported as anomalies, never used |
-| **API auth** | Bearer API key required by default — the server refuses to start without one, or with one shorter than 32 characters; `GRAPHITE_DEV_MODE=1` permits keyless on loopback only. Constant-time compared; `429` per-IP rate limiting with `Retry-After`; `503` load shedding; refusals drain the request body so the status is readable, never a reset; CORS allowlist (denied by default) |
+| **API auth** | Bearer API key required by default — the server refuses to start without one, or with one shorter than 32 characters; `GRAPHITE_DEV_MODE=1` permits keyless on loopback only. Constant-time compared; `429` per-IP rate limiting with `Retry-After`; `503` load shedding; refusals drain the request body so the status is readable, never a reset; CORS allowlist (denied by default) The operator surface (`/admin/*`) takes a second, distinct key, `GRAPHITE_ADMIN_API_KEY`, and is disabled without one (Round 19). |
 | **Durability** | Every audit record `fdatasync`'d before the response; a verdict that cannot be recorded is refused with `503`; rotation is a rename, archives retained, and every reader (dashboard, L8) covers the whole trail; snapshot and rotation failures surface on `/health` as `degraded_reasons` |
 
 ---
@@ -652,9 +653,9 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`, counting DISTINCT sound transactions: the same bytes re-verified are one observation, and a request refused at L2 or by the Risk Engine is none) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 1,455 Rust tests passing (1,465 total; 10 network-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
+- 1,628 Rust tests passing (1,642 total; 14 network- or sample-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
 - 14 risk checks (13 risk patterns, incl. `UnspendableDestination` and `PluginBlock`) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
-- 33 protocol manifests / 803 instructions, program IDs verified against official on-chain sources (2026-08-07 + Drift/Kamino C27/C42 + Phoenix/OpenBook V2/Switchboard/Jupiter Limit/Solend/Marginfi C46 + Raydium CLMM/CPMM, Marinade, SPL Stake Pool, Orca TokenSwap V2 C56).
+- 129 protocol manifests / 3,186 instructions (Round 18), program IDs verified against on-chain sources and pinned both ways by test; 96 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).

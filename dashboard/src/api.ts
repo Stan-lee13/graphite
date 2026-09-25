@@ -6,6 +6,8 @@
 // their own Core from the Connect screen. Both settings live in this
 // browser's localStorage and nowhere else — never in a URL, never in a log.
 
+import { insecureBaseReason } from "./transport";
+
 export interface GraphNode {
   program_id: string;
   name: string;
@@ -240,15 +242,17 @@ export type ApiErrorKind =
   | "ratelimited" // 429
   | "unavailable" // 503: the Core is shedding load
   | "server" // any other non-2xx from the Core
-  | "network"; // no response at all: down, wrong URL, or CORS refused
+  | "network" // no response at all: down, wrong URL, or CORS refused
+  | "insecure"; // refused before sending: plain http:// to a non-loopback host
 
 export class ApiError extends Error {
   constructor(
     public readonly kind: ApiErrorKind,
     public readonly path: string,
     public readonly status?: number,
+    detail?: string,
   ) {
-    super(describe(kind, path, status));
+    super(detail ?? describe(kind, path, status));
     this.name = "ApiError";
   }
 }
@@ -265,6 +269,8 @@ function describe(kind: ApiErrorKind, path: string, status?: number): string {
       return `The Core answered ${status ?? "an error"} for ${path}.`;
     case "network":
       return "No response from the Core.";
+    case "insecure":
+      return "The console refused to send the key over plain http:// to another machine.";
   }
 }
 
@@ -280,6 +286,10 @@ function authHeaders(key: string): Record<string, string> {
 }
 
 async function request(path: string, conn: Connection = connection): Promise<Response> {
+  // Round 19 (F-19-C6): checked on every request, before `fetch`, so the key
+  // never leaves over cleartext to another machine — see transport.ts.
+  const insecure = insecureBaseReason(conn.base, window.location.origin);
+  if (insecure !== null) throw new ApiError("insecure", path, undefined, insecure);
   let resp: Response;
   try {
     resp = await fetch(`${conn.base}${path}`, { headers: authHeaders(conn.key) });

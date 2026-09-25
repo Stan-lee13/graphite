@@ -177,6 +177,20 @@ export function Fault({ error }: { error: ApiError }) {
       </div>
     );
   }
+  if (error.kind === "insecure") {
+    // Round 19 (F-19-C6): refused before anything was sent. The message
+    // names the address and the fix.
+    return (
+      <div className="note fault" role="alert">
+        <KeyRound className="note-icon" aria-hidden="true" />
+        <strong>Not sending the key over plain http://</strong>
+        <p>{error.message}</p>
+        <a className="btn primary" href={hrefFor("connect")}>
+          Open connection settings
+        </a>
+      </div>
+    );
+  }
   if (error.kind === "network") {
     return (
       <div className="note fault" role="alert">

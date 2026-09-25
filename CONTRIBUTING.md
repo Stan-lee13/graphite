@@ -64,8 +64,8 @@ Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), 
 
 - [ ] `cargo fmt --all -- --check` clean (0 diffs)
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)
-- [ ] `cargo test --release` passes (0 failures — currently 1,562 tests, 12 ignored; `--include-ignored` for the live RPC corpus)
-- [ ] `cargo test --release --no-default-features --lib` (320) and `--no-default-features --features cli` (1,366) pass — the feature matrix is tested, not just checked
+- [ ] `cargo test --release` passes (0 failures — currently 1,628 tests, 14 ignored; `--include-ignored` for the live RPC corpus and the mainnet sample)
+- [ ] `cargo test --release --no-default-features --lib` (327) and `--no-default-features --features cli` (1,415) pass — the feature matrix is tested, not just checked
 - [ ] `cargo audit --deny warnings` clean
 - [ ] Container builds, boots, `/health` answers, `/data` is writable, unauthenticated `/verify` is `401`, and a keyless container refuses to start
 - [ ] TypeScript SDK `npm run build` + `npm test`; SAK integration `npm run typecheck` + `npm test` (100) and the regenerated artifact fixture + corpus show no diff

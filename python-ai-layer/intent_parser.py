@@ -31,7 +31,8 @@ Security invariants (unchanged):
     leaves the process only as the JSON response.
 
 Usage:
-    python3 intent_parser.py --serve         # Run as HTTP server on :8081
+    python3 intent_parser.py --serve         # Run as HTTP server on 127.0.0.1:8081
+                                             # (GRAPHITE_AI_LAYER_HOST overrides the bind)
     python3 intent_parser.py "Swap 1 SOL for USDC"  # Label single intent
     python3 intent_parser.py --bench 20000   # Micro-benchmark 20k parses
 """
@@ -42,7 +43,7 @@ import re
 import sys
 import argparse
 import statistics
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
@@ -583,18 +584,47 @@ def _unknown_result(natural_language: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# HTTP server (bounded body, robust Content-Length — hardened in C20).
+# HTTP server (bounded body, robust Content-Length — hardened in C20; bound to
+# loopback, threaded and time-limited — Round 19, F-19-C5).
 # ---------------------------------------------------------------------------
 MAX_BODY_BYTES = 64 * 1024
+
+# Seconds a connection may sit idle mid-request before it is dropped. Round 19
+# (F-19-C5): the server was a single-threaded HTTPServer with no socket
+# timeout, and `rfile.read(length)` trusted Content-Length — a client that
+# declared 100 bytes and sent 10 held the ONLY thread forever, and every other
+# caller (the bridge included) hung behind it.
+REQUEST_TIMEOUT_SECONDS = 10.0
+
+# Where --serve binds unless GRAPHITE_AI_LAYER_HOST says otherwise. Round 19
+# (F-19-C5): it bound 0.0.0.0, putting an unauthenticated service whose answer
+# feeds the bridge's transfer construction on every interface of the host.
+DEFAULT_BIND_HOST = "127.0.0.1"
+BIND_HOST_ENV = "GRAPHITE_AI_LAYER_HOST"
+
+
+def resolve_bind_host(environ=None) -> str:
+    """The address to bind: loopback, unless the operator explicitly set
+    GRAPHITE_AI_LAYER_HOST (e.g. 0.0.0.0 inside a container whose port is
+    published only to a private network)."""
+    env = os.environ if environ is None else environ
+    value = (env.get(BIND_HOST_ENV) or "").strip()
+    return value or DEFAULT_BIND_HOST
 
 
 class IntentParserHandler(BaseHTTPRequestHandler):
     """HTTP handler for intent labeling requests."""
 
+    # StreamRequestHandler applies this to the socket in setup(): every read —
+    # the request line, the headers, the body — gives up after this long
+    # instead of blocking its thread indefinitely.
+    timeout = REQUEST_TIMEOUT_SECONDS
+
     def _read_bounded_body(self) -> Optional[bytes]:
         """Read the request body with a hard size cap and robust
-        Content-Length parsing. Malformed or oversized requests return None
-        (caller answers 413/400) instead of raising or trusting the header."""
+        Content-Length parsing. Malformed, oversized, short or stalled
+        requests return None (caller answers 413/400/408) instead of raising
+        or trusting the header."""
         raw = self.headers.get("Content-Length", "0")
         try:
             length = int(raw)
@@ -602,17 +632,38 @@ class IntentParserHandler(BaseHTTPRequestHandler):
             return None
         if length < 0 or length > MAX_BODY_BYTES:
             return None
-        return self.rfile.read(length)
+        try:
+            body = self.rfile.read(length)
+        except (TimeoutError, OSError):
+            # The client declared more than it sent and then went quiet.
+            # Round 19 (F-19-C5): this used to block the server's only thread.
+            self._timed_out = True
+            self.close_connection = True
+            return None
+        if len(body) != length:
+            # Fewer bytes than declared, then EOF: not the request it claimed.
+            self.close_connection = True
+            return None
+        return body
 
     def do_POST(self):
         body = self._read_bounded_body()
         if body is None:
-            self.send_response(413)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(
-                json.dumps({"error": "request body too large or malformed Content-Length"}).encode()
-            )
+            timed_out = getattr(self, "_timed_out", False)
+            try:
+                self.send_response(408 if timed_out else 413)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {"error": "request body not received in time"}
+                        if timed_out
+                        else {"error": "request body too large, short, or malformed Content-Length"}
+                    ).encode()
+                )
+            except OSError:
+                pass  # the client is gone; nothing to tell it
             return
 
         try:
@@ -692,9 +743,22 @@ def _benchmark(n: int) -> None:
     print(f"latency  p50={p50:.1f}us  p99={p99:.1f}us  max={latencies[-1]:.1f}us")
 
 
+class IntentParserServer(ThreadingHTTPServer):
+    """One thread per connection, so a slow client costs its own thread and
+    nobody else's (Round 19, F-19-C5). Daemon threads: a stuck connection
+    never keeps the process alive at shutdown."""
+
+    daemon_threads = True
+
+
+def make_server(host: str, port: int) -> IntentParserServer:
+    return IntentParserServer((host, port), IntentParserHandler)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Graphite AI Advisory Intent Labeler")
-    parser.add_argument("--serve", action="store_true", help="Run as HTTP server on port 8081")
+    parser.add_argument("--serve", action="store_true",
+                        help="Run as HTTP server on 127.0.0.1:8081 (GRAPHITE_AI_LAYER_HOST overrides the bind)")
     parser.add_argument("--port", type=int, default=8081, help="Port for HTTP server")
     parser.add_argument("--bench", type=int, metavar="N", help="Run N-parse micro-benchmark")
     parser.add_argument("text", nargs="?", help="Intent text to label")
@@ -704,8 +768,11 @@ def main():
     if args.bench:
         _benchmark(args.bench)
     elif args.serve:
-        server = HTTPServer(("0.0.0.0", args.port), IntentParserHandler)
-        print(f"Graphite AI Layer running on port {args.port}")
+        host = resolve_bind_host()
+        server = make_server(host, args.port)
+        print(f"Graphite AI Layer running on {host}:{args.port}")
+        if host != DEFAULT_BIND_HOST:
+            print(f"WARNING: bound to {host} via {BIND_HOST_ENV}; this service is unauthenticated")
         print("Advisory-only intent labeler (P1: AI assists, never decides)")
         print(f"manifest registry grounded: {len(_REGISTRY)} program IDs loaded")
         server.serve_forever()

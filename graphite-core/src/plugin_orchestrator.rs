@@ -681,9 +681,33 @@ impl PluginOrchestrator {
         let mut cpis = Vec::new();
         for kind in self.plugins.values().flatten() {
             if let PluginKind::Protocol(p) = kind {
-                if p.protocol_id() == program_id {
-                    rules.extend(p.semantic_rules(instruction_discriminator));
-                    cpis.extend(p.allowed_cpis(instruction_discriminator));
+                // Isolated like every other plugin call (Round 19, F-19-25).
+                // A panicking protocol plugin used to unwind through the
+                // request: no verdict, no audit row. Its knowledge is lost
+                // instead, and the program is judged as declaring no effects
+                // — the strict reading — rather than with no rules at all.
+                let outcome = catch_unwind(AssertUnwindSafe(|| {
+                    if p.protocol_id() == program_id {
+                        Some((
+                            p.semantic_rules(instruction_discriminator),
+                            p.allowed_cpis(instruction_discriminator),
+                        ))
+                    } else {
+                        None
+                    }
+                }));
+                match outcome {
+                    Ok(Some((r, c))) => {
+                        rules.extend(r);
+                        cpis.extend(c);
+                    }
+                    Ok(None) => {}
+                    Err(_) => {
+                        tracing::error!(
+                            "protocol plugin panicked while describing {program_id}; judging it as declaring no effects"
+                        );
+                        rules.push(crate::state_diff::UNDESCRIBED_INSTRUCTION_EFFECTS.to_string());
+                    }
                 }
             }
         }

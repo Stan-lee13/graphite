@@ -50,6 +50,51 @@ was measured by reverting the change, re-running over the identical sample, and
 diffing — which produced 9,784 identical verdicts, the evidence that the change
 moved nothing for honest traffic. "The tests pass" would not have shown that.
 
+## Recorded results (2026-09-23 sample, Round 19)
+
+19,458 transactions (12,134 legacy, 4,022 v0, 3,302 v1), 283 distinct programs,
+against the 129-manifest registry. Version 1 is parsed from this round on, so
+it is verified like every other row instead of being skipped.
+
+| | |
+|---|---|
+| parse failures | **0 of 19,458** (v1 included) |
+| L2 discriminator-contradiction false positives | 0 |
+| reached a verdict | 19,440 |
+| L2 passed | 16,900 |
+| L2 failed — lookup tables unresolved (this harness attaches no RPC) | 1,589 |
+| L2 failed — durable nonce refused | 951 |
+| L2 failed — anything else | **0** |
+| risk Clear | 11,802 |
+
+**The old-vs-new differential.** The sample was run against `a1db51f` and
+against this round's code with v1 rows removed (16,156 transactions, identical
+input). The two verdict files are byte-identical — 0 of 16,149 verdicts changed
+— for every Round 19 fix except F-19-28, which was itself found by this run: 71
+transactions carrying two same-program, same-data instructions (told apart only
+by their accounts) and 41 carrying an empty-data associated-token-account
+`create` were refused at L2 though the chain had executed them. After the fix,
+104 of them pass L2 and 8 stop, correctly, at unresolved lookup tables; no risk
+verdict and no approval changed.
+
+`GRAPHITE_MAINNET_SHOW_L2=1` prints the Core's own reason for the first few L2
+refusals of each unexplained class, which is how both were found.
+
+### Against the real RPC
+
+`graphite-core/tests/mainnet_live_rpc.rs` takes the newest successful rows whose
+primary program has a manifest and verifies them one at a time against a real
+RPC — Graphite's own simulation and state reads — 1.5 s apart, read-only:
+
+```bash
+GRAPHITE_MAINNET_SAMPLE=tools/mainnet-sample/mainnet_sample.json GRAPHITE_MAINNET_RPC_URL=https://api.mainnet-beta.solana.com GRAPHITE_MAINNET_LIVE_LIMIT=40   cargo test --test mainnet_live_rpc -- --ignored --nocapture
+```
+
+On 2026-09-24, 40 transactions (14 legacy, 24 v0, 2 v1): 0 invariant violations,
+0 approvals. 35 failed to simulate — checked by hand against the same RPC: the
+runtime's own errors for day-old transactions on today's state (stale vote
+slots, insufficient funds, closed accounts), reported as `simulation_failed`.
+
 ## Recorded results (2026-09-22, Round 18)
 
 10,617 transactions from 8 blocks, 195 distinct programs, against the 131-manifest

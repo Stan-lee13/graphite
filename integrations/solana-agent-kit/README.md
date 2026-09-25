@@ -79,10 +79,29 @@ submitted — and nothing is signed under a residual the operator has not accept
   `sendRawTransaction`. A refreshed blockhash, changed fee payer, appended instruction,
   rewritten amount or flipped flag after approval is refused.
 - `executeSwap` requires the built payload (program id, discriminator, accounts with
-  real flags, data). Without it there is nothing to bind and the bridge aborts. Setting
-  `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION=I_ACCEPT_UNVERIFIED_SWAP_EXECUTION` — a
-  phrase, so it is not set by accident — lets SAK's own builder execute a swap Graphite
-  never saw; the outcome then says `verifiedExecution: false` with `unverifiedReason`.
+  real flags, data). Without it there is nothing to bind and the bridge aborts. The
+  unverified-swap opt-out (`GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION`) was **retired in
+  Round 19** (F-19-C2): it executed through SAK's own builder with the key SAK held, and
+  SAK no longer holds a key that can sign. Setting it now changes nothing, and the
+  abort message says so by name.
+- **SolanaAgentKit never holds a signing key (Round 19, F-19-C2).** SAK is constructed
+  with `VerificationGatedWallet` (`gated-wallet.ts`): the public key, and every signing
+  method (`signTransaction`, `signAllTransactions`, `signAndSendTransaction`,
+  `signMessage`) throws `UngatedSigningRefused` naming the verified path. SAK's read-only
+  tools keep working; anything that would sign outside `signApproved` cannot.
+- **Nothing is signed before the verdict (Round 19, F-19-C1).** The pre-verdict RPC
+  simulation (`rpc-simulator.ts`) compiles an unsigned `VersionedTransaction` from the
+  fee payer's PUBLIC key and simulates it with `sigVerify: false` and
+  `replaceRecentBlockhash: true`; every signature slot is read back from the serialized
+  bytes and must be zero, or nothing is sent. Before Round 19 web3.js's
+  `simulateTransaction(tx, [keypair])` signed the transfer on a live blockhash and handed
+  a broadcastable transaction to the RPC before Graphite had answered.
+- **The intent check is grounded in the user's words (Round 19, F-19-C5).** The AI layer
+  is advisory; `intent-grounding.ts` re-derives the amount and destination of a transfer
+  deterministically from the natural-language text and refuses a parse that disagrees
+  (`IntentGroundingError`), and the parse must echo the text it was given. The intent
+  sent to the Core is the grounded one, so the Core's transaction-versus-intent check no
+  longer compares the AI's output with itself.
 - Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
 - `scope.unobserved` is printed for every verdict; which residuals a deployment
   accepts is the deployment's decision, made in configuration and enforced by the
@@ -117,18 +136,18 @@ const agent = await VerifiedSakAgent.create({
 // an artifact_bound approval whose digest matches.
 const outcome = await agent.executeTransfer("Transfer 0.05 SOL to <address>");
 
-if (!outcome.executed) {
+if (!outcome.verifiedExecution) {
   console.log("Blocked by Graphite:", outcome.verification.risk_verdict.findings);
-} else if (!outcome.verifiedExecution) {
-  console.log("Executed WITHOUT verification (opt-out):", outcome.unverifiedReason);
 } else {
   console.log("Verified execution:", outcome.signature);
 }
 ```
 
 `ExecutionOutcome` is `{ executed, verifiedExecution, verification, signature?,
-unverifiedReason?, lifecycle? }`. Gate on `verifiedExecution`, not on `executed`: the
-latter is also true for the opt-out path. `lifecycle` (every verified execution) is
+unverifiedReason?, lifecycle? }`. Gate on `verifiedExecution`. Since Round 19 there is no
+unverified path, so `executed` and `verifiedExecution` agree and `unverifiedReason` is
+never set; both stay on the type so existing callers compile. `lifecycle` (every
+verified execution) is
 `{ signature, acceptedUnobserved, signingRecorded, verdictOnRecordAtSigning,
 submissionRecorded, submissionRecordError?, confirmed, confirmationError?,
 reconciliation?, reconciliationError? }` — read `reconciliation.discrepancy` for L8's
@@ -138,7 +157,7 @@ verdict on what actually landed.
 
 ```bash
 npm run typecheck
-npm test                 # 100 tests: BoundTransaction gate, execution-boundary fuzz,
+npm test                 # 119 tests: BoundTransaction gate, execution-boundary fuzz,
                          # TOCTOU signing boundary, AuditBind, artifact, nonces,
                          # residual policy, execution lifecycle (incl. the Round 12
                          # submission-report retry)
@@ -153,11 +172,11 @@ Before the bridge signs anything, Graphite checks:
 
 - **L1 Account Resolution**: accounts, PDAs and fixed constants; signer/writable privileges read from the transaction's own header and resolved lookup tables
 - **L2 Instruction Verification**: the described instruction is in the bytes, positionally, every sibling is declared, and the transaction is not durable-nonce based
-- **L3 Simulation Integrity**: compute/writes/CPI hops against earned baselines (live with `GRAPHITE_RPC_URL`; `Inconclusive` without)
+- **L3 Simulation Integrity**: the Core's own simulation of the exact bytes, against earned baselines (live with `GRAPHITE_RPC_URL`; `Inconclusive` without). A baseline is earned only by distinct transactions: the same message under a fresh blockhash is one observation (Round 19)
 - **L4 State Verification**: Graphite's own pre/post diff against the manifest; Token-2022 extensions classified
 - **L5 Semantic Verification**: intent ↔ instruction alignment
 - **L6 Policy Verification**: confidence against the wallet profile threshold
-- **L7 Risk Verification**: drainers, authority hijacks, fake swaps, impersonation, multi-instruction and CPI-trace patterns
+- **L7 Risk Verification**: drainers, authority hijacks, fake swaps, impersonation, multi-instruction patterns, and CPI-trace patterns run on the call tree the simulator actually executed (Round 19), not only on one the caller declares
 
 If any hard gate fails, the transaction is NOT signed. After submission, `POST
 /verify/execution` reconciles the signature against the recorded verdict (L8).

@@ -18,8 +18,117 @@
 //! decision for Phase 1+.
 
 use crate::simulation_integrity::{ComputeBaseline, ComputeUsage};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use thiserror::Error;
+
+/// How many distinct simulation identities one accumulator remembers
+/// (Round 19, F-19-03).
+///
+/// Round 17 made the same bytes one observation by remembering the last
+/// `ROBUST_WINDOW` (256) observation keys, and a key that had fallen out of
+/// that window counted again: the reviewer's reproduction took one program's
+/// `sample_count` from 257 to 258 with bytes it had already counted. The
+/// memory is now exact for the life of the accumulator. It is bounded, and at
+/// the bound the accumulator stops LEARNING rather than FORGETTING: an
+/// identity it cannot remember is not counted, and is kept in the shadow
+/// accumulator instead, where `/health` reports it and an operator can adopt
+/// it (`promote_shadow_baseline`, which starts a new accumulator with its own
+/// memory). Under-counting is the safe direction; counting an identity twice
+/// is the claim this constant exists to keep true.
+///
+/// 16,384 identities is 128 KiB of fingerprints per program. Every consumer of
+/// `sample_count` saturates long before it — the `SimulationMatch` signal at
+/// 3, the integrity check's `MIN_SAMPLES` at 10, the robust window at 256.
+pub const OBSERVATION_MEMORY: usize = 16_384;
+
+/// The identities one accumulator has counted, as 64-bit fingerprints.
+///
+/// A fingerprint is the first eight bytes of a domain-separated SHA-256 of
+/// the observation key. Two different identities sharing one is the only way
+/// the memory can be wrong, and the error is in the safe direction: the
+/// second is taken for one already counted and is not counted. At the bound
+/// the chance of any collision is below 2^-37.
+#[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ObservationMemory {
+    #[serde(with = "fingerprint_codec")]
+    fingerprints: BTreeSet<u64>,
+}
+
+impl ObservationMemory {
+    fn fingerprint(key: &str) -> u64 {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(b"graphite/observation-fingerprint/v1\0");
+        h.update(key.as_bytes());
+        let d = h.finalize();
+        u64::from_be_bytes([d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]])
+    }
+
+    /// Whether this identity has already been counted.
+    pub fn contains(&self, key: &str) -> bool {
+        self.fingerprints.contains(&Self::fingerprint(key))
+    }
+
+    /// How many identities are remembered.
+    pub fn len(&self) -> usize {
+        self.fingerprints.len()
+    }
+
+    /// Whether nothing is remembered yet.
+    pub fn is_empty(&self) -> bool {
+        self.fingerprints.is_empty()
+    }
+
+    /// Whether another identity can be remembered.
+    pub fn is_full(&self) -> bool {
+        self.fingerprints.len() >= OBSERVATION_MEMORY
+    }
+
+    fn remember(&mut self, key: &str) {
+        self.fingerprints.insert(Self::fingerprint(key));
+    }
+}
+
+/// Snapshot encoding for `ObservationMemory`: the fingerprints in ascending
+/// order, eight big-endian bytes each, base64. A full memory is ~175 KB of
+/// JSON rather than the ~330 KB a number array would take, and it is
+/// rewritten with every snapshot.
+mod fingerprint_codec {
+    use base64::Engine;
+    use std::collections::BTreeSet;
+
+    pub fn serialize<S: serde::Serializer>(set: &BTreeSet<u64>, s: S) -> Result<S::Ok, S::Error> {
+        let mut raw = Vec::with_capacity(set.len() * 8);
+        for f in set {
+            raw.extend_from_slice(&f.to_be_bytes());
+        }
+        s.serialize_str(&base64::engine::general_purpose::STANDARD.encode(raw))
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeSet<u64>, D::Error> {
+        use serde::de::Error;
+        let text: String = serde::Deserialize::deserialize(d)?;
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(text.as_bytes())
+            .map_err(D::Error::custom)?;
+        if raw.len() % 8 != 0 {
+            return Err(D::Error::custom(format!(
+                "observation memory is {} bytes, not a whole number of 8-byte fingerprints",
+                raw.len()
+            )));
+        }
+        if raw.len() / 8 > super::OBSERVATION_MEMORY {
+            return Err(D::Error::custom(format!(
+                "observation memory holds {} fingerprints; the bound is {}",
+                raw.len() / 8,
+                super::OBSERVATION_MEMORY
+            )));
+        }
+        let (words, rest) = raw.as_chunks::<8>();
+        debug_assert!(rest.is_empty(), "length checked above");
+        Ok(words.iter().map(|c| u64::from_be_bytes(*c)).collect())
+    }
+}
 
 // Reuse the canonical `TrustTier` from `confidence_engine` rather than
 // redefining an identical, differently-typed enum here. Found during the
@@ -157,6 +266,13 @@ pub struct SemanticGraphStore {
     /// an operator action) instead of permanent.
     #[serde(default)]
     shadow_baselines: HashMap<String, ComputeBaseline>,
+    /// Round 19 (F-19-03): the identities each trusted baseline has counted,
+    /// for the life of that baseline — see `OBSERVATION_MEMORY`.
+    #[serde(default)]
+    observed: HashMap<String, ObservationMemory>,
+    /// The same for each shadow accumulator.
+    #[serde(default)]
+    shadow_observed: HashMap<String, ObservationMemory>,
 }
 
 impl SemanticGraphStore {
@@ -367,25 +483,30 @@ impl SemanticGraphStore {
         usage: &ComputeUsage,
         observation_key: Option<&str>,
     ) -> ComputeBaseline {
+        // Same identity rule as the trusted accumulator: one transaction
+        // flagged ten times is one refused observation, not a frozen
+        // baseline — otherwise a single request could raise the
+        // `simulation_baseline_frozen` signal on its own. A full shadow
+        // memory drops the observation: the shadow is already past
+        // `MIN_SAMPLES` by then, so the signal it exists to raise is raised.
+        if let Some(key) = observation_key {
+            let memory = self
+                .shadow_observed
+                .entry(program_id.to_string())
+                .or_default();
+            if memory.contains(key) || memory.is_full() {
+                return self
+                    .shadow_baselines
+                    .get(program_id)
+                    .cloned()
+                    .unwrap_or_default();
+            }
+            memory.remember(key);
+        }
         let entry = self
             .shadow_baselines
             .entry(program_id.to_string())
             .or_default();
-        // Same identity rule as the trusted accumulator: one transaction
-        // flagged ten times is one refused observation, not a frozen
-        // baseline — otherwise a single request could raise the
-        // `simulation_baseline_frozen` signal on its own.
-        if let Some(key) = observation_key {
-            if entry.recent_observation_keys.iter().any(|k| k == key) {
-                return entry.clone();
-            }
-            entry.recent_observation_keys.push(key.to_string());
-            let cap = crate::simulation_integrity::ROBUST_WINDOW;
-            if entry.recent_observation_keys.len() > cap {
-                let excess = entry.recent_observation_keys.len() - cap;
-                entry.recent_observation_keys.drain(..excess);
-            }
-        }
         crate::simulation_integrity::update_baseline(
             entry,
             usage.compute_units,
@@ -393,6 +514,15 @@ impl SemanticGraphStore {
             usage.cpi_hops,
         );
         entry.clone()
+    }
+
+    /// How many identities the trusted baseline for `program_id` has counted
+    /// and remembers, and whether its memory is full (Round 19).
+    pub fn observation_memory(&self, program_id: &str) -> (usize, bool) {
+        self.observed
+            .get(program_id)
+            .map(|m| (m.len(), m.is_full()))
+            .unwrap_or((0, false))
     }
 
     /// Programs whose trusted baseline has refused at least `MIN_SAMPLES`
@@ -434,6 +564,11 @@ impl SemanticGraphStore {
         validate_baseline(&shadow)?;
         self.baselines.insert(key.to_string(), shadow.clone());
         self.shadow_baselines.remove(key);
+        // The adopted accumulator brings the identities it counted; the
+        // retired one's memory goes with it. What was counted once in the
+        // new baseline is still counted once.
+        let memory = self.shadow_observed.remove(key).unwrap_or_default();
+        self.observed.insert(key.to_string(), memory);
         Ok(shadow)
     }
 
@@ -447,28 +582,35 @@ impl SemanticGraphStore {
         self.record_simulation_keyed(program_id, usage, None)
     }
 
-    /// `record_simulation` with the observation's identity. An
-    /// `observation_key` (the artifact digest) already among the baseline's
-    /// recent keys is the same transaction seen again: nothing is recorded,
-    /// because a call is not an observation (Round 17, F-15-01).
+    /// `record_simulation` with the observation's identity
+    /// (`tx_artifact::simulation_identity`). An identity this baseline has
+    /// already counted is the same simulation seen again: nothing is
+    /// recorded, because a call is not an observation (Round 17, F-15-01) —
+    /// and that now holds for the life of the baseline, not for its last 256
+    /// observations (Round 19, F-19-03).
+    ///
+    /// When the baseline's memory is full (`OBSERVATION_MEMORY`) a new
+    /// identity cannot be remembered, so it is not counted here; it goes to
+    /// the shadow accumulator. The trusted baseline stops learning rather
+    /// than forgetting what it has counted.
     pub fn record_simulation_keyed(
         &mut self,
         program_id: &str,
         usage: &ComputeUsage,
         observation_key: Option<&str>,
     ) -> ComputeBaseline {
-        let entry = self.baselines.entry(program_id.to_string()).or_default();
         if let Some(key) = observation_key {
-            if entry.recent_observation_keys.iter().any(|k| k == key) {
-                return entry.clone();
+            let memory = self.observed.entry(program_id.to_string()).or_default();
+            if memory.contains(key) {
+                return self.baselines.get(program_id).cloned().unwrap_or_default();
             }
-            entry.recent_observation_keys.push(key.to_string());
-            let cap = crate::simulation_integrity::ROBUST_WINDOW;
-            if entry.recent_observation_keys.len() > cap {
-                let excess = entry.recent_observation_keys.len() - cap;
-                entry.recent_observation_keys.drain(..excess);
+            if memory.is_full() {
+                self.record_shadow_simulation(program_id, usage, Some(key));
+                return self.baselines.get(program_id).cloned().unwrap_or_default();
             }
+            memory.remember(key);
         }
+        let entry = self.baselines.entry(program_id.to_string()).or_default();
         crate::simulation_integrity::update_baseline(
             entry,
             usage.compute_units,

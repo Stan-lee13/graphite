@@ -139,18 +139,54 @@ export function verifyContentHash(
 /**
  * Build the hash projection from a real instruction's raw bytes.
  *
- * The discriminator is the first 8 bytes of the instruction data, hex-encoded
- * — matching how the core derives it. Takes already-stringified fields so this
- * module stays dependency-free; adapt a `@solana/web3.js` TransactionInstruction
- * with `ix.programId.toBase58()` and `ix.keys.map(k => k.pubkey.toBase58())`.
+ * Pass `discriminator` — hex, EXACTLY as it was sent to Graphite as
+ * `instruction_discriminator` — for every program that does not use Anchor's
+ * 8-byte convention, which is every native program: System instructions carry
+ * a 4-byte tag, SPL Token a 1-byte one. Omitted, the discriminator is the
+ * first 8 bytes of the data (the Anchor convention), which for a System
+ * transfer yields `0200000040420f00` — the tag plus half the lamport amount —
+ * and a hash that can never match the Core's, so the check would abort every
+ * native-program transaction.
+ *
+ * Round 19 (F-19-C4): this is the SolanaAgentKit integration's version,
+ * ported. The SDK had kept the 8-byte-only derivation after the integration
+ * fixed it, so SDK users binding a native-program instruction either could
+ * not pass the check at all or reconstructed the projection by hand — the
+ * snapshot-instead-of-live-object pattern that opened the TOCTOU window the
+ * integration closed (toctou-signing-boundary.test.ts).
+ *
+ * GFX-001 (2026-09-17 forensic audit), carried over with it: an explicit
+ * discriminator must be a prefix of the data it claims to describe. A label
+ * that is not is a projection of a different instruction, and the Core fails
+ * L2 on the same contradiction. Case and a `0x` prefix are tolerated in the
+ * comparison; the projection keeps the string as given, because it must
+ * reproduce what was sent.
+ *
+ * Takes already-stringified fields so this module stays dependency-free; adapt
+ * a `@solana/web3.js` TransactionInstruction with `ix.programId.toBase58()` and
+ * `ix.keys.map(k => k.pubkey.toBase58())`.
  */
 export function projectionFromInstruction(input: {
   programId: string;
   data: Uint8Array;
   accounts: string[];
+  /** Hex discriminator exactly as sent to Graphite. Required for native programs. */
+  discriminator?: string;
 }): AuditBindTransactionParams {
   const dataBytes = input.data ?? new Uint8Array(0);
-  const discriminator = Buffer.from(dataBytes.subarray(0, 8)).toString("hex");
+  if (input.discriminator !== undefined) {
+    const declared = input.discriminator.replace(/^0x/i, "").toLowerCase();
+    const actual = Buffer.from(dataBytes).toString("hex");
+    if (declared.length > 0 && !actual.startsWith(declared)) {
+      throw new AuditBindError(
+        `declared discriminator ${declared} is not a prefix of this instruction's data ` +
+          `(${actual.slice(0, 32)}${actual.length > 32 ? "…" : ""}). The label and the ` +
+          "bytes describe different instructions. ABORTING.",
+      );
+    }
+  }
+  const discriminator =
+    input.discriminator ?? Buffer.from(dataBytes.subarray(0, 8)).toString("hex");
   return {
     programId: input.programId,
     instructionDiscriminator: discriminator,
@@ -161,10 +197,11 @@ export function projectionFromInstruction(input: {
 
 /**
  * Verify a real instruction payload against the approved `content_hash`.
- * Convenience wrapper over `projectionFromInstruction` + `verifyContentHash`.
+ * Convenience wrapper over `projectionFromInstruction` + `verifyContentHash`;
+ * pass `discriminator` for native programs (see above).
  */
 export function verifyInstruction(
-  instruction: { programId: string; data: Uint8Array; accounts: string[] },
+  instruction: { programId: string; data: Uint8Array; accounts: string[]; discriminator?: string },
   contentHash: string,
 ): void {
   verifyContentHash(projectionFromInstruction(instruction), contentHash);
