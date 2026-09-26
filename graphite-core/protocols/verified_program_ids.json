@@ -36,7 +36,7 @@
    "program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
    "verified": true,
    "network": "mainnet",
-   "provenance": "spl-memo official (classic memo from solana-program-library); restored 2026-08-08 (C15) â€” C1's 'never existed' claim was itself the error; re-verified EXEC on mainnet: 99,736 B ELF, owner BPFLoader2111, actively used"
+   "provenance": "spl-memo official (classic memo from solana-program-library); restored 2026-08-08 (C15) — C1's 'never existed' claim was itself the error; re-verified EXEC on mainnet: 99,736 B ELF, owner BPFLoader2111, actively used"
   },
   {
    "name": "Memo Program",
@@ -50,7 +50,7 @@
    "program_id": "Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo",
    "verified": true,
    "network": "mainnet",
-   "provenance": "legacy spl-memo; re-verified EXEC on mainnet+devnet 2026-08-08 â€” superseded, NOT retired (C10)"
+   "provenance": "legacy spl-memo; re-verified EXEC on mainnet+devnet 2026-08-08 — superseded, NOT retired (C10)"
   },
   {
    "name": "Associated Token Account Program",

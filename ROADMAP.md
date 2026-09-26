@@ -115,9 +115,9 @@ The SAK integration is code-complete with real imports and **verified on Solana 
 - [x] 1,000+ meaningful regression fixtures (2,181 corpus, C41)
 - [x] Real holdout evaluation with independent labels (38 fixtures, 0 FN, C41)
 
-## Hardening Rounds (2026-09-05 → 2026-09-24) — reports in `docs/`
+## Hardening Rounds (2026-09-05 → 2026-09-25) — reports in `docs/`
 
-Nineteen rounds run after Phase 2, each driven by an adversarial review of the
+Twenty rounds run after Phase 2, each driven by an adversarial review of the
 previous commit and each closed with reproductions committed as tests and every
 fix reverted once to prove its test fails without it. Status of every guarantee:
 [docs/CURRENT.md](docs/CURRENT.md).
@@ -151,8 +151,9 @@ fix reverted once to prove its test fails without it. Status of every guarantee:
 - [x] Blocking plugins fail closed on panic; `min_confidence > 1` is a 400 before the pipeline; the PDA seed-template grammar is closed at manifest load, at registry submission and at verify (Round 17)
 - [x] **The registry is measured, not asserted (Round 18):** the Solana program inventory ranked from real mainnet blocks; 98 programs onboarded from their own on-chain Anchor IDLs; `protocols/battle_tested_evidence.json` records identity, volume and how much of each program's REAL traffic its manifest can name; `load_seed_manifests` lowers any `BattleTested` the measurement does not support
 - [x] **What one observation is, and who may sign (Round 19):** the baseline identity ignores the blockhash the simulator replaces (a refused transfer was approved on its third ask with only the blockhash changed); only the artifact is simulated; exact per-program observation memory; the CPI-trace rules run on the tree the simulator reports; every writable account of an undescribed instruction is diffed; a separate operator key for `/admin/*`; the concurrency permit taken after rate, auth and body; one writer per data directory with ordered snapshots; the reference bridge no longer signs before the verdict and SolanaAgentKit holds no key that can sign
+- [x] **The transfer fee is modelled (Round 20):** Token-2022 fee-bearing transfers stop blocking where Graphite accounts for the fee exactly against the mint's own schedule (checked against real fee mints); the fee payer's writable flag stops blocking every self-paid token transfer (156 real transactions went Blocked → Clear); a caller can no longer label its own diff as Graphite's
 - [x] **Message version 1 parsed (Round 19):** never looser than agave's decoder (runtime oracle, both CI seeds, zero looser frames); 3,302 of 3,302 real mainnet v1 transactions read and bound
-- [x] 1,628 Rust tests at Round 19 (327 featureless, 1,415 cli-only), 119 in the SAK integration, 32 in the TS SDK, 34 Go, 31 Python, 6 dashboard; CI green on every commit since `f10e4ab`
+- [x] 1,652 Rust tests at Round 20 (327 featureless, 1,436 cli-only), 119 in the SAK integration, 32 in the TS SDK, 34 Go, 31 Python, 6 dashboard; CI green on every commit since `f10e4ab`
 
 ## Phase 3 (Production) — what gates it
 
@@ -161,7 +162,7 @@ the public service. Owner decisions are marked.
 
 - [ ] **Independent third-party audit** — every report so far is internal engineering work and says so (owner)
 - [ ] **Branch protection on `main`** — required CI, no force-push; today CI is advisory because the branch accepts direct pushes (owner)
-- [ ] Token-2022 `TransferFee` modelled so fee-bearing mints stop blocking
+- [x] Token-2022 `TransferFee` modelled — done in Round 20 for transfers and harvests (withdrawals of withheld fees still block)
 - [x] **Message version 1 parsed** — done in Round 19 (it was 17.0% of the 19,458-transaction mainnet sample of 2026-09-23 and refused by name until then); the v1 config values are parsed and bounded but not yet surfaced in verdicts
 - [ ] **Manifest coverage of the traffic that has no published IDL.** Round 18 took the manifested share of non-vote mainnet transactions from 20.8% to 44.0% by onboarding every heavily used program that publishes its own on-chain Anchor IDL. The programs that now dominate the unmanifested remainder do not publish one, so they need a different, per-protocol route
 - [x] A hard L2 failure on an unparseable artifact — done in Round 9: no `instruction_data`, or an artifact that does not parse, fails L2

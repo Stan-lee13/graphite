@@ -53795,6 +53795,244 @@
     "note": "Token-2022 Program::UiAmountToAmount near-prefix discriminator"
   },
   {
+    "hash": "2cd072280b3edf90840522ce3ca4679b2afef9dcd6f88526dc202928751dacb3",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferFeeConfig intent=create"
+  },
+  {
+    "hash": "452ecabb58afd055830095703929ad4271aacf6f1611d2f00f04286c1279107e",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferFeeConfig empty intent — Check 10 gate"
+  },
+  {
+    "hash": "10544295a5bad63f5e7344db945162d4d16c257e3fcf6654ea1fdc932831152e",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferFeeConfig swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "7b7927457728d1c08e44e167450f34a482eda97d8130819cedfd3403c7da19d3",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferFeeConfig +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "0f9954618405f2997d75e76ce244c3a9d3e8b5ac8cbcb591d7e55a1aba3bbbf4",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferFeeConfig zero-padded discriminator"
+  },
+  {
+    "hash": "7a6d4eb2823450265d9823c4c5ee19173152baeff8cc83487dd501b57cfa8cd3",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::InitializeTransferFeeConfig near-prefix discriminator"
+  },
+  {
+    "hash": "e8661a9eab3039239eb59a5c655bda33aea94bd61a751f3330c7138320d74457",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TransferCheckedWithFee intent=transfer"
+  },
+  {
+    "hash": "3655949a4ffd4d946ed4f2e659ae6e4e9d101b4198285e73c947455b785ba511",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TransferCheckedWithFee empty intent — Check 10 gate"
+  },
+  {
+    "hash": "c0a65a664275b21dbc1ccc9c624cb1bc5b9ac082b971ddaa3e63de3e7bff3314",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TransferCheckedWithFee swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "eb614e480b6c150f35ab9555357e14caa5d6f1a4d9ef1e2855a8c13e67e1079b",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TransferCheckedWithFee +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "3aed853674158f8260f60ddd90fc6c4c42484cee66a81ca4fc97c1fd3623c6bf",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TransferCheckedWithFee zero-padded discriminator"
+  },
+  {
+    "hash": "b0b1c005a313820ffab2b1d59bc8e58e9afe5bb0af877bd45dec3aab5d540e00",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::TransferCheckedWithFee near-prefix discriminator"
+  },
+  {
+    "hash": "33c594dc6b1b3204b3d996257465202600dea21181796e45422247cb8619e5ae",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromMint intent=transfer"
+  },
+  {
+    "hash": "7d406dae9e2efd61630f7e32ab018bafeb24ba86e1adca86684c94feef428f8b",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromMint empty intent — Check 10 gate"
+  },
+  {
+    "hash": "354b1af041ab23f7a4483e06eaa16a4e56a848e130820fa93f48bd378e47ca8c",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromMint swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "acb2a2b67f8505ea93202079f11dbf50fcda6cf9c75aa5f40b377e6c5de80179",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromMint +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "f812319486a738900b36dad2ed757e7ff6579ddce35c1040f7caa751c0f76862",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromMint zero-padded discriminator"
+  },
+  {
+    "hash": "16d8a0a362630749dd4a0698fccfcad7fef3aafe241468f858af7fd26eafb676",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromMint near-prefix discriminator"
+  },
+  {
+    "hash": "0029e1e4dd56d23dbd862d6ee82f7f5528d636fc39401051c3577e74a87e9b78",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromAccounts intent=transfer"
+  },
+  {
+    "hash": "1bcec130708ae85d4275333f6cb79cc6391a76648502797a89f424e44409ad67",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromAccounts empty intent — Check 10 gate"
+  },
+  {
+    "hash": "592b951b3dd05c4f8679d2d6d2759f21e4fadc2a595b34f47313e32476cf13ba",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromAccounts swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "9222ccb47a842ddbc726bbc739d8e3d0cb041af67def461b744afcfbc183c943",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromAccounts zero-padded discriminator"
+  },
+  {
+    "hash": "a19182b38136e0ab7c78839afc4e17d067a5cadb0fd2c78e890205ca2819838f",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::WithdrawWithheldTokensFromAccounts near-prefix discriminator"
+  },
+  {
+    "hash": "ead4935709b10860dd40fd4f356359c42a27c48c37b7d5500dd4a21a896e066f",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::HarvestWithheldTokensToMint intent=transfer"
+  },
+  {
+    "hash": "b80e50f74005765d0c83f5a1caaf9001b44f845fcca2d94b9b1ff6a716a64b3a",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::HarvestWithheldTokensToMint empty intent — Check 10 gate"
+  },
+  {
+    "hash": "89f52721a53c448058b00b0b04cb918954d7c2a3911dfd5565d2d71aa77e5643",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::HarvestWithheldTokensToMint swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "857740d476764795a5f440abbdc29505546f5dee0f813709559baa78e0e318e9",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::HarvestWithheldTokensToMint zero-padded discriminator"
+  },
+  {
+    "hash": "686264fd5f68359cb7728f6101beb3f0894aab5c87a3ead6670a8535eb3e0a97",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::HarvestWithheldTokensToMint near-prefix discriminator"
+  },
+  {
+    "hash": "f84079be347cff3af53187907204a793e7184fc9fbd3d5af19d06c1bcc829b76",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::SetTransferFee intent=transfer"
+  },
+  {
+    "hash": "db3c282fbbba8d3fa8571973610789ed74c57f2044b43f436e0093412fb793b4",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::SetTransferFee empty intent — Check 10 gate"
+  },
+  {
+    "hash": "dc14d6bf6cb526639b17e2522c1f4f92f9db991923713d5150f7224a3ac0a3b7",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::SetTransferFee swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "e51c135463617287824a0c0213fcd1198827066923931c769b86aeebbfb819b9",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::SetTransferFee +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "9d5d2a6974e53291805db45c04331d4690f229ff8b1aef5bd6a74d5fd4e4a4a9",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::SetTransferFee zero-padded discriminator"
+  },
+  {
+    "hash": "c737deb519a70751286cf6268d3288111a48a360a20042a08505eaddb104f50c",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Token-2022 Program::SetTransferFee near-prefix discriminator"
+  },
+  {
     "hash": "3f44688a3b8d5fd17a00073b7e5e70c69bb45cb2bbc9044f40618503653f57c9",
     "split": "dev",
     "class": "canonical",

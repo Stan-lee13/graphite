@@ -449,6 +449,7 @@ fn test_fix3_pda_mismatch_field_exists() {
         ],
         instruction_data: None,
         real_account_metas: vec![],
+        fee_payer: None,
     };
 
     let result = resolve_accounts(&input, &registry).unwrap();
@@ -621,6 +622,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         account_addresses: vec![authority.to_string(), correct_pda_str.clone()],
         instruction_data: None,
         real_account_metas: vec![],
+        fee_payer: None,
     };
 
     let result_correct = resolve_accounts(&input_correct, &registry).unwrap();
@@ -637,6 +639,7 @@ fn test_pda_mismatch_blocks_spoofed_pda() {
         account_addresses: vec![authority.to_string(), spoofed_pda.to_string()],
         instruction_data: None,
         real_account_metas: vec![],
+        fee_payer: None,
     };
 
     let result_spoofed = resolve_accounts(&input_spoofed, &registry).unwrap();
@@ -775,6 +778,7 @@ fn test_pda_mismatch_correct_pda_passes() {
         account_addresses: vec![authority.to_string(), correct_pda_str.clone()],
         instruction_data: None,
         real_account_metas: vec![],
+        fee_payer: None,
     };
 
     let result = resolve_accounts(&input, &registry).unwrap();

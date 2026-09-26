@@ -5,11 +5,11 @@
 > Do not edit by hand — `tests/docs_match_the_registry.rs` compares this page to
 > the loaded registry, and a hand edit fails CI.
 
-Rendered: 2026-09-23
+Rendered: 2026-09-25
 
 ## In one line
 
-**129 protocol manifests / 3186 instructions**, of which **106 carry a BattleTested tier that a mainnet measurement supports**.
+**129 protocol manifests / 3192 instructions**, of which **106 carry a BattleTested tier that a mainnet measurement supports**.
 
 ## What BattleTested means here
 
@@ -60,6 +60,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Brrr Lend (G3v8Wxa6) | `G3v8Wxa6TU8rwjZ4J5ey7zbnp44VxYTyTVESa3P6ByjT` | 32 | BattleTested | 1,000 | 2,655s | 45 | 100% |
 | Jupiter V6 Aggregator | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | 32 | BattleTested | 1,375 | 38s | 385 | 100% |
 | Crafting (CRAFT2RP) | `CRAFT2RPXPJWCEix4WpJST3E7NLf79GTqZUL75wngXo5` | 31 | BattleTested | 1,989 | 6,944s | 134 | 100% |
+| Token-2022 Program | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | 31 | BattleTested | 1,239 | 2s | 10,307 | 99% |
 | Marinade Staking | `MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD` | 29 | BattleTested | 1,977 | 295,528s | 40 | 100% |
 | Mmm (mmm3XBJg) | `mmm3XBJg5gk8XJxEKBvdgptZz6SgK4tXvn36sodowMc` | 29 | BattleTested | 1,000 | 414s | 63 | 100% |
 | OpenBook V2 | `opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb` | 29 | BattleTested | 1,526 | 208,408s | 40 | 100% |
@@ -76,7 +77,6 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Kamino Vault (KvauGMsp) | `KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd` | 26 | BattleTested | 1,998 | 21,483s | 61 | 100% |
 | Okx DEX Router (proVF4pM) | `proVF4pMXVaYqmy4NjniPh4pqKNfMmsihgd4wdkCX3u` | 25 | BattleTested | 1,774 | 174s | 106 | 100% |
 | SPL Token Program | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` | 25 | BattleTested | 1,431 | 2s | 37,990 | 100% |
-| Token-2022 Program | `TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb` | 25 | BattleTested | 1,239 | 2s | 10,307 | 99% |
 | M2 (M2mx93ek) | `M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K` | 24 | BattleTested | 1,988 | 1,320s | 54 | 100% |
 | Futarchy (FUTARELB) | `FUTARELBfJfQ8RDGhg1wdhddq1odMAJUePHFuBYfUxKq` | 23 | BattleTested | 1,137 | 2,458s | 29 | 100% |
 | Helium Sub Daos (hdaoVTCq) | `hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR` | 23 | BattleTested | 1,860 | 82,121s | 41 | 100% |

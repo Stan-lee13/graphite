@@ -93,6 +93,8 @@ fn lamports(pubkey: &str, n: u64) -> AccountSnapshot {
         token: None,
         mint: None,
         extensions: Default::default(),
+        transfer_fee_withheld: None,
+        transfer_fee_config: None,
     }
 }
 
@@ -122,6 +124,7 @@ fn diff(deltas: Vec<AccountDelta>) -> StateDiff {
         artifact_balance_writes: None,
         artifact_account_universe: None,
         artifact_accounts_undescribed: None,
+        transfer_fee_mints: Default::default(),
     }
 }
 
@@ -257,11 +260,18 @@ fn a_clean_caller_supplied_diff_is_inconclusive_never_passed() {
     );
 }
 
+/// Round 20 (F-20-01): the caller cannot LABEL its own diff as Graphite's.
+///
+/// This test used to be `the_same_clean_diff_passes_l4_when_it_carries_rpc_provenance`
+/// and asserted `Passed`: the provenance field is part of the request body,
+/// so a request could write `"provenance": "rpc_simulated"` on a diff it made
+/// up and L4 certified it — "State diff verified against the manifest" about
+/// balances nobody measured. Provenance is where Graphite got the diff, so a
+/// diff from the request is `CallerSupplied` whatever it claims. The diff
+/// path passing on Graphite's OWN diff is proven over a mock RPC in
+/// `round19_observed_execution.rs` and `round20_transfer_fee.rs`.
 #[test]
-fn the_same_clean_diff_passes_l4_when_it_carries_rpc_provenance() {
-    // The mirror of the test above: identical deltas, only the provenance
-    // differs. If this also came back Inconclusive the provenance rule would
-    // be indistinguishable from "the diff path never passes anything".
+fn a_caller_diff_that_claims_rpc_provenance_is_still_the_callers() {
     let mut d = diff(vec![AccountDelta {
         pubkey: SIGNER.to_string(),
         before: Some(lamports(SIGNER, 10_000_000)),
@@ -271,15 +281,15 @@ fn the_same_clean_diff_passes_l4_when_it_carries_rpc_provenance() {
 
     let result = core().verify(&transfer(Some(d))).unwrap();
     let (status, reason) = l4(&result);
-    assert_eq!(status, LayerStatus::Passed, "L4 reason: {reason}");
-    // The heuristic ALSO returns Passed for this fixture, so the status alone
-    // proves nothing about whether the diff was read. The reason has to show
-    // the diff path ran.
-    assert!(
-        reason.contains("State diff verified against the manifest"),
-        "L4 passed, but not by way of the diff — the diff path is not wired in: {reason}"
+    assert_eq!(
+        status,
+        LayerStatus::Inconclusive,
+        "a diff from the request certified L4 because it said it came from an RPC: {reason}"
     );
-    assert!(result.approved, "{}", result.summary);
+    assert!(
+        reason.contains("supplied by the caller"),
+        "the reason must say it is the caller's diff (P3): {reason}"
+    );
 }
 
 // ── Fallback and boundaries ─────────────────────────────────────────────────
@@ -332,6 +342,7 @@ fn a_diff_never_turns_a_transaction_that_would_be_blocked_into_an_approval() {
     let without = core().verify(&input).unwrap();
     assert!(!without.approved, "baseline must be rejected");
 
+    // Even a diff claiming RPC provenance (which is now ignored: F-20-01).
     let mut d = diff(vec![AccountDelta {
         pubkey: SIGNER.to_string(),
         before: Some(lamports(SIGNER, 10_000_000)),

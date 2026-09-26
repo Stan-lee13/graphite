@@ -35,9 +35,9 @@ The Rust verification engine — the heart of Graphite.
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 1,628 tests (0 failures, 14 network- or sample-dependent ignored)
+cargo test --release     # 1,652 tests (0 failures, 15 network- or sample-dependent ignored)
 cargo test --release --no-default-features --lib            # 327 — the featureless library
-cargo test --release --no-default-features --features cli   # 1,415 — cli without the server
+cargo test --release --no-default-features --features cli   # 1,436 — cli without the server
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 
@@ -56,7 +56,7 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-129 JSON manifests in `protocols/`, 3,186 instructions. Each carries the program
+129 JSON manifests in `protocols/`, 3,192 instructions. Each carries the program
 ID, trust tier, instructions with discriminators, expected accounts and allowed
 CPI targets. Ninety-six of them were generated in Round 18 from each program's
 **own on-chain Anchor IDL** — the account the program itself owns — after the

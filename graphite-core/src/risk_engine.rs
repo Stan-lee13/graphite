@@ -1128,12 +1128,25 @@ const UNSPENDABLE_ADDRESSES: &[&str] = &[
 /// transferChecked (0x0c). Their account lists are `[from, to]`,
 /// `[source, dest, authority]` and `[source, mint, dest, authority]` — no slot
 /// in any of them is ever a native program or sysvar.
-fn is_fund_movement(program_id: &str, discriminator: &str) -> bool {
+///
+/// Round 20: Token-2022's transfer-fee extension moves value too —
+/// `TransferCheckedWithFee` (0x1a 0x01, `[source, mint, dest, authority]`)
+/// and the two withdrawals of withheld fees (0x1a 0x02 from the mint,
+/// 0x1a 0x03 from accounts, each `[mint, dest, authority, ..]`). Until now a
+/// fee-bearing transfer to an address ground to impersonate a system account
+/// was not a fund movement for the checks below. Classic SPL Token has no
+/// 0x1a family.
+pub fn is_fund_movement(program_id: &str, discriminator: &str) -> bool {
     let d = discriminator.to_lowercase();
     match program_id {
         p if p == SYSTEM_PROGRAM_ID => d.starts_with("02"),
-        p if p == TOKEN_PROGRAM_ID || p == TOKEN_2022_PROGRAM_ID => {
-            d.starts_with("03") || d.starts_with("0c")
+        p if p == TOKEN_PROGRAM_ID => d.starts_with("03") || d.starts_with("0c"),
+        p if p == TOKEN_2022_PROGRAM_ID => {
+            d.starts_with("03")
+                || d.starts_with("0c")
+                || d.starts_with("1a01")
+                || d.starts_with("1a02")
+                || d.starts_with("1a03")
         }
         _ => false,
     }

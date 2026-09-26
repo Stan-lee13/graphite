@@ -106,6 +106,7 @@ fn resolve(
         ],
         instruction_data: None,
         real_account_metas: vec![],
+        fee_payer: None,
     };
     resolve_accounts(&input, &registry)
         .expect("resolution must succeed")

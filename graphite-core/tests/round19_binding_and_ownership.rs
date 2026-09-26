@@ -310,6 +310,7 @@ fn an_unknown_programs_accounts_are_not_all_read_only() {
                     is_writable: false,
                 },
             ],
+            fee_payer: None,
         },
         &registry,
     )
@@ -327,6 +328,7 @@ fn an_unknown_programs_accounts_are_not_all_read_only() {
             account_addresses: vec![a, b],
             instruction_data: Some(vec![1]),
             real_account_metas: vec![],
+            fee_payer: None,
         },
         &registry,
     )

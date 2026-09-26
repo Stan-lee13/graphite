@@ -108,6 +108,7 @@ fn resolve(
         ],
         instruction_data: None,
         real_account_metas,
+        fee_payer: None,
     };
     resolve_accounts(&input, &registry)
         .expect("resolution must succeed")
@@ -371,6 +372,7 @@ fn an_undeclared_extra_account_has_no_privilege_to_mismatch() {
         account_addresses: addresses,
         instruction_data: None,
         real_account_metas: metas,
+        fee_payer: None,
     };
     let resolved = resolve_accounts(&input, &registry)
         .expect("resolution must succeed")
@@ -419,6 +421,7 @@ fn extras_do_not_mask_a_real_privilege_mismatch_on_a_declared_slot() {
         ],
         instruction_data: None,
         real_account_metas: metas,
+        fee_payer: None,
     };
     let resolved = resolve_accounts(&input, &registry)
         .expect("resolution must succeed")
@@ -426,5 +429,71 @@ fn extras_do_not_mask_a_real_privilege_mismatch_on_a_declared_slot() {
     assert!(
         resolved[0].privilege_mismatch,
         "a declared signer that did not sign must still be flagged when extras follow it"
+    );
+}
+
+// ─── Round 20: the fee payer's writable flag ───────────────────────────────
+
+fn resolve_with_fee_payer(
+    real_account_metas: Vec<RealAccountMeta>,
+    fee_payer: Option<&str>,
+) -> Vec<graphite_core::account_resolution::ResolvedAccount> {
+    let mut registry = load_seed_manifests();
+    registry
+        .load_from_json(&manifest_json())
+        .expect("test manifest must load");
+    let input = AccountResolutionInput {
+        program_id: TEST_PROGRAM.to_string(),
+        instruction_discriminator: "bbbbbbbbbbbbbbbb".to_string(),
+        account_addresses: vec![
+            AUTHORITY.to_string(),
+            READONLY_ACCOUNT.to_string(),
+            WRITABLE_ACCOUNT.to_string(),
+        ],
+        instruction_data: None,
+        real_account_metas,
+        fee_payer: fee_payer.map(str::to_string),
+    };
+    resolve_accounts(&input, &registry)
+        .expect("resolution must succeed")
+        .resolved_accounts
+}
+
+/// The authority slot is declared signer, read-only. When the authority is
+/// also the fee payer, the transaction makes it writable because it pays the
+/// fee — every self-paid token transfer looks like this. Not a mismatch.
+#[test]
+fn the_fee_payers_writable_flag_is_not_a_privilege_escalation() {
+    let mut metas = matching_metas();
+    metas[0].is_writable = true;
+    let as_fee_payer = resolve_with_fee_payer(metas.clone(), Some(AUTHORITY));
+    assert!(
+        !as_fee_payer[0].privilege_mismatch,
+        "the fee payer is writable by protocol rule, not by this instruction's construction"
+    );
+    // The same flags when the authority is NOT the fee payer: still flagged.
+    let not_fee_payer = resolve_with_fee_payer(metas, Some(WRITABLE_ACCOUNT));
+    assert!(not_fee_payer[0].privilege_mismatch);
+}
+
+/// The exemption is for the fee payer's WRITABLE flag only: a fee payer that
+/// is not signed where the manifest requires a signer is still a mismatch,
+/// and every other account is judged exactly as before.
+#[test]
+fn the_fee_payer_exemption_is_only_its_writable_flag() {
+    let mut metas = matching_metas();
+    metas[0].is_signer = false;
+    let unsigned = resolve_with_fee_payer(metas, Some(AUTHORITY));
+    assert!(
+        unsigned[0].privilege_mismatch,
+        "an unsigned authority is still refused"
+    );
+
+    let mut metas = matching_metas();
+    metas[1].is_writable = true;
+    let escalated = resolve_with_fee_payer(metas, Some(AUTHORITY));
+    assert!(
+        escalated[1].privilege_mismatch,
+        "a read-only slot that is not the fee payer, marked writable, is still an escalation"
     );
 }

@@ -11,7 +11,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 **Current status, in one place: [docs/CURRENT.md](docs/CURRENT.md).** Every dated report under `docs/` is a historical record and points there.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1628_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1652_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-129-blue?style=flat-square)](docs/protocol-coverage.md)
@@ -66,13 +66,13 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,628 tests — zero setup (1,642 total; 14 ignored: network- or
+# Run 1,652 tests — zero setup (1,667 total; 15 ignored: network- or
 # sample-dependent, plus one soak benchmark, run explicitly with --ignored)
 cargo test --release
-# summed across the test binaries: 1628 passed; 0 failed; 14 ignored
+# summed across the test binaries: 1652 passed; 0 failed; 15 ignored
 
 # The same gate CI runs on the feature matrix: the library with no features
-# (327 tests) and the cli-only build (1,415) must pass too.
+# (327 tests) and the cli-only build (1,436) must pass too.
 cargo test --release --no-default-features --lib
 cargo test --release --no-default-features --features cli
 
@@ -123,7 +123,7 @@ All 11 patterns are real detection logic — not stubs, not placeholders. Nine a
 
 ---
 
-## Supported Protocols (129 Manifests / 3,186 Instructions)
+## Supported Protocols (129 Manifests / 3,192 Instructions)
 
 The full table — every program, its instruction count, the tier the loader
 actually applied, and the mainnet measurement behind it — is
@@ -188,9 +188,9 @@ graphite/
 │   │   ├── benchmark.rs           ← P16-compliant benchmark (18 scored + 2 baselines)
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI (clap): verify, benchmark, regression, registry
-│   ├── protocols/                 ← 129 JSON protocol manifests (3,186 instructions)
+│   ├── protocols/                 ← 129 JSON protocol manifests (3,192 instructions)
 │   │                                 + battle_tested_evidence.json: the mainnet measurement behind each tier
-│   └── tests/                     ← 1,628 tests (unit + adversarial + exploit + RPC trust boundary + live RPC + real mainnet)
+│   └── tests/                     ← 1,652 tests (unit + adversarial + exploit + RPC trust boundary + live RPC + real mainnet)
 │
 ├── dashboard/                     ← React + TS dashboard (5 views, polls /api/*)
 │
@@ -621,7 +621,7 @@ construction (Constitution P4) — the dashboard never mutates graph state.
 | **Trusted simulation baselines** | Baselines live in the semantic-graph accumulator (earned via RPC-verified usage or operator-seeded) — the request body **cannot** supply one (anti-poisoning) An observation is one distinct execution: keyed on the frame with its signatures and blockhash zeroed, remembered exactly per program, and recorded only from the transaction artifact itself — a fresh blockhash or a repeated descriptive request earns nothing (Round 19). |
 | **Transaction identity** | With `signed_transaction` supplied: wire format parsed (legacy, v0 and v1 — never looser than agave's decoder), `transaction_sha256` over the exact bytes, L2 requires the described instruction to be in the bytes positionally and every sibling declared, privileges read from the header and resolved lookup tables — never from the caller |
 | **Address lookup tables** | Fetched, owner-checked, decoded; runtime account numbering rebuilt (static ++ writable ++ readonly); all-or-nothing — an unresolved table is disclosed as unobserved, never treated as empty |
-| **Token-2022** | Extensions classified, not modelled: transfer-semantics, authority and unknown extensions block; an unreadable extension region blocks; informational extensions warn |
+| **Token-2022** | Extensions classified; the **transfer fee is modelled** (Round 20) — the mint's schedule read by Graphite, the withheld amount required to be exactly Token-2022's fee on what arrived, value conserved, the fee and the arriving amount stated, a fee larger than the arrival blocked. Anything it cannot account for exactly, and every other transfer-semantics, authority, unknown or unreadable extension, blocks; informational extensions warn |
 | **Durable nonces** | Detected by the runtime's rule; refused at L2 by default; opt-in only after on-chain nonce verification |
 | **Wire-format bounds** | Canonical compact-u16 (≤ 65,535, minimal encoding), trailing bytes refused, indexes bounds-checked, nothing over the format's size bound (1232-byte packet for legacy/v0, 4,096 bytes for v1) — the same rules on the TypeScript side, asserted equal across 1,647 byte-level mutations in CI |
 | **The described instruction is located, or L2 fails** | An artifact without `instruction_data`, or one that does not parse, fails L2; `artifact_bound` never claims a comparison L2 did not make (Round 9: a 100 SOL transfer was approved under a 0.002 SOL description by omitting the optional field) |
@@ -653,9 +653,9 @@ What we **do not** claim:
 What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`, counting DISTINCT sound transactions: the same bytes re-verified are one observation, and a request refused at L2 or by the Risk Engine is none) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
-- 1,628 Rust tests passing (1,642 total; 14 network- or sample-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
+- 1,652 Rust tests passing (1,667 total; 15 network- or sample-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
 - 14 risk checks (13 risk patterns, incl. `UnspendableDestination` and `PluginBlock`) are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
-- 129 protocol manifests / 3,186 instructions (Round 18), program IDs verified against on-chain sources and pinned both ways by test; 96 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
+- 129 protocol manifests / 3,192 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20), program IDs verified against on-chain sources and pinned both ways by test; 96 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).

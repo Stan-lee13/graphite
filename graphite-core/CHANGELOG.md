@@ -3,6 +3,16 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 20 — the fee is modelled] — 2026-09-25
+
+Report: `docs/round20-the-fee-is-modelled-2026-09-25.md`.
+
+- **Token-2022 `TransferFee` is modelled** (F-20-02): fee-bearing transfers stop blocking where Graphite accounts for the fee exactly. The mint's `TransferFeeConfig` is read from the diff or fetched by Graphite at pre-state (a `TransferChecked` names its mint read-only, so it is never diffed); every withheld amount must be `calculate_fee` on one transfer of what arrived, under the older or newer schedule; untaxed arrivals must be ones the schedule does not charge; withheld fees leave accounts only by an exact harvest; the mint's value is conserved. New findings: `Token2022TransferFeeCharged`, `Token2022TransferFeeMajority` (critical: more withheld than arrives), `Token2022TransferFeeRising`, `Token2022TransferFeeConfigChanged` (critical unless declared), `Token2022WithheldFeesHarvested`. Anything else — withdrawals of withheld fees, several transfers into one account, unreadable entries, a missing schedule — blocks with the reason. Checked against the upstream arithmetic vectors and against real fee-bearing mints on mainnet (6 isolated real transfers, 0 mismatches). `tests/round20_transfer_fee.rs`, `tests/mainnet_transfer_fee_live.rs`.
+- **The fee payer's writable flag is not a privilege escalation** (P2, F-20-03): every SPL / Token-2022 transfer whose authority also paid the fee was blocked as an account-identity mismatch — the cause of Round 18's undiagnosed `kind=privilege` cluster. Over the 19,458-transaction mainnet sample, identity/privilege blocks fell from 1,355 to 519 and 156 executed transactions went Blocked → Clear; no other verdict loosened. The fee payer's signer requirement and every other account are checked as before.
+- **L4 observes what the transaction can write** (P2, F-20-04): the diff covered only the accounts the manifest calls writable, so the fee payer's fee failed `ArtifactEffectsNotCovered` on every self-paid token transfer verified with an RPC.
+- **A caller cannot label its own diff as Graphite's** (P2, F-20-01): a request's `state_diff` kept the `provenance` it claimed, and a fabricated diff marked `rpc_simulated` certified L4. Now always `CallerSupplied`.
+- `TransferCheckedWithFee` and the withheld-fee withdrawals are fund movements for the impersonation and unspendable-destination checks (F-20-05); the Token-2022 manifest describes the six 0x1a transfer-fee instructions (F-20-06, 3,192 instructions); two manifests' double-encoded dashes repaired.
+
 ## [Round 19 — what one observation is] — 2026-09-24
 
 Report: `docs/round19-what-one-observation-is-2026-09-24.md`. An external review

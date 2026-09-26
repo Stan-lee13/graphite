@@ -747,6 +747,194 @@
    "allowed_cpis": [],
    "risk_rules": [],
    "risk_class": ""
+  },
+  {
+   "name": "InitializeTransferFeeConfig",
+   "discriminator": "1a00",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "initializes the transfer fee config of accounts.mint: fee authority, withdraw authority, basis points and maximum fee"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "The transfer fee config authority chosen here can later change what every transfer of this token costs (with a two-epoch delay)"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "TransferCheckedWithFee",
+   "discriminator": "1a01",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.source token balance by data.amount",
+    "credits accounts.destination token balance by data.amount less data.fee",
+    "withholds data.fee in accounts.destination"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "The transaction fails unless data.fee equals the fee the mint's schedule charges on data.amount; Graphite models the withheld fee against the mint's schedule (L4)"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "WithdrawWithheldTokensFromMint",
+   "discriminator": "1a02",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "withdraw_withheld_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "withdraws the withheld fees of accounts.mint and credits accounts.destination token balance"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "withdraw_withheld_authority must be signer"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "WithdrawWithheldTokensFromAccounts",
+   "discriminator": "1a03",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "withdraw_withheld_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "variable_accounts": true,
+   "expected_state_changes": [
+    "withdraws the withheld fees of the source token accounts and credits accounts.destination token balance"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "withdraw_withheld_authority must be signer",
+    "The source token accounts follow the declared accounts and are writable"
+   ],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "HarvestWithheldTokensToMint",
+   "discriminator": "1a04",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "variable_accounts": true,
+   "expected_state_changes": [
+    "transfers the withheld fees of the source token accounts into the withheld pool of accounts.mint"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "Permissionless: anyone may harvest; the fees stay withheld and move only from the accounts to the mint"
+   ],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "SetTransferFee",
+   "discriminator": "1a05",
+   "accounts": [
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_fee_config_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "changes the transfer fee schedule of accounts.mint (takes effect two epochs later) under the fee authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "transfer_fee_config_authority must be signer",
+    "RISK: the new schedule decides what every later transfer of this token costs — up to 100% of each transfer"
+   ],
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested"

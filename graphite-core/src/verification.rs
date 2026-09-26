@@ -226,7 +226,65 @@ fn build_rpc_state_diff(
         artifact_balance_writes,
         artifact_account_universe,
         artifact_accounts_undescribed,
+        // Filled by the caller, which fetches the fee mints (Round 20).
+        transfer_fee_mints: Default::default(),
     }
+}
+
+/// The resolved accounts with `is_writable` as the TRANSACTION sets it (Round
+/// 20), for L4.
+///
+/// `resolve_accounts` reports the manifest's expectation, and L4 used it to
+/// decide which accounts to diff and which changes were writes to read-only
+/// accounts. But what a transaction can change is decided by its own header:
+/// an account the manifest calls read-only that the transaction marks
+/// writable — the fee payer signing as a transfer authority, on every
+/// self-paid token transfer — was left out of the diff, and its fee then
+/// failed `ArtifactEffectsNotCovered`, while a change to it would have been
+/// reported as a write to a read-only account. The union is taken, so the
+/// diff never observes LESS than before: a manifest-writable account stays
+/// observed even if the transaction marks it read-only. Without a full set
+/// of real flags nothing changes.
+fn accounts_for_state_diff(
+    resolved: &[crate::account_resolution::ResolvedAccount],
+    metas: &[crate::account_resolution::RealAccountMeta],
+) -> Vec<crate::account_resolution::ResolvedAccount> {
+    let grounded = metas.len() == resolved.len();
+    resolved
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let mut a = a.clone();
+            if grounded && metas[i].is_writable {
+                a.is_writable = true;
+            }
+            a
+        })
+        .collect()
+}
+
+/// The Token-2022 mints whose fee-bearing token accounts appear among the
+/// diffed accounts, before or after, and which are not themselves diffed
+/// (Round 20). Sorted and deduplicated, so the fetch is deterministic (P2).
+#[cfg(feature = "rpc")]
+fn transfer_fee_mints_to_fetch(
+    addresses: &[String],
+    pre: &[Option<crate::rpc_client::AccountState>],
+    post: &[Option<crate::rpc_client::AccountState>],
+) -> Vec<String> {
+    let diffed: std::collections::HashSet<&str> = addresses.iter().map(String::as_str).collect();
+    let mut mints: Vec<String> = pre
+        .iter()
+        .chain(post.iter())
+        .flatten()
+        .filter(|a| a.owner == crate::state_diff::SPL_TOKEN_2022_PROGRAM)
+        .filter(|a| crate::state_diff::decode_transfer_fee_withheld(&a.data).is_some())
+        .filter_map(|a| crate::state_diff::decode_token_account(&a.data).map(|t| t.mint))
+        .filter(|m| !diffed.contains(m.as_str()))
+        .collect();
+    mints.sort_unstable();
+    mints.dedup();
+    mints
 }
 
 /// How many of these deltas moved lamports.
@@ -4363,6 +4421,13 @@ impl GraphiteCore {
                 account_addresses: input.account_addresses.clone(),
                 instruction_data: input.instruction_data.clone(),
                 real_account_metas: effective_metas.clone(),
+                // Only from the bytes, and only when the privileges are the
+                // bytes' too: a caller cannot name an account "the fee payer"
+                // to excuse its writable flag (Round 20).
+                fee_payer: artifact_privileges
+                    .as_ref()
+                    .and(artifact_message.as_ref())
+                    .map(|m| m.fee_payer.clone()),
             },
             &self.registry,
         ) {
@@ -5574,10 +5639,12 @@ impl GraphiteCore {
                 let diff_addresses: Vec<String> = if input.signed_transaction.is_some() {
                     let mut seen = std::collections::HashSet::new();
                     let mut addrs: Vec<String> = Vec::new();
-                    for a in resolution
-                        .resolved_accounts
-                        .iter()
-                        .filter(|a| a.is_writable)
+                    // What the TRANSACTION can write (Round 20), not only
+                    // what the manifest expects it to.
+                    for a in
+                        accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas)
+                            .iter()
+                            .filter(|a| a.is_writable)
                     {
                         if seen.insert(a.address.clone()) {
                             addrs.push(a.address.clone());
@@ -5978,7 +6045,60 @@ impl GraphiteCore {
                                             out.dedup();
                                             out
                                         });
-                                    observed_diff = Some(build_rpc_state_diff(
+                                    // Round 20: the fee schedules of the
+                                    // Token-2022 mints whose fee-bearing
+                                    // accounts the diff covers. A
+                                    // TransferChecked names its mint read-only,
+                                    // so the mint is not among the writable
+                                    // accounts above — but its schedule is what
+                                    // says what the transfer costs. Read at
+                                    // pre-state, from the RPC, never from the
+                                    // caller; a failed read leaves the fee
+                                    // unmodelled, which blocks.
+                                    let fee_mints_needed =
+                                        transfer_fee_mints_to_fetch(&diff_addresses, &pre, &post);
+                                    let mut transfer_fee_mints = std::collections::BTreeMap::new();
+                                    if !fee_mints_needed.is_empty() {
+                                        match within_budget(
+                                            &budget,
+                                            client.get_multiple_accounts(&fee_mints_needed),
+                                        )
+                                        .await
+                                        {
+                                            Ok(Ok(accounts)) => {
+                                                for (mint, account) in
+                                                    fee_mints_needed.iter().zip(accounts.iter())
+                                                {
+                                                    if let Some(config) = account
+                                                        .as_ref()
+                                                        .filter(|a| {
+                                                            a.owner
+                                                                == crate::state_diff::SPL_TOKEN_2022_PROGRAM
+                                                        })
+                                                        .and_then(|a| {
+                                                            crate::state_diff::decode_transfer_fee_config(
+                                                                &a.data,
+                                                            )
+                                                        })
+                                                    {
+                                                        transfer_fee_mints.insert(mint.clone(), config);
+                                                    }
+                                                }
+                                            }
+                                            Ok(Err(e)) => {
+                                                tracing::warn!(
+                                                    "transfer-fee mint fetch failed: {}",
+                                                    e
+                                                )
+                                            }
+                                            Err(()) => {
+                                                tracing::warn!(
+                                                    "transfer-fee mint fetch ran out of budget"
+                                                )
+                                            }
+                                        }
+                                    }
+                                    let mut diff = build_rpc_state_diff(
                                         &diff_addresses,
                                         &pre,
                                         &post,
@@ -5986,7 +6106,9 @@ impl GraphiteCore {
                                         sim_res.account_writes,
                                         universe,
                                         undescribed,
-                                    ));
+                                    );
+                                    diff.transfer_fee_mints = transfer_fee_mints;
+                                    observed_diff = Some(diff);
                                 }
                                 Err(e) => {
                                     // Without pre-state there is no diff. Half
@@ -6343,11 +6465,24 @@ impl GraphiteCore {
         // the fallback for when there is no diff to look at. `observed_diff`
         // is Graphite's own RPC-built diff when one exists, and only otherwise
         // the caller's — so a caller cannot displace what Graphite measured.
-        let l4_result = match observed_diff.as_ref().or(input.state_diff.as_ref()) {
+        //
+        // A diff from the request is the CALLER's, whatever its `provenance`
+        // field says (Round 20, F-20-01). The field is serialized, so a
+        // request could label a diff it wrote `rpc_simulated` — and L4
+        // certified it: a descriptive request, or one whose simulation failed
+        // (no observed diff), carrying a fabricated clean diff came back L4
+        // `Passed` with "State diff verified", and the account-shape check it
+        // displaced never ran. Provenance is a fact about where Graphite got
+        // the diff, so Graphite sets it.
+        let caller_diff = input.state_diff.clone().map(|mut d| {
+            d.provenance = crate::state_diff::DiffProvenance::CallerSupplied;
+            d
+        });
+        let l4_result = match observed_diff.as_ref().or(caller_diff.as_ref()) {
             Some(diff) => Self::verify_state_from_diff(
                 diff,
                 &expected_state_changes,
-                &resolution.resolved_accounts,
+                &accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas),
                 privileges_grounded,
                 fee_payer_for_diff.as_deref(),
             ),

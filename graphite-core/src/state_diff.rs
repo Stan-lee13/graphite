@@ -133,11 +133,210 @@ pub struct AccountSnapshot {
     /// Token-2022 extensions attached to this account, or why they could not
     /// be read.
     ///
-    /// Detected, named and classified — never modelled. A clean scan means no
-    /// extension was found, which is not the same as a claim that the account
-    /// is simple; a malformed scan means the account cannot be reasoned about.
+    /// Detected, named and classified. A clean scan means no extension was
+    /// found, which is not the same as a claim that the account is simple; a
+    /// malformed scan means the account cannot be reasoned about. Only the
+    /// transfer-fee pair is MODELLED (Round 20) — see `transfer_fee_withheld`
+    /// and `transfer_fee_config` — and every other extension that can alter a
+    /// transfer still blocks.
     #[serde(default)]
     pub extensions: ExtensionScan,
+    /// `TransferFeeAmount.withheld_amount` of a Token-2022 token account: the
+    /// fees withheld in this account and not yet harvested. `None` when the
+    /// account carries no such extension, or carries one this build could not
+    /// read exactly (a wrong length, a duplicate entry, a malformed region) —
+    /// and an account whose withheld amount cannot be read is one whose fee
+    /// cannot be modelled.
+    #[serde(default)]
+    pub transfer_fee_withheld: Option<u64>,
+    /// `TransferFeeConfig` of a Token-2022 mint, read exactly or not at all.
+    #[serde(default)]
+    pub transfer_fee_config: Option<TransferFeeConfigView>,
+}
+
+// -- Token-2022 TransferFee: the one extension pair that is modelled ---------
+
+/// `spl_token_2022::extension::transfer_fee::MAX_FEE_BASIS_POINTS`.
+pub const MAX_FEE_BASIS_POINTS: u16 = 10_000;
+/// `ExtensionType::TransferFeeConfig`, on a mint.
+const EXT_TRANSFER_FEE_CONFIG: u16 = 1;
+/// `ExtensionType::TransferFeeAmount`, on a token account.
+const EXT_TRANSFER_FEE_AMOUNT: u16 = 2;
+/// `TransferFeeConfig`: config authority (32) + withdraw-withheld authority
+/// (32) + withheld amount (8) + older fee (18) + newer fee (18).
+const TRANSFER_FEE_CONFIG_LEN: usize = 108;
+/// `TransferFeeAmount`: withheld amount (8).
+const TRANSFER_FEE_AMOUNT_LEN: usize = 8;
+
+/// One epoch's transfer fee: `spl_token_2022::extension::transfer_fee::TransferFee`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TransferFeeSchedule {
+    /// First epoch in which this schedule applies.
+    pub epoch: u64,
+    /// The fee on one transfer never exceeds this, in base units.
+    pub maximum_fee: u64,
+    /// The fee rate, in hundredths of a percent.
+    pub basis_points: u16,
+}
+
+impl TransferFeeSchedule {
+    /// The fee Token-2022 charges on one transfer of `amount`, exactly as
+    /// `TransferFee::calculate_fee` computes it: the rate applied to the gross
+    /// amount, rounded UP, capped at `maximum_fee`; zero for a zero rate or a
+    /// zero amount. `None` for a rate above 100%, which the program refuses to
+    /// set and which is therefore not a schedule at all.
+    pub fn fee(&self, amount: u64) -> Option<u64> {
+        if self.basis_points > MAX_FEE_BASIS_POINTS {
+            return None;
+        }
+        if self.basis_points == 0 || amount == 0 {
+            return Some(0);
+        }
+        let numerator = u128::from(amount) * u128::from(self.basis_points);
+        let raw = numerator.div_ceil(u128::from(MAX_FEE_BASIS_POINTS));
+        Some(u64::try_from(raw).ok()?.min(self.maximum_fee))
+    }
+
+    fn describe(&self) -> String {
+        format!(
+            "{} bps, at most {} per transfer, from epoch {}",
+            self.basis_points, self.maximum_fee, self.epoch
+        )
+    }
+}
+
+/// A mint's `TransferFeeConfig`.
+///
+/// Two schedules because a change is never immediate: `SetTransferFee`
+/// writes the new schedule as `newer` with an epoch two epochs ahead, and
+/// `older` applies until then. Which one a transfer paid is therefore a fact
+/// about the epoch it ran in, and a transaction verified in one epoch can
+/// land in the next.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TransferFeeConfigView {
+    /// Who may change the schedule. `None` means nobody can.
+    pub config_authority: Option<String>,
+    /// Who may withdraw withheld fees. `None` means nobody can.
+    pub withdraw_withheld_authority: Option<String>,
+    /// Fees harvested into the mint and not yet withdrawn.
+    pub withheld_amount: u64,
+    pub older: TransferFeeSchedule,
+    pub newer: TransferFeeSchedule,
+}
+
+impl TransferFeeConfigView {
+    /// The same config with the withheld pool ignored — the part that decides
+    /// what a transfer costs and who controls it.
+    fn terms(
+        &self,
+    ) -> (
+        Option<&str>,
+        Option<&str>,
+        TransferFeeSchedule,
+        TransferFeeSchedule,
+    ) {
+        (
+            self.config_authority.as_deref(),
+            self.withdraw_withheld_authority.as_deref(),
+            self.older,
+            self.newer,
+        )
+    }
+}
+
+/// An `OptionalNonZeroPubkey`: 32 bytes, all-zero meaning none.
+fn optional_nonzero_pubkey(data: &[u8], offset: usize) -> Option<Option<String>> {
+    let bytes = data.get(offset..offset + 32)?;
+    Some(if bytes.iter().all(|b| *b == 0) {
+        None
+    } else {
+        Some(bs58::encode(bytes).into_string())
+    })
+}
+
+fn transfer_fee_schedule(data: &[u8], offset: usize) -> Option<TransferFeeSchedule> {
+    Some(TransferFeeSchedule {
+        epoch: u64_at(data, offset)?,
+        maximum_fee: u64_at(data, offset + 8)?,
+        basis_points: u16::from_le_bytes(data.get(offset + 16..offset + 18)?.try_into().ok()?),
+    })
+}
+
+/// The value of exactly one extension entry of `discriminant`, or `None`.
+///
+/// `None` covers every case in which the value cannot be trusted to be THE
+/// value: the region does not walk cleanly, the entry is absent, or it
+/// appears more than once. A model that picked the first of two withheld
+/// amounts would be choosing which one to believe.
+fn single_extension_value(data: &[u8], discriminant: u16) -> Option<&[u8]> {
+    if data.len() <= T22_TLV_START {
+        return None;
+    }
+    if !matches!(
+        data.get(T22_TYPE_OFFSET),
+        Some(&T22_TYPE_ACCOUNT) | Some(&T22_TYPE_MINT)
+    ) {
+        return None;
+    }
+    let mut found: Option<&[u8]> = None;
+    let mut offset = T22_TLV_START;
+    while offset < data.len() {
+        if offset + 4 > data.len() {
+            return None;
+        }
+        let d = u16::from_le_bytes([data[offset], data[offset + 1]]);
+        let length = u16::from_le_bytes([data[offset + 2], data[offset + 3]]) as usize;
+        if d == 0 {
+            break;
+        }
+        let value = data.get(offset + 4..offset + 4 + length)?;
+        if d == discriminant {
+            if found.is_some() {
+                return None;
+            }
+            found = Some(value);
+        }
+        offset += 4 + length;
+    }
+    found
+}
+
+/// `TransferFeeAmount.withheld_amount`, when the account carries exactly one
+/// entry of exactly the right length.
+pub fn decode_transfer_fee_withheld(data: &[u8]) -> Option<u64> {
+    if data.get(T22_TYPE_OFFSET) != Some(&T22_TYPE_ACCOUNT) {
+        return None;
+    }
+    let value = single_extension_value(data, EXT_TRANSFER_FEE_AMOUNT)?;
+    if value.len() != TRANSFER_FEE_AMOUNT_LEN {
+        return None;
+    }
+    u64_at(value, 0)
+}
+
+/// `TransferFeeConfig`, when the mint carries exactly one entry of exactly
+/// the right length and both schedules are schedules the program could set.
+pub fn decode_transfer_fee_config(data: &[u8]) -> Option<TransferFeeConfigView> {
+    if data.get(T22_TYPE_OFFSET) != Some(&T22_TYPE_MINT) {
+        return None;
+    }
+    let v = single_extension_value(data, EXT_TRANSFER_FEE_CONFIG)?;
+    if v.len() != TRANSFER_FEE_CONFIG_LEN {
+        return None;
+    }
+    let config = TransferFeeConfigView {
+        config_authority: optional_nonzero_pubkey(v, 0)?,
+        withdraw_withheld_authority: optional_nonzero_pubkey(v, 32)?,
+        withheld_amount: u64_at(v, 64)?,
+        older: transfer_fee_schedule(v, 72)?,
+        newer: transfer_fee_schedule(v, 90)?,
+    };
+    if config.older.basis_points > MAX_FEE_BASIS_POINTS
+        || config.newer.basis_points > MAX_FEE_BASIS_POINTS
+    {
+        return None;
+    }
+    Some(config)
 }
 
 impl AccountSnapshot {
@@ -154,6 +353,7 @@ impl AccountSnapshot {
         } else {
             (None, None)
         };
+        let is_token_2022 = owner == SPL_TOKEN_2022_PROGRAM;
         Self {
             pubkey: pubkey.to_string(),
             lamports,
@@ -161,12 +361,22 @@ impl AccountSnapshot {
             data_len: data.len(),
             token,
             mint,
-            extensions: if owner == SPL_TOKEN_2022_PROGRAM {
+            extensions: if is_token_2022 {
                 detect_token2022_extensions(data)
             } else {
                 // Classic SPL Token has no extension region. Looking for one
                 // would read whatever follows a 165-byte account as TLV.
                 ExtensionScan::default()
+            },
+            transfer_fee_withheld: if is_token_2022 {
+                decode_transfer_fee_withheld(data)
+            } else {
+                None
+            },
+            transfer_fee_config: if is_token_2022 {
+                decode_transfer_fee_config(data)
+            } else {
+                None
             },
         }
     }
@@ -700,6 +910,16 @@ pub struct StateDiff {
     /// happened.
     #[serde(default)]
     pub artifact_accounts_undescribed: Option<Vec<String>>,
+    /// The `TransferFeeConfig` of every Token-2022 mint whose token accounts
+    /// appear in this diff and which is not itself in it (Round 20).
+    ///
+    /// A `TransferChecked` names the mint read-only, so the mint is never one
+    /// of the writable accounts the diff covers — yet its schedule is what
+    /// says what a transfer of it costs. Graphite fetches it at pre-state.
+    /// A mint missing here, and not in the diff, is a mint whose fee cannot
+    /// be checked, and its transfer-fee extensions stay unmodelled.
+    #[serde(default)]
+    pub transfer_fee_mints: std::collections::BTreeMap<String, TransferFeeConfigView>,
 }
 
 impl StateDiff {
@@ -931,6 +1151,399 @@ pub struct StateDiffCheck<'a> {
     pub fee_payer: Option<&'a str>,
 }
 
+/// What modelling Token-2022's transfer fee concluded (Round 20).
+///
+/// Until Round 20 `TransferFeeConfig` and `TransferFeeAmount` blocked every
+/// transaction they appeared in, because the amount that arrives is not the
+/// amount that was sent and Graphite could not say what it was. The model
+/// says: for every fee-bearing token account in the diff it reads the
+/// withheld amount before and after, it takes the mint's schedule (from the
+/// diff, or fetched by Graphite — never from the caller), and it requires the
+/// observed movement to be exactly what Token-2022 does:
+///
+/// - every fee withheld at a destination is the fee the schedule charges on
+///   one transfer of what arrived there, under the older or the newer
+///   schedule — so the verdict can state the gross amount, the fee and what
+///   arrives;
+/// - tokens arriving with no fee withheld are tokens the schedule does not
+///   charge, or came from a supply increase;
+/// - withheld fees leave an account only by being harvested into the mint,
+///   exactly;
+/// - the mint's value is conserved across the accounts the diff covers:
+///   amounts plus withheld pools change by exactly the supply change.
+///
+/// Anything else — a withdrawal of withheld fees, several fee-bearing
+/// transfers into one account, an account that both sent and received, a
+/// schedule that could not be read — leaves the extensions unmodelled on
+/// those accounts, and they block exactly as before, now with the reason.
+#[derive(Default)]
+struct TransferFeeModel {
+    /// Accounts whose transfer-fee extensions the model accounted for.
+    modelled: std::collections::HashSet<String>,
+    /// Why the model could not account for an account's transfer-fee
+    /// extensions.
+    not_modelled: std::collections::HashMap<String, String>,
+    findings: Vec<StateDiffFinding>,
+}
+
+fn has_extension(snapshot: &AccountSnapshot, discriminant: u16) -> bool {
+    snapshot
+        .extensions
+        .found
+        .iter()
+        .any(|e| e.discriminant == discriminant)
+}
+
+/// One side of a fee-bearing token account: (amount, withheld), or why it
+/// cannot be read. An account that does not exist, or exists uninitialized,
+/// holds nothing and has withheld nothing — that is how a transfer into an
+/// associated token account created in the same transaction looks.
+fn fee_side(snapshot: Option<&AccountSnapshot>, mint: &str) -> Result<(u64, u64), String> {
+    let Some(s) = snapshot else {
+        return Ok((0, 0));
+    };
+    if s.extensions.malformed.is_some() {
+        return Err("its extension region could not be read".to_string());
+    }
+    let withheld = match (has_extension(s, EXT_TRANSFER_FEE_AMOUNT), s.transfer_fee_withheld) {
+        (true, Some(w)) => w,
+        (true, None) => {
+            return Err(
+                "its TransferFeeAmount entry could not be read exactly (wrong length or more than one entry)"
+                    .to_string(),
+            )
+        }
+        (false, _) => 0,
+    };
+    match &s.token {
+        Some(t) if t.mint != mint => Err(format!(
+            "it is an account of mint {} on one side of the transaction and of {mint} on the other",
+            t.mint
+        )),
+        Some(t) => Ok((t.amount, withheld)),
+        None if withheld == 0 => Ok((0, 0)),
+        None => Err(
+            "it carries withheld fees but does not decode as an initialized token account"
+                .to_string(),
+        ),
+    }
+}
+
+fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> TransferFeeModel {
+    use std::collections::BTreeMap;
+    let mut model = TransferFeeModel::default();
+
+    // Fee-bearing token accounts and fee-configured mints, grouped by mint.
+    let mut accounts: BTreeMap<String, Vec<&AccountDelta>> = BTreeMap::new();
+    let mut mints: BTreeMap<String, &AccountDelta> = BTreeMap::new();
+    for d in &diff.deltas {
+        let sides = [d.before.as_ref(), d.after.as_ref()];
+        if sides
+            .iter()
+            .flatten()
+            .any(|s| has_extension(s, EXT_TRANSFER_FEE_AMOUNT))
+        {
+            match sides.iter().flatten().find_map(|s| s.token.as_ref()) {
+                Some(t) => accounts.entry(t.mint.clone()).or_default().push(d),
+                None => {
+                    model.not_modelled.insert(
+                        d.pubkey.clone(),
+                        "it carries TransferFeeAmount but does not decode as a token account on either side"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        if sides
+            .iter()
+            .flatten()
+            .any(|s| has_extension(s, EXT_TRANSFER_FEE_CONFIG))
+        {
+            if sides.iter().flatten().any(|s| s.mint.is_some()) {
+                mints.insert(d.pubkey.clone(), d);
+            } else {
+                model.not_modelled.insert(
+                    d.pubkey.clone(),
+                    "it carries TransferFeeConfig but does not decode as a mint on either side"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    // A fee-configured mint in the diff whose accounts are not is its own
+    // group: its config can still change.
+    let mut all_mints: Vec<String> = accounts.keys().cloned().collect();
+    for m in mints.keys() {
+        if !accounts.contains_key(m) {
+            all_mints.push(m.clone());
+        }
+    }
+
+    for mint in all_mints {
+        let group: Vec<&AccountDelta> = accounts.get(&mint).cloned().unwrap_or_default();
+        let mint_delta = mints.get(&mint).copied();
+        let members: Vec<String> = group
+            .iter()
+            .map(|d| d.pubkey.clone())
+            .chain(mint_delta.map(|d| d.pubkey.clone()))
+            .collect();
+        let refuse = |model: &mut TransferFeeModel, why: String| {
+            for m in &members {
+                model
+                    .not_modelled
+                    .entry(m.clone())
+                    .or_insert_with(|| why.clone());
+            }
+        };
+
+        // The schedule. The mint's own pre-state governs a transfer in this
+        // transaction; a mint outside the diff was fetched at pre-state by
+        // Graphite. Never the caller's word.
+        let (config, mint_before_withheld, mint_after_withheld, supply_delta) = match mint_delta {
+            Some(md) => {
+                let before = md
+                    .before
+                    .as_ref()
+                    .and_then(|s| s.transfer_fee_config.clone());
+                let after = md
+                    .after
+                    .as_ref()
+                    .and_then(|s| s.transfer_fee_config.clone());
+                let (Some(b), Some(a)) = (before, after) else {
+                    refuse(
+                        &mut model,
+                        format!("the TransferFeeConfig of mint {mint} could not be read exactly on both sides of the transaction"),
+                    );
+                    continue;
+                };
+                if b.terms() != a.terms() && !declared.authority {
+                    model.findings.push(StateDiffFinding::critical(
+                        "Token2022TransferFeeConfigChanged",
+                        Some(md.pubkey.as_str()),
+                        format!(
+                            "the transfer-fee terms of this mint changed (config authority {} → {}, withdraw authority {} → {}, schedules [{}; {}] → [{}; {}]); the manifest declares no authority change. Whoever holds the config authority decides what every later transfer of this token costs",
+                            authority_label(&b.config_authority),
+                            authority_label(&a.config_authority),
+                            authority_label(&b.withdraw_withheld_authority),
+                            authority_label(&a.withdraw_withheld_authority),
+                            b.older.describe(),
+                            b.newer.describe(),
+                            a.older.describe(),
+                            a.newer.describe()
+                        ),
+                    ));
+                }
+                let (bw, aw) = (b.withheld_amount, a.withheld_amount);
+                (b, bw, aw, md.supply_delta().unwrap_or(0))
+            }
+            None => match diff.transfer_fee_mints.get(&mint) {
+                Some(c) => (c.clone(), 0, 0, 0),
+                None => {
+                    refuse(
+                        &mut model,
+                        format!(
+                            "the TransferFeeConfig of mint {mint} was not available, so what a transfer of it costs is unknown"
+                        ),
+                    );
+                    continue;
+                }
+            },
+        };
+
+        // Both sides of every account, exactly.
+        let mut sides: Vec<(&AccountDelta, i128, i128)> = Vec::new();
+        let mut unreadable: Option<String> = None;
+        for d in &group {
+            match (
+                fee_side(d.before.as_ref(), &mint),
+                fee_side(d.after.as_ref(), &mint),
+            ) {
+                (Ok((ab, wb)), Ok((aa, wa))) => sides.push((
+                    d,
+                    i128::from(aa) - i128::from(ab),
+                    i128::from(wa) - i128::from(wb),
+                )),
+                (Err(why), _) | (_, Err(why)) => {
+                    unreadable = Some(format!("account {} cannot be modelled: {why}", d.pubkey));
+                    break;
+                }
+            }
+        }
+        if let Some(why) = unreadable {
+            refuse(&mut model, why);
+            continue;
+        }
+        let mint_withheld_delta =
+            i128::from(mint_after_withheld) - i128::from(mint_before_withheld);
+
+        // Conservation of this mint's value over the accounts the diff
+        // covers. A transfer moves value from one account's amount into
+        // another's amount and withheld pool; a harvest moves withheld pools
+        // into the mint's; only a mint or a burn changes the total.
+        let total: i128 = sides.iter().map(|(_, a, w)| a + w).sum::<i128>() + mint_withheld_delta;
+        if total != supply_delta {
+            refuse(
+                &mut model,
+                format!(
+                    "the value of mint {mint} across the accounts this diff covers changed by {total} while its supply changed by {supply_delta}: tokens moved to or from an account the diff does not cover, so where the fee went cannot be established"
+                ),
+            );
+            continue;
+        }
+
+        // Withheld fees leave an account only by being harvested, exactly.
+        let harvested: i128 = sides
+            .iter()
+            .filter(|(_, _, w)| *w < 0)
+            .map(|(_, _, w)| -w)
+            .sum();
+        if mint_withheld_delta < 0 {
+            refuse(
+                &mut model,
+                format!("withheld fees were withdrawn from mint {mint}; withdrawals of withheld fees are not modelled"),
+            );
+            continue;
+        }
+        if harvested > 0
+            && (mint_delta.is_none()
+                || mint_withheld_delta != harvested
+                || sides.iter().any(|(_, a, w)| *w < 0 && *a != 0))
+        {
+            refuse(
+                &mut model,
+                format!(
+                    "{harvested} withheld fee(s) left token accounts of mint {mint} without arriving in the mint's withheld pool exactly — a withdrawal of withheld fees, which is not modelled"
+                ),
+            );
+            continue;
+        }
+        if mint_withheld_delta > harvested {
+            refuse(
+                &mut model,
+                format!("the withheld pool of mint {mint} grew by more than was harvested from the accounts this diff covers"),
+            );
+            continue;
+        }
+        if harvested > 0 {
+            model.findings.push(StateDiffFinding::warning(
+                "Token2022WithheldFeesHarvested",
+                mint_delta.map(|d| d.pubkey.as_str()),
+                format!("{harvested} withheld fee(s) of this mint were harvested from token accounts into the mint, exactly"),
+            ));
+        }
+
+        // Every fee withheld at a destination is the schedule's fee on one
+        // transfer of what arrived there.
+        let mut failed: Option<String> = None;
+        for (d, a, w) in &sides {
+            if *w > 0 {
+                if *a < 0 {
+                    failed = Some(format!(
+                        "account {} both sent and received tokens of mint {mint} in this transaction, so the fee on what it received cannot be separated from what it sent",
+                        d.pubkey
+                    ));
+                    break;
+                }
+                let (Ok(gross), Ok(fee)) = (u64::try_from(*a + *w), u64::try_from(*w)) else {
+                    failed = Some(format!(
+                        "account {} moved more than a u64 can hold",
+                        d.pubkey
+                    ));
+                    break;
+                };
+                let older_fee = config.older.fee(gross);
+                let newer_fee = config.newer.fee(gross);
+                let by_older = older_fee == Some(fee);
+                let by_newer = newer_fee == Some(fee);
+                if !by_older && !by_newer {
+                    failed = Some(format!(
+                        "the fee withheld in {} ({fee}) is not the fee Token-2022 charges on one transfer of the {gross} that arrived there ({} under [{}], {} under [{}]) — several fee-bearing transfers landed in one account, which is not attributed per transfer, or the diff is not what the program produces",
+                        d.pubkey,
+                        older_fee.map_or("none".to_string(), |f| f.to_string()),
+                        config.older.describe(),
+                        newer_fee.map_or("none".to_string(), |f| f.to_string()),
+                        config.newer.describe()
+                    ));
+                    break;
+                }
+                let schedule = if by_older { config.older } else { config.newer };
+                model.findings.push(StateDiffFinding::warning(
+                    "Token2022TransferFeeCharged",
+                    Some(d.pubkey.as_str()),
+                    format!(
+                        "{gross} was transferred into this account and Token-2022 withheld a fee of {fee} under the mint's schedule [{}], so {} arrived; the withheld fee belongs to whoever holds the mint's withdraw authority ({})",
+                        schedule.describe(),
+                        gross - fee,
+                        authority_label(&config.withdraw_withheld_authority)
+                    ),
+                ));
+                // More of the transfer withheld than delivered: the transfer
+                // is mostly a payment to the mint's withdraw authority.
+                if u128::from(fee) * 2 > u128::from(gross) {
+                    model.findings.push(StateDiffFinding::critical(
+                        "Token2022TransferFeeMajority",
+                        Some(d.pubkey.as_str()),
+                        format!(
+                            "Token-2022 withheld {fee} of the {gross} transferred into this account — more than half — under the mint's schedule [{}]; only {} arrived. A transfer that delivers less than it withholds pays the mint's withdraw authority ({}) more than its recipient",
+                            schedule.describe(),
+                            gross - fee,
+                            authority_label(&config.withdraw_withheld_authority)
+                        ),
+                    ));
+                }
+                // The older schedule applied and a different one is
+                // scheduled: the simulation ran before `newer.epoch`, and a
+                // transaction that lands at or after it pays the newer fee.
+                if by_older && !by_newer {
+                    if let Some(later) = newer_fee.filter(|f| *f > fee) {
+                        model.findings.push(StateDiffFinding::warning(
+                            "Token2022TransferFeeRising",
+                            Some(d.pubkey.as_str()),
+                            format!(
+                                "the mint's fee schedule changes to [{}] at epoch {}: if this transaction lands in that epoch or later the fee on it is {later}, not {fee}, and {} arrives instead of {}",
+                                config.newer.describe(),
+                                config.newer.epoch,
+                                gross - later,
+                                gross - fee
+                            ),
+                        ));
+                    }
+                }
+            } else if *w == 0 && *a > 0 && supply_delta <= 0 {
+                // Tokens arrived and nothing was withheld. That is Token-2022
+                // behaviour only when the applicable schedule charges nothing
+                // on that amount.
+                let Ok(arrived) = u64::try_from(*a) else {
+                    failed = Some(format!(
+                        "account {} moved more than a u64 can hold",
+                        d.pubkey
+                    ));
+                    break;
+                };
+                let free =
+                    config.older.fee(arrived) == Some(0) || config.newer.fee(arrived) == Some(0);
+                if !free {
+                    failed = Some(format!(
+                        "{arrived} tokens of mint {mint} arrived in {} with no fee withheld, but the mint's schedules [{}; {}] charge a fee on that amount — the diff is not what a Token-2022 transfer produces",
+                        d.pubkey,
+                        config.older.describe(),
+                        config.newer.describe()
+                    ));
+                    break;
+                }
+            }
+        }
+        if let Some(why) = failed {
+            refuse(&mut model, why);
+            continue;
+        }
+        for m in members {
+            model.modelled.insert(m);
+        }
+    }
+    model
+}
+
 /// Compare an observed state diff against a manifest's declared effects.
 ///
 /// This never returns a layer status — the caller maps findings and provenance
@@ -1026,7 +1639,21 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // compute, which is the thing this whole codebase exists not to do. The
     // finding names the extension so an operator can decide, and modelling a
     // given extension properly is how it stops blocking — not lowering this.
+    //
+    // Round 20: the transfer-fee pair is the first extension modelled that
+    // way. On an account the model accounted for exactly, TransferFeeConfig
+    // and TransferFeeAmount no longer block and the fee is disclosed; on any
+    // other account they block as before, with the model's reason.
+    let fee_model = model_transfer_fees(input.diff, &declared);
+    findings.extend(fee_model.findings.iter().cloned());
+    let is_fee_extension = |e: &DetectedExtension| {
+        matches!(
+            e.discriminant,
+            EXT_TRANSFER_FEE_CONFIG | EXT_TRANSFER_FEE_AMOUNT
+        )
+    };
     for delta in input.diff.deltas.iter() {
+        let fee_modelled = fee_model.modelled.contains(&delta.pubkey);
         let scan = delta
             .after
             .as_ref()
@@ -1064,7 +1691,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                     ExtensionImpact::AltersTransferSemantics
                         | ExtensionImpact::AltersAuthority
                         | ExtensionImpact::Unknown
-                )
+                ) && !(fee_modelled && is_fee_extension(e))
             })
             .collect();
         let names = |list: &[&DetectedExtension]| {
@@ -1074,11 +1701,23 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 .join(", ")
         };
         if !unmodelled.is_empty() {
+            // When a transfer-fee extension is among them, say why the model
+            // could not account for it — "not modelled" is no longer the
+            // whole story for that pair.
+            let why = if unmodelled.iter().any(|e| is_fee_extension(e)) {
+                fee_model
+                    .not_modelled
+                    .get(&delta.pubkey)
+                    .map(|w| format!(". The transfer fee could not be modelled here: {w}"))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
             findings.push(StateDiffFinding::critical(
                 "Token2022ExtensionNotModelled",
                 Some(delta.pubkey.as_str()),
                 format!(
-                    "this account carries Token-2022 extension(s) Graphite does not model [{}] — each can change what a transfer does without changing any field Graphite reads, so the effects observed here are arithmetic rather than behaviour and cannot be presented as verified",
+                    "this account carries Token-2022 extension(s) Graphite does not model [{}] — each can change what a transfer does without changing any field Graphite reads, so the effects observed here are arithmetic rather than behaviour and cannot be presented as verified{why}",
                     names(&unmodelled)
                 ),
             ));
@@ -1087,8 +1726,13 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 "Token2022ExtensionPresent",
                 Some(delta.pubkey.as_str()),
                 format!(
-                    "this account carries Token-2022 extension(s) [{}]; none of them redirects value, and none of them is modelled here",
-                    names(&extensions.iter().collect::<Vec<_>>())
+                    "this account carries Token-2022 extension(s) [{}]; none of them redirects value unmodelled — {}",
+                    names(&extensions.iter().collect::<Vec<_>>()),
+                    if fee_modelled {
+                        "the transfer fee is modelled and its effect is stated in the Token2022TransferFee findings"
+                    } else {
+                        "and none of them is modelled here"
+                    }
                 ),
             ));
         }
@@ -1477,6 +2121,8 @@ mod tests {
             token: None,
             mint: None,
             extensions: Default::default(),
+            transfer_fee_withheld: None,
+            transfer_fee_config: None,
         }
     }
 
@@ -1675,6 +2321,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1705,6 +2352,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -1740,6 +2388,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1762,6 +2411,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -1791,6 +2441,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -1816,6 +2467,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1856,6 +2508,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -1885,6 +2538,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1913,6 +2567,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1942,6 +2597,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -1968,6 +2624,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -1998,6 +2655,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -2023,6 +2681,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -2058,6 +2717,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2088,6 +2748,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2117,6 +2778,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -2141,6 +2803,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -2167,6 +2830,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -2192,6 +2856,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         // "Update the metadata URI" promises no value movement at all.
@@ -2220,6 +2885,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -2247,6 +2913,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -2275,6 +2942,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2310,6 +2978,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -2337,6 +3006,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -2360,6 +3030,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(BOB, false)];
         let declared = ["credit destination".to_string()];
@@ -2404,6 +3075,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -2438,6 +3110,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -2488,6 +3161,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["frobnicate the widget".to_string()]);
@@ -2511,6 +3185,8 @@ mod tests {
                     token: None,
                     mint: None,
                     extensions: Default::default(),
+                    transfer_fee_withheld: None,
+                    transfer_fee_config: None,
                 }),
             }],
             provenance: DiffProvenance::RpcSimulated,
@@ -2521,6 +3197,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(BOB, true)];
         // `before: None` means owner_change() cannot fire — there is no prior
@@ -2554,6 +3231,7 @@ mod tests {
             artifact_balance_writes: None,
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
         };
         let accounts = [account(ALICE, true)];
         let report = check(

@@ -131,6 +131,12 @@ pub struct AccountResolutionInput {
     /// never indexed out of bounds).
     #[serde(default)]
     pub real_account_metas: Vec<RealAccountMeta>,
+    /// The transaction's fee payer, when the transaction's bytes were read
+    /// (Round 20). The fee payer is writable in every transaction because it
+    /// pays the fee, so its writable flag says nothing about what THIS
+    /// instruction was granted — see `privilege_mismatch`.
+    #[serde(default)]
+    pub fee_payer: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -343,9 +349,26 @@ pub fn resolve_accounts(
         // transactions (Round 18). The extra accounts are still visible as
         // `role: extra` and still counted by the drainer and account-count
         // heuristics, which is where an unexpected account belongs.
+        //
+        // Round 20: except the FEE PAYER's writable flag. The runtime makes
+        // the fee payer writable in every transaction, because it pays the
+        // fee — not because an instruction asked for it — so "declared
+        // read-only, writable in the transaction" is true of it by
+        // construction and says nothing about the instruction. It was the
+        // cause of Round 18's undiagnosed `kind=privilege` mismatches on
+        // declared signer slots: every SPL / Token-2022 transfer whose
+        // authority also paid the fee — the ordinary self-custody transfer —
+        // was blocked as an account-identity mismatch. The SIGNER direction
+        // is still checked for the fee payer, and both directions for every
+        // other account; what the fee payer's writability could let a
+        // program do to its lamports is what L4's diff observes.
+        let is_fee_payer = input.fee_payer.as_deref() == Some(pk.to_base58().as_str());
         let privilege_mismatch = (declared && real_metas_usable)
             .then(|| &input.real_account_metas[i])
-            .map(|real| (is_signer && !real.is_signer) || (!is_writable && real.is_writable))
+            .map(|real| {
+                (is_signer && !real.is_signer)
+                    || (!is_writable && real.is_writable && !is_fee_payer)
+            })
             .unwrap_or(false);
         resolved.push(ResolvedAccount {
             address: pk.to_base58(),
@@ -560,6 +583,7 @@ pub fn validate_seed_template(seed: &str) -> Result<(), String> {
         account_addresses: vec![],
         instruction_data: Some(vec![0u8; crate::tx_artifact::MAX_TRANSACTION_BYTES]),
         real_account_metas: vec![],
+        fee_payer: None,
     };
     resolve_pda_seed_template(seed, &input, &program_pk, &pubkeys).map(|_| ())
 }
@@ -592,6 +616,7 @@ mod tests {
             account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
             instruction_data: None,
             real_account_metas: vec![],
+            fee_payer: None,
         }
     }
 
@@ -716,6 +741,7 @@ mod tests {
             account_addresses: vec![signer_pk.to_base58(), pda_pk.to_base58()],
             instruction_data: None,
             real_account_metas: vec![],
+            fee_payer: None,
         };
         let result = resolve_accounts(&input, &registry).unwrap();
         assert!(result.manifest_found);
@@ -789,6 +815,7 @@ mod tests {
             ],
             instruction_data: Some(data.clone()),
             real_account_metas: vec![],
+            fee_payer: None,
         };
         let _ = program_pk;
         resolve_accounts(&input, &registry).unwrap()
@@ -939,6 +966,7 @@ mod tests {
             account_addresses: accounts.iter().map(|s| s.to_string()).collect(),
             instruction_data: data,
             real_account_metas: vec![],
+            fee_payer: None,
         };
         resolve_accounts(&input, &registry).unwrap()
     }

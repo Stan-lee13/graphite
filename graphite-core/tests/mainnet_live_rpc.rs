@@ -67,6 +67,9 @@ async fn real_mainnet_transactions_verified_against_a_real_rpc() {
         eprintln!("[live] set GRAPHITE_MAINNET_SAMPLE and GRAPHITE_MAINNET_RPC_URL; skipping rather than passing vacuously");
         return;
     };
+    // Optional: only instructions of this program (e.g. Token-2022, to
+    // exercise the transfer-fee model on real mints and real state).
+    let only_program = std::env::var("GRAPHITE_MAINNET_PROGRAM").ok();
     let limit: usize = std::env::var("GRAPHITE_MAINNET_LIVE_LIMIT")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -132,6 +135,7 @@ async fn real_mainnet_transactions_verified_against_a_real_rpc() {
                 && !ix.data.is_empty()
                 && !resolved[*i].is_empty()
                 && registry.get(&ix.program_id).is_some()
+                && only_program.as_deref().is_none_or(|p| ix.program_id == p)
         });
         let Some((idx, ix)) = pick else { continue };
         let disc = hex::encode(&ix.data[..ix.data.len().min(8)]);
@@ -203,6 +207,26 @@ async fn real_mainnet_transactions_verified_against_a_real_rpc() {
         bump(format!("L4 {:?}", status(&r, "L4")));
         bump(format!("risk {}", r.risk_verdict.status));
         bump(format!("approved {}", r.approved));
+        // How the Token-2022 transfer-fee model judged it (Round 20).
+        let l4_reason = r
+            .layers
+            .iter()
+            .find(|l| l.layer.starts_with("L4"))
+            .map(|l| l.reason.clone())
+            .unwrap_or_default();
+        if l4_reason.contains("Token2022TransferFeeCharged") {
+            bump("transfer fee modelled and stated".to_string());
+        }
+        if l4_reason.contains("Token2022ExtensionNotModelled") {
+            bump("Token-2022 extension not modelled".to_string());
+            if l4_reason.contains("TransferFee") {
+                println!(
+                    "[live] fee not modelled at slot {}: {}",
+                    row["slot"],
+                    &l4_reason[..l4_reason.len().min(600)]
+                );
+            }
+        }
         if let VerificationScope::ArtifactBound {
             simulated,
             unobserved_codes,
