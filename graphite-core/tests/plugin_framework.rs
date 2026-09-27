@@ -554,12 +554,21 @@ fn test_protocol_plugin_enables_l4_for_unknown_program() {
         .iter()
         .find(|l| l.layer == "L4_StateVerification")
         .unwrap();
+    // Round 21: with no pre/post diff (no RPC here) the check on the rules is
+    // a structural consistency check, reported Inconclusive — never Passed —
+    // but it RAN: the bare core skipped it, this one checked the rules.
     assert_eq!(
         l4.status,
-        LayerStatus::Passed,
-        "L4 must run on plugin rules"
+        LayerStatus::Inconclusive,
+        "no state was observed: {}",
+        l4.reason
     );
-    assert!(l4.reason.contains("state change"));
+    assert!(
+        l4.reason.contains("structurally consistent") && l4.reason.contains("state change"),
+        "L4 must run on plugin rules: {}",
+        l4.reason
+    );
+    assert!(l4_bare.reason.contains("skipped"), "{}", l4_bare.reason);
 }
 
 // ─── Fault tolerance ─────────────────────────────────────────────────────────

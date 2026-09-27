@@ -44,6 +44,8 @@ const B: &str = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 
 fn base(program_id: &str, disc: &str, intent: &str) -> RiskAssessmentInput {
     RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: program_id.to_string(),
         accounts: vec![A.to_string(), B.to_string()],
         cpi_targets: vec![],

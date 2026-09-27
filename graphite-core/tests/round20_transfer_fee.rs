@@ -333,7 +333,16 @@ fn an_honest_fee_bearing_transfer_is_modelled_and_stated() {
     );
     assert!(!r.blocked, "{:?}", r.findings);
     let stated = detail(&r, "Token2022TransferFeeCharged");
-    assert!(stated.contains("1000000 was transferred"), "{stated}");
+    // Round 21: without the executed instructions this is the diff's
+    // arithmetic, and the statement says so.
+    assert!(
+        stated.contains("1000000 reached this account gross"),
+        "{stated}"
+    );
+    assert!(
+        stated.contains("not a per-transfer attribution"),
+        "{stated}"
+    );
     assert!(stated.contains("fee of 5000"), "{stated}");
     assert!(stated.contains("995000 arrived"), "{stated}");
     assert!(stated.contains(&b58(&WITHDRAW_AUTHORITY)), "{stated}");
@@ -864,14 +873,17 @@ mod pipeline {
     }
 
     /// An RPC reporting a withheld amount that is not the schedule's fee —
-    /// a post-state Token-2022 would not produce — is refused.
+    /// a post-state Token-2022 would not produce — is refused. Since Round 21
+    /// the mock's `innerInstructions` give Graphite the executed list, so the
+    /// replay of the transaction's own TransferChecked is what refuses it.
     #[tokio::test]
     async fn an_rpc_reporting_a_fee_the_schedule_does_not_charge_is_refused() {
         let (r, _) = verify(cluster(1_000_000, 1, flat(100, 5_000)), 1_000_000).await;
         let (status, reason) = l4(&r);
         assert_eq!(status, LayerStatus::Failed, "{reason}");
         assert!(
-            reason.contains("is not the fee Token-2022 charges"),
+            reason.contains("does not reproduce the observed state")
+                && reason.contains("the simulator reports 999999 with 1 withheld"),
             "{reason}"
         );
         assert!(!r.approved);

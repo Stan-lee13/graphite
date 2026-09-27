@@ -27,8 +27,8 @@
     },
     {
      "name": "bin_array_bitmap_extension",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -414,8 +414,8 @@
     },
     {
      "name": "bin_array_bitmap_extension",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },

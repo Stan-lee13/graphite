@@ -3,6 +3,20 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 21 — what happened, not what could] — 2026-09-27
+
+Report: `docs/round21-what-happened-not-what-could-2026-09-27.md`.
+
+- **A writable flag is not a write** (P2, F-21-01): the write direction of the privilege check is decided by observation — another located instruction's declared write explains it; otherwise Graphite's own diff must show the account unchanged, and without that observation it blocks as before. The signer direction is unchanged.
+- **Manifests grounded in the programs and in executed traffic** (P2, F-21-02): 105 instructions rebuilt or prefix-corrected from the on-chain IDLs where executed mainnet transactions agree (pump.fun, Jupiter v2 routes, Kamino, marginfi, Meteora DLMM, Orca prefix flags, Raydium CLMM, Squads); System `AdvanceNonceAccount`'s nonce account is not a signer; `InstructionDef::account_layouts` gives Raydium AMM v4's 17-account swaps their own layout, chosen by exact count and refused at load when two share a length.
+- **The Token-2022 fee model replays what ran** (F-21-03/04/05): `verification::token2022_executed` + `state_diff::replay_fee_mint`; withdrawals of withheld fees, several transfers into one account and send-and-receive modelled; `getEpochInfo` → `FeeEpochContext`, `FEE_LANDING_MARGIN_SLOTS`; the diff-only statement says it is arithmetic; `replay_fee_amounts` for checking against the chain's token balances.
+- **Extensions judged by what happened** (P2, F-21-06; F-21-07): `extension_judgement` (null hook, untouched confidential state, unchanged standing powers inert), `Token2022PermanentDelegateExercised`, `Token2022Powers` decoded exactly or not at all; the mint of every extension-bearing account fetched.
+- **Structural checks read the bytes** (P2, F-21-08/09): a self-refunding token `CloseAccount` is exempt from Check 2 and Check 10 (`self_refund_closes`); both account-count heuristics (Check 3, Check 3b) count writable remaining accounts (`writable_extra_accounts`). Both inputs are `serde(skip)`.
+- **The compute budget reaches the verdict** (F-21-10): `tx_artifact::compute_budget_request`, `scope.compute_budget` (schema, TS SDK and Go SDK), `ExcessivePriorityFee`.
+- **L4 against live traffic** (P2, F-21-14/15/16): pre-state lamports from the simulation's own `preBalances` (slot skew); `StateDiff::transaction_accounts` so another instruction's own changes are not `DiffAccountNotInInstruction`; accounts the transaction marks read-only are not diffed. Live: L4 failures 10 → 2 of 40 real transactions. `tests/mainnet_live_rpc.rs` gains `GRAPHITE_MAINNET_SHOW_L4`.
+- Token-2022 extension types 24–28 classified from the upstream enum (F-21-17).
+- L4's structural fallback is `Inconclusive` (F-21-11); one shared runtime behind the synchronous `verify`, which refuses inside a runtime (F-21-12); `live_corpus::tx_to_input` reads v1, pinned to a real response (`tests/fixtures/real_mainnet_v1.json`, F-21-13); `tests/mainnet_transfer_fee_live.rs` gains a whole-transaction replay phase.
+
 ## [Round 20 — the fee is modelled] — 2026-09-25
 
 Report: `docs/round20-the-fee-is-modelled-2026-09-25.md`.

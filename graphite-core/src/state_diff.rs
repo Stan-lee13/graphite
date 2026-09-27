@@ -152,6 +152,95 @@ pub struct AccountSnapshot {
     /// `TransferFeeConfig` of a Token-2022 mint, read exactly or not at all.
     #[serde(default)]
     pub transfer_fee_config: Option<TransferFeeConfigView>,
+    /// The other Token-2022 extension values the model reads (Round 21), or
+    /// `None` when one of them is present and could not be read exactly.
+    #[serde(default)]
+    pub token2022_powers: Option<Token2022Powers>,
+}
+
+/// `ExtensionType` discriminants the model reads beyond the transfer fee.
+const EXT_MINT_CLOSE_AUTHORITY: u16 = 3;
+const EXT_CONFIDENTIAL_TRANSFER_MINT: u16 = 4;
+const EXT_CONFIDENTIAL_TRANSFER_ACCOUNT: u16 = 5;
+const EXT_PERMANENT_DELEGATE: u16 = 12;
+const EXT_TRANSFER_HOOK: u16 = 14;
+const EXT_TRANSFER_HOOK_ACCOUNT: u16 = 15;
+const EXT_CONFIDENTIAL_TRANSFER_FEE_CONFIG: u16 = 16;
+const EXT_CONFIDENTIAL_TRANSFER_FEE_AMOUNT: u16 = 17;
+const EXT_CONFIDENTIAL_MINT_BURN: u16 = 24;
+const CONFIDENTIAL_EXTENSIONS: [u16; 5] = [
+    EXT_CONFIDENTIAL_TRANSFER_MINT,
+    EXT_CONFIDENTIAL_TRANSFER_ACCOUNT,
+    EXT_CONFIDENTIAL_TRANSFER_FEE_CONFIG,
+    EXT_CONFIDENTIAL_TRANSFER_FEE_AMOUNT,
+    EXT_CONFIDENTIAL_MINT_BURN,
+];
+/// Token-2022 instruction families that operate on confidential balances:
+/// ConfidentialTransfer (27), ConfidentialTransferFee (37),
+/// ConfidentialMintBurn (42).
+const T22_CONFIDENTIAL_INSTRUCTIONS: [u8; 3] = [27, 37, 42];
+
+/// Token-2022 extension values beyond the transfer fee (Round 21).
+///
+/// Each field is `None` when the extension is absent, `Some(None)` when it is
+/// present and names nobody, `Some(Some(key))` when it names a key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Token2022Powers {
+    /// Mint: who can move or burn any holder's tokens without the holder.
+    pub permanent_delegate: Option<Option<String>>,
+    /// Mint: who can close the mint once its supply is zero.
+    pub close_authority: Option<Option<String>>,
+    /// Mint: the program every transfer invokes.
+    pub transfer_hook_program: Option<Option<String>>,
+    /// SHA-256 over the confidential-transfer extension values present, so a
+    /// change to encrypted balances is visible without decoding them.
+    pub confidential_digest: Option<String>,
+}
+
+/// Read the extension values in `Token2022Powers`, exactly or not at all.
+pub fn decode_token2022_powers(data: &[u8]) -> Option<Token2022Powers> {
+    use sha2::{Digest, Sha256};
+    let scan = detect_token2022_extensions(data);
+    if scan.malformed.is_some() {
+        return None;
+    }
+    let present = |d: u16| scan.found.iter().any(|e| e.discriminant == d);
+    let key32 = |d: u16| -> Option<Option<Option<String>>> {
+        if !present(d) {
+            return Some(None);
+        }
+        let v = single_extension_value(data, d)?;
+        if v.len() != 32 {
+            return None;
+        }
+        Some(Some(optional_nonzero_pubkey(v, 0)?))
+    };
+    let transfer_hook_program = if present(EXT_TRANSFER_HOOK) {
+        let v = single_extension_value(data, EXT_TRANSFER_HOOK)?;
+        if v.len() != 64 {
+            return None;
+        }
+        Some(optional_nonzero_pubkey(v, 32)?)
+    } else {
+        None
+    };
+    let mut hasher = Sha256::new();
+    let mut any_confidential = false;
+    for d in CONFIDENTIAL_EXTENSIONS {
+        if present(d) {
+            let v = single_extension_value(data, d)?;
+            hasher.update(d.to_le_bytes());
+            hasher.update((v.len() as u32).to_le_bytes());
+            hasher.update(v);
+            any_confidential = true;
+        }
+    }
+    Some(Token2022Powers {
+        permanent_delegate: key32(EXT_PERMANENT_DELEGATE)?,
+        close_authority: key32(EXT_MINT_CLOSE_AUTHORITY)?,
+        transfer_hook_program,
+        confidential_digest: any_confidential.then(|| hex::encode(hasher.finalize())),
+    })
 }
 
 // -- Token-2022 TransferFee: the one extension pair that is modelled ---------
@@ -242,7 +331,62 @@ impl TransferFeeConfigView {
             self.newer,
         )
     }
+
+    /// The schedule Token-2022 applies to a transfer executed in `epoch`,
+    /// exactly as `TransferFeeConfig::get_epoch_fee` chooses it: the newer
+    /// schedule from its epoch on, the older one before.
+    pub fn applicable_at(&self, epoch: u64) -> TransferFeeSchedule {
+        if epoch >= self.newer.epoch {
+            self.newer
+        } else {
+            self.older
+        }
+    }
 }
+
+/// One Token-2022 instruction the simulator executed, with its accounts
+/// resolved to addresses (Round 21).
+///
+/// Built by the pipeline from the transaction's own instructions and the
+/// simulation's `innerInstructions` — never from a request. It is how the fee
+/// model tells several transfers into one account apart, and how it follows
+/// a withdrawal of withheld fees: the diff says where value ended up, the
+/// executed instructions say how it got there, and the model requires the
+/// two to agree exactly.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExecutedTokenInstruction {
+    /// Where it ran, for the verdict: "instruction #2", "a CPI under
+    /// instruction #1".
+    pub position: String,
+    pub accounts: Vec<String>,
+    pub data: Vec<u8>,
+}
+
+/// Which fee schedule applies to a transaction, and which can (Round 21).
+///
+/// A mint carries two schedules and the epoch decides between them. The
+/// simulation ran in one epoch; the transaction can land in a later one only
+/// if its lifetime reaches it. Graphite reads the epoch from the RPC and
+/// bounds the lifetime from the transaction's own bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FeeEpochContext {
+    /// The epoch the simulation executed in.
+    pub simulated_epoch: u64,
+    /// The latest epoch the transaction can still land in. `None` when it has
+    /// no expiry — a durable-nonce transaction.
+    pub latest_landing_epoch: Option<u64>,
+}
+
+/// How far past the simulated slot Graphite assumes a blockhash transaction
+/// can still land when it asks whether a pending fee schedule can reach it.
+///
+/// A blockhash is valid for 150 blocks, about a minute. Blocks are not slots —
+/// a skipped slot produces no block, so 150 blocks can span more than 150
+/// slots — and the assumption only has to be safe, not tight: an hour of
+/// slots is two orders of magnitude past the network's worst sustained skip
+/// rate. Closer than this to an epoch boundary, the next epoch's schedule is
+/// treated as one the transaction can pay.
+pub const FEE_LANDING_MARGIN_SLOTS: u64 = 9_000;
 
 /// An `OptionalNonZeroPubkey`: 32 bytes, all-zero meaning none.
 fn optional_nonzero_pubkey(data: &[u8], offset: usize) -> Option<Option<String>> {
@@ -375,6 +519,11 @@ impl AccountSnapshot {
             },
             transfer_fee_config: if is_token_2022 {
                 decode_transfer_fee_config(data)
+            } else {
+                None
+            },
+            token2022_powers: if is_token_2022 {
+                decode_token2022_powers(data)
             } else {
                 None
             },
@@ -523,6 +672,19 @@ fn extension_name(discriminant: u16) -> Option<(&'static str, ExtensionImpact)> 
         21 => ("TokenGroup", Informational),
         22 => ("GroupMemberPointer", Informational),
         23 => ("TokenGroupMember", Informational),
+        // Round 21, from `spl_token_2022_interface::extension::ExtensionType`
+        // (upstream `main`, read 2026-09-27). A confidential mint/burn
+        // configuration is judged with the other confidential extensions:
+        // inert only when unchanged and untouched by a confidential
+        // instruction. A pausable mint and its accounts, a UI scale factor
+        // and a burn permission redirect nothing and change no amount a
+        // transfer moves — a pause makes the transfer FAIL, which the
+        // simulation shows — so they are disclosed like a freeze authority.
+        24 => ("ConfidentialMintBurn", AltersTransferSemantics),
+        25 => ("ScaledUiAmount", Informational),
+        26 => ("Pausable", Informational),
+        27 => ("PausableAccount", Informational),
+        28 => ("PermissionedBurn", Informational),
         _ => return None,
     })
 }
@@ -920,6 +1082,48 @@ pub struct StateDiff {
     /// be checked, and its transfer-fee extensions stay unmodelled.
     #[serde(default)]
     pub transfer_fee_mints: std::collections::BTreeMap<String, TransferFeeConfigView>,
+    /// Every Token-2022 instruction the simulator executed, in execution
+    /// order, when Graphite could resolve all of them (Round 21). `None` when
+    /// the simulation reported no inner instructions, one could not be
+    /// resolved, or the diff did not come from a simulation.
+    ///
+    /// Never deserialized: a request cannot tell the fee model what ran.
+    #[serde(skip)]
+    pub token2022_executed: Option<Vec<ExecutedTokenInstruction>>,
+    /// The epoch the simulation ran in and the latest one the transaction can
+    /// land in, when the RPC reported the epoch (Round 21). Never
+    /// deserialized.
+    #[serde(skip)]
+    pub fee_epoch: Option<FeeEpochContext>,
+    /// The pre-state of every Token-2022 mint whose extension-bearing token
+    /// accounts the diff covers and which is not itself in it, fetched by
+    /// Graphite (Round 21) — what a transfer hook runs and who the permanent
+    /// delegate is are facts about the mint. Never deserialized.
+    #[serde(skip)]
+    pub token2022_mints: std::collections::BTreeMap<String, AccountSnapshot>,
+    /// Every account the transaction references — its static keys and the
+    /// lookup-table addresses the simulator resolved — when Graphite built
+    /// this diff from the transaction's bytes (Round 21). A change to an
+    /// account outside this list cannot be this transaction's. Never
+    /// deserialized.
+    #[serde(skip)]
+    pub transaction_accounts: Option<Vec<String>>,
+}
+
+/// True when the diff carries a Token-2022 transfer-fee extension anywhere,
+/// or a fee schedule Graphite fetched for it — the diffs for which the epoch
+/// is worth an RPC call.
+pub fn diff_involves_transfer_fee(diff: &StateDiff) -> bool {
+    !diff.transfer_fee_mints.is_empty()
+        || diff.deltas.iter().any(|d| {
+            [d.before.as_ref(), d.after.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|s| {
+                    has_extension(s, EXT_TRANSFER_FEE_AMOUNT)
+                        || has_extension(s, EXT_TRANSFER_FEE_CONFIG)
+                })
+        })
 }
 
 impl StateDiff {
@@ -1176,6 +1380,18 @@ pub struct StateDiffCheck<'a> {
 /// transfers into one account, an account that both sent and received, a
 /// schedule that could not be read — leaves the extensions unmodelled on
 /// those accounts, and they block exactly as before, now with the reason.
+///
+/// Round 21: when Graphite holds every Token-2022 instruction the simulator
+/// executed, the model replays them instead — each transfer charged its own
+/// fee, each harvest and withdrawal moving exactly the withheld amount it
+/// finds — starting from the pre-state, and requires the replay to end at the
+/// observed post-state exactly, for every account of the mint and for the
+/// mint's own pool and supply. That covers withdrawals, several transfers
+/// into one account and accounts that both send and receive; an instruction
+/// the replay does not know, or an account it did not observe, still blocks.
+/// When the RPC reported the epoch, only the schedule of that epoch is
+/// accepted, and a pending schedule is judged against the transaction's
+/// lifetime rather than disclosed.
 #[derive(Default)]
 struct TransferFeeModel {
     /// Accounts whose transfer-fee extensions the model accounted for.
@@ -1352,17 +1568,23 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
 
         // Both sides of every account, exactly.
         let mut sides: Vec<(&AccountDelta, i128, i128)> = Vec::new();
+        let mut before_map: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+        let mut after_map: BTreeMap<String, (u64, u64)> = BTreeMap::new();
         let mut unreadable: Option<String> = None;
         for d in &group {
             match (
                 fee_side(d.before.as_ref(), &mint),
                 fee_side(d.after.as_ref(), &mint),
             ) {
-                (Ok((ab, wb)), Ok((aa, wa))) => sides.push((
-                    d,
-                    i128::from(aa) - i128::from(ab),
-                    i128::from(wa) - i128::from(wb),
-                )),
+                (Ok((ab, wb)), Ok((aa, wa))) => {
+                    before_map.insert(d.pubkey.clone(), (ab, wb));
+                    after_map.insert(d.pubkey.clone(), (aa, wa));
+                    sides.push((
+                        d,
+                        i128::from(aa) - i128::from(ab),
+                        i128::from(wa) - i128::from(wb),
+                    ))
+                }
                 (Err(why), _) | (_, Err(why)) => {
                     unreadable = Some(format!("account {} cannot be modelled: {why}", d.pubkey));
                     break;
@@ -1388,6 +1610,59 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
                     "the value of mint {mint} across the accounts this diff covers changed by {total} while its supply changed by {supply_delta}: tokens moved to or from an account the diff does not cover, so where the fee went cannot be established"
                 ),
             );
+            continue;
+        }
+
+        // Round 21: replay what the simulator executed, when Graphite has it.
+        if let Some(executed) = diff.token2022_executed.as_deref() {
+            let mut last_err = String::new();
+            let mut outcome: Option<(TransferFeeSchedule, FeeReplay)> = None;
+            for schedule in fee_schedule_candidates(&config, diff.fee_epoch) {
+                let replayed = replay_fee_mint(
+                    &mint,
+                    schedule,
+                    mint_delta.is_some(),
+                    mint_before_withheld,
+                    &before_map,
+                    executed,
+                )
+                .and_then(|r| {
+                    replay_matches(
+                        &r,
+                        &after_map,
+                        mint_delta.map(|_| mint_after_withheld),
+                        supply_delta,
+                    )
+                    .map(|()| r)
+                });
+                match replayed {
+                    Ok(r) => {
+                        outcome = Some((schedule, r));
+                        break;
+                    }
+                    Err(e) => last_err = e,
+                }
+            }
+            let Some((schedule, replay)) = outcome else {
+                refuse(
+                    &mut model,
+                    format!(
+                        "replaying the Token-2022 instructions the simulator executed does not reproduce the observed state of mint {mint}: {last_err}"
+                    ),
+                );
+                continue;
+            };
+            replay_findings(
+                &config,
+                diff.fee_epoch,
+                schedule,
+                &replay,
+                mint_delta.map(|d| d.pubkey.as_str()),
+                &mut model.findings,
+            );
+            for m in members {
+                model.modelled.insert(m);
+            }
             continue;
         }
 
@@ -1451,27 +1726,33 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
                     ));
                     break;
                 };
-                let older_fee = config.older.fee(gross);
-                let newer_fee = config.newer.fee(gross);
-                let by_older = older_fee == Some(fee);
-                let by_newer = newer_fee == Some(fee);
-                if !by_older && !by_newer {
+                // Round 21: with the epoch read, only that epoch's schedule.
+                let candidates = fee_schedule_candidates(&config, diff.fee_epoch);
+                let Some(schedule) = candidates
+                    .iter()
+                    .copied()
+                    .find(|s| s.fee(gross) == Some(fee))
+                else {
                     failed = Some(format!(
-                        "the fee withheld in {} ({fee}) is not the fee Token-2022 charges on one transfer of the {gross} that arrived there ({} under [{}], {} under [{}]) — several fee-bearing transfers landed in one account, which is not attributed per transfer, or the diff is not what the program produces",
+                        "the fee withheld in {} ({fee}) is not the fee Token-2022 charges on one transfer of the {gross} that arrived there ({}) — several fee-bearing transfers landed in one account and the executed instructions were not available to attribute them, or the diff is not what the program produces",
                         d.pubkey,
-                        older_fee.map_or("none".to_string(), |f| f.to_string()),
-                        config.older.describe(),
-                        newer_fee.map_or("none".to_string(), |f| f.to_string()),
-                        config.newer.describe()
+                        candidates
+                            .iter()
+                            .map(|s| format!(
+                                "{} under [{}]",
+                                s.fee(gross).map_or("none".to_string(), |f| f.to_string()),
+                                s.describe()
+                            ))
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ));
                     break;
-                }
-                let schedule = if by_older { config.older } else { config.newer };
+                };
                 model.findings.push(StateDiffFinding::warning(
                     "Token2022TransferFeeCharged",
                     Some(d.pubkey.as_str()),
                     format!(
-                        "{gross} was transferred into this account and Token-2022 withheld a fee of {fee} under the mint's schedule [{}], so {} arrived; the withheld fee belongs to whoever holds the mint's withdraw authority ({})",
+                        "{gross} reached this account gross and Token-2022 withheld a fee of {fee} under the mint's schedule [{}], so {} arrived — the change one transfer of {gross} produces. The executed instructions were not available, so this is the diff's arithmetic, not a per-transfer attribution: an account that also sent tokens, or received several transfers the fee cap made indistinguishable, reads the same. The withheld fee belongs to whoever holds the mint's withdraw authority ({})",
                         schedule.describe(),
                         gross - fee,
                         authority_label(&config.withdraw_withheld_authority)
@@ -1491,24 +1772,15 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
                         ),
                     ));
                 }
-                // The older schedule applied and a different one is
-                // scheduled: the simulation ran before `newer.epoch`, and a
-                // transaction that lands at or after it pays the newer fee.
-                if by_older && !by_newer {
-                    if let Some(later) = newer_fee.filter(|f| *f > fee) {
-                        model.findings.push(StateDiffFinding::warning(
-                            "Token2022TransferFeeRising",
-                            Some(d.pubkey.as_str()),
-                            format!(
-                                "the mint's fee schedule changes to [{}] at epoch {}: if this transaction lands in that epoch or later the fee on it is {later}, not {fee}, and {} arrives instead of {}",
-                                config.newer.describe(),
-                                config.newer.epoch,
-                                gross - later,
-                                gross - fee
-                            ),
-                        ));
-                    }
-                }
+                pending_schedule_findings(
+                    &config,
+                    diff.fee_epoch,
+                    schedule,
+                    &d.pubkey,
+                    &[gross],
+                    fee,
+                    &mut model.findings,
+                );
             } else if *w == 0 && *a > 0 && supply_delta <= 0 {
                 // Tokens arrived and nothing was withheld. That is Token-2022
                 // behaviour only when the applicable schedule charges nothing
@@ -1520,8 +1792,9 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
                     ));
                     break;
                 };
-                let free =
-                    config.older.fee(arrived) == Some(0) || config.newer.fee(arrived) == Some(0);
+                let free = fee_schedule_candidates(&config, diff.fee_epoch)
+                    .iter()
+                    .any(|s| s.fee(arrived) == Some(0));
                 if !free {
                     failed = Some(format!(
                         "{arrived} tokens of mint {mint} arrived in {} with no fee withheld, but the mint's schedules [{}; {}] charge a fee on that amount — the diff is not what a Token-2022 transfer produces",
@@ -1544,6 +1817,684 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
     model
 }
 
+/// The schedules a transfer in this diff may have paid: the one its epoch
+/// selects when the epoch is known, either one when it is not.
+fn fee_schedule_candidates(
+    config: &TransferFeeConfigView,
+    epoch: Option<FeeEpochContext>,
+) -> Vec<TransferFeeSchedule> {
+    match epoch {
+        Some(c) => vec![config.applicable_at(c.simulated_epoch)],
+        None if config.older == config.newer => vec![config.older],
+        None => vec![config.older, config.newer],
+    }
+}
+
+/// What a pending schedule means for transfers into one account that paid
+/// `fee` in total under `applied`.
+///
+/// Round 20 disclosed a higher pending fee whenever one existed. With the
+/// epoch read it is judged: a transaction that expires before the newer
+/// schedule's epoch cannot pay it, and says nothing; one that can reach it —
+/// a durable nonce, or an epoch boundary inside the landing window — is told
+/// what would arrive, and a pending fee that would take more than half of a
+/// transfer blocks like a current one.
+fn pending_schedule_findings(
+    config: &TransferFeeConfigView,
+    epoch: Option<FeeEpochContext>,
+    applied: TransferFeeSchedule,
+    account: &str,
+    grosses: &[u64],
+    fee: u64,
+    out: &mut Vec<StateDiffFinding>,
+) {
+    if applied == config.newer || config.newer == config.older {
+        return;
+    }
+    let why = match epoch {
+        None => "the current epoch was not read, so Graphite cannot rule out that it lands then".to_string(),
+        Some(c) => match c.latest_landing_epoch {
+            None => "it uses a durable nonce and does not expire".to_string(),
+            Some(latest) if latest >= config.newer.epoch => format!(
+                "epoch {} begins within {FEE_LANDING_MARGIN_SLOTS} slots of the simulation, inside the window in which it can still land",
+                config.newer.epoch
+            ),
+            Some(_) => return,
+        },
+    };
+    let Some(later) = grosses
+        .iter()
+        .map(|g| config.newer.fee(*g))
+        .sum::<Option<u64>>()
+    else {
+        return;
+    };
+    let gross: u64 = grosses.iter().sum();
+    if later > fee {
+        out.push(StateDiffFinding::warning(
+            "Token2022TransferFeeRising",
+            Some(account),
+            format!(
+                "the mint's fee schedule changes to [{}] at epoch {}: if this transaction lands in that epoch or later the fee on it is {later}, not {fee}, and {} arrives instead of {} ({why})",
+                config.newer.describe(),
+                config.newer.epoch,
+                gross.saturating_sub(later),
+                gross.saturating_sub(fee)
+            ),
+        ));
+    }
+    for g in grosses {
+        if let Some(pending) = config.newer.fee(*g) {
+            if pending > applied.fee(*g).unwrap_or(0) && u128::from(pending) * 2 > u128::from(*g) {
+                out.push(StateDiffFinding::critical(
+                    "Token2022TransferFeeMajority",
+                    Some(account),
+                    format!(
+                        "under the mint's pending schedule [{}], from epoch {}, Token-2022 would withhold {pending} of a {g} transfer into this account — more than half — and {why}; a transfer that can deliver less than it withholds pays the mint's withdraw authority ({}) more than its recipient",
+                        config.newer.describe(),
+                        config.newer.epoch,
+                        authority_label(&config.withdraw_withheld_authority)
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+/// Token-2022 instruction tags the fee replay reads (Round 21), from
+/// `spl_token_2022::instruction::TokenInstruction`.
+const T22_IX_TRANSFER_CHECKED: u8 = 12;
+const T22_IX_MINT_TO: u8 = 7;
+const T22_IX_MINT_TO_CHECKED: u8 = 14;
+const T22_IX_BURN: u8 = 8;
+const T22_IX_BURN_CHECKED: u8 = 15;
+const T22_IX_CLOSE_ACCOUNT: u8 = 9;
+const T22_IX_TRANSFER_FEE: u8 = 26;
+/// `TransferFeeInstruction`, the byte after tag 26.
+const T22_FEE_IX_TRANSFER_CHECKED_WITH_FEE: u8 = 1;
+const T22_FEE_IX_WITHDRAW_FROM_MINT: u8 = 2;
+const T22_FEE_IX_WITHDRAW_FROM_ACCOUNTS: u8 = 3;
+const T22_FEE_IX_HARVEST_TO_MINT: u8 = 4;
+const T22_FEE_IX_SET_TRANSFER_FEE: u8 = 5;
+/// Token-2022 instructions that change no token amount and no withheld
+/// amount: InitializeAccount (1, 16, 18), Approve (4, 13), Revoke (5),
+/// SetAuthority (6), Freeze/Thaw (10, 11), GetAccountDataSize (21),
+/// InitializeImmutableOwner (22), AmountToUiAmount / UiAmountToAmount (23,
+/// 24), Reallocate (29), MemoTransfer (30), CpiGuard (34),
+/// WithdrawExcessLamports (38). Anything not here and not replayed below
+/// makes the replay refuse.
+const T22_IX_NO_TOKEN_VALUE: [u8; 17] = [
+    1, 4, 5, 6, 10, 11, 13, 16, 18, 21, 22, 23, 24, 29, 30, 34, 38,
+];
+
+/// The replay of one mint's executed instructions (Round 21).
+#[derive(Default)]
+struct FeeReplay {
+    /// (amount, withheld) per observed token account of the mint.
+    balances: std::collections::BTreeMap<String, (u64, u64)>,
+    mint_withheld: u64,
+    supply_change: i128,
+    /// (destination, gross, fee, where) for every transfer.
+    transfers: Vec<(String, u64, u64, String)>,
+    harvested: u64,
+    /// (destination, amount, authority, from the mint or accounts, where).
+    withdrawals: Vec<(String, u64, String, &'static str, String)>,
+}
+
+fn replay_adjust(
+    balances: &mut std::collections::BTreeMap<String, (u64, u64)>,
+    key: &str,
+    amount_delta: i128,
+    withheld_delta: i128,
+    at: &str,
+) -> Result<(), String> {
+    let Some(b) = balances.get_mut(key) else {
+        return Err(format!(
+            "{at} moves tokens of this mint through {key}, which the diff did not observe"
+        ));
+    };
+    let outside = || {
+        format!(
+            "replaying {at} takes {key} outside what a u64 balance holds — the instructions as executed cannot produce this diff"
+        )
+    };
+    b.0 = u64::try_from(i128::from(b.0) + amount_delta).map_err(|_| outside())?;
+    b.1 = u64::try_from(i128::from(b.1) + withheld_delta).map_err(|_| outside())?;
+    Ok(())
+}
+
+/// Replay `executed` against one mint's pre-state under one schedule.
+fn replay_fee_mint(
+    mint: &str,
+    schedule: TransferFeeSchedule,
+    mint_observed: bool,
+    mint_withheld_before: u64,
+    before: &std::collections::BTreeMap<String, (u64, u64)>,
+    executed: &[ExecutedTokenInstruction],
+) -> Result<FeeReplay, String> {
+    let mut r = FeeReplay {
+        balances: before.clone(),
+        mint_withheld: mint_withheld_before,
+        ..Default::default()
+    };
+    for ix in executed {
+        let touches = ix
+            .accounts
+            .iter()
+            .any(|a| a == mint || before.contains_key(a));
+        if !touches {
+            continue;
+        }
+        let at = ix.position.as_str();
+        let Some(&tag) = ix.data.first() else {
+            return Err(format!("{at} is a Token-2022 instruction with no data"));
+        };
+        let account = |i: usize| -> Result<&str, String> {
+            ix.accounts
+                .get(i)
+                .map(String::as_str)
+                .ok_or_else(|| format!("{at} names fewer accounts than its instruction takes"))
+        };
+        let amount_at = |offset: usize| -> Result<u64, String> {
+            u64_at(&ix.data, offset)
+                .ok_or_else(|| format!("{at} carries too little data for its amount"))
+        };
+        let mint_at = |i: usize| -> Result<(), String> {
+            let named = account(i)?;
+            if named == mint {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{at} names mint {named} while touching an account of mint {mint}; Token-2022 refuses that"
+                ))
+            }
+        };
+        match (tag, ix.data.get(1).copied()) {
+            (T22_IX_TRANSFER_CHECKED, _)
+            | (T22_IX_TRANSFER_FEE, Some(T22_FEE_IX_TRANSFER_CHECKED_WITH_FEE)) => {
+                let with_fee = tag == T22_IX_TRANSFER_FEE;
+                mint_at(1)?;
+                let amount = amount_at(if with_fee { 2 } else { 1 })?;
+                let (source, destination) = (account(0)?, account(2)?);
+                if source == destination {
+                    return Err(format!(
+                        "{at} transfers from an account to itself, which the fee replay does not model"
+                    ));
+                }
+                let fee = schedule.fee(amount).ok_or_else(|| {
+                    format!(
+                        "the schedule [{}] is not one Token-2022 can apply",
+                        schedule.describe()
+                    )
+                })?;
+                if with_fee {
+                    // tag, sub-tag, amount (8), decimals (1), then the fee.
+                    let stated = amount_at(11)?;
+                    if stated != fee {
+                        return Err(format!(
+                            "{at} states a fee of {stated} where the schedule [{}] charges {fee} on {amount}",
+                            schedule.describe()
+                        ));
+                    }
+                }
+                replay_adjust(&mut r.balances, source, -i128::from(amount), 0, at)?;
+                replay_adjust(
+                    &mut r.balances,
+                    destination,
+                    i128::from(amount - fee),
+                    i128::from(fee),
+                    at,
+                )?;
+                r.transfers
+                    .push((destination.to_string(), amount, fee, at.to_string()));
+            }
+            (T22_IX_MINT_TO | T22_IX_MINT_TO_CHECKED, _) => {
+                mint_at(0)?;
+                let amount = amount_at(1)?;
+                replay_adjust(&mut r.balances, account(1)?, i128::from(amount), 0, at)?;
+                r.supply_change += i128::from(amount);
+            }
+            (T22_IX_BURN | T22_IX_BURN_CHECKED, _) => {
+                mint_at(1)?;
+                let amount = amount_at(1)?;
+                replay_adjust(&mut r.balances, account(0)?, -i128::from(amount), 0, at)?;
+                r.supply_change -= i128::from(amount);
+            }
+            (T22_IX_CLOSE_ACCOUNT, _) => {
+                let closed = account(0)?;
+                if closed == mint {
+                    return Err(format!(
+                        "{at} closes mint {mint}, which the fee replay does not model"
+                    ));
+                }
+                if let Some(b) = r.balances.get(closed) {
+                    if *b != (0, 0) {
+                        return Err(format!(
+                            "{at} closes {closed} while it holds {} and has {} withheld; Token-2022 refuses that",
+                            b.0, b.1
+                        ));
+                    }
+                }
+            }
+            (T22_IX_TRANSFER_FEE, Some(T22_FEE_IX_WITHDRAW_FROM_MINT)) => {
+                mint_at(0)?;
+                if !mint_observed {
+                    return Err(format!(
+                        "{at} withdraws the withheld fees of mint {mint}, and the mint was not observed"
+                    ));
+                }
+                let amount = r.mint_withheld;
+                let destination = account(1)?;
+                replay_adjust(&mut r.balances, destination, i128::from(amount), 0, at)?;
+                r.mint_withheld = 0;
+                r.withdrawals.push((
+                    destination.to_string(),
+                    amount,
+                    account(2)?.to_string(),
+                    "the mint's withheld pool",
+                    at.to_string(),
+                ));
+            }
+            (T22_IX_TRANSFER_FEE, Some(T22_FEE_IX_WITHDRAW_FROM_ACCOUNTS)) => {
+                mint_at(0)?;
+                let count = usize::from(
+                    *ix.data
+                        .get(2)
+                        .ok_or_else(|| format!("{at} does not say how many accounts it drains"))?,
+                );
+                if ix.accounts.len() < 3 + count {
+                    return Err(format!(
+                        "{at} names fewer accounts than the {count} it drains"
+                    ));
+                }
+                let destination = account(1)?;
+                let sources = &ix.accounts[ix.accounts.len() - count..];
+                if sources.iter().any(|s| s == destination) {
+                    return Err(format!(
+                        "{at} withdraws into one of the accounts it drains, which the fee replay does not model"
+                    ));
+                }
+                let mut total: u64 = 0;
+                for source in sources {
+                    let Some(b) = r.balances.get_mut(source) else {
+                        return Err(format!(
+                            "{at} drains {source}, which the diff did not observe"
+                        ));
+                    };
+                    total = total.checked_add(b.1).ok_or_else(|| {
+                        format!("{at} drains more than a u64 holds")
+                    })?;
+                    b.1 = 0;
+                }
+                replay_adjust(&mut r.balances, destination, i128::from(total), 0, at)?;
+                r.withdrawals.push((
+                    destination.to_string(),
+                    total,
+                    account(2)?.to_string(),
+                    "withheld fees in token accounts",
+                    at.to_string(),
+                ));
+            }
+            (T22_IX_TRANSFER_FEE, Some(T22_FEE_IX_HARVEST_TO_MINT)) => {
+                // Harvesting is permissionless and Token-2022 skips any
+                // account it cannot harvest, so an account of another mint
+                // is not an error — it is simply not harvested here.
+                if account(0)? != mint {
+                    continue;
+                }
+                for source in ix.accounts.iter().skip(1) {
+                    if let Some(b) = r.balances.get_mut(source) {
+                        if b.1 > 0 {
+                            if !mint_observed {
+                                return Err(format!(
+                                    "{at} harvests into mint {mint}, and the mint was not observed"
+                                ));
+                            }
+                            r.mint_withheld = r.mint_withheld.checked_add(b.1).ok_or_else(|| {
+                                format!("{at} harvests more than a u64 holds")
+                            })?;
+                            r.harvested = r.harvested.saturating_add(b.1);
+                            b.1 = 0;
+                        }
+                    }
+                }
+            }
+            // The config change is judged by the terms comparison above; the
+            // schedule it writes starts two epochs out.
+            (T22_IX_TRANSFER_FEE, Some(T22_FEE_IX_SET_TRANSFER_FEE)) => {}
+            (t, _) if T22_IX_NO_TOKEN_VALUE.contains(&t) => {}
+            (t, sub) => {
+                return Err(format!(
+                    "{at} is Token-2022 instruction {t}{} on an account of mint {mint}, which the fee replay does not model",
+                    sub.filter(|_| t == T22_IX_TRANSFER_FEE)
+                        .map(|s| format!("/{s}"))
+                        .unwrap_or_default()
+                ))
+            }
+        }
+    }
+    Ok(r)
+}
+
+/// Replay one fee mint's executed Token-2022 instructions over token AMOUNTS
+/// alone (Round 21), for checking the model against the chain's own record:
+/// a transaction's `preTokenBalances` / `postTokenBalances` carry amounts,
+/// not withheld fees. An instruction that moves withheld fees (a harvest or a
+/// withdrawal) is refused here, because its effect on amounts depends on
+/// pools that record does not show. The verification path does not use this;
+/// it replays amounts and withheld fees together (`replay_fee_mint`).
+pub fn replay_fee_amounts(
+    mint: &str,
+    schedule: TransferFeeSchedule,
+    amounts_before: &std::collections::BTreeMap<String, u64>,
+    executed: &[ExecutedTokenInstruction],
+) -> Result<std::collections::BTreeMap<String, u64>, String> {
+    let before: std::collections::BTreeMap<String, (u64, u64)> = amounts_before
+        .iter()
+        .map(|(k, a)| (k.clone(), (*a, 0)))
+        .collect();
+    if let Some(ix) = executed.iter().find(|ix| {
+        ix.accounts
+            .iter()
+            .any(|a| a == mint || before.contains_key(a))
+            && ix.data.first() == Some(&T22_IX_TRANSFER_FEE)
+            && matches!(
+                ix.data.get(1),
+                Some(&T22_FEE_IX_WITHDRAW_FROM_MINT)
+                    | Some(&T22_FEE_IX_WITHDRAW_FROM_ACCOUNTS)
+                    | Some(&T22_FEE_IX_HARVEST_TO_MINT)
+            )
+    }) {
+        return Err(format!(
+            "{} moves withheld fees, which token balances do not record",
+            ix.position
+        ));
+    }
+    let r = replay_fee_mint(mint, schedule, false, 0, &before, executed)?;
+    Ok(r.balances.into_iter().map(|(k, (a, _))| (k, a)).collect())
+}
+
+/// Whether a replay ends exactly where the simulator did.
+fn replay_matches(
+    r: &FeeReplay,
+    after: &std::collections::BTreeMap<String, (u64, u64)>,
+    mint_withheld_after: Option<u64>,
+    supply_delta: i128,
+) -> Result<(), String> {
+    for (key, observed) in after {
+        let predicted = r.balances.get(key).copied().unwrap_or((0, 0));
+        if predicted != *observed {
+            return Err(format!(
+                "the replay ends {key} at {} with {} withheld, and the simulator reports {} with {} withheld",
+                predicted.0, predicted.1, observed.0, observed.1
+            ));
+        }
+    }
+    match mint_withheld_after {
+        Some(observed) if observed != r.mint_withheld => {
+            return Err(format!(
+            "the replay ends the mint's withheld pool at {}, and the simulator reports {observed}",
+            r.mint_withheld
+        ))
+        }
+        None if r.mint_withheld != 0 => {
+            return Err(
+                "the replay moves withheld fees into a mint the diff did not observe".to_string(),
+            )
+        }
+        _ => {}
+    }
+    if r.supply_change != supply_delta {
+        return Err(format!(
+            "the replay changes the supply by {}, and the simulator reports {supply_delta}",
+            r.supply_change
+        ));
+    }
+    Ok(())
+}
+
+/// The verdict's account of a replay that matched.
+fn replay_findings(
+    config: &TransferFeeConfigView,
+    epoch: Option<FeeEpochContext>,
+    schedule: TransferFeeSchedule,
+    r: &FeeReplay,
+    mint_account: Option<&str>,
+    out: &mut Vec<StateDiffFinding>,
+) {
+    use std::collections::BTreeMap;
+    // Per destination: the gross of every transfer and the fees withheld.
+    let mut arrivals: BTreeMap<&str, (Vec<u64>, u64)> = BTreeMap::new();
+    for (destination, gross, fee, _) in &r.transfers {
+        let e = arrivals.entry(destination.as_str()).or_default();
+        e.0.push(*gross);
+        e.1 += *fee;
+    }
+    for (destination, (grosses, fee)) in &arrivals {
+        let gross: u64 = grosses.iter().sum();
+        if *fee > 0 {
+            let what = if grosses.len() == 1 {
+                format!("{gross} was transferred into this account")
+            } else {
+                format!(
+                    "{} transfers totalling {gross} were made into this account",
+                    grosses.len()
+                )
+            };
+            out.push(StateDiffFinding::warning(
+                "Token2022TransferFeeCharged",
+                Some(destination),
+                format!(
+                    "{what} and Token-2022 withheld a fee of {fee} under the mint's schedule [{}], so {} arrived; the withheld fee belongs to whoever holds the mint's withdraw authority ({})",
+                    schedule.describe(),
+                    gross.saturating_sub(*fee),
+                    authority_label(&config.withdraw_withheld_authority)
+                ),
+            ));
+        }
+        pending_schedule_findings(config, epoch, schedule, destination, grosses, *fee, out);
+    }
+    for (destination, gross, fee, at) in &r.transfers {
+        if u128::from(*fee) * 2 > u128::from(*gross) {
+            out.push(StateDiffFinding::critical(
+                "Token2022TransferFeeMajority",
+                Some(destination.as_str()),
+                format!(
+                    "Token-2022 withheld {fee} of the {gross} transferred into this account by {at} — more than half — under the mint's schedule [{}]; only {} arrived. A transfer that delivers less than it withholds pays the mint's withdraw authority ({}) more than its recipient",
+                    schedule.describe(),
+                    gross - fee,
+                    authority_label(&config.withdraw_withheld_authority)
+                ),
+            ));
+        }
+    }
+    if r.harvested > 0 {
+        out.push(StateDiffFinding::warning(
+            "Token2022WithheldFeesHarvested",
+            mint_account,
+            format!(
+                "{} withheld fee(s) of this mint were harvested from token accounts into the mint, exactly",
+                r.harvested
+            ),
+        ));
+    }
+    for (destination, amount, authority, from, at) in &r.withdrawals {
+        out.push(StateDiffFinding::warning(
+            "Token2022WithheldFeesWithdrawn",
+            Some(destination.as_str()),
+            format!(
+                "{at} withdrew {amount} from {from} into this account; Token-2022 accepted {authority} as the mint's withdraw authority (named {} before the transaction), and the withdrawn amount is exactly what was withheld",
+                authority_label(&config.withdraw_withheld_authority)
+            ),
+        ));
+    }
+}
+
+/// The pre-state of `mint`: its own delta when the diff covers it, else the
+/// snapshot Graphite fetched.
+fn mint_snapshot<'a>(diff: &'a StateDiff, mint: &str) -> Option<&'a AccountSnapshot> {
+    diff.deltas
+        .iter()
+        .find(|d| d.pubkey == mint)
+        .and_then(|d| d.before.as_ref().or(d.after.as_ref()))
+        .or_else(|| diff.token2022_mints.get(mint))
+}
+
+/// Whether one extension on one account changes nothing about THIS
+/// transaction (Round 21). `Ok` carries why it is inert, `Err` why it is not;
+/// an extension this does not judge is `Err` with an empty reason.
+///
+/// Until Round 21 every one of these blocked on sight — so did a PYUSD
+/// transfer, whose mint carries a transfer hook that names no program and a
+/// confidential-transfer configuration nobody used. What an extension COULD
+/// do is the issuer's standing power over the token; what this transaction
+/// DOES with it is what the verdict is about.
+fn extension_judgement(
+    diff: &StateDiff,
+    delta: &AccountDelta,
+    disc: u16,
+) -> Result<String, String> {
+    let sides = [delta.before.as_ref(), delta.after.as_ref()];
+    let powers = |s: Option<&AccountSnapshot>| s.map(|s| s.token2022_powers.clone());
+    match disc {
+        EXT_TRANSFER_HOOK_ACCOUNT => {
+            let mint = sides
+                .iter()
+                .flatten()
+                .find_map(|s| s.token.as_ref().map(|t| t.mint.clone()))
+                .ok_or_else(|| "it does not decode as a token account".to_string())?;
+            let m = mint_snapshot(diff, &mint).ok_or_else(|| {
+                format!("its mint {mint} was not read, so the hook it runs is unknown")
+            })?;
+            match m.token2022_powers.as_ref().map(|p| p.transfer_hook_program.clone()) {
+                None => Err(format!("the extensions of its mint {mint} could not be read exactly")),
+                Some(None) => Ok("its mint carries no transfer hook, so the flag triggers nothing".to_string()),
+                Some(Some(None)) => Ok("its mint's transfer hook names no program, so no hook runs".to_string()),
+                Some(Some(Some(p))) => Err(format!(
+                    "its mint's transfer hook runs program {p} on every transfer — code Graphite does not model"
+                )),
+            }
+        }
+        EXT_TRANSFER_HOOK => {
+            let (b, a) = (powers(sides[0]), powers(sides[1]));
+            match (b, a) {
+                (Some(Some(b)), Some(Some(a)))
+                    if b.transfer_hook_program == a.transfer_hook_program =>
+                {
+                    match b.transfer_hook_program {
+                        Some(None) => {
+                            Ok("the transfer hook names no program, so no hook runs".to_string())
+                        }
+                        Some(Some(p)) => Err(format!(
+                            "the transfer hook runs program {p} on every transfer"
+                        )),
+                        None => Ok("no transfer hook".to_string()),
+                    }
+                }
+                _ => {
+                    Err("the transfer hook changed, or could not be read on both sides".to_string())
+                }
+            }
+        }
+        d if CONFIDENTIAL_EXTENSIONS.contains(&d) => {
+            let executed = diff.token2022_executed.as_ref().ok_or_else(|| {
+                "the executed instructions were not available to show no confidential instruction ran".to_string()
+            })?;
+            if let Some(ix) = executed.iter().find(|ix| {
+                ix.data
+                    .first()
+                    .is_some_and(|t| T22_CONFIDENTIAL_INSTRUCTIONS.contains(t))
+                    && ix.accounts.iter().any(|a| a == &delta.pubkey)
+            }) {
+                return Err(format!(
+                    "{} is a confidential-transfer instruction on it, and encrypted balances are not modelled",
+                    ix.position
+                ));
+            }
+            match (powers(sides[0]), powers(sides[1])) {
+                (Some(Some(b)), Some(Some(a))) if b.confidential_digest == a.confidential_digest => Ok(
+                    "its confidential-transfer state is byte-for-byte unchanged and no confidential instruction ran on it".to_string(),
+                ),
+                _ => Err("its confidential-transfer state changed, or could not be read on both sides".to_string()),
+            }
+        }
+        EXT_PERMANENT_DELEGATE | EXT_MINT_CLOSE_AUTHORITY => {
+            if diff.token2022_executed.is_none() {
+                return Err(
+                    "the executed instructions were not available to show it was not exercised"
+                        .to_string(),
+                );
+            }
+            match (powers(sides[0]), powers(sides[1])) {
+                (Some(Some(b)), Some(Some(a)))
+                    if b.permanent_delegate == a.permanent_delegate
+                        && b.close_authority == a.close_authority =>
+                {
+                    Ok("a standing power of the issuer, unchanged by this transaction and not exercised in it (an exercise is reported as Token2022PermanentDelegateExercised)".to_string())
+                }
+                _ => Err("it changed in this transaction, or could not be read on both sides".to_string()),
+            }
+        }
+        _ => Err(String::new()),
+    }
+}
+
+/// Transfers and burns this transaction made under a mint's permanent
+/// delegate out of accounts the delegate does not own (Round 21). The
+/// delegate needs no permission from the holder; the executed instructions
+/// are the only place the exercise shows.
+fn permanent_delegate_exercises(diff: &StateDiff) -> Vec<StateDiffFinding> {
+    let Some(executed) = diff.token2022_executed.as_ref() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for ix in executed {
+        // (source index, mint index, authority index)
+        let slots = match (ix.data.first(), ix.data.get(1)) {
+            (Some(&T22_IX_TRANSFER_CHECKED), _) => (0, 1, 3),
+            (Some(&T22_IX_TRANSFER_FEE), Some(&T22_FEE_IX_TRANSFER_CHECKED_WITH_FEE)) => (0, 1, 3),
+            (Some(&T22_IX_BURN), _) | (Some(&T22_IX_BURN_CHECKED), _) => (0, 1, 2),
+            _ => continue,
+        };
+        let (Some(source), Some(mint), Some(authority)) = (
+            ix.accounts.get(slots.0),
+            ix.accounts.get(slots.1),
+            ix.accounts.get(slots.2),
+        ) else {
+            continue;
+        };
+        let Some(Some(delegate)) = mint_snapshot(diff, mint)
+            .and_then(|m| m.token2022_powers.as_ref())
+            .and_then(|p| p.permanent_delegate.clone())
+        else {
+            continue;
+        };
+        if &delegate != authority {
+            continue;
+        }
+        let owner = diff
+            .deltas
+            .iter()
+            .find(|d| &d.pubkey == source)
+            .and_then(|d| d.before.as_ref())
+            .and_then(|s| s.token.as_ref())
+            .map(|t| t.owner.clone());
+        if owner.as_deref() == Some(delegate.as_str()) {
+            continue;
+        }
+        out.push(StateDiffFinding::critical(
+            "Token2022PermanentDelegateExercised",
+            Some(source.as_str()),
+            format!(
+                "{} moves tokens out of this account under mint {mint}'s permanent delegate {delegate}, which {} — the holder did not authorize it",
+                ix.position,
+                owner.map_or("could not be shown to own the account".to_string(), |o| format!("does not own it (the owner is {o})"))
+            ),
+        ));
+    }
+    out
+}
+
 /// Compare an observed state diff against a manifest's declared effects.
 ///
 /// This never returns a layer status — the caller maps findings and provenance
@@ -1563,6 +2514,24 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         .resolved_accounts
         .iter()
         .map(|a| a.address.as_str())
+        .collect();
+
+    // Round 21: the accounts a change may correspond to. The instruction's
+    // own, and — for a diff Graphite built from the bytes — every account the
+    // transaction references: the diff covers the transaction, and another
+    // instruction of it changing its own accounts is not a diff that fails to
+    // correspond. Every value movement is still judged below.
+    let in_transaction: std::collections::HashSet<&str> = known_accounts
+        .iter()
+        .copied()
+        .chain(
+            input
+                .diff
+                .transaction_accounts
+                .iter()
+                .flatten()
+                .map(String::as_str),
+        )
         .collect();
 
     let changed: Vec<&AccountDelta> = input.diff.changed().collect();
@@ -1646,6 +2615,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // other account they block as before, with the model's reason.
     let fee_model = model_transfer_fees(input.diff, &declared);
     findings.extend(fee_model.findings.iter().cloned());
+    findings.extend(permanent_delegate_exercises(input.diff));
     let is_fee_extension = |e: &DetectedExtension| {
         matches!(
             e.discriminant,
@@ -1678,8 +2648,24 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         if extensions.is_empty() {
             continue;
         }
+        // Round 21: extensions that change nothing about this transaction.
+        let mut inert: Vec<String> = Vec::new();
+        let mut not_inert: std::collections::HashMap<u16, String> =
+            std::collections::HashMap::new();
+        for e in &extensions {
+            match extension_judgement(input.diff, delta, e.discriminant) {
+                Ok(why) => inert.push(format!("{}: {why}", e.name)),
+                Err(why) if !why.is_empty() => {
+                    not_inert.insert(e.discriminant, why);
+                }
+                Err(_) => {}
+            }
+        }
+        let is_inert =
+            |e: &DetectedExtension| inert.iter().any(|w| w.starts_with(&format!("{}:", e.name)));
         let unmodelled: Vec<&DetectedExtension> = extensions
             .iter()
+            .filter(|e| !is_inert(e))
             .filter(|e| {
                 // AltersAuthority blocks too. A PermanentDelegate can move the
                 // balance without the owner, so "the balances moved as
@@ -1704,7 +2690,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             // When a transfer-fee extension is among them, say why the model
             // could not account for it — "not modelled" is no longer the
             // whole story for that pair.
-            let why = if unmodelled.iter().any(|e| is_fee_extension(e)) {
+            let mut why = if unmodelled.iter().any(|e| is_fee_extension(e)) {
                 fee_model
                     .not_modelled
                     .get(&delta.pubkey)
@@ -1713,6 +2699,11 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             } else {
                 String::new()
             };
+            for e in &unmodelled {
+                if let Some(w) = not_inert.get(&e.discriminant) {
+                    why.push_str(&format!(". {}: {w}", e.name));
+                }
+            }
             findings.push(StateDiffFinding::critical(
                 "Token2022ExtensionNotModelled",
                 Some(delta.pubkey.as_str()),
@@ -1722,6 +2713,16 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 ),
             ));
         } else {
+            if !inert.is_empty() {
+                findings.push(StateDiffFinding::warning(
+                    "Token2022ExtensionInert",
+                    Some(delta.pubkey.as_str()),
+                    format!(
+                        "extension(s) that could alter a transfer change nothing in this one — {}",
+                        inert.join("; ")
+                    ),
+                ));
+            }
             findings.push(StateDiffFinding::warning(
                 "Token2022ExtensionPresent",
                 Some(delta.pubkey.as_str()),
@@ -1810,7 +2811,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     }
 
     for d in &changed {
-        if !known_accounts.contains(d.pubkey.as_str()) {
+        if !in_transaction.contains(d.pubkey.as_str()) {
             // A transaction can only touch accounts in its own account list, so
             // a delta on an address the instruction never named means the diff
             // does not correspond to this instruction.
@@ -2123,6 +3124,7 @@ mod tests {
             extensions: Default::default(),
             transfer_fee_withheld: None,
             transfer_fee_config: None,
+            token2022_powers: None,
         }
     }
 
@@ -2322,6 +3324,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -2353,6 +3359,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -2389,6 +3399,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -2412,6 +3426,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -2442,6 +3460,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -2468,6 +3490,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2509,6 +3535,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -2539,6 +3569,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2568,6 +3602,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2598,6 +3636,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2625,6 +3667,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -2656,6 +3702,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -2682,6 +3732,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -2718,6 +3772,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2749,6 +3807,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2779,6 +3841,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -2804,6 +3870,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -2831,6 +3901,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -2857,6 +3931,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         // "Update the metadata URI" promises no value movement at all.
@@ -2886,6 +3964,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -2914,6 +3996,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -2943,6 +4029,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -2979,6 +4069,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -3007,6 +4101,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -3031,6 +4129,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(BOB, false)];
         let declared = ["credit destination".to_string()];
@@ -3076,6 +4178,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -3111,6 +4217,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -3162,6 +4272,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["frobnicate the widget".to_string()]);
@@ -3187,6 +4301,7 @@ mod tests {
                     extensions: Default::default(),
                     transfer_fee_withheld: None,
                     transfer_fee_config: None,
+                    token2022_powers: None,
                 }),
             }],
             provenance: DiffProvenance::RpcSimulated,
@@ -3198,6 +4313,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(BOB, true)];
         // `before: None` means owner_change() cannot fire — there is no prior
@@ -3232,6 +4351,10 @@ mod tests {
             artifact_account_universe: None,
             artifact_accounts_undescribed: None,
             transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(

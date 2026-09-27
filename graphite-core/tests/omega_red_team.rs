@@ -30,6 +30,8 @@ fn max_evidence() -> BehaviorEvidence {
 #[test]
 fn exploit_l1_drainer_threshold_bypass_5_accounts() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "MaliciousDrainerProgram1111111111111".to_string(),
         accounts: vec![
             "victim_wallet".to_string(),
@@ -60,6 +62,8 @@ fn exploit_l1_drainer_threshold_bypass_5_accounts() {
 fn exploit_l2_hidden_transfer_threshold_bypass_12_accounts() {
     let accounts: Vec<String> = (0..12).map(|i| format!("account_{}", i)).collect();
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "SomeProgram111111111111111111111111111".to_string(),
         accounts,
         cpi_targets: vec![],
@@ -84,6 +88,8 @@ fn exploit_l2_hidden_transfer_threshold_bypass_12_accounts() {
 fn exploit_l3_compositional_drain_bypass_4_targets() {
     let drainer = "DrainerProgram111111111111111111111111111";
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "aggregator".to_string(),
         accounts: vec!["wallet".to_string()],
         cpi_targets: vec![
@@ -113,6 +119,8 @@ fn exploit_l3_compositional_drain_bypass_4_targets() {
 fn exploit_l4_token2022_setauthority_bypass() {
     let real_token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: real_token2022.to_string(),
         accounts: vec!["token_account".into(), "new_authority".into()],
         cpi_targets: vec![],
@@ -194,6 +202,8 @@ fn exploit_l6b_infinity_std_bypasses_simulation_check() {
 #[test]
 fn exploit_l8_empty_discriminator_bypasses_setauthority() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         accounts: vec!["account1".into(), "account2".into()],
         cpi_targets: vec![],
@@ -251,6 +261,8 @@ fn exploit_l11_nan_confidence_bypass() {
 #[test]
 fn exploit_l12_account_duplication_false_positive() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "legit_program".to_string(),
         accounts: vec!["same_account".into(); 6],
         cpi_targets: vec![],
@@ -275,6 +287,8 @@ fn exploit_l12_account_duplication_false_positive() {
 #[test]
 fn exploit_l14_unknown_system_instruction_passes() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "11111111111111111111111111111111".to_string(),
         accounts: vec!["account".into()],
         cpi_targets: vec![],
@@ -333,6 +347,8 @@ fn exploit_l15_infinity_signal_rejected() {
 fn exploit_l18_drainer_with_single_meaningful_change_bypass() {
     let accounts: Vec<String> = (0..100).map(|i| format!("account_{}", i)).collect();
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "SomeProgram111111111111111111111111".to_string(),
         accounts,
         cpi_targets: vec![],
@@ -403,6 +419,8 @@ fn exploit_l19_unknown_protocol_permissive_bypass() {
 fn exploit_l20_cpi_self_allowing() {
     let malicious = "MaliciousDrainerProgram111111111111111";
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "legit_program".to_string(),
         accounts: vec!["wallet".into()],
         cpi_targets: vec![malicious.into()],
@@ -519,6 +537,8 @@ const SPL_TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 #[test]
 fn dx1_pumpfun_repeated_cpi_drain_still_blocked() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: PUMP_FUN.to_string(),
         accounts: vec!["curve".to_string(), "user".to_string()],
         cpi_targets: vec!["evil_drainer_program".to_string(); 4],
@@ -546,6 +566,8 @@ fn dx1_pumpfun_repeated_cpi_drain_still_blocked() {
 #[test]
 fn dx2_dca_repeated_cpi_drain_still_blocked() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: JUPITER_DCA.to_string(),
         accounts: vec!["user".to_string(), "escrow".to_string()],
         cpi_targets: vec!["evil_drainer_program".to_string(); 4],
@@ -579,6 +601,8 @@ fn dx3_pumpfun_and_dca_token_cpi_from_trusted_root_is_allowed() {
         (JUPITER_DCA, "16072162a8b722f3", "close"),
     ] {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: program.to_string(),
             accounts: vec!["user".to_string(), "curve_or_escrow".to_string()],
             cpi_targets: vec![SPL_TOKEN.to_string()],
@@ -609,6 +633,8 @@ fn dx3_pumpfun_and_dca_token_cpi_from_trusted_root_is_allowed() {
 #[test]
 fn dx4_pumpfun_unlisted_cpi_warning_surfaced_not_silent() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: PUMP_FUN.to_string(),
         accounts: vec!["curve".to_string(), "user".to_string()],
         cpi_targets: vec!["some_unlisted_program".to_string()],
@@ -639,6 +665,8 @@ fn dx4_pumpfun_unlisted_cpi_warning_surfaced_not_silent() {
 #[test]
 fn dx5_non_dex_expansion_roots_do_not_get_drainer_relaxation() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: WORMHOLE.to_string(),
         accounts: vec![
             "a1".to_string(),

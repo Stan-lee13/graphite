@@ -1298,9 +1298,9 @@
    "discriminator": "bb64facc31c4af14",
    "accounts": [
     {
-     "name": "user_authority",
+     "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
@@ -1333,7 +1333,7 @@
      "pda_seeds": []
     },
     {
-     "name": "token_program",
+     "name": "source_token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1344,31 +1344,35 @@
      ]
     },
     {
-     "name": "token_2022_program",
+     "name": "destination_token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": [],
      "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
       "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
      ]
     },
     {
-     "name": "program",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "platform_fee_account",
+     "name": "destination_token_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_authority",
+     "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf"
+     ]
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1406,7 +1410,7 @@
     {
      "name": "user_transfer_authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
@@ -1422,22 +1426,14 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [],
-     "expected_address": [
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "program_destination_token_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [],
-     "expected_address": [
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "destination_token_account",
@@ -1461,17 +1457,7 @@
      "pda_seeds": []
     },
     {
-     "name": "token_2022_program",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": [],
-     "expected_address": [
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
-    },
-    {
-     "name": "token_program",
+     "name": "source_token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1482,21 +1468,28 @@
      ]
     },
     {
-     "name": "platform_fee_account",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "program",
+     "name": "destination_token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     },
     {
      "name": "event_authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf"
+     ]
+    },
+    {
+     "name": "program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -1526,17 +1519,6 @@
    "discriminator": "9d8ab85215f4f324",
    "accounts": [
     {
-     "name": "token_program",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": [],
-     "expected_address": [
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
-    },
-    {
      "name": "user_transfer_authority",
      "role": "signer",
      "is_writable": false,
@@ -1558,13 +1540,6 @@
      "pda_seeds": []
     },
     {
-     "name": "destination_token_account",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
      "name": "source_mint",
      "role": "readonly",
      "is_writable": false,
@@ -1579,28 +1554,43 @@
      "pda_seeds": []
     },
     {
-     "name": "platform_fee_account",
+     "name": "source_token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
+    },
+    {
+     "name": "destination_token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
+    },
+    {
+     "name": "destination_token_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "token2022_program",
+     "name": "event_authority",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": [],
      "expected_address": [
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf"
      ]
-    },
-    {
-     "name": "event_authority",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
     },
     {
      "name": "program",
@@ -1628,17 +1618,6 @@
    "discriminator": "3560e5cad8bbfa18",
    "accounts": [
     {
-     "name": "token_program",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": [],
-     "expected_address": [
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
-    },
-    {
      "name": "program_authority",
      "role": "readonly",
      "is_writable": false,
@@ -1664,22 +1643,14 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [],
-     "expected_address": [
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "program_destination_token_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [],
-     "expected_address": [
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "destination_token_account",
@@ -1703,19 +1674,24 @@
      "pda_seeds": []
     },
     {
-     "name": "platform_fee_account",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "token2022_program",
+     "name": "source_token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": [],
      "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
+    },
+    {
+     "name": "destination_token_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
       "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
      ]
     },
@@ -1724,7 +1700,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf"
+     ]
     },
     {
      "name": "program",

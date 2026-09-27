@@ -868,7 +868,7 @@
   {
     "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
     "version": "1.0.0",
-    "content_hash": "59c97244a6101fd8b47886a7395651b41f49828a409b9c1d672dccda4c7b4430",
+    "content_hash": "5876e1a66e9d4599bb88f50cddc0c2e7e329216c8421e6eeb09496098f7a2749",
     "expected_approved": true,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -883,7 +883,10 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "7a4d509f54585ac5",
       "account_addresses": [
-        "3RRKSeuetGkK8PxxpmU3u6LFawFMzfBY74es8SkF92XW"
+        "3RRKSeuetGkK8PxxpmU3u6LFawFMzfBY74es8SkF92XW",
+        "J5iWZQqC7YdxPWWhAbd7uweLDxLRvdZFZv7ZdDRVRC5",
+        "7FL7UCG6M7MirHfwxWg9t2W3g7e8azhabMi9ZTnJDm1d",
+        "prcG2dE6egtMbN9reKCj8ZS4tv9mW3LbBhHWpqzPzjK"
       ],
       "instruction_data": [
         122,
@@ -935,7 +938,7 @@
   {
     "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
     "version": "1.0.0",
-    "content_hash": "719417c51948e38b5b333b1b97dfcc067be9bd9cb36d9544ee732d0bb52da83a",
+    "content_hash": "51f72cd315ae6ff047fe06567fedca3c053425c97f59ca7fa817a34fdff6b242",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -950,7 +953,10 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "7a4d509f54585ac5",
       "account_addresses": [
-        "3RRKSeuetGkK8PxxpmU3u6LFawFMzfBY74es8SkF92XW"
+        "3RRKSeuetGkK8PxxpmU3u6LFawFMzfBY74es8SkF92XW",
+        "J5iWZQqC7YdxPWWhAbd7uweLDxLRvdZFZv7ZdDRVRC5",
+        "7FL7UCG6M7MirHfwxWg9t2W3g7e8azhabMi9ZTnJDm1d",
+        "prcG2dE6egtMbN9reKCj8ZS4tv9mW3LbBhHWpqzPzjK"
       ],
       "instruction_data": [
         122,
@@ -1002,7 +1008,7 @@
   {
     "program_id": "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
     "version": "1.0.0",
-    "content_hash": "b3cb5cf76245b30c2e75f7c5b6d6dc2cbf2a909c9af1777da10929f8218af8d3",
+    "content_hash": "fcba314def3256c551d0254ae78496ed70aebc8cdf1f6848348f25248ca5a52d",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1017,7 +1023,10 @@
       "protocol_version": "1.0.0",
       "instruction_discriminator": "7a4d509f54585ac5",
       "account_addresses": [
-        "3RRKSeuetGkK8PxxpmU3u6LFawFMzfBY74es8SkF92XW"
+        "3RRKSeuetGkK8PxxpmU3u6LFawFMzfBY74es8SkF92XW",
+        "J5iWZQqC7YdxPWWhAbd7uweLDxLRvdZFZv7ZdDRVRC5",
+        "7FL7UCG6M7MirHfwxWg9t2W3g7e8azhabMi9ZTnJDm1d",
+        "prcG2dE6egtMbN9reKCj8ZS4tv9mW3LbBhHWpqzPzjK"
       ],
       "instruction_data": [
         122,

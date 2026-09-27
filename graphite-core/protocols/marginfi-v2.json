@@ -18,60 +18,64 @@
    "discriminator": "047e74353005d41f",
    "accounts": [
     {
-     "name": "account_0",
+     "name": "group",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_1",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "account_2",
-     "role": "signer",
+     "name": "marginfi_account",
+     "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "account_3",
+     "name": "bank",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_4",
+     "name": "destination_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bank_liquidity_vault_authority",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_5",
+     "name": "liquidity_vault",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_6",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "account_7",
+     "name": "token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -91,25 +95,28 @@
    "discriminator": "0e8321dc51bab46b",
    "accounts": [
     {
-     "name": "account_0",
-     "role": "readonly",
-     "is_writable": false,
+     "name": "marginfi_account",
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_1",
+     "name": "authority",
      "role": "signer",
-     "is_writable": true,
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "account_2",
+     "name": "ixs_sysvar",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "Sysvar1nstructions1111111111111111111111111"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -129,53 +136,57 @@
    "discriminator": "4fd1acb1de33ad97",
    "accounts": [
     {
-     "name": "account_0",
+     "name": "group",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_1",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "account_2",
-     "role": "signer",
+     "name": "marginfi_account",
+     "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "account_3",
+     "name": "bank",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_4",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "account_5",
+     "name": "signer_token_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "account_6",
+     "name": "liquidity_vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "token_program",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+     ]
     }
    ],
    "expected_state_changes": [
@@ -195,31 +206,17 @@
    "discriminator": "697cc96a9902089c",
    "accounts": [
     {
-     "name": "account_0",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "account_1",
-     "role": "signer",
+     "name": "marginfi_account",
+     "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
      "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "account_2",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "account_3",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
      "pda_seeds": []
     }
    ],

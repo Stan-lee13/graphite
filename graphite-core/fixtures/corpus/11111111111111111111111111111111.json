@@ -1684,7 +1684,7 @@
   {
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "c8d3261c275a78ce659506602c90b2fd5e1dbd649c3b013cd52db0833288bd4d",
+    "content_hash": "3a2340eff2e16c940295a4f318cb69067bcd70fe792e5b5b8efdea5a0e90ba69",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1700,7 +1700,7 @@
       "instruction_discriminator": "04000000",
       "account_addresses": [
         "87d2Vem1WDgEdxdNdpqcFemUCgctPTuittJUhAZQCL6y",
-        "5Vj2JHdDN6D9LRyws2DB64qnKG1Bha8hz7VuoTbjm8d9",
+        "SysvarRecentB1ockHashes11111111111111111111",
         "DJ9XfKqhqCeJikDczV41YdWuL1aSJSHpPbS9zYajNmD6"
       ],
       "instruction_data": [
@@ -1749,7 +1749,7 @@
   {
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "5934362cc81023312a5256a9f2efe4d9db9ebfa61f7ccab74046afe1cf8351ac",
+    "content_hash": "a7f7abdebdfb465313e8f50cd57020945f82923a030ab57bb734e6a8eb3e1e65",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1765,7 +1765,7 @@
       "instruction_discriminator": "04000000",
       "account_addresses": [
         "87d2Vem1WDgEdxdNdpqcFemUCgctPTuittJUhAZQCL6y",
-        "5Vj2JHdDN6D9LRyws2DB64qnKG1Bha8hz7VuoTbjm8d9",
+        "SysvarRecentB1ockHashes11111111111111111111",
         "DJ9XfKqhqCeJikDczV41YdWuL1aSJSHpPbS9zYajNmD6"
       ],
       "instruction_data": [
@@ -1814,7 +1814,7 @@
   {
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "01729161e34635e10d131d0c5d77233108d18776b343e951540c265f721814fe",
+    "content_hash": "44490fbd0bcb0e2797bf4994132b98819b56cf7d20c8f999fdd2f915698f1a18",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1830,7 +1830,7 @@
       "instruction_discriminator": "04000000",
       "account_addresses": [
         "87d2Vem1WDgEdxdNdpqcFemUCgctPTuittJUhAZQCL6y",
-        "5Vj2JHdDN6D9LRyws2DB64qnKG1Bha8hz7VuoTbjm8d9",
+        "SysvarRecentB1ockHashes11111111111111111111",
         "DJ9XfKqhqCeJikDczV41YdWuL1aSJSHpPbS9zYajNmD6"
       ],
       "instruction_data": [
@@ -1879,7 +1879,7 @@
   {
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "f0a683a4f4248b2d92801d6708a165371c1c4a9f16eca05ed23b5809881471a6",
+    "content_hash": "fc394aa603a371bf6532472858e9fb9caaacc7910fdfeb5fdd0cf70c85e9119b",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1895,7 +1895,7 @@
       "instruction_discriminator": "04000000",
       "account_addresses": [
         "87d2Vem1WDgEdxdNdpqcFemUCgctPTuittJUhAZQCL6y",
-        "5Vj2JHdDN6D9LRyws2DB64qnKG1Bha8hz7VuoTbjm8d9",
+        "SysvarRecentB1ockHashes11111111111111111111",
         "DJ9XfKqhqCeJikDczV41YdWuL1aSJSHpPbS9zYajNmD6",
         "3f46J5i6RMvfSbGgGrEhfE3QRsQfScUaB4m4vHr2ZXp9",
         "75Zqxj9bD25LQDYUPBwoRVtRrJLzHJw8w7cE69jL4wu",
@@ -1952,7 +1952,7 @@
   {
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
-    "content_hash": "15fd8a44d90209a3ec53bdfae4c1ec5ecbdf307281c2926f6daac53ecad9ce35",
+    "content_hash": "c37b30583f54d4c57743b0bcabb9bc732e44c573964fbfb25c01fef1cb852263",
     "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
@@ -1968,7 +1968,7 @@
       "instruction_discriminator": "04000000ff00",
       "account_addresses": [
         "87d2Vem1WDgEdxdNdpqcFemUCgctPTuittJUhAZQCL6y",
-        "5Vj2JHdDN6D9LRyws2DB64qnKG1Bha8hz7VuoTbjm8d9",
+        "SysvarRecentB1ockHashes11111111111111111111",
         "DJ9XfKqhqCeJikDczV41YdWuL1aSJSHpPbS9zYajNmD6"
       ],
       "instruction_data": [

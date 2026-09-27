@@ -102,6 +102,8 @@ fn risk_input(
     disc: &str,
 ) -> RiskAssessmentInput {
     RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: program.to_string(),
         accounts: accounts.iter().map(|s| s.to_string()).collect(),
         cpi_targets: cpi.iter().map(|s| s.to_string()).collect(),
@@ -727,6 +729,8 @@ fn h9_unknown_protocol_confidence_zero_evidence() {
 #[test]
 fn h10_safe_state_changes_dont_mask_setauthority() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         accounts: vec!["account1".to_string()],
         cpi_targets: vec![],
@@ -752,6 +756,8 @@ fn h10_safe_state_changes_dont_mask_setauthority() {
 #[test]
 fn h10_state_changes_dont_mask_closeaccount() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         accounts: vec!["account1".to_string()],
         cpi_targets: vec![],
@@ -783,6 +789,8 @@ fn h11_empty_string_state_change_bypasses_drainer() {
     // BUG HUNT: vec![""] is NOT empty, so drainer check passes
     // This is a known bypass — drainer checks is_empty() not all-empty-strings
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "test".to_string(),
         accounts: vec!["a1", "a2", "a3", "a4", "a5", "a6"]
             .iter()
@@ -810,6 +818,8 @@ fn h11_empty_string_state_change_bypasses_drainer() {
 #[test]
 fn h11_whitespace_state_change_bypasses_drainer() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "test".to_string(),
         accounts: vec!["a1", "a2", "a3", "a4", "a5", "a6"]
             .iter()

@@ -1223,8 +1223,8 @@
     },
     {
      "name": "pool_state",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -1660,6 +1660,13 @@
      "pda_seeds": []
     },
     {
+     "name": "output_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "input_vault",
      "role": "writable",
      "is_writable": true,
@@ -1667,7 +1674,21 @@
      "pda_seeds": []
     },
     {
+     "name": "output_vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "input_vault_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "output_vault_mint",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,

@@ -1597,6 +1597,167 @@ pub fn resolve_lookups(
 /// The System program, base58.
 pub const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
 
+/// The Compute Budget program.
+pub const COMPUTE_BUDGET_PROGRAM: &str = "ComputeBudget111111111111111111111111111111";
+/// The runtime's ceiling on a transaction's compute-unit limit.
+pub const MAX_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
+/// The default compute-unit allowance per instruction when a transaction sets
+/// no limit. The runtime grants less to builtins; this is the upper bound.
+pub const DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT: u32 = 200_000;
+
+/// What a transaction asks of the runtime's compute budget, read from its
+/// bytes (Round 21).
+///
+/// Version 1 carries the values in its header; legacy and v0 carry them as
+/// Compute Budget program instructions. Round 19 parsed and bounded the v1
+/// values and surfaced none of them, so a verdict could not say what the
+/// transaction would pay for priority — the one fee a crafted transaction
+/// can inflate at will. `priority_fee_lamports` is that fee: stated by v1,
+/// computed for legacy/v0 as the runtime computes it (price × limit / 10^6,
+/// rounded up), with the default limit's upper bound when none is set.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+pub struct ComputeBudgetRequest {
+    /// `v1_header` or `compute_budget_instructions`.
+    pub source: String,
+    /// The limit the transaction sets, if it sets one.
+    pub compute_unit_limit: Option<u32>,
+    /// The limit the runtime applies: the one set, capped at 1.4M, or the
+    /// default's upper bound (200,000 per instruction outside the Compute
+    /// Budget program, capped at 1.4M).
+    pub effective_compute_unit_limit: u32,
+    /// Legacy/v0: the price per compute unit, in micro-lamports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compute_unit_price_micro_lamports: Option<u64>,
+    /// The priority fee in lamports (at most this, when the limit is the
+    /// default's upper bound).
+    pub priority_fee_lamports: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heap_bytes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loaded_accounts_data_size_limit: Option<u32>,
+    /// What the runtime would refuse: a duplicated or malformed Compute Budget
+    /// instruction, a heap request outside its rules. Such a transaction
+    /// fails before it runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub problems: Vec<String>,
+}
+
+fn priority_fee(price_micro_lamports: u64, limit: u32) -> u64 {
+    let fee = (u128::from(price_micro_lamports) * u128::from(limit)).div_ceil(1_000_000);
+    u64::try_from(fee).unwrap_or(u64::MAX)
+}
+
+/// Read a message's compute-budget request (Round 21).
+pub fn compute_budget_request(message: &ArtifactMessage) -> ComputeBudgetRequest {
+    let others = message
+        .instructions
+        .iter()
+        .filter(|ix| ix.program_id != COMPUTE_BUDGET_PROGRAM)
+        .count();
+    let default_limit = u32::try_from(others)
+        .unwrap_or(u32::MAX)
+        .saturating_mul(DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT)
+        .min(MAX_COMPUTE_UNIT_LIMIT);
+    if let Some(v1) = message.v1_config {
+        let effective = v1
+            .compute_unit_limit
+            .map_or(default_limit, |l| l.min(MAX_COMPUTE_UNIT_LIMIT));
+        return ComputeBudgetRequest {
+            source: "v1_header".to_string(),
+            compute_unit_limit: v1.compute_unit_limit,
+            effective_compute_unit_limit: effective,
+            compute_unit_price_micro_lamports: None,
+            priority_fee_lamports: v1.priority_fee.unwrap_or(0),
+            heap_bytes: v1.heap_size,
+            loaded_accounts_data_size_limit: v1.loaded_accounts_data_size_limit,
+            problems: Vec::new(),
+        };
+    }
+    let mut r = ComputeBudgetRequest {
+        source: "compute_budget_instructions".to_string(),
+        ..Default::default()
+    };
+    let mut seen = [false; 5];
+    for (i, ix) in message.instructions.iter().enumerate() {
+        if ix.program_id != COMPUTE_BUDGET_PROGRAM {
+            continue;
+        }
+        let tag = ix.data.first().copied();
+        let u32_at = |d: &[u8]| {
+            d.get(1..5)
+                .and_then(|b| b.try_into().ok())
+                .map(u32::from_le_bytes)
+        };
+        let u64_at = |d: &[u8]| {
+            d.get(1..9)
+                .and_then(|b| b.try_into().ok())
+                .map(u64::from_le_bytes)
+        };
+        let (slot, len) = match tag {
+            Some(1) => (1, 5),
+            Some(2) => (2, 5),
+            Some(3) => (3, 9),
+            Some(4) => (4, 5),
+            Some(0) => {
+                r.problems.push(format!(
+                    "instruction #{i} is the retired RequestUnits Compute Budget instruction, which the runtime refuses"
+                ));
+                continue;
+            }
+            _ => {
+                r.problems.push(format!(
+                    "instruction #{i} is a Compute Budget instruction the runtime cannot decode"
+                ));
+                continue;
+            }
+        };
+        if ix.data.len() != len {
+            r.problems.push(format!(
+                "instruction #{i} is a Compute Budget instruction of the wrong length ({} bytes, {len} expected)",
+                ix.data.len()
+            ));
+            continue;
+        }
+        if seen[slot] {
+            r.problems.push(format!(
+                "instruction #{i} repeats a Compute Budget instruction; the runtime refuses the transaction as a duplicate"
+            ));
+            continue;
+        }
+        seen[slot] = true;
+        match slot {
+            1 => {
+                let heap = u32_at(&ix.data).unwrap_or(0);
+                if heap % 1024 != 0 || !(32 * 1024..=256 * 1024).contains(&heap) {
+                    r.problems.push(format!(
+                        "instruction #{i} requests a heap of {heap} bytes; the runtime requires a multiple of 1024 between 32 KiB and 256 KiB"
+                    ));
+                }
+                r.heap_bytes = Some(heap);
+            }
+            2 => r.compute_unit_limit = u32_at(&ix.data),
+            3 => r.compute_unit_price_micro_lamports = u64_at(&ix.data),
+            _ => {
+                let size = u32_at(&ix.data).unwrap_or(0);
+                if size == 0 {
+                    r.problems.push(format!(
+                        "instruction #{i} sets a loaded-accounts data limit of zero, which the runtime refuses"
+                    ));
+                }
+                r.loaded_accounts_data_size_limit = Some(size);
+            }
+        }
+    }
+    r.effective_compute_unit_limit = r
+        .compute_unit_limit
+        .map_or(default_limit, |l| l.min(MAX_COMPUTE_UNIT_LIMIT));
+    r.priority_fee_lamports = priority_fee(
+        r.compute_unit_price_micro_lamports.unwrap_or(0),
+        r.effective_compute_unit_limit,
+    );
+    r
+}
+
 /// The `SystemInstruction::AdvanceNonceAccount` discriminator, as the runtime
 /// encodes it (bincode, u32 little-endian).
 pub const ADVANCE_NONCE_ACCOUNT: [u8; 4] = [4, 0, 0, 0];

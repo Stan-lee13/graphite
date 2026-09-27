@@ -410,7 +410,14 @@ impl ManifestRegistryEngine {
             }
         }
         for ix in &manifest.instructions {
-            for (slot, a) in ix.accounts.iter().enumerate() {
+            if ix.account_layouts.len() > 4 {
+                return Err(RegistryError::InvalidManifest(format!(
+                    "instruction '{}' declares {} alternate account layouts (cap 4) — resource-exhaustion guard",
+                    ix.name,
+                    ix.account_layouts.len()
+                )));
+            }
+            for (slot, a) in ix.all_layouts().flatten().enumerate() {
                 for seed in &a.pda_seeds {
                     if let Err(reason) = crate::account_resolution::validate_seed_template(seed) {
                         return Err(RegistryError::InvalidManifest(format!(
@@ -454,7 +461,10 @@ impl ManifestRegistryEngine {
                     "instruction name exceeds {MAX_FIELD_CHARS} chars"
                 )));
             }
-            if ix.accounts.len() > MAX_ACCOUNTS_PER_INSTRUCTION {
+            if ix
+                .all_layouts()
+                .any(|l| l.len() > MAX_ACCOUNTS_PER_INSTRUCTION)
+            {
                 return Err(RegistryError::InvalidManifest(format!(
                     "instruction '{}' declares {} accounts (cap {MAX_ACCOUNTS_PER_INSTRUCTION}) — resource-exhaustion guard",
                     ix.name,
@@ -481,7 +491,7 @@ impl ManifestRegistryEngine {
                     )));
                 }
             }
-            for acc in &ix.accounts {
+            for acc in ix.all_layouts().flatten() {
                 if acc.pda_seeds.len() > MAX_LIST_ITEMS {
                     return Err(RegistryError::InvalidManifest(format!(
                         "account '{}' exceeds {MAX_LIST_ITEMS} pda seeds — resource-exhaustion guard",
@@ -655,6 +665,7 @@ mod tests {
             // A registry manifest must declare at least one instruction with a
             // discriminator (mirrors the runtime loader's schema validation).
             instructions: vec![InstructionDef {
+                account_layouts: vec![],
                 name: "TestOp".to_string(),
                 discriminator: "01".to_string(),
                 accounts: vec![],
@@ -796,6 +807,7 @@ mod tests {
         let mut m = manifest("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P", "Huge", "v1");
         m.instructions = (0..1000)
             .map(|i| InstructionDef {
+                account_layouts: vec![],
                 name: format!("op{i}"),
                 discriminator: "01".to_string(),
                 accounts: vec![],

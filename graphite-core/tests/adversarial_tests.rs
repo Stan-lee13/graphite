@@ -90,6 +90,8 @@ fn risk_input(
     disc: &str,
 ) -> RiskAssessmentInput {
     RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: program.to_string(),
         accounts: accounts.iter().map(|s| s.to_string()).collect(),
         cpi_targets: cpi.iter().map(|s| s.to_string()).collect(),

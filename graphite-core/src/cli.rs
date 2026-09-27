@@ -1959,6 +1959,7 @@ mod tests {
                 previous_version_ref: None,
             },
             instructions: vec![InstructionDef {
+                account_layouts: vec![],
                 name: "Deposit".to_string(),
                 discriminator: "01".to_string(),
                 accounts: vec![AccountRoleDef {

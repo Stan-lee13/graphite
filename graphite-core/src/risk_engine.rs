@@ -112,6 +112,17 @@ pub struct RiskAssessmentInput {
     /// class.
     #[serde(default)]
     pub manifest_risk_class: String,
+    /// True only when the pipeline read, from the transaction's own bytes,
+    /// that this token `CloseAccount` pays the closed account's lamports to
+    /// the very account that authorizes the close (Round 21). Never taken
+    /// from a request.
+    #[serde(skip)]
+    pub verified_self_refund_close: bool,
+    /// How many accounts past the manifest's declared list the transaction
+    /// marks WRITABLE, when the pipeline read the privileges from the bytes
+    /// (Round 21). `None` when it could not. Never taken from a request.
+    #[serde(skip)]
+    pub writable_extra_accounts: Option<usize>,
 }
 
 /// Known risky instruction discriminators by program ID.
@@ -337,6 +348,14 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
 
     // P0 Check 2: Known risky instruction patterns at root level
     for pattern in RISKY_PATTERNS {
+        // Round 21: a CloseAccount whose destination IS its authority returns
+        // the account's lamports — for wrapped SOL, the SOL itself — to the
+        // wallet that closed it. That is how every swap unwraps SOL, and it
+        // is not a drain: a drain needs a destination that is not the
+        // authority. Exempt only on the pipeline's word from the bytes.
+        if input.verified_self_refund_close && pattern.discriminator == "09" {
+            continue;
+        }
         if input.program_id == pattern.program_id {
             if !input.instruction_discriminator.is_empty()
                 && disc_matches(pattern.discriminator, &input.instruction_discriminator)
@@ -403,9 +422,19 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // Skip if manifest declares expected account count and actual count is within range.
     // A manifest-aware account count match means the transaction structure is expected
     // — the drainer heuristic is for catching UNEXPECTED account proliferation.
+    //
+    // Round 21: when the privileges were read from the transaction's bytes,
+    // the extras that count are the WRITABLE ones. A read-only account cannot
+    // lose anything in the transaction, and programs pass read-only remaining
+    // accounts routinely: PumpSwap's executed sells carry 2-3 accounts past
+    // the IDL's 21, mostly read-only fixed addresses, and 443 of them were
+    // refused as account proliferation (2026-09-23 mainnet sample).
     let manifest_account_match = input
         .expected_account_count
-        .map(|expected| input.accounts.len() <= expected + 2)
+        .map(|expected| match input.writable_extra_accounts {
+            Some(writable) => writable <= 2,
+            None => input.accounts.len() <= expected + 2,
+        })
         .unwrap_or(false);
 
     let is_dex = DEX_PROGRAMS.contains(&input.program_id.as_str());
@@ -427,12 +456,24 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
             let unique_accounts: std::collections::HashSet<&String> =
                 input.accounts.iter().collect();
             let unique_count = unique_accounts.len();
-            if unique_count > expected_count + 2 {
+            // Round 21: as in Check 3, with privileges from the bytes the
+            // extras that count are the writable ones — a multi-transfer
+            // drain needs destinations it can write.
+            let excess = match input.writable_extra_accounts {
+                Some(writable) => writable > 2,
+                None => unique_count > expected_count + 2,
+            };
+            if excess {
                 return Ok(RiskVerdict::Blocked {
                     pattern: RiskPattern::Drainer,
                     reason: format!(
-                        "STMT drainer: transaction has {} unique accounts but manifest expects {} — possible multi-transfer drain",
-                        unique_count, expected_count
+                        "STMT drainer: transaction has {} unique accounts but manifest expects {}{} — possible multi-transfer drain",
+                        unique_count,
+                        expected_count,
+                        input
+                            .writable_extra_accounts
+                            .map(|w| format!(", {w} of the extra accounts writable"))
+                            .unwrap_or_default()
                     ),
                 });
             }
@@ -634,9 +675,17 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // manifest is the mechanism. Instructions WITH a declared intent are left
     // to the intent-mismatch checks (6a/6b/7) which require a concrete
     // declared class to compare against.
+    //
+    // Round 21: except a close the pipeline read from the bytes as paying its
+    // own authority. Its only movement is the closed account's lamports back
+    // to the wallet that closed it — there is no unstated movement to state.
+    // Every sibling carries no intent by construction, so without this the
+    // Check 2 exemption for a self-refunding close was undone here.
     let high_risk_classes = ["drain", "authority", "withdraw", "mint", "close"];
+    let self_refund = input.verified_self_refund_close && input.manifest_risk_class == "close";
     if high_risk_classes.contains(&input.manifest_risk_class.as_str())
         && input.proposed_intent_type.trim().is_empty()
+        && !self_refund
     {
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::MaliciousAccountChange,
@@ -1228,6 +1277,8 @@ mod tests {
     #[test]
     fn test_system_transfer_to_vanity_11111_address_is_blocked() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "11111111111111111111111111111111".to_string(),
             accounts: vec![
                 "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(),
@@ -1260,6 +1311,8 @@ mod tests {
         // is fail-closed — the agent never stated what it was doing.
         for cls in ["drain", "authority", "withdraw", "mint", "close"] {
             let input = RiskAssessmentInput {
+                verified_self_refund_close: false,
+                writable_extra_accounts: None,
                 program_id: "11111111111111111111111111111111".to_string(),
                 accounts: vec![],
                 cpi_targets: vec![],
@@ -1292,6 +1345,8 @@ mod tests {
         // Here intent matches a transfer-shaped instruction, so Check 10
         // must NOT be the blocker for a non-high-risk class.
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "11111111111111111111111111111111".to_string(),
             accounts: vec![
                 "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(),
@@ -1326,6 +1381,8 @@ mod tests {
     #[test]
     fn test_token_transfer_to_compu_prefixed_address_is_blocked() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
             accounts: vec![
                 "DuFgLf6zzf2N9v3iT4NrkdTPDSD2xK52CCnx6Ag2ckTP".to_string(),
@@ -1355,6 +1412,8 @@ mod tests {
     #[test]
     fn test_transfer_to_official_and_normal_addresses_not_flagged() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "11111111111111111111111111111111".to_string(),
             accounts: vec![
                 "9RGFwSryu7FvDaqHWFLrnvQHge7hc5chawhcSH7m8FVU".to_string(),
@@ -1378,6 +1437,8 @@ mod tests {
     #[test]
     fn test_impersonation_rule_only_fires_on_fund_movement() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "11111111111111111111111111111111".to_string(),
             accounts: vec![
                 "walletToAssign11111111111111111111111".to_string(),
@@ -1413,6 +1474,8 @@ mod tests {
         // while keeping the binary verdict Passed (response 2, fail open with
         // explanation — Constitution P12/P3).
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
             accounts: vec!["a1".to_string(), "a2".to_string()],
             cpi_targets: vec!["unlisted_program_xyz".to_string()],
@@ -1439,6 +1502,8 @@ mod tests {
     #[test]
     fn test_risk_engine_block_overrides_perfect_confidence_on_most_permissive_profile() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "test_drainer_program".to_string(),
             accounts: vec!["account1".to_string(), "account2".to_string()],
             cpi_targets: vec!["unverified_target".to_string()],
@@ -1458,6 +1523,8 @@ mod tests {
     #[test]
     fn test_clean_transaction_passes_risk_check() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "legitimate_program".to_string(),
             accounts: vec!["account1".to_string()],
             cpi_targets: vec!["verified_target".to_string()],
@@ -1477,6 +1544,8 @@ mod tests {
     #[test]
     fn test_authority_hijack_detected_via_known_pattern() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
             accounts: vec!["authority_account".to_string()],
             cpi_targets: vec![],
@@ -1502,6 +1571,8 @@ mod tests {
     #[test]
     fn test_system_assign_detected_as_authority_hijack() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "11111111111111111111111111111111".to_string(),
             accounts: vec!["owner_account".to_string()],
             cpi_targets: vec![],
@@ -1527,6 +1598,8 @@ mod tests {
     #[test]
     fn test_deterministic_same_input_same_output() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "test".to_string(),
             accounts: vec!["account1".to_string()],
             cpi_targets: vec!["verified".to_string()],
@@ -1547,6 +1620,8 @@ mod tests {
     #[test]
     fn test_deep_cpi_chain_flagged_as_compositional_drain() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "aggregator".to_string(),
             accounts: vec![],
             cpi_targets: vec![
@@ -1584,6 +1659,8 @@ mod tests {
         // 4 unique CPI targets from an untrusted root — below the 5-target
         // threshold, so this should pass (not a compositional drain signal).
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "aggregator".to_string(),
             accounts: vec![],
             cpi_targets: vec![
@@ -1615,6 +1692,8 @@ mod tests {
         // Vibe audit finding: attacker uses 5+ all-unique program IDs to
         // bypass duplicate-only detection. Now blocked by Pattern 2.
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "attacker_contract".to_string(),
             accounts: vec!["a1".to_string()],
             cpi_targets: vec![
@@ -1654,6 +1733,8 @@ mod tests {
         // Jupiter (trusted DEX) routing through 5 programs — legitimate behavior.
         // Should pass because Jupiter is in TRUSTED_CPI_ROOTS.
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
             accounts: vec!["a1".to_string(), "a2".to_string()],
             cpi_targets: vec![
@@ -1685,6 +1766,8 @@ mod tests {
     #[test]
     fn test_empty_allowed_cpis_blocks_all_cpi_fail_closed() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "test".to_string(),
             accounts: vec!["a1".to_string()],
             cpi_targets: vec!["some_random_program".to_string()],
@@ -1713,6 +1796,8 @@ mod tests {
     #[test]
     fn test_drainer_pattern_detected() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "some_program".to_string(),
             accounts: vec![
                 "a1".to_string(),
@@ -1748,6 +1833,8 @@ mod tests {
         // Old code: 19 < 20 threshold, so it passed. New code: ratio 19:1 >= 6, so blocked.
         let accounts: Vec<String> = (0..19).map(|i| format!("acct_{}", i)).collect();
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "attacker_contract".to_string(),
             accounts,
             cpi_targets: vec![],
@@ -1781,6 +1868,8 @@ mod tests {
         // while exceeding hidden transfer threshold (13 >= 12).
         let accounts: Vec<String> = (0..13).map(|i| format!("a{}", i)).collect();
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "some_program".to_string(),
             accounts,
             cpi_targets: vec![],
@@ -1810,6 +1899,8 @@ mod tests {
     #[test]
     fn test_malicious_cpi_target_blocked() {
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "legit".to_string(),
             accounts: vec!["a1".to_string()],
             cpi_targets: vec!["malicious_drainer_program".to_string()],
@@ -1840,6 +1931,8 @@ mod tests {
         // program reaches the risk engine with no CPI authorization), so the
         // CPI-level check hard-blocks the token CPI as AuthorityHijack.
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "attacker_contract".to_string(),
             accounts: vec!["a1".to_string()],
             cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
@@ -1871,6 +1964,8 @@ mod tests {
         // verified instruction surface, not an attacker-injected call. The
         // block remains for a token CPI that is NOT declared.
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD".to_string(),
             accounts: vec!["a1".to_string(), "a2".to_string()],
             cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
@@ -1900,6 +1995,8 @@ mod tests {
         // manifest-declared allowed_cpis — out-of-manifest behavior from a
         // non-trusted root is exactly the vector Check 1b exists to catch.
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD".to_string(),
             accounts: vec!["a1".to_string(), "a2".to_string()],
             cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
@@ -1926,6 +2023,8 @@ mod tests {
     fn test_trusted_dex_cpi_to_spl_token_allowed() {
         // Jupiter (trusted DEX) CPIs to SPL Token for transfer — should pass
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),
             accounts: vec!["a1".to_string(), "a2".to_string(), "a3".to_string()],
             cpi_targets: vec!["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string()],
@@ -1946,6 +2045,8 @@ mod tests {
     fn test_legitimate_spl_token_root_call_not_blocked_by_cpi_check() {
         // When SPL Token is the ROOT program (not CPI), the CPI check shouldn't fire
         let input = RiskAssessmentInput {
+            verified_self_refund_close: false,
+            writable_extra_accounts: None,
             program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
             accounts: vec!["a1".to_string(), "a2".to_string(), "a3".to_string()],
             cpi_targets: vec![],

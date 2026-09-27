@@ -32,7 +32,10 @@
 
 use base64::Engine;
 use graphite_core::rpc_client::{RpcConfig, SolanaRpcClient};
-use graphite_core::state_diff::{decode_transfer_fee_config, SPL_TOKEN_2022_PROGRAM};
+use graphite_core::state_diff::{
+    decode_transfer_fee_config, replay_fee_amounts, ExecutedTokenInstruction,
+    SPL_TOKEN_2022_PROGRAM,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 struct Candidate {
@@ -168,6 +171,8 @@ async fn real_fee_bearing_transfers_arrive_as_the_model_computes() {
     let mut checked = 0usize;
     let mut charged = 0usize;
     let mut mismatches: Vec<String> = Vec::new();
+    // Every transaction fetched, for the whole-transaction replay (phase 3).
+    let mut fetched: Vec<(String, serde_json::Value)> = Vec::new();
     for c in candidates.iter().filter(|c| configs.contains_key(&c.mint)) {
         if checked >= limit {
             break;
@@ -177,6 +182,7 @@ async fn real_fee_bearing_transfers_arrive_as_the_model_computes() {
         let Ok(tx) = client.get_transaction(&c.signature).await else {
             continue;
         };
+        fetched.push((c.signature.clone(), tx.clone()));
         let meta = &tx["meta"];
         let balance = |side: &str| -> Option<u64> {
             meta[side]
@@ -260,6 +266,7 @@ async fn real_fee_bearing_transfers_arrive_as_the_model_computes() {
             let Ok(tx) = client.get_transaction(&signature).await else {
                 continue;
             };
+            fetched.push((signature.clone(), tx.clone()));
             let message = &tx["transaction"]["message"];
             let mut keys: Vec<String> = message["accountKeys"]
                 .as_array()
@@ -372,6 +379,150 @@ async fn real_fee_bearing_transfers_arrive_as_the_model_computes() {
         );
     }
     println!("[fee] {checked} real fee-mint transfer(s) checked, {charged} charged a non-zero fee");
+
+    // Phase 3 (Round 21): the whole transaction, replayed. Phases 1 and 2
+    // can only check a transfer whose destination nothing else touches; a
+    // fee-bearing token mostly moves inside swaps, where a vault receives and
+    // pays out in one transaction. Here Graphite's own replay runs over every
+    // Token-2022 instruction the runtime executed — top level, then the CPIs
+    // under it, in order — from the chain's pre-balances, and must end at
+    // the chain's post-balances for EVERY account of the mint.
+    let mut seen = BTreeSet::new();
+    let (mut replayed, mut replayed_transfers, mut multi, mut refused) =
+        (0usize, 0usize, 0usize, 0usize);
+    for (signature, tx) in &fetched {
+        if !seen.insert(signature.clone()) {
+            continue;
+        }
+        let message = &tx["transaction"]["message"];
+        let mut keys: Vec<String> = message["accountKeys"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|k| k.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for field in ["writable", "readonly"] {
+            if let Some(list) = tx["meta"]["loadedAddresses"][field].as_array() {
+                keys.extend(list.iter().filter_map(|k| k.as_str().map(str::to_string)));
+            }
+        }
+        let to_executed =
+            |ix: &serde_json::Value, position: String| -> Option<ExecutedTokenInstruction> {
+                let program = keys.get(ix["programIdIndex"].as_u64()? as usize)?;
+                if program != SPL_TOKEN_2022_PROGRAM {
+                    return None;
+                }
+                let accounts = ix["accounts"]
+                    .as_array()?
+                    .iter()
+                    .map(|a| keys.get(a.as_u64()? as usize).cloned())
+                    .collect::<Option<Vec<String>>>()?;
+                let data = bs58::decode(ix["data"].as_str()?).into_vec().ok()?;
+                Some(ExecutedTokenInstruction {
+                    position,
+                    accounts,
+                    data,
+                })
+            };
+        let mut executed = Vec::new();
+        for (i, ix) in message["instructions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            executed.extend(to_executed(ix, format!("instruction #{i}")));
+            for group in tx["meta"]["innerInstructions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                if group["index"].as_u64() == Some(i as u64) {
+                    for inner in group["instructions"].as_array().into_iter().flatten() {
+                        executed
+                            .extend(to_executed(inner, format!("a CPI under instruction #{i}")));
+                    }
+                }
+            }
+        }
+        let balances = |side: &str, mint: &str| -> BTreeMap<String, u64> {
+            tx["meta"][side]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|b| b["mint"].as_str() == Some(mint))
+                .filter_map(|b| {
+                    Some((
+                        keys.get(b["accountIndex"].as_u64()? as usize)?.clone(),
+                        b["uiTokenAmount"]["amount"].as_str()?.parse().ok()?,
+                    ))
+                })
+                .collect()
+        };
+        for (mint, config) in &configs {
+            let (mut before, after) = (
+                balances("preTokenBalances", mint),
+                balances("postTokenBalances", mint),
+            );
+            if after.is_empty() {
+                continue;
+            }
+            // An account created in this transaction held nothing before.
+            for k in after.keys() {
+                before.entry(k.clone()).or_insert(0);
+            }
+            let transfers = executed
+                .iter()
+                .filter(|ix| ix.accounts.get(1) == Some(mint))
+                .filter(|ix| {
+                    ix.data.first() == Some(&12)
+                        || (ix.data.first() == Some(&26) && ix.data.get(1) == Some(&1))
+                })
+                .count();
+            if transfers == 0 {
+                continue;
+            }
+            let mut outcome = Err(String::new());
+            for schedule in [config.older, config.newer] {
+                outcome = replay_fee_amounts(mint, schedule, &before, &executed).and_then(|r| {
+                    for k in before.keys().chain(after.keys()) {
+                        let (got, want) = (
+                            r.get(k).copied().unwrap_or(0),
+                            after.get(k).copied().unwrap_or(0),
+                        );
+                        if got != want {
+                            return Err(format!(
+                                "{k}: the replay ends at {got}, the chain recorded {want}"
+                            ));
+                        }
+                    }
+                    Ok(())
+                });
+                if outcome.is_ok() {
+                    break;
+                }
+            }
+            match outcome {
+                Ok(()) => {
+                    replayed += 1;
+                    replayed_transfers += transfers;
+                    if transfers > 1 {
+                        multi += 1;
+                    }
+                }
+                Err(e) if e.contains("withheld fees") || e.contains("did not observe") => {
+                    refused += 1;
+                    println!("[fee] replay refused {signature} ({}): {e}", &mint[..8]);
+                }
+                Err(e) => mismatches.push(format!("replay {signature} ({mint}): {e}")),
+            }
+        }
+    }
+    println!(
+        "[fee] whole-transaction replay: {replayed} transaction(s), {replayed_transfers} transfer(s), {multi} with several transfers of the mint, reproduced exactly; {refused} refused as unrecordable"
+    );
     for m in &mismatches {
         println!("[fee] MISMATCH {m}");
     }

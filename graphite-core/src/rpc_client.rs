@@ -283,6 +283,13 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     let readable = |v: &serde_json::Value| -> Option<Vec<u64>> {
         v.as_array()?.iter().map(|n| n.as_u64()).collect()
     };
+    let balances = match (
+        value.get("preBalances").and_then(&readable),
+        value.get("postBalances").and_then(&readable),
+    ) {
+        (Some(pre), Some(post)) if pre.len() == post.len() => Some((pre, post)),
+        _ => None,
+    };
     let derived_account_writes = match (
         value.get("preBalances").and_then(&readable),
         value.get("postBalances").and_then(&readable),
@@ -486,6 +493,7 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
         slot: None,
         inner_program_indexes,
         inner_instructions,
+        balances,
     })
 }
 
@@ -670,6 +678,65 @@ pub struct SimulationResult {
     /// `innerInstructions` was absent or any entry was unreadable.
     #[serde(default)]
     pub inner_instructions: Option<Vec<ObservedInnerInstruction>>,
+    /// `(preBalances, postBalances)`: the simulator's lamports for every
+    /// account of the transaction, before and after, read at ONE slot
+    /// (Round 21). `None` unless both arrays are present, readable and of
+    /// equal length.
+    #[serde(default)]
+    pub balances: Option<(Vec<u64>, Vec<u64>)>,
+}
+
+/// `getEpochInfo`'s answer: the fields the fee model uses (Round 21).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EpochInfo {
+    pub absolute_slot: u64,
+    pub epoch: u64,
+    pub slot_index: u64,
+    pub slots_in_epoch: u64,
+}
+
+impl EpochInfo {
+    /// Read the four fields, refusing an answer that is not internally
+    /// consistent: an empty epoch, or a slot index past the epoch's end, or
+    /// one larger than the slot it is an index of.
+    pub fn from_value(v: &serde_json::Value) -> Result<Self, RpcError> {
+        let field = |name: &str| {
+            v.get(name).and_then(|x| x.as_u64()).ok_or_else(|| {
+                RpcError::InvalidResponse(format!("getEpochInfo: missing or invalid {name}"))
+            })
+        };
+        let info = EpochInfo {
+            absolute_slot: field("absoluteSlot")?,
+            epoch: field("epoch")?,
+            slot_index: field("slotIndex")?,
+            slots_in_epoch: field("slotsInEpoch")?,
+        };
+        if info.slots_in_epoch == 0
+            || info.slot_index >= info.slots_in_epoch
+            || info.slot_index > info.absolute_slot
+        {
+            return Err(RpcError::InvalidResponse(format!(
+                "getEpochInfo is not self-consistent: slot {} is index {} of an epoch of {} slots",
+                info.absolute_slot, info.slot_index, info.slots_in_epoch
+            )));
+        }
+        Ok(info)
+    }
+
+    /// The epoch `slot` falls in, counting forward (or one epoch back) from
+    /// this answer. Epochs after warm-up are all `slots_in_epoch` long, which
+    /// is what makes the arithmetic valid; a slot more than one epoch before
+    /// this one is not placed.
+    pub fn epoch_of(&self, slot: u64) -> Option<u64> {
+        let start = self.absolute_slot - self.slot_index;
+        if slot >= start {
+            self.epoch.checked_add((slot - start) / self.slots_in_epoch)
+        } else if start - slot <= self.slots_in_epoch {
+            self.epoch.checked_sub(1)
+        } else {
+            None
+        }
+    }
 }
 
 /// One inner (CPI) instruction from a `simulateTransaction` response, in the
@@ -1231,6 +1298,16 @@ impl SolanaRpcClient {
         Ok(token_account_frozen_flag(&account))
     }
 
+    /// The current epoch and where the current slot sits in it
+    /// (`getEpochInfo`). Round 21: the Token-2022 fee model needs to know
+    /// which of a mint's two schedules applied, and whether the transaction
+    /// can still land after the other one takes over.
+    pub async fn get_epoch_info(&self) -> Result<EpochInfo, RpcError> {
+        let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getEpochInfo","params":[{"commitment":self.config.commitment}]});
+        let result = self.post_rpc(body).await?;
+        EpochInfo::from_value(&result)
+    }
+
     /// Get the current slot
     pub async fn get_slot(&self) -> Result<u64, RpcError> {
         let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getSlot","params":[{"commitment":self.config.commitment}]});
@@ -1252,7 +1329,8 @@ impl SolanaRpcClient {
     /// block with one v1 transaction in it was unreadable and the live corpus
     /// found nothing. The v1 entries come back with `"version": 1`; Graphite
     /// parses v1 frames from their bytes (Round 19), and the JSON-shaped
-    /// `live_corpus::tx_to_input` still skips them (see there).
+    /// `live_corpus::tx_to_input` reads them in the layout checked against a
+    /// real mainnet response (Round 21, see there).
     pub async fn get_block(&self, slot: u64) -> Result<serde_json::Value, RpcError> {
         let body = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"getBlock","params":[slot,{"encoding":"json","transactionDetails":"full","maxSupportedTransactionVersion":1,"rewards":false}]});
         let result = self.post_rpc(body).await?;

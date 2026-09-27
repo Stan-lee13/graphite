@@ -302,43 +302,43 @@
     },
     {
      "name": "market",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_bids",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_asks",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_event_queue",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_coin_vault",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_pc_vault",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -380,7 +380,134 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": false
+   "variable_accounts": false,
+   "account_layouts": [
+    [
+     {
+      "name": "token_program",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+       "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ]
+     },
+     {
+      "name": "amm",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "amm_authority",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "amm_open_orders",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "pool_coin_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "pool_pc_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_program",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_bids",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_asks",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_event_queue",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_coin_vault",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_pc_vault",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_vault_signer",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "user_source_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "user_dest_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "user_owner",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ]
   },
   {
    "name": "SwapBaseOut",
@@ -448,43 +575,43 @@
     },
     {
      "name": "market",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_bids",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_asks",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_event_queue",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_coin_vault",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
      "name": "market_pc_vault",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
@@ -526,7 +653,134 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "variable_accounts": false
+   "variable_accounts": false,
+   "account_layouts": [
+    [
+     {
+      "name": "token_program",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+       "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ]
+     },
+     {
+      "name": "amm",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "amm_authority",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "amm_open_orders",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "pool_coin_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "pool_pc_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_program",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_bids",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_asks",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_event_queue",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_coin_vault",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_pc_vault",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "market_vault_signer",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "user_source_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "user_dest_token_account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "user_owner",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ]
   },
   {
    "name": "SwapBaseInV2",

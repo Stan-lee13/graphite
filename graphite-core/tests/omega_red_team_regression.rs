@@ -16,6 +16,8 @@ use graphite_core::simulation_integrity::{
 #[test]
 fn regression_l1_drainer_5_accounts_now_blocked() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "MaliciousDrainerProgram1111111111111".to_string(),
         accounts: vec![
             "victim_wallet".into(),
@@ -55,6 +57,8 @@ fn regression_l2_hidden_transfer_12_accounts_now_blocked() {
     // Threshold: 3*4=12, max(12, 12) = 12. 12 >= 12 → flagged.
     let accounts: Vec<String> = (0..12).map(|i| format!("account_{}", i)).collect();
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "SomeProgram111111111111111111111111111".to_string(),
         accounts,
         cpi_targets: vec![],
@@ -89,6 +93,8 @@ fn regression_l2_hidden_transfer_12_accounts_now_blocked() {
 fn regression_l3_compositional_drain_4_targets_now_blocked() {
     let drainer = "DrainerProgram111111111111111111111111111";
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "aggregator".to_string(),
         accounts: vec!["wallet".into()],
         cpi_targets: vec![
@@ -124,6 +130,8 @@ fn regression_l3_compositional_drain_4_targets_now_blocked() {
 fn regression_l4_token2022_setauthority_now_blocked() {
     let real_token2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: real_token2022.to_string(),
         accounts: vec!["token_account".into(), "new_authority".into()],
         cpi_targets: vec![],
@@ -155,6 +163,8 @@ fn regression_l4_token2022_setauthority_now_blocked() {
 fn regression_l4b_spl_token_setauthority_now_blocked() {
     let real_spl_token = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: real_spl_token.to_string(),
         accounts: vec!["token_account".into(), "new_authority".into()],
         cpi_targets: vec![],
@@ -240,6 +250,8 @@ fn regression_l6b_infinity_std_now_rejected() {
 #[test]
 fn regression_l8_empty_discriminator_spl_token_now_blocked() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
         accounts: vec!["account1".into(), "account2".into()],
         cpi_targets: vec![],
@@ -295,6 +307,8 @@ fn regression_l11_nan_signal_now_rejected() {
 #[test]
 fn regression_l12_dedup_prevents_false_positive() {
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "legit_program".to_string(),
         accounts: vec!["same_account".into(); 6],
         cpi_targets: vec![],
@@ -321,6 +335,8 @@ fn regression_l12_dedup_prevents_false_positive() {
 fn regression_l18_100_accounts_1_change_now_blocked() {
     let accounts: Vec<String> = (0..100).map(|i| format!("account_{}", i)).collect();
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: "SomeProgram111111111111111111111111".to_string(),
         accounts,
         cpi_targets: vec![],

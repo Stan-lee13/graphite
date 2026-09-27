@@ -160,7 +160,28 @@
    "discriminator": "7a4d509f54585ac5",
    "accounts": [
     {
-     "name": "null",
+     "name": "multisig",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "createKey",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "creator",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,

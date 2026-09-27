@@ -214,6 +214,19 @@ async fn real_mainnet_transactions_verified_against_a_real_rpc() {
             .find(|l| l.layer.starts_with("L4"))
             .map(|l| l.reason.clone())
             .unwrap_or_default();
+        // `GRAPHITE_MAINNET_SHOW_L4=1`: the Core's own reason for every L4
+        // failure, the way `GRAPHITE_MAINNET_SHOW_L2` explains L2 in the
+        // conformance test (Round 21).
+        if status(&r, "L4") == LayerStatus::Failed
+            && std::env::var("GRAPHITE_MAINNET_SHOW_L4").is_ok()
+        {
+            println!(
+                "[live] L4 failed at slot {} ({}): {}",
+                row["slot"],
+                r.instruction_name,
+                &l4_reason[..l4_reason.len().min(900)]
+            );
+        }
         if l4_reason.contains("Token2022TransferFeeCharged") {
             bump("transfer fee modelled and stated".to_string());
         }

@@ -205,8 +205,10 @@ pub fn resolve_accounts(
     // positions are skipped by the reader and repeated keys are deduplicated
     // — so a shortfall is surfaced as a finding on the result rather than a
     // hard error (the over-count 256-key resource guard stays hard upstream).
-    let account_count_shortfall = if pubkeys.len() < ix_def.accounts.len() {
-        Some((ix_def.accounts.len(), pubkeys.len()))
+    // Round 21: the layout this many accounts selects.
+    let layout = ix_def.layout_for(pubkeys.len());
+    let account_count_shortfall = if pubkeys.len() < layout.len() {
+        Some((layout.len(), pubkeys.len()))
     } else {
         None
     };
@@ -227,7 +229,7 @@ pub fn resolve_accounts(
     let real_metas_usable = input.real_account_metas.len() == pubkeys.len();
 
     for (i, pk) in pubkeys.iter().enumerate() {
-        let role_def = ix_def.accounts.get(i);
+        let role_def = layout.get(i);
         let (role, is_pda, is_signer, is_writable, pda_seeds, expected_addrs) = match role_def {
             Some(r) => {
                 let is_pda = !r.pda_seeds.is_empty();
@@ -320,7 +322,7 @@ pub fn resolve_accounts(
             }
         };
         // Whether the manifest declared anything about THIS slot at all.
-        let declared = ix_def.accounts.get(i).is_some();
+        let declared = layout.get(i).is_some();
 
         let pda_mismatch = is_pda && pda_mismatches.contains(&i);
         let expected_address_mismatch =
@@ -701,6 +703,7 @@ mod tests {
                 previous_version_ref: None,
             },
             instructions: vec![InstructionDef {
+                account_layouts: vec![],
                 name: "DynamicPda".to_string(),
                 discriminator: "deadbeef".to_string(),
                 accounts: vec![
@@ -774,6 +777,7 @@ mod tests {
                 previous_version_ref: None,
             },
             instructions: vec![InstructionDef {
+                account_layouts: vec![],
                 name: "DynamicData".to_string(),
                 discriminator: "deadbeef".to_string(),
                 accounts: vec![

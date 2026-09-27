@@ -182,35 +182,35 @@
     "note": "System Program::CreateAccountWithSeed near-prefix discriminator"
   },
   {
-    "hash": "c8d3261c275a78ce659506602c90b2fd5e1dbd649c3b013cd52db0833288bd4d",
+    "hash": "3a2340eff2e16c940295a4f318cb69067bcd70fe792e5b5b8efdea5a0e90ba69",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "System Program::AdvanceNonceAccount intent=transfer"
   },
   {
-    "hash": "5934362cc81023312a5256a9f2efe4d9db9ebfa61f7ccab74046afe1cf8351ac",
+    "hash": "a7f7abdebdfb465313e8f50cd57020945f82923a030ab57bb734e6a8eb3e1e65",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "System Program::AdvanceNonceAccount empty intent — Check 10 gate"
   },
   {
-    "hash": "01729161e34635e10d131d0c5d77233108d18776b343e951540c265f721814fe",
+    "hash": "44490fbd0bcb0e2797bf4994132b98819b56cf7d20c8f999fdd2f915698f1a18",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "System Program::AdvanceNonceAccount swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "f0a683a4f4248b2d92801d6708a165371c1c4a9f16eca05ed23b5809881471a6",
+    "hash": "fc394aa603a371bf6532472858e9fb9caaacc7910fdfeb5fdd0cf70c85e9119b",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "System Program::AdvanceNonceAccount +8 accounts — STMT drainer"
   },
   {
-    "hash": "15fd8a44d90209a3ec53bdfae4c1ec5ecbdf307281c2926f6daac53ecad9ce35",
+    "hash": "c37b30583f54d4c57743b0bcabb9bc732e44c573964fbfb25c01fef1cb852263",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
@@ -2149,14 +2149,14 @@
     "note": "Doorcash (67g5Hhrz)::start_game +8 accounts — STMT drainer"
   },
   {
-    "hash": "87db21c21f65c4848d4b84c6794d37efcb368cc605918dbdeef1b5e1e52c4732",
+    "hash": "fb0399378a2ac7d387c4a9f72ecdd2b7ab4aa7260546eb5d8b616c8b107efce4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::create intent=create"
   },
   {
-    "hash": "522acfcf7d08d26cf17646186087aa009049f7a58c813377e90af4bb05b36467",
+    "hash": "004aae6dfd504d4c3511b5b17bc7525c34edd9cdb2dc23b77a680e3098fe9699",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -2170,112 +2170,112 @@
     "note": "Pump.fun unknown discriminator — P12 Response 2 (approved under 0.40 floor)"
   },
   {
-    "hash": "820539d9e542fb025a99408ad5d76a17adb069acca936523b4e5381245234e15",
+    "hash": "f590ec5d5fabc90b688e91a6756b5770d42c160867a1f2a6d1d29a8534225e16",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::buy intent=swap"
   },
   {
-    "hash": "bdf1f51ca1ac24bdce1bb05ab800153d1d447322acae9ca75651b878c32a9097",
+    "hash": "1d6a57076e6ee12bd925a6b36c989a5d44db788a799d141c0f1ed2e2eef5c5ee",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::buy empty intent — Check 10 gate"
   },
   {
-    "hash": "46350e64250831d6f6c2a6126cd71db181a0abdba4e978a1d298290eab8bc3d8",
+    "hash": "70a97291b081caeed31f470a696f6d064422cabc810664937997f6f133df6972",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::buy_v2 intent=swap"
   },
   {
-    "hash": "2e617ce0e8c700a8df8a608f48417a50295a94f942eac375de3ae8bed7fbf5a7",
+    "hash": "5df9161b4835d09cebd424e94351b57845d74dd658c75b8008a2c767718d5b47",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::buy_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "467161e1f2cafba2852e10ba2acc117fb7ad45bb57f8ff9732818185fea06c1c",
+    "hash": "9391f8a8735469d8d7219bfc03530a37e7b867d66c6f4c45532c7eff58c4bfd6",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::buy_exact_sol_in intent=swap"
   },
   {
-    "hash": "6bc31bd79c5a313debfbb51ec618a8bd94b97fecd2f1c40fc41829ce1adf4f2c",
+    "hash": "86fb31f38b12ac7480e5e19ef215483b2eda718226b9713b1705357d94352280",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::buy_exact_sol_in empty intent — Check 10 gate"
   },
   {
-    "hash": "aed0a41cc245ecd3db06e6c1ebf721be10557e7d4de23e7fad207464f99b89df",
+    "hash": "75d4de1b552112a17a36a39004ec78c452e3856e60182c2973d61643bc7a14c6",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::sell intent=swap"
   },
   {
-    "hash": "79e277d74517effcd6505b010c950a1c66f05ec4eea22f0953a7242afdd04126",
+    "hash": "c0f2d3250679095374419c484273872b263a69d1c2c2b9595caa7c9b9e914d59",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::sell empty intent — Check 10 gate"
   },
   {
-    "hash": "929d774bd01bec9b33afc2414dadf76587b5efde6050cd5a2c0c14914eee5899",
+    "hash": "f1de3650eec266410170eccc82d951925905763532b6692c4c4b4faeaf22a100",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::sell_v2 intent=swap"
   },
   {
-    "hash": "d83067adbad68b6b55b41c95abe4de1f6cf504483f9a5a3961c2a54b92522839",
+    "hash": "922132030899cf760ec2d5c3e4de775257ce77346176946ae1014dc4348b8a86",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::sell_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "2f3dcbefe5d3833df6e7f0213c1c3c13e177feb949de2a0428726c08b3f9fe73",
+    "hash": "b3f4f33c3b0ca55080900eefa7bfd0092c7578e96d9b3f901517d49b3a5518bb",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::migrate intent=transfer"
   },
   {
-    "hash": "4804b96e71dd2e0a95cf417b3dc14d03dd72bbe2eb633edc913f9d0cfcba1507",
+    "hash": "f96dcf9a1a2fb31d78a0f1c680c206f524ad76baf2e20bf94c7b533136181245",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::migrate empty intent — Check 10 gate"
   },
   {
-    "hash": "9c731f5549ced9159af9a9bad505f807321d41b6ad7eea4124839a957ec9ba25",
+    "hash": "6941e59b6cc60ac1c5d01bc542e08e86bea893d94028d54f01dafae0a3c021df",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::initialize intent=create"
   },
   {
-    "hash": "3b17dca8852dcab24f67a906d99784fbaab662daca2476ecc3d6f857892b79e0",
+    "hash": "c50ffe33e1c3926d41366087bddfd016ce3bdac17e821c1ca43e318606a07fd9",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::initialize empty intent — Check 10 gate"
   },
   {
-    "hash": "3c50b9a2a9b54009e903968e39765367ba3c3dc0a8370c7adb5a80b91c4ed33e",
+    "hash": "54c5dc70ee707420e971e5b09309b2aaa04a152d29230ad15c7b5156abdb1806",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Pump.fun::set_params intent=transfer"
   },
   {
-    "hash": "88ad3d3a4feca1f76e9c99c2c946a9c4c000e870a9eeae35778de9a43a66013e",
+    "hash": "e4f45db2d8f90003dc6e80e6a04a9c641f832e8882dd8a49c892b36b1bca26cc",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -6433,14 +6433,14 @@
     "note": "Raydium CLMM::initialize_reward empty intent — Check 10 gate"
   },
   {
-    "hash": "38f38f517d1d9557f2d8837aec59b50ede642e539c4c1f627375a8227032a82f",
+    "hash": "9c0b0212f855bd0c1cf07a2817d2d7ce5d644d74b243c38bd741347f22ae0a8b",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Raydium CLMM::open_limit_order intent=transfer"
   },
   {
-    "hash": "0fbf3dd28b3fe4c65de67988c0797cda1e9010518652210411ca01b6c888f9c6",
+    "hash": "22028ef5d6cc0dca47c2a7be7d6081c41d3596cb21ec75b731259a11d934ae60",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -27811,56 +27811,56 @@
     "note": "Jupiter V6 Aggregator::closeTokenLedger empty intent — Check 10 gate"
   },
   {
-    "hash": "b43573ade4bb18a41fd578d58a069d2738fef7aa27abd77582a105eaae369fa7",
+    "hash": "1db224247157b2428e971a1cba5ac4bd7c57ee7d29ea1f332306a06bdee6acdf",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::route_v2 intent=swap"
   },
   {
-    "hash": "fc23e7b17bcf008de73eb36eaa1ae64a518f948201f22bf22af0efecf776e932",
+    "hash": "c4e269b1d4ca3200aaf9f399f353114e5200050ee2d51de025ed7d572f795fd0",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::route_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "12196a3c1ff78cc0713de15aadbdb0e3dce16c9f7d6a7024ab847a76614c46c1",
+    "hash": "abeda2da621d11e75b85470ef6c4fe4b1c8a408de5386074e40bd755b2a276b4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_route_v2 intent=swap"
   },
   {
-    "hash": "efbc030d255097d62a90d58245991f58d367ead5fc78ad7d49b09f107cb3cfba",
+    "hash": "ee28a5cbeb37b4387750f30a1960107b5bc8545b6395e1351b4b39b6c9026001",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_route_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "88a7b76dcd184a9af1be0d1bcbfafe3c873d997d2f6934e37adcb14401779f1a",
+    "hash": "d12defdcd42d9a3c32faf26207357c8a4b708a9ace6fc76acba0953135f5365f",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::exact_out_route_v2 intent=swap"
   },
   {
-    "hash": "ab5b0190e9c7c68f889ef6cdc05fc37596a357c7ec4b7feb953885cd4bb2e626",
+    "hash": "73e600b0e2affd9473144e2651842fe6afcb7c6e4dcf6d67f195055cca956aa0",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::exact_out_route_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "cb737b05325329d61559c941962d0f3756e9af79d3750d08428c8c19f2f5a00b",
+    "hash": "4450d94522f83d6bd0d819f306cba04dca84ae658ac8e7d837254d83488236eb",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_exact_out_route_v2 intent=swap"
   },
   {
-    "hash": "f8a37c137919348134bf3d20ca87177d3260bf30db8d2252ceb6e4aa6c93a8f1",
+    "hash": "64e16524f3468b3315a358420bed573c3ea4c76cc8b3cdac05d5dc85a5184c54",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -28084,28 +28084,28 @@
     "note": "Kamino Lending::deleteReferrerStateAndShortUrl +8 accounts — STMT drainer"
   },
   {
-    "hash": "22747789d5fc45803fe6ae5209a50ce97cc2bb1e630f2daa876aa09e2da1e694",
+    "hash": "cb0452c30c37fbd1f4a27cc69858828cd802d79bdfa671ea389dfcfa7363387d",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::depositAndWithdraw intent=transfer"
   },
   {
-    "hash": "49366ed4189fe01c9f05cdb80cf2531f3a1bdc53e177ea95898c7e22083d23df",
+    "hash": "e6cce19a5d87808e8b7fb86969626d28189328ccea8de6d75546c20dea246084",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::depositAndWithdraw empty intent — Check 10 gate"
   },
   {
-    "hash": "d3bae5b333ba47ea722cebe4bb95150d15a9faa368ffe6fe5d327ede76d5c013",
+    "hash": "4fce6b3e63773ca3798cd8e05b73075fd4f5aa4a094fc5a07de5730f628715d6",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::depositAndWithdraw swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "9e136be6d56cb90db3f85a1e517b260a7ed87119cb97232020c52dff14001115",
+    "hash": "0e73bc63739aad98a1462680bff292b5f96f0aee6e51d029312be6b4e457ce1e",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -28252,28 +28252,28 @@
     "note": "Kamino Lending::depositReserveLiquidityAndObligationCollateralV2 +8 accounts — STMT drainer"
   },
   {
-    "hash": "815494dd6a0a7e07da0524507bb0252c684769f323cc2b810120d094a5bc3c7d",
+    "hash": "34dfa8cb29442a2520f5cb1607b9ac5b7ac815a4c8cc2c7dc15b2d64d55c513b",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::fillBorrowOrder intent=transfer"
   },
   {
-    "hash": "2bce35d4c3faf4d17332ae9ba9123ac15091f9fec8be9ecdc37802d51fbb136a",
+    "hash": "54aa9434c1b15f26154bec04eb9f72f75343372e34060a7b914418300e2ee4c2",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::fillBorrowOrder empty intent — Check 10 gate"
   },
   {
-    "hash": "80884f73c32738196c7622268ca31beefdb92b05df7a5d714c8c49c2978df11e",
+    "hash": "a47225be2d0e9cec1a866e1e544e6bc187e256cc0a5deee1ab9780b1f9ac0085",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::fillBorrowOrder swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "d225411dc4d7dae59bec9549a8c504825ee4584dc9ae06c70259d9c1f8f9865b",
+    "hash": "474f1ef2846981b6fc978aa162aabc48dfe8472aa9cd6b4e935af37a0dfe9124",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -28364,84 +28364,84 @@
     "note": "Kamino Lending::idlMissingTypes +8 accounts — STMT drainer"
   },
   {
-    "hash": "f07936f15270024665b952478713c11acfcbe378e6c3e285133ed1b17190ba37",
+    "hash": "6aedbd2006084b58dd5bb7c8552db793bfe318084ad06e8a52e4ccd95bf1e7be",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initFarmsForReserve intent=transfer"
   },
   {
-    "hash": "627e2a41d0b7a3aead4a9cb8712a695f0a50b480d2faae7ebdcef315de23cdc6",
+    "hash": "ce433de8c99f91fe817eb8e5c7044afe88200af717fc047938693dab6222565c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initFarmsForReserve empty intent — Check 10 gate"
   },
   {
-    "hash": "a13e459338ba00817ceacd1bac2eb0937cf86c5476d27c7d4e60f115dc7b3449",
+    "hash": "f87c65a0263854a0685dbaef305d70250e02a9dc83cad5afc34f4c2515ad8d13",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initFarmsForReserve swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "78d95e570a4c7e6e6c72a7510ec0c3791c1f5b41149bee87b644d25f77a2913a",
+    "hash": "cabbc84db192f4382aa91e2c1c64ae38c3843c28688f7e2ce2b358b0a38817c1",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initFarmsForReserve +8 accounts — STMT drainer"
   },
   {
-    "hash": "8452df27b80b189619eab7793531aa93f6029ca00f867d66fb50e1c3347f3903",
+    "hash": "29107806f83b31b620a641bc8e2c6299b528752dd9489b95ff1cdd24f1740fcc",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initGlobalConfig intent=transfer"
   },
   {
-    "hash": "4ed0d1a7e6a4387fcea5d24f4cab0176e1c6b1025e3095348fa587a0d3cb1622",
+    "hash": "c101457180dd216e4ebb5637b280a0063c262349e21fd31fc95edaf30fd287f1",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initGlobalConfig empty intent — Check 10 gate"
   },
   {
-    "hash": "6a3f64aebf53e78fdde12fc9fd176f2f9ea1d7b2054c22639de8bbeac2342ec3",
+    "hash": "6c654dc9cd16b49bb6905722cc1ee8754c20ab324d0d5bb89fde11ac73554374",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initGlobalConfig swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "a63a03987fed189e367512176408eabf582a9ae5d652a33b55d201043eac541f",
+    "hash": "5fd30a57eab63d2161484a0ab5d174733ae0128c1edda1052fac1ad4b8b75275",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initGlobalConfig +8 accounts — STMT drainer"
   },
   {
-    "hash": "e6fdd683fb438cef92a93f3d415426e6185e7054e6e9ca96f32e9becd9478ed4",
+    "hash": "41133c75c79fd2d8e5f5c6af6c050e6c19787e4141601a8dd636a569c9a7f50b",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initLendingMarket intent=transfer"
   },
   {
-    "hash": "6c2b62ccf55ef16485a7e6f0c303ff37dd97017e9be7b56c13c037b5cdbdab2b",
+    "hash": "1f37688187f1cd51e786edefb8d80615d75739c2d4669369f66e9e8984e98470",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initLendingMarket empty intent — Check 10 gate"
   },
   {
-    "hash": "8f942fd8df30aa0f2e541994f3df1b5e9d8799731cd6a01209a43ea4066071a9",
+    "hash": "ccd132b0cb49924d2ad0932a06025296bf1a300cc54f47c281ad9e6ea1d1c49c",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initLendingMarket swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "ef71585ed659d3415b3a5bc9e84249a5bca332c039075d5c94232c720332a4eb",
+    "hash": "e3fa6420cbeae6d9c53b07346d10553f06a66ff864d8d9c6e93ffdb171369f92",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -28560,28 +28560,28 @@
     "note": "Kamino Lending::initReferrerTokenState +8 accounts — STMT drainer"
   },
   {
-    "hash": "fc2532f67e1327e4fc02b9b101409d056850cc27fc43d8b1350c1a3ea4ecbdb7",
+    "hash": "ee2f8cc0fb6724484e7716113503bcc1cce675a77ee2f0a6e965e782e1992194",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initReserve intent=transfer"
   },
   {
-    "hash": "f675090e509f62d0f4c595c613db7f5180a0943cc5196f823cd7183daf4d85be",
+    "hash": "f5b1640304b04f9cd2138fcbd540b5cf8b42542e78477598d073548e30288cb3",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initReserve empty intent — Check 10 gate"
   },
   {
-    "hash": "873df795f44a5e83327589046a675dd64c5bd9cad5ec8e2272668de52e79b0e2",
+    "hash": "64bfe9ae1fda7d42c700984e449c7c18aef6f83fda3c0441a4321dbbe1d21b6d",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::initReserve swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "63ec5827e03e08727afe9ee7885341f12e36ee412f0f201abebd389dd9bb10b8",
+    "hash": "d09660f1da6ee72719d1b50e92d6aa9aa4c4e7b8f089c0e60a55dba33fd74f7c",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -28672,28 +28672,28 @@
     "note": "Kamino Lending::liquidateObligationAndRedeemReserveCollateralV2 +8 accounts — STMT drainer"
   },
   {
-    "hash": "52af2f90cd3db5062446872893b26c0224bad85ac83398bf8f1eb8566297e281",
+    "hash": "d05643a2bf166476e9632e1588cf18c6b48d2908ce7e4a06ad9dd06b8ce85829",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::markObligationForDeleveraging intent=transfer"
   },
   {
-    "hash": "60a8e90a14d125eee598b29f9c80e154b2243851f5b45ae62216c03c9ba2bc00",
+    "hash": "53ecf1f465b2e229597ff5d82397eb34fa37a06cac75c04bd55d41a7bcd42708",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::markObligationForDeleveraging empty intent — Check 10 gate"
   },
   {
-    "hash": "8a5526142e4ebfaa216623c1a866f90a56a6d14a342ac037abb1a853a3b87472",
+    "hash": "8ab35033b1eeeed5a8666c5325754a3f74f9c509a18c1a3365b9619caf19e465",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::markObligationForDeleveraging swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "3743a03e7f67bb4736b651dc44ffdda2dfad7c036ff95c8e2bb658bee8e5172a",
+    "hash": "398adf87ea94ab12334b3eaa140f66628ecb7d036270da2b8fd72c40791db851",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -28784,28 +28784,28 @@
     "note": "Kamino Lending::refreshObligation +8 accounts — STMT drainer"
   },
   {
-    "hash": "d8fe05acf47ac99b160d24aa66ca4885cf756036dfdc8f3a26434c9341505f85",
+    "hash": "6819341c33268f74f32a7efa84790374fe2a5cf93364fbbcbb157a321d9b900f",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::refreshObligationFarmsForReserve intent=transfer"
   },
   {
-    "hash": "8ea1f1ef3b40d58bf76158c3f77156c25dab16cd846ec1350a4a605ee0274740",
+    "hash": "0a5bfcdc7eb913e1ae5612261d123790e8120f1b9d5b4aefc044060f2c6b9927",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::refreshObligationFarmsForReserve empty intent — Check 10 gate"
   },
   {
-    "hash": "aff43977d4fb2344e6bb8ed6fa7d75e9ec0e8dfc9f896ca4efd6ad91efce66e7",
+    "hash": "bd6bb28773d2d8b3f481a599f4b4fb7ce5ddafdb2e56b51f1998bd4d0818c41a",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::refreshObligationFarmsForReserve swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "31a31e9f03693a0344b117a137070e9f09ea39466ea13fed82b9a7b4cb1de080",
+    "hash": "75d9fff245959ceea0b6b9c8ddd95ed47c3817427a4337237b967d053bb0aff1",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -28861,28 +28861,28 @@
     "note": "Kamino Lending::refreshReservesBatch swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "7d16b33d688a78355cfa4c43aff69a180bdc53f55f0505250ff2e1fae526d0b9",
+    "hash": "b35fa065e49006b95382526a9b508fa82e1137b5b51f631c2486daecb501de72",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::repayAndWithdrawAndRedeem intent=transfer"
   },
   {
-    "hash": "b0a5ca60fa8bec817e154cd526c11d0eb0e17aec1cae50e749a2b638e3b4c7c3",
+    "hash": "0bbd4b326431098ad2cafa5f1947890d684c18764c3ec48902b8092a323d9a50",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::repayAndWithdrawAndRedeem empty intent — Check 10 gate"
   },
   {
-    "hash": "57d80c9d0ad2f95fc4f0f220c1b0f029d08045481f272782a663c7945ff1f9a5",
+    "hash": "f200e611c80c083601dbbe4679493ca7456d89b7c809fe466a2c2a37d6c59dcd",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::repayAndWithdrawAndRedeem swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "9aa38ba5a59d672569385d1a45e0b2521c2abe466189c8f15ff8aef105eb0654",
+    "hash": "5f1615a71232e3d0c9b44d8edfbdd09a6ccbbb472ef69121695fd82d16aa0037",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -29001,28 +29001,28 @@
     "note": "Kamino Lending::seedDepositOnInitReserve +8 accounts — STMT drainer"
   },
   {
-    "hash": "40a90904bd033c9bdf3297af9a0d6db0a95d522cfe108b043bb3312018473fea",
+    "hash": "d618c117d685d4c67e4f131a07a7ab6f66de739f6b31d8ca125e39330c635dad",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::setBorrowOrder intent=transfer"
   },
   {
-    "hash": "75d84d4a859df2d6b16b850279e8b9c1ba33741a8c18118a949938d80c281cc0",
+    "hash": "ad57059f83b7100cb710d04409bbbeda2afd488583b10ed13c9d4ad32b6f45df",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::setBorrowOrder empty intent — Check 10 gate"
   },
   {
-    "hash": "3b53b09ff5b559fb79fbac4d7e2881a2ed11ab9a0c4cd0833f0fe50a9e3dc0e2",
+    "hash": "a25d2db1579c467f87af1f9e44da0eb47d5982df54b4a35fc35b41fe506bf04f",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::setBorrowOrder swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "75892f51f07da750edb26ba0ad05545ba4abba8afb8413263c462cabf11e476a",
+    "hash": "4d071ddde651d259ed4ce344b796ead6cd48b0a55c429fc791dce21022e3d007",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -29169,28 +29169,28 @@
     "note": "Kamino Lending::updateGlobalConfigAdmin +8 accounts — STMT drainer"
   },
   {
-    "hash": "df151b09efa077a77c4ea0733d16e340e8fa163056f7d865ab00c4496c04871b",
+    "hash": "618053acf9bab1dceec91717973cf00775d574d8ddf27f2370ff7f55da306423",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::updateLendingMarket intent=transfer"
   },
   {
-    "hash": "318442e178c916c23cd5534c750eb6febcf296d1490828f29ec69fe7028294ee",
+    "hash": "b1f4da49edf525e6a492b711f8f5f8ce117b7aa3cd96bb7940fb33313836d42f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::updateLendingMarket empty intent — Check 10 gate"
   },
   {
-    "hash": "7cb1197e85b7470d93b8df0646af5c6e60c6dfd78434c4fd8eff44893762cf46",
+    "hash": "09755a3291771c9b81cba45c062d4ae2c8c81d9be552103c59aa6d9c61679098",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::updateLendingMarket swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "0be5d130567c161c8c205fadb77d38e7037af87c08962a2af807841376cbf47f",
+    "hash": "349cdba7993e07bc850a47d2dd2eccb265c72553cffc76fb3e9361332c3c3a74",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -34209,28 +34209,28 @@
     "note": "Merkle Distributor (MErKy6nZ)::update +8 accounts — STMT drainer"
   },
   {
-    "hash": "aa9ddd3b146cb39a184105063c614b41a7a075f5e6aebbb92063a26d3e430126",
+    "hash": "484ad9833ac52d01451dd8b02676643e7fb93a230c667bc956cddee87e1c13c5",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_borrow intent=transfer"
   },
   {
-    "hash": "63a4ae4faa7e5a72c5ac0d14ca3d448c94e0303dcf4b878354866699fa898372",
+    "hash": "41fe7618b471af2b044003c2e819ba1b750aef745cacac77624a7db338c84254",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_borrow empty intent — Check 10 gate"
   },
   {
-    "hash": "95be1990d2e79b2f70f7669ddab46d4b0243786f25618b0b9bbb821cd3b7b180",
+    "hash": "43406a9acc518140de0db1d1f2df718d253ec64b1271048db462e6668e7dd0ac",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_borrow swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "c962e4d86bc59dfe7f88b842d57afd2098ff27d194f1bc0269633ea7f91cafbc",
+    "hash": "9797513e701e8f2c09723dc979d1a644be604b8019d3d5ee38466e05cec50492",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -34244,84 +34244,84 @@
     "note": "Marginfi unknown discriminator — P12 Response 2 (approved under 0.40 floor)"
   },
   {
-    "hash": "9a568983c8ac8e7d2be1c4662b98396cdad0809ef673aa4c65a35e871913c34a",
+    "hash": "2acf7e4493d5d73811a75c26fa3e5f272f773a5086436c6d3a3421c2a0e0b45d",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_start_flashloan intent=transfer"
   },
   {
-    "hash": "4708b8339c955ec143a2d744116d0f085c8008bff224fc96d4a074edb189f7bd",
+    "hash": "cf5861bfc3d9e8cccfc680791ecb32f8a275a837d6e7c39b5dce7597b5c37821",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_start_flashloan empty intent — Check 10 gate"
   },
   {
-    "hash": "4086b5be331a16e1167332abd0c371ca4135dce4d7b58b2f02b0ea7f8d247df4",
+    "hash": "27eccd163c860f8f2d01bb865a5b0e416f9ff32f40a48b7fc95247027c8cb6ee",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_start_flashloan swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "2e5a59a2111d37040fcfb7d0d936fea976aae47bc473ca313cb4992b0efb125a",
+    "hash": "8605f30c0ad0bd5649e42c776b657f63038ba19b548ae77db8270c6bd9c01a3a",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_start_flashloan +8 accounts — STMT drainer"
   },
   {
-    "hash": "a94081651fa051435ff64b9d449b76f8f3850ea29947e4c0d4c46002e4c17a32",
+    "hash": "6001e093f888fa1e98681a28166e7093af82b6a86edcaac225c7de0576ce771c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::onchain_observed_shape_7acct intent=transfer"
   },
   {
-    "hash": "ddb4190822b5e305a89711a25795bfd91607298fbe67e635e7310f66940e9f50",
+    "hash": "371d4906e2746b59afeeb71bbea256ca3c508f02c4caddc6f15255737763b886",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::onchain_observed_shape_7acct empty intent — Check 10 gate"
   },
   {
-    "hash": "9dba58fe9986e8a4bd96121a89b190b544ad37ead3dace0f8ece8e5206707c5e",
+    "hash": "29776c90c2a2b86d0220c1676db6cc1077ba857c1ad8fe208495533ad758935a",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::onchain_observed_shape_7acct swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "51e820e33fc24261f9f0144fc1bb4d027a1b2393852bcd8f78ccac169921ab4e",
+    "hash": "06ed10a8a8b5a3dd46aa8c7c962b18705a009a1fae5627afcc5452ab6fe226c3",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::onchain_observed_shape_7acct +8 accounts — STMT drainer"
   },
   {
-    "hash": "7d27e948efef730127a8ccd6711a89fc4d4e382d73daa7217d032deaed594d96",
+    "hash": "fd16a8f94ae8d266e8269a439b67000bc379c500156b6f2f8d39342141600b71",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_end_flashloan intent=transfer"
   },
   {
-    "hash": "bbfdc2d881bb963f544fbe0c80c76b9fa8bfffc1a83a837813f4627211435361",
+    "hash": "568b271270f4676ee3a93f31d04d244145e4af1fc8dfceec2be0d2780a503293",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_end_flashloan empty intent — Check 10 gate"
   },
   {
-    "hash": "419c49c5c8cd65cea482380152e31e39c668616b002108701c633e813b3999f7",
+    "hash": "040669bde1e0b47f25c81c593a0be2f934b1a0c8e0759cb05aadb0f5f92e753c",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Marginfi::lending_account_end_flashloan swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "1b8ea01e4b9aa7e4edc67f25bb1ef3ee70dfa63b5a5994e9bd9644a371115ec7",
+    "hash": "aca0e5c271ce65c15dafe1ed277bc0c43f4c3ae8ea6f5e63544685496c8749e7",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
@@ -47733,21 +47733,21 @@
     "note": "Squads V4 Multisig::programConfigSetTreasury swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "59c97244a6101fd8b47886a7395651b41f49828a409b9c1d672dccda4c7b4430",
+    "hash": "5876e1a66e9d4599bb88f50cddc0c2e7e329216c8421e6eeb09496098f7a2749",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Squads V4 Multisig::multisigCreate intent=transfer"
   },
   {
-    "hash": "719417c51948e38b5b333b1b97dfcc067be9bd9cb36d9544ee732d0bb52da83a",
+    "hash": "51f72cd315ae6ff047fe06567fedca3c053425c97f59ca7fa817a34fdff6b242",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Squads V4 Multisig::multisigCreate empty intent — Check 10 gate"
   },
   {
-    "hash": "b3cb5cf76245b30c2e75f7c5b6d6dc2cbf2a909c9af1777da10929f8218af8d3",
+    "hash": "fcba314def3256c551d0254ae78496ed70aebc8cdf1f6848348f25248ca5a52d",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
@@ -78344,14 +78344,14 @@
     "note": "Orca Whirlpools::closePosition empty intent — Check 10 gate"
   },
   {
-    "hash": "a73b08fc0a11270cee573f736906e49162a59049754c796bbb067d284f577297",
+    "hash": "04db2f131eb4c6a7b8e9ac02714e383f62ab2dd1332736c1710f7c2a71c52579",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::closePositionWithTokenExtensions intent=transfer"
   },
   {
-    "hash": "dc4f82826cb9fbba5d98f1b9ac0fd0e10b85230ea6033172b3d0ca0f9d506b85",
+    "hash": "e1c110b57de866bb1c96c8eb8abbab6eaac46c104e9e0dc24137d823ac082288",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78372,14 +78372,14 @@
     "note": "Orca Whirlpools::collectFees empty intent — Check 10 gate"
   },
   {
-    "hash": "69bc85fb920c3a96727aef929571d5b157206e10876f74b5b824c32ca85f9e6e",
+    "hash": "b12b435109321a67d8a78823dd5b7a052f5cb6ac29308559e641824dddb4dc88",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::collectFeesV2 intent=transfer"
   },
   {
-    "hash": "ecf3e8cc824077fe91a2944c28b62c944ecc45534b85bca56f8fcd4c7fbb6b3a",
+    "hash": "8208490f1655cd8ad25df2b901d8f1c06d7e41b03907600be2924658c9d8fada",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78400,14 +78400,14 @@
     "note": "Orca Whirlpools::collectProtocolFees empty intent — Check 10 gate"
   },
   {
-    "hash": "63b4a5c20bf2a1d97c180f69d9ef1b00bf2cc708daa8bad41521eb999ea6af30",
+    "hash": "6bf3da460d474a27cd1167bf29f5672260c9583d6d404cd48ce53a5ad961baa3",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::collectProtocolFeesV2 intent=transfer"
   },
   {
-    "hash": "554c333a8e9ee75a7b975810333f433c2737fa7ba8f4f33aa2b878f7f1a2fb4a",
+    "hash": "94879872cb6d356e8475600587b0160ddcec75a45ef3bfa55d422af135508744",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78428,14 +78428,14 @@
     "note": "Orca Whirlpools::collectReward empty intent — Check 10 gate"
   },
   {
-    "hash": "75f8884dce872b9de6d4950e7b8cba2173ce74db53fa25608e4c29cc8d58dbde",
+    "hash": "4880eadea34437ce32da34f6536277f1b41fec3a3143f8851c242d16265ded0d",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::collectRewardV2 intent=transfer"
   },
   {
-    "hash": "dda5c2d43561d2eb7e6ed889f2c49fc3a1009e321a03a130ac81055f2a3a1ed2",
+    "hash": "8f9fb7bb3f7238e9ceadbf302d689e703c91e833d3c0be32a02625195cf3791c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78456,14 +78456,14 @@
     "note": "Orca Whirlpools::decreaseLiquidity empty intent — Check 10 gate"
   },
   {
-    "hash": "0eb1d155da855533cf01dcde792c0bf3db717e7e762bfe07070d70cb53323174",
+    "hash": "0ac1793156426235ab3919bb9472af9c0c2845872cc1f57f9904905873dfaac9",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::decreaseLiquidityV2 intent=transfer"
   },
   {
-    "hash": "937613d1f51e0a95544199df6921a46330bc0ca7e1da887374152092764a1727",
+    "hash": "ec0611891eedefdf4f97312997de6dbbd707ec230cf335b230692772041ba379",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78526,28 +78526,28 @@
     "note": "Orca Whirlpools::increaseLiquidity empty intent — Check 10 gate"
   },
   {
-    "hash": "b9b716ccf68690aac1311e3a6de27957d59cf56e43f74de1bb9cbc92decf3f2f",
+    "hash": "3bec2ce0ef3cc32ecf3f0384ce826ea5fcd0d4826243d13254ac53e42b8d93d1",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::increaseLiquidityByTokenAmountsV2 intent=transfer"
   },
   {
-    "hash": "04a1e0d8e01179f224b78bb6cb1913de81e8f34d62218ece6b1a60f42afc850b",
+    "hash": "6208b54fc42fb8b62f608f7e7c376ea84889d81b3bc5828d5ebb015ba22d0dbd",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::increaseLiquidityByTokenAmountsV2 empty intent — Check 10 gate"
   },
   {
-    "hash": "bfe3fc6be56a8527ecef9aa6fa7fb8d5ca961d7ae5a1f5d582bce9d815a2473a",
+    "hash": "06737a90dce7bb5b4b974f0cceb2a43c0f172e91de34c888ea248b04aee691c1",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::increaseLiquidityV2 intent=transfer"
   },
   {
-    "hash": "9a0d082d4a3468e5419ec7df590f7f745d655daf7c30415e63ab96868355fd0a",
+    "hash": "91dfc76b3646dbcdf226d0f131b21609f9d0ac605597a2817862fd7c74795ee3",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78624,98 +78624,98 @@
     "note": "Orca Whirlpools::initializeFeeTier empty intent — Check 10 gate"
   },
   {
-    "hash": "512e00a3bde775f2f6ca5209f11b1fa553b42230f1386bb9f7cdfc9c4ab836aa",
+    "hash": "b33e34a47524ed76327bd606e8e5954d554766e680dc75f8cb8c8385a796cf28",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePool intent=transfer"
   },
   {
-    "hash": "3108a16b1bf9b6e8dff79869dd35e331853d7e63335aa5c73e8cb649246242e5",
+    "hash": "0458ac17a949641abeaedddba975290596a2784d716f1145ab9de8e114ac8c6b",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePool empty intent — Check 10 gate"
   },
   {
-    "hash": "ddba1a90368dd927302ff7872ab45047aceaacd6f6e2dd6107b3594d8b082e44",
+    "hash": "59157fd9f654d5d115c0f74c44cbb63f8d92c7998b1e6aad20ac690b9232b6e7",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePoolV2 intent=transfer"
   },
   {
-    "hash": "1f0eb643e5ec11ac064a6f1991ea0eafa38c1c27732a4efa311143bacb74a4b9",
+    "hash": "6faef2871653a821c86cfba8ecd96b9b0acb34e129366742e7e74ce024c400c1",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePoolV2 empty intent — Check 10 gate"
   },
   {
-    "hash": "8f9e4b2fda6e5ca48e87e4edf5966b07b2bbf2359a676493d1320febf93c3aca",
+    "hash": "df908fcc5bf879fdcc4cbc3798d09d3062480343bc61de2dcb9a43368d65fcc1",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePoolWithAdaptiveFee intent=transfer"
   },
   {
-    "hash": "9492d15c0542fbda1ae0d5921293009443e085b2de3c2af79e4cf61b2a9bf293",
+    "hash": "73d02ac7d4c7566f636e63581ab9c0b402e636c47f965ab8924430fc195dcf46",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePoolWithAdaptiveFee empty intent — Check 10 gate"
   },
   {
-    "hash": "39995da94c6ebedb0e36e4a4096e5a7f2fa5459a72e149365503b13355bd5860",
+    "hash": "957119840632629326316c494e88824a434b1da279f6efd2f899bdab7dd59624",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePositionBundle intent=transfer"
   },
   {
-    "hash": "570b740a1b085bcb5916ccfb3624b13c950160935a6b50a16376bd35b9eca1a5",
+    "hash": "e57be8563afccf3d606c316a01026c4cde6aa2733a99f28600127878338b7a7c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePositionBundle empty intent — Check 10 gate"
   },
   {
-    "hash": "775eeb46617769ec75474253cfaa209136edba0dc0f3c9d6f6193e65ea80be50",
+    "hash": "130e1cd2d5e103606990d7f62ff88c4d1b5f86d2ddc565b8408e24caae8bffe7",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePositionBundleWithMetadata intent=transfer"
   },
   {
-    "hash": "9cd23f631e4524fa2d69f9aee0d903d9a3f7176c1ed6064a5ccf966cd007ec3e",
+    "hash": "050bbdf736d45bff151b7f3e154df6c06765880aa2394d96bfc0e783e4c980e4",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializePositionBundleWithMetadata empty intent — Check 10 gate"
   },
   {
-    "hash": "ae50e6dcbdaed719ec63ddf008e4f6cd2a50049a937ca38b199dfceb75eea225",
+    "hash": "260a3ab296a5734e888efd3d669abc5fee012750f959f01d8553e044ed253045",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializeReward intent=transfer"
   },
   {
-    "hash": "65d7bb2d9951b584d79bb9f714591ebbedb2d5ccbca503327f6e195ea1e11dc2",
+    "hash": "a33feaefb0229b29f7d38a57fe362f6f14941f11d383fd2b78f16fe10a6aca73",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializeReward empty intent — Check 10 gate"
   },
   {
-    "hash": "fa211221aec3670f29c4e3eef3fe779e01e70576c6508974fc74b9e74fbeaf13",
+    "hash": "4721cdc245ced247dab5b36faa4a8d726f14288c713d34c09bceabefb1a7a89c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::initializeRewardV2 intent=transfer"
   },
   {
-    "hash": "9fde763276ee12c984d23be4b649074997012ec2aa2099fc119490531d89024c",
+    "hash": "981a3b82b9c306897abbc167703fdde84703f5fa1dc0bf6a7ffc7b36315412fb",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78750,14 +78750,14 @@
     "note": "Orca Whirlpools::initializeTokenBadge empty intent — Check 10 gate"
   },
   {
-    "hash": "af1c0e606a42474c8f8eae75f748624de5ad466ff72663ca63f6e0f1e516c705",
+    "hash": "9558f7721d33e2ae154706cd17a9b8111583f5321432dac716bc3f82ff6b99f0",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::lockPosition intent=transfer"
   },
   {
-    "hash": "7aa0178b2b3b27244b8b11152fd0a295f7a6d262456a26fef3cf5ddc5afeb555",
+    "hash": "4970babb96470c647a634e82bf81d92dddeb663bece33b5ce5943dbe6e903622",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -78778,70 +78778,70 @@
     "note": "Orca Whirlpools::migrateRepurposeRewardAuthoritySpace empty intent — Check 10 gate"
   },
   {
-    "hash": "d4195ae2d595b59ff068e51321cd539945c5077c7c60a8ac5d7020a39b06e1be",
+    "hash": "3a47884d64a9560e69af8aec70cdf13dfef677b93e69fa6ed1a9d01b192cc4a5",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openBundledPosition intent=transfer"
   },
   {
-    "hash": "8655bd5d1696491ec03b60f3659b8919f184cec3dc3e816352642a16bc5d7c40",
+    "hash": "8c5d4d1050d476cda6a708060499c0d1489d24f2d8f62b1dd7165b896eba1dad",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openBundledPosition empty intent — Check 10 gate"
   },
   {
-    "hash": "a4e1c4067ab7988dbae34bbe1fcef813bb272ad9778f993a3b509317425d0b0a",
+    "hash": "ba08b06b040b1bf14d27ca497000bed81c30c8fba8797aaaba2c62459e8c9ec2",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openPosition intent=transfer"
   },
   {
-    "hash": "85c2be37cc46fd2bd114d0af2e6fcf4390d8f2c7b3a3abdfeff50d0ab191f168",
+    "hash": "9fcacd014aeb74654b78680a486cedcaa630adec3e8d115dd38807e58cec7053",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openPosition empty intent — Check 10 gate"
   },
   {
-    "hash": "31c187c6f8c1d562b3919ff40ad2e57b3edd9cd6609a876869bd7e87f4cb42f6",
+    "hash": "c80d3389c249ced2be4a4b0ad66adc15e417fa1eab0e2ba70a1c6002f990caa6",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openPositionWithMetadata intent=transfer"
   },
   {
-    "hash": "cb6ad907d255540883749ab01f0453ad108c04fae763a257af8fd495f75a0e02",
+    "hash": "9182bc96937ba2af1b17d7b3f38bd909d9e958f225108a3f4d00393bea2e502d",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openPositionWithMetadata empty intent — Check 10 gate"
   },
   {
-    "hash": "954a2e8a88ddf64c3d54fdbc68bca63796ed3eca023939513509d260485af9c0",
+    "hash": "e307c13a48707c9674a0a05ad0325226de3c119f112db68fecc694a4d8ee0a8b",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openPositionWithTokenExtensions intent=transfer"
   },
   {
-    "hash": "9ca2c20eb9ef55295c70bb2d544b6a473a890310aaf693e48aa739555f36389d",
+    "hash": "eb121b2709967d9b08aca97453e2981fa5e187402526805f8a47b1225de86d13",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::openPositionWithTokenExtensions empty intent — Check 10 gate"
   },
   {
-    "hash": "eee111308fbd5e61806893db54efcd456cbb660427192eedb23b851bcab1c3f8",
+    "hash": "1fd7d9f790f3c98a367afd0ac3180aa10b143ac50b2529de166eb15b2c0f83d7",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::repositionLiquidityV2 intent=transfer"
   },
   {
-    "hash": "e52941a2cb2306a30e5bba1c281f7ef51b62b73b2ecfb69405f68c53b490f07d",
+    "hash": "a4f9955fd160d5f290af4d33274b5a21bf2d750725011c4361e0db42fbf265c3",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -79170,28 +79170,28 @@
     "note": "Orca Whirlpools::swap empty intent — Check 10 gate"
   },
   {
-    "hash": "37e4181f969b9c29f4007f9bf78585028a6c77b3824b060c875028ed3d6a96ee",
+    "hash": "509b18f04d4ca5f530ad088f5cef36a657181f13abcaa8df24aed4442b0bd61c",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::swapV2 intent=swap"
   },
   {
-    "hash": "04cbc0a9cb1af8a4b00922fbe41db59a29e301f8103d849d375b18c0fef7a102",
+    "hash": "2258fec7cf06f24b91ec54d92285d3ae7f0b6609bb4ab00a63a5e2f17c49ae11",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::swapV2 empty intent — Check 10 gate"
   },
   {
-    "hash": "148bb6042a6d471fbab53a2aa29128015f81c163122079bd3209af5b4b19e811",
+    "hash": "3e7c3f212b82a25e880677334e3d6b7a754e540493042049d8050c65df8b0984",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::transferLockedPosition intent=transfer"
   },
   {
-    "hash": "5954be44b9942eb439e6782e4f21fae97b8b8301a456dcb0f38991a87125d2c3",
+    "hash": "b9a4215e1d1a6154d1e95464035d445d3f79ef10c520031f0beb7a3181197a78",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -79212,14 +79212,14 @@
     "note": "Orca Whirlpools::twoHopSwap empty intent — Check 10 gate"
   },
   {
-    "hash": "a7f79544b6c4e3d412a523eded628c563dd399cfc81ebc82d42f950d697873aa",
+    "hash": "3e317215fe0259a53f67fe180de5b6c03a8bc43bf5963b36db615b44d58d217a",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Orca Whirlpools::twoHopSwapV2 intent=swap"
   },
   {
-    "hash": "2376889e6f78dd0c304f8e04f0bb7705358544c4c2c353541501522e93c2efc3",
+    "hash": "dab9e0e3fd2f6de8334696b9934a1c053affc19a247fa6a2ea171430eafae057",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",

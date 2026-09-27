@@ -187,6 +187,10 @@ fn an_implausible_fee_is_refused_wherever_the_diff_came_from() {
         artifact_account_universe: None,
         artifact_accounts_undescribed: None,
         transfer_fee_mints: Default::default(),
+        token2022_executed: None,
+        fee_epoch: None,
+        token2022_mints: Default::default(),
+        transaction_accounts: None,
     };
     let report = check(&diff);
     let codes: Vec<&str> = report.findings.iter().map(|f| f.code.as_str()).collect();
@@ -220,6 +224,10 @@ fn the_fee_ceiling_is_where_it_says_it_is() {
         artifact_account_universe: None,
         artifact_accounts_undescribed: None,
         transfer_fee_mints: Default::default(),
+        token2022_executed: None,
+        fee_epoch: None,
+        token2022_mints: Default::default(),
+        transaction_accounts: None,
     };
     let ok = check(&at_ceiling);
     assert!(
@@ -243,6 +251,10 @@ fn the_fee_ceiling_is_where_it_says_it_is() {
         artifact_account_universe: None,
         artifact_accounts_undescribed: None,
         transfer_fee_mints: Default::default(),
+        token2022_executed: None,
+        fee_epoch: None,
+        token2022_mints: Default::default(),
+        transaction_accounts: None,
     };
     let bad = check(&over);
     assert!(

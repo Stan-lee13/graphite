@@ -157,7 +157,7 @@
      "name": "nonce",
      "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
@@ -165,7 +165,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRecentB1ockHashes11111111111111111111"
+     ]
     },
     {
      "name": "authority",

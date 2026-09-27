@@ -173,14 +173,23 @@ pub fn expand_account_keys(msg: &serde_json::Value) -> Option<Vec<String>> {
 }
 
 pub fn tx_to_input(tx: &serde_json::Value, prefer_programs: &[&str]) -> Option<VerificationInput> {
-    // A version-1 transaction. Graphite parses v1 from its BYTES since
-    // Round 19 (`tx_artifact::parse_v1`, checked against agave by the
-    // runtime oracle), and `tests/mainnet_conformance.rs` verifies v1 rows
-    // from their base64. This builder reads the RPC's `encoding: json`
-    // shape instead, whose v1 layout (config values, no lookup tables) has
-    // not been checked against a real response here — so v1 is skipped
-    // rather than guessed (Round 12).
-    if tx.get("version").and_then(|v| v.as_u64()) == Some(1) {
+    // A version-1 transaction. Round 12 skipped v1 here because the RPC's
+    // `encoding: json` layout for it had not been checked against a real
+    // response. Round 21 checked it (tests/fixtures/real_mainnet_v1.json,
+    // mainnet slot 449805525): `accountKeys`, `header`, `instructions` and
+    // `recentBlockhash` in the legacy shape, the compute budget under
+    // `transactionConfig`, and no `addressTableLookups` — v1 has no lookup
+    // tables. That is the shape read below. A v1 message that nonetheless
+    // carries lookups is not one the runtime produces, and is refused.
+    let version_1 = tx.get("version").and_then(|v| v.as_u64()) == Some(1);
+    if version_1
+        && tx
+            .get("transaction")
+            .and_then(|t| t.get("message"))
+            .and_then(|m| m.get("addressTableLookups"))
+            .and_then(|l| l.as_array())
+            .is_some_and(|l| !l.is_empty())
+    {
         return None;
     }
     let msg = tx.get("transaction")?.get("message")?;
@@ -974,19 +983,34 @@ mod tests {
         );
     }
 
-    /// Round 12: a version-1 transaction (live on devnet since 2026-09) is
-    /// skipped rather than converted — the same fixture with `"version": 1`
-    /// yields nothing, and the unversioned original still converts.
+    /// Round 21: the RPC's JSON for a real mainnet v1 transaction converts —
+    /// the layout was checked against a real response (slot 449805525) — and
+    /// a "v1" message carrying lookup tables, which the runtime never
+    /// produces, does not.
     #[test]
-    fn tx_to_input_skips_version_1_transactions() {
+    fn tx_to_input_reads_a_real_version_1_transaction() {
+        let tx = load_fixture("v1");
+        assert_eq!(tx["version"], serde_json::json!(1));
+        assert!(tx["transaction"]["message"]["transactionConfig"].is_object());
+        let input = tx_to_input(&tx, &[]).expect("a real v1 transaction converts");
+        let keys = expand_account_keys(&tx["transaction"]["message"]).unwrap();
+        assert!(keys.contains(&input.program_id));
+        assert!(!input.account_addresses.is_empty());
+        assert_eq!(input.compute_units, 111_769);
+
+        let mut tx = tx;
+        tx["transaction"]["message"]["addressTableLookups"] = serde_json::json!([
+            {"accountKey": "11111111111111111111111111111111", "writableIndexes": [0], "readonlyIndexes": []}
+        ]);
+        assert!(tx_to_input(&tx, &[]).is_none());
+    }
+
+    /// The JSON builder still takes the unversioned and v0 shapes.
+    #[test]
+    fn tx_to_input_takes_every_version_the_runtime_executes() {
         let mut tx = load_fixture("jup");
         let jup = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
         assert!(tx_to_input(&tx, &[jup]).is_some());
-        tx["version"] = serde_json::json!(1);
-        assert!(
-            tx_to_input(&tx, &[jup]).is_none(),
-            "a v1 transaction must not be described as a legacy/v0 one"
-        );
         tx["version"] = serde_json::json!(0);
         assert!(tx_to_input(&tx, &[jup]).is_some());
     }

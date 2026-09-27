@@ -95,6 +95,7 @@ fn lamports(pubkey: &str, n: u64) -> AccountSnapshot {
         extensions: Default::default(),
         transfer_fee_withheld: None,
         transfer_fee_config: None,
+        token2022_powers: None,
     }
 }
 
@@ -125,6 +126,10 @@ fn diff(deltas: Vec<AccountDelta>) -> StateDiff {
         artifact_account_universe: None,
         artifact_accounts_undescribed: None,
         transfer_fee_mints: Default::default(),
+        token2022_executed: None,
+        fee_epoch: None,
+        token2022_mints: Default::default(),
+        transaction_accounts: None,
     }
 }
 

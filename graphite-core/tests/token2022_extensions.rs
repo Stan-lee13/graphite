@@ -288,6 +288,12 @@ fn every_named_discriminant_has_the_expected_classification() {
         (21, "TokenGroup", Informational),
         (22, "GroupMemberPointer", Informational),
         (23, "TokenGroupMember", Informational),
+        // Round 21: the upstream enum's newer entries.
+        (24, "ConfidentialMintBurn", AltersTransferSemantics),
+        (25, "ScaledUiAmount", Informational),
+        (26, "Pausable", Informational),
+        (27, "PausableAccount", Informational),
+        (28, "PermissionedBurn", Informational),
     ];
     for &(d, name, impact) in table {
         let scan = detect_token2022_extensions(&with_extensions(1, &[(d, 4)]));
@@ -296,7 +302,7 @@ fn every_named_discriminant_has_the_expected_classification() {
         assert_eq!(scan.found[0].impact, impact, "discriminant {d}");
     }
     // And the one past the table is Unknown, which blocks.
-    let scan = detect_token2022_extensions(&with_extensions(1, &[(24, 4)]));
+    let scan = detect_token2022_extensions(&with_extensions(1, &[(29, 4)]));
     assert_eq!(scan.found[0].impact, Unknown);
 }
 

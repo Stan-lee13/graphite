@@ -5,7 +5,7 @@
 > Do not edit by hand — `tests/docs_match_the_registry.rs` compares this page to
 > the loaded registry, and a hand edit fails CI.
 
-Rendered: 2026-09-25
+Rendered: 2026-09-26
 
 ## In one line
 

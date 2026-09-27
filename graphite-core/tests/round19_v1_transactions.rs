@@ -996,3 +996,18 @@ fn the_cross_language_v1_digest_vector_is_the_cores_answer() {
     );
     assert_eq!(artifact_sha256_of_signed(&frame).unwrap(), digest);
 }
+
+/// Round 21: the v1 header's values reach the verdict. The priority fee is
+/// the header's own number, and the limit it sets is the one applied.
+#[test]
+fn the_v1_header_is_the_compute_budget() {
+    let tx = V1::transfer();
+    let b = graphite_core::tx_artifact::compute_budget_request(
+        &parse_transaction(&tx.frame()).expect("v1 parses"),
+    );
+    assert_eq!(b.source, "v1_header");
+    assert_eq!(b.priority_fee_lamports, 5_000);
+    assert_eq!(b.compute_unit_limit, Some(200_000));
+    assert_eq!(b.effective_compute_unit_limit, 200_000);
+    assert!(b.problems.is_empty());
+}

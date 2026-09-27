@@ -264,6 +264,8 @@ fn pump_fun_drainer_heuristic_is_suppressed_for_curve_trades() {
     // The control proves the SAME shape is still blocked on a non-DEX program
     // — the relaxation is program-scoped, not a global drainer bypass.
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: PUMP_FUN.to_string(),
         accounts: vec![
             "curve".to_string(),
@@ -303,6 +305,8 @@ fn pump_fun_repeated_cpi_chain_still_blocked_as_compositional_drain() {
     // drainer: a repeated-program deep CPI chain still trips the
     // compositional-drain pattern (that check is independent of root trust).
     let input = RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: PUMP_FUN.to_string(),
         accounts: vec!["a1".to_string(), "a2".to_string()],
         cpi_targets: vec!["evil_drainer_program".to_string(); 4],

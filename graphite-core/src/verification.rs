@@ -228,6 +228,10 @@ fn build_rpc_state_diff(
         artifact_accounts_undescribed,
         // Filled by the caller, which fetches the fee mints (Round 20).
         transfer_fee_mints: Default::default(),
+        token2022_executed: None,
+        fee_epoch: None,
+        token2022_mints: Default::default(),
+        transaction_accounts: None,
     }
 }
 
@@ -278,7 +282,14 @@ fn transfer_fee_mints_to_fetch(
         .chain(post.iter())
         .flatten()
         .filter(|a| a.owner == crate::state_diff::SPL_TOKEN_2022_PROGRAM)
-        .filter(|a| crate::state_diff::decode_transfer_fee_withheld(&a.data).is_some())
+        // Round 21: every extension-bearing account, not only fee-bearing
+        // ones — a transfer hook's program and a permanent delegate are
+        // facts about the mint too.
+        .filter(|a| {
+            !crate::state_diff::detect_token2022_extensions(&a.data)
+                .found
+                .is_empty()
+        })
         .filter_map(|a| crate::state_diff::decode_token_account(&a.data).map(|t| t.mint))
         .filter(|m| !diffed.contains(m.as_str()))
         .collect();
@@ -531,6 +542,194 @@ fn observed_cpi_callees(
     out.sort();
     out.dedup();
     Some(out)
+}
+
+/// Every Token-2022 instruction the simulator executed, in execution order,
+/// with its accounts resolved (Round 21).
+///
+/// Top-level instructions come from the message, inner ones from the
+/// simulation's `innerInstructions`; each top-level instruction is followed
+/// by the CPIs made under it. Indexes resolve through the full account list
+/// exactly as `observed_cpi_tree_of` resolves them. `None` — not a shorter
+/// list — when the simulation reported no inner instructions, the message
+/// uses lookup tables the simulation did not resolve, or any index cannot be
+/// placed: the fee model replays this list and must not replay part of it.
+#[cfg(feature = "rpc")]
+fn token2022_executed(
+    message: &crate::tx_artifact::ArtifactMessage,
+    loaded: Option<&crate::rpc_client::LoadedAddresses>,
+    inner: Option<&[crate::rpc_client::ObservedInnerInstruction]>,
+) -> Option<Vec<crate::state_diff::ExecutedTokenInstruction>> {
+    use crate::state_diff::{ExecutedTokenInstruction, SPL_TOKEN_2022_PROGRAM};
+    let inner = inner?;
+    if !message.lookups.is_empty() && loaded.is_none() {
+        return None;
+    }
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = loaded {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    let resolve = |idx: &[u8]| -> Option<Vec<String>> {
+        idx.iter()
+            .map(|i| keys.get(usize::from(*i)).map(|k| k.to_string()))
+            .collect()
+    };
+    // Every inner instruction must belong to a top-level one.
+    if inner
+        .iter()
+        .any(|ix| usize::from(ix.top_level_index) >= message.instructions.len())
+    {
+        return None;
+    }
+    let mut out = Vec::new();
+    for (i, top) in message.instructions.iter().enumerate() {
+        if top.program_id == SPL_TOKEN_2022_PROGRAM {
+            out.push(ExecutedTokenInstruction {
+                position: format!("instruction #{i}"),
+                accounts: resolve(&top.account_indexes)?,
+                data: top.data.clone(),
+            });
+        }
+        for ix in inner
+            .iter()
+            .filter(|ix| usize::from(ix.top_level_index) == i)
+        {
+            if *keys.get(usize::from(ix.program_id_index))? == SPL_TOKEN_2022_PROGRAM {
+                out.push(ExecutedTokenInstruction {
+                    position: format!("a CPI under instruction #{i}"),
+                    accounts: resolve(&ix.accounts)?,
+                    data: ix.data.clone(),
+                });
+            }
+        }
+    }
+    Some(out)
+}
+
+/// The pre-state's lamports, taken from the simulator's own `preBalances`
+/// (Round 21).
+///
+/// The pre-state comes from a `getMultipleAccounts` read and the post-state
+/// from the simulation: two calls, two slots. On an account other
+/// transactions write every slot — an AMM pool, a fee vault — lamports moved
+/// in between, and the conservation identity failed on honest traffic
+/// (`LamportsNotConserved` on 4 of 40 live mainnet transactions measured on
+/// 2026-09-27). The simulation reports every account's lamports before and
+/// after at ONE slot; for lamports, that is the pre-state the post-state
+/// belongs to. It is the same RPC's word as the post-state, so nothing new is
+/// trusted. Data fields keep the separate read, and the slot note says so.
+/// Returns the aligned pre-state and how many accounts changed.
+#[cfg(feature = "rpc")]
+fn pre_lamports_from_the_simulation(
+    addresses: &[String],
+    pre: &[Option<crate::rpc_client::AccountState>],
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    loaded: Option<&crate::rpc_client::LoadedAddresses>,
+    balances: Option<&(Vec<u64>, Vec<u64>)>,
+) -> (Vec<Option<crate::rpc_client::AccountState>>, usize) {
+    let mut aligned = pre.to_vec();
+    let (Some(message), Some((sim_pre, _))) = (message, balances) else {
+        return (aligned, 0);
+    };
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = loaded {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    if keys.len() != sim_pre.len() {
+        return (aligned, 0);
+    }
+    let mut changed = 0usize;
+    for (i, address) in addresses.iter().enumerate() {
+        let Some(k) = keys.iter().position(|key| key == address) else {
+            continue;
+        };
+        if let Some(Some(state)) = aligned.get_mut(i) {
+            if state.lamports != sim_pre[k] {
+                state.lamports = sim_pre[k];
+                changed += 1;
+            }
+        }
+    }
+    (aligned, changed)
+}
+
+/// Which fee schedule the simulation paid under and which the transaction
+/// can still reach (Round 21). `None` when the simulated slot is unknown or
+/// cannot be placed against the epoch answer.
+#[cfg(feature = "rpc")]
+fn fee_epoch_context(
+    info: &crate::rpc_client::EpochInfo,
+    simulated_slot: Option<u64>,
+    durable_nonce: bool,
+) -> Option<crate::state_diff::FeeEpochContext> {
+    let slot = simulated_slot?;
+    let simulated_epoch = info.epoch_of(slot)?;
+    let latest_landing_epoch = if durable_nonce {
+        None
+    } else {
+        Some(info.epoch_of(slot.checked_add(crate::state_diff::FEE_LANDING_MARGIN_SLOTS)?)?)
+    };
+    Some(crate::state_diff::FeeEpochContext {
+        simulated_epoch,
+        latest_landing_epoch,
+    })
+}
+
+fn is_token_close(program_id: &str, discriminator: &str) -> bool {
+    (program_id == crate::state_diff::SPL_TOKEN_PROGRAM
+        || program_id == crate::state_diff::SPL_TOKEN_2022_PROGRAM)
+        && discriminator.to_lowercase().starts_with("09")
+}
+
+/// The token `CloseAccount`s a message pays to their own authority
+/// (Round 21).
+struct SelfRefundCloses {
+    /// Message indexes of the CloseAccounts whose destination (account 1) and
+    /// authority (account 2) are the same address, both read from the bytes.
+    refunding: std::collections::HashSet<usize>,
+    /// True when the message has at least one token CloseAccount and every
+    /// one of them is in `refunding`.
+    every_close_refunds_its_authority: bool,
+}
+
+/// Read every token CloseAccount's destination and authority from the
+/// message itself: a static key, or a lookup-table entry the pipeline
+/// resolved. An address at a position Graphite could not resolve is not
+/// known to be anything, and that close is not counted as refunding.
+fn self_refund_closes(
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    lookups: Option<&crate::tx_artifact::ResolvedLookups>,
+) -> SelfRefundCloses {
+    let mut refunding = std::collections::HashSet::new();
+    let mut closes = 0usize;
+    if let Some(m) = message {
+        let at = |index: u8| -> Option<String> {
+            let i = usize::from(index);
+            match m.static_keys.get(i) {
+                Some(k) => Some(k.clone()),
+                None => lookups?.all().nth(i - m.static_keys.len()).cloned(),
+            }
+        };
+        for (k, ix) in m.instructions.iter().enumerate() {
+            if !is_token_close(&ix.program_id, &hex::encode(&ix.data)) || ix.data.len() != 1 {
+                continue;
+            }
+            closes += 1;
+            let destination = ix.account_indexes.get(1).and_then(|i| at(*i));
+            let authority = ix.account_indexes.get(2).and_then(|i| at(*i));
+            if let (Some(d), Some(a)) = (destination, authority) {
+                if d == a {
+                    refunding.insert(k);
+                }
+            }
+        }
+    }
+    SelfRefundCloses {
+        every_close_refunds_its_authority: closes > 0 && refunding.len() == closes,
+        refunding,
+    }
 }
 
 /// The CPI tree of top-level instruction `primary`, rebuilt from the
@@ -1441,6 +1640,11 @@ pub enum VerificationScope {
         /// `unobserved_codes[i]` names `unobserved[i]`.
         #[serde(default)]
         unobserved_codes: Vec<UnobservedCode>,
+        /// What the transaction asks of the compute budget — its limit, its
+        /// priority fee — read from its bytes (Round 21). `None` when the
+        /// bytes could not be parsed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        compute_budget: Option<crate::tx_artifact::ComputeBudgetRequest>,
     },
     /// No artifact was supplied. The verdict describes what the caller SAID the
     /// transaction is. Nothing in it constrains what gets signed.
@@ -1632,6 +1836,9 @@ fn verification_scope(
                 simulated,
                 unobserved: r.prose,
                 unobserved_codes: r.codes,
+                compute_budget: crate::tx_artifact::parse_transaction(bytes)
+                    .ok()
+                    .map(|m| crate::tx_artifact::compute_budget_request(&m)),
             }
         }
         _ => {
@@ -2968,21 +3175,32 @@ impl GraphiteCore {
         }
     }
 
-    /// Synchronous wrapper around the async verification API. Blocks on a
-    /// fresh Tokio runtime. Available whenever an async runtime is compiled in
-    /// (rpc / server / cli features). A library build with NO features gets
-    /// the fail-closed stub below instead of failing to compile — the library
-    /// core itself never needs a runtime (only the RPC path does), so
-    /// embedding Graphite as a verification library must not force an async
-    /// dependency.
+    /// Synchronous wrapper around the async verification API. Blocks on one
+    /// process-wide Tokio runtime, built on first use and kept: building a
+    /// multi-thread runtime per call cost ~345 ms in a debug build (Round 21),
+    /// and an RPC client's pooled connections belong to the runtime that
+    /// opened them, so every call must drive the same one. Available whenever
+    /// an async runtime is compiled in (rpc / server / cli features). A
+    /// library build with NO features gets the fail-closed stub below instead
+    /// of failing to compile — the library core itself never needs a runtime
+    /// (only the RPC path does), so embedding Graphite as a verification
+    /// library must not force an async dependency.
+    ///
+    /// Called from inside an async runtime it refuses with an error rather
+    /// than panicking: blocking a runtime worker on another runtime is a
+    /// Tokio panic, and a caller there has `verify_async`.
     #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     pub fn verify(
         &self,
         input: &VerificationInput,
     ) -> Result<VerificationResult, VerificationError> {
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| VerificationError::TransactionBuild(e.to_string()))?;
-        rt.block_on(self.verify_async(input))
+        if tokio::runtime::Handle::try_current().is_ok() {
+            return Err(VerificationError::InvalidInput(
+                "synchronous verify called from inside an async runtime; use verify_async"
+                    .to_string(),
+            ));
+        }
+        sync_runtime()?.block_on(self.verify_async(input))
     }
 
     /// Fail-closed synchronous fallback for minimal library builds (no
@@ -3580,11 +3798,20 @@ impl GraphiteCore {
             );
         }
 
+        // Nothing contradicts the declarations, and nothing was observed
+        // either. This branch runs only when there is no pre/post diff — no
+        // RPC, no artifact, a failed simulation, or a diff that could not be
+        // built — so "Passed" said more than the layer knew: the check reads
+        // the manifest's prose against account flags, not what the
+        // transaction does to state. Approval was never gated on it (only a
+        // Failed L4 moves the verdict, and the missing diff is its own
+        // residual), but the layer's word must be as weak as its evidence
+        // (Round 21). A structural contradiction above still fails the layer.
         PipelineLayerResult::new(
             layer_name,
-            LayerStatus::Passed,
+            LayerStatus::Inconclusive,
             format!(
-                "State verification passed: {} state change(s) consistent with {} account(s)",
+                "State not observed: no pre/post diff; {} declared state change(s) are structurally consistent with {} account(s) — a consistency check on the declarations, not a verification of state",
                 expected_state_changes.len(),
                 resolved_accounts.len()
             ),
@@ -3854,6 +4081,7 @@ impl GraphiteCore {
         &self,
         effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
         trace_origin_range: &std::ops::Range<usize>,
+        every_close_refunds_its_authority: bool,
     ) -> Result<(RiskVerdict, Vec<String>), VerificationError> {
         let mut verdict = RiskVerdict::Passed;
         let mut warnings: Vec<String> = Vec::new();
@@ -3962,6 +4190,8 @@ impl GraphiteCore {
                     .or_insert(0) += 1;
             }
             let ix_input = RiskAssessmentInput {
+                verified_self_refund_close: false,
+                writable_extra_accounts: None,
                 program_id: ix.program_id.clone(),
                 accounts: ix.account_addresses.clone(),
                 cpi_targets: ix.cpi_targets.clone(),
@@ -3974,6 +4204,16 @@ impl GraphiteCore {
                 proposed_intent_type: String::new(),
                 extracted_output_token: None,
                 manifest_risk_class: risk_ctx.manifest_risk_class,
+            };
+            // Round 21: a declared sibling is exempt only when EVERY token
+            // CloseAccount in the message was read from the bytes as paying
+            // its authority — whichever one this declaration names. A node
+            // of a caller-declared CPI trace never is.
+            let ix_input = RiskAssessmentInput {
+                verified_self_refund_close: every_close_refunds_its_authority
+                    && !trace_origin_range.contains(&idx)
+                    && is_token_close(&ix.program_id, &ix.instruction_discriminator),
+                ..ix_input
             };
             let detail = assess_with_warnings(&ix_input)?;
             warnings.extend(
@@ -4542,6 +4782,10 @@ impl GraphiteCore {
         // `scope` reports it, so a consumer knows whether "artifact_bound"
         // rests on a located instruction or on a failed L2.
         let mut artifact_instruction_located = false;
+        // The located instruction's index in the message, in every build
+        // (Round 21: a sibling's declared writes explain a shared writable
+        // flag, and "sibling" means every OTHER instruction).
+        let mut primary_instruction_index: Option<usize> = None;
         // Which instruction of the message it is, once located (Round 19:
         // the observed CPI tree is rooted there).
         #[cfg(feature = "rpc")]
@@ -4598,6 +4842,7 @@ impl GraphiteCore {
                         );
                         if c.matched_instruction.is_some() {
                             artifact_instruction_located = true;
+                            primary_instruction_index = c.matched_instruction;
                             #[cfg(feature = "rpc")]
                             {
                                 located_index = c.matched_instruction;
@@ -4993,8 +5238,9 @@ impl GraphiteCore {
                     )
                 });
                 match ix {
+                    // The layout this many accounts selects (Round 21).
                     Some(i) => (
-                        Some(i.accounts.len()),
+                        Some(i.layout_for(input.account_addresses.len()).len()),
                         i.variable_accounts,
                         i.risk_class.clone(),
                     ),
@@ -5004,7 +5250,33 @@ impl GraphiteCore {
             None => (None, false, String::new()),
         };
 
+        // Round 21: which token CloseAccounts the bytes show paying their
+        // own authority.
+        let closes = self_refund_closes(
+            artifact_message.as_ref(),
+            resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()),
+        );
+        // Round 21: writable accounts past the declared list, from the bytes'
+        // own privileges only — never the caller's. The fee payer is writable
+        // because it pays, and is not counted.
+        let writable_extra_accounts = match (&artifact_privileges, expected_account_count) {
+            (Some(metas), Some(expected)) if metas.len() == input.account_addresses.len() => {
+                let payer = artifact_message.as_ref().map(|m| m.fee_payer.as_str());
+                Some(
+                    metas
+                        .iter()
+                        .zip(&input.account_addresses)
+                        .skip(expected)
+                        .filter(|(m, a)| m.is_writable && Some(a.as_str()) != payer)
+                        .count(),
+                )
+            }
+            _ => None,
+        };
         let risk_detail = assess_with_warnings(&RiskAssessmentInput {
+            writable_extra_accounts,
+            verified_self_refund_close: primary_instruction_index
+                .is_some_and(|p| closes.refunding.contains(&p)),
             program_id: input.program_id.clone(),
             accounts: input.account_addresses.clone(),
             cpi_targets: input.cpi_targets.clone(),
@@ -5202,6 +5474,70 @@ impl GraphiteCore {
         // risk findings. Each means the transaction provides an account
         // that doesn't match what the protocol manifest declares that slot
         // must be — a potential spoofing/substitution/escalation attempt.
+        //
+        // Round 21: the WRITE direction of a privilege mismatch — declared
+        // read-only, writable in the transaction — is decided later, by what
+        // was observed. Solana grants privileges per MESSAGE, not per
+        // instruction: an account is writable in every instruction that
+        // names it if any instruction needs it writable, and a client may
+        // mark one writable that nothing writes. Measured on 16,414 executed
+        // mainnet instructions: 456 such flags are explained by another
+        // instruction of the same transaction whose own manifest declares the
+        // write, and a further 348 by nothing — among them 85 SPL Token
+        // TransferChecked authorities and 76 PumpSwap `global_volume_accumulator`
+        // PDAs — each of which blocked a transaction the chain executed. A
+        // flag is not a write. So: a write another located instruction
+        // declares is explained here; any other is DEFERRED to the pre/post
+        // diff, and passes only if Graphite's own simulation observed the
+        // account and it did not change. Without that observation it blocks
+        // exactly as before. The SIGNER direction — a declared signer that
+        // does not sign — is unchanged and blocks here.
+        let sibling_declared_writes: std::collections::HashSet<String> =
+            match (artifact_message.as_ref(), primary_instruction_index) {
+                (Some(message), Some(primary)) => message
+                    .instructions
+                    .iter()
+                    .enumerate()
+                    .filter(|(k, _)| *k != primary)
+                    .flat_map(|(_, ix)| {
+                        let disc = hex::encode(&ix.data[..ix.data.len().min(8)]);
+                        self.registry
+                            .find_instruction(&ix.program_id, &disc)
+                            .map(|def| {
+                                def.layout_for(ix.accounts.len())
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(_, a)| a.is_writable)
+                                    .filter_map(|(j, _)| ix.accounts.get(j).cloned().flatten())
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default()
+                    })
+                    .collect(),
+                _ => std::collections::HashSet::new(),
+            };
+        let mut resolution = resolution;
+        let mut deferred_write_escalations: Vec<usize> = Vec::new();
+        let mut privilege_notes: Vec<String> = Vec::new();
+        for (i, a) in resolution.resolved_accounts.iter_mut().enumerate() {
+            if !a.privilege_mismatch {
+                continue;
+            }
+            let signer_missing =
+                a.is_signer && effective_metas.get(i).is_some_and(|m| !m.is_signer);
+            if signer_missing {
+                continue;
+            }
+            a.privilege_mismatch = false;
+            if sibling_declared_writes.contains(&a.address) {
+                privilege_notes.push(format!(
+                    "account {} ({}) is declared read-only for this instruction and writable in the transaction because another instruction of the same transaction declares a write to it — Solana grants privileges per message, and that instruction is judged on its own",
+                    a.address, a.role
+                ));
+            } else {
+                deferred_write_escalations.push(i);
+            }
+        }
         let identity_mismatches: Vec<&ResolvedAccount> = resolution
             .resolved_accounts
             .iter()
@@ -5362,8 +5698,12 @@ impl GraphiteCore {
         // transaction. See `assess_secondary_instructions`'s doc comment for
         // why secondary instructions are assessed with an empty declared
         // intent rather than the primary's.
-        let (secondary_risk_verdict, secondary_risk_warnings) =
-            self.assess_secondary_instructions(&effective_instructions, &trace_origin_range)?;
+        let (secondary_risk_verdict, secondary_risk_warnings) = self
+            .assess_secondary_instructions(
+                &effective_instructions,
+                &trace_origin_range,
+                closes.every_close_refunds_its_authority,
+            )?;
         risk_warnings.extend(secondary_risk_warnings);
         let risk_verdict = if let RiskVerdict::Blocked {
             pattern: secondary_pattern,
@@ -5483,6 +5823,40 @@ impl GraphiteCore {
             risk_summary
         };
 
+        // Round 21: a priority fee the transaction's own bytes request above
+        // what a Solana fee can plausibly reach is refused before anything is
+        // simulated. It is the one fee a crafted transaction can inflate at
+        // will, and the simulator-reported fee was already held to this
+        // ceiling (MAX_PLAUSIBLE_FEE_LAMPORTS); the requested one was not read.
+        let risk_summary = match artifact_message
+            .as_ref()
+            .map(crate::tx_artifact::compute_budget_request)
+        {
+            Some(b) if b.priority_fee_lamports > crate::state_diff::MAX_PLAUSIBLE_FEE_LAMPORTS => {
+                let mut summary = risk_summary;
+                summary.status = "Blocked".to_string();
+                summary.findings.push(RiskFinding {
+                    pattern: "ExcessivePriorityFee".to_string(),
+                    reason: format!(
+                        "the transaction requests a priority fee of {} lamports ({}), above the {} lamports a Solana fee can plausibly reach; the fee payer would pay it whether or not the transaction does anything",
+                        b.priority_fee_lamports,
+                        if b.source == "v1_header" {
+                            "stated in its v1 header".to_string()
+                        } else {
+                            format!(
+                                "{} micro-lamports per compute unit over a limit of {}",
+                                b.compute_unit_price_micro_lamports.unwrap_or(0),
+                                b.effective_compute_unit_limit
+                            )
+                        },
+                        crate::state_diff::MAX_PLAUSIBLE_FEE_LAMPORTS
+                    ),
+                });
+                summary
+            }
+            _ => risk_summary,
+        };
+
         // Step 3c.6: Account-count shortfall finding (C57). A real transaction
         // may supply fewer accounts than the manifest declares because the
         // pure reader skips ALT-resolved positions and deduplicates repeated
@@ -5582,6 +5956,10 @@ impl GraphiteCore {
         // spans other transactions' changes as well as this one's.
         #[cfg(feature = "rpc")]
         let mut diff_slots: Option<(u64, u64)> = None;
+        // How many pre-state lamport balances were taken from the
+        // simulator's own preBalances (Round 21).
+        #[cfg(feature = "rpc")]
+        let mut pre_lamports_aligned: usize = 0;
         // Why Graphite could NOT build its own diff, when it tried and failed.
         //
         // L4 has two very different modes — a real pre/post state diff, and a
@@ -5650,8 +6028,41 @@ impl GraphiteCore {
                             addrs.push(a.address.clone());
                         }
                     }
+                    // Round 21: not an account the transaction marks
+                    // read-only. The runtime forbids writing one, so any
+                    // "change" a diff shows on it is the pre-state read and
+                    // the simulation landing at different slots — on a busy
+                    // pool, every time (a `WriteToReadonlyAccount` on a
+                    // read-only account, measured live on mainnet). Read
+                    // from the bytes and the resolved lookup tables; an
+                    // account neither can place stays in.
+                    let transaction_read_only: std::collections::HashSet<&str> =
+                        match artifact_message.as_ref() {
+                            Some(m) => m
+                                .static_keys
+                                .iter()
+                                .filter(|k| !m.writable.contains(k))
+                                .map(String::as_str)
+                                .chain(
+                                    resolved_lookups
+                                        .as_ref()
+                                        .and_then(|r| r.as_ref().ok())
+                                        .map(|l| {
+                                            l.readonly
+                                                .iter()
+                                                .map(String::as_str)
+                                                .collect::<Vec<_>>()
+                                        })
+                                        .unwrap_or_default(),
+                                )
+                                .collect(),
+                            None => std::collections::HashSet::new(),
+                        };
                     for ix in &input.transaction_instructions {
                         for a in &ix.account_addresses {
+                            if transaction_read_only.contains(a.as_str()) {
+                                continue;
+                            }
                             if seen.insert(a.clone()) {
                                 addrs.push(a.clone());
                             }
@@ -6058,6 +6469,7 @@ impl GraphiteCore {
                                     let fee_mints_needed =
                                         transfer_fee_mints_to_fetch(&diff_addresses, &pre, &post);
                                     let mut transfer_fee_mints = std::collections::BTreeMap::new();
+                                    let mut token2022_mints = std::collections::BTreeMap::new();
                                     if !fee_mints_needed.is_empty() {
                                         match within_budget(
                                             &budget,
@@ -6069,6 +6481,16 @@ impl GraphiteCore {
                                                 for (mint, account) in
                                                     fee_mints_needed.iter().zip(accounts.iter())
                                                 {
+                                                    if let Some(a) = account.as_ref().filter(|a| {
+                                                        a.owner == crate::state_diff::SPL_TOKEN_2022_PROGRAM
+                                                    }) {
+                                                        token2022_mints.insert(
+                                                            mint.clone(),
+                                                            crate::state_diff::AccountSnapshot::from_raw(
+                                                                mint, a.lamports, &a.owner, &a.data,
+                                                            ),
+                                                        );
+                                                    }
                                                     if let Some(config) = account
                                                         .as_ref()
                                                         .filter(|a| {
@@ -6098,6 +6520,14 @@ impl GraphiteCore {
                                             }
                                         }
                                     }
+                                    let (pre, aligned) = pre_lamports_from_the_simulation(
+                                        &diff_addresses,
+                                        &pre,
+                                        artifact_message.as_ref(),
+                                        sim_res.loaded_addresses.as_ref(),
+                                        sim_res.balances.as_ref(),
+                                    );
+                                    pre_lamports_aligned = aligned;
                                     let mut diff = build_rpc_state_diff(
                                         &diff_addresses,
                                         &pre,
@@ -6108,6 +6538,47 @@ impl GraphiteCore {
                                         undescribed,
                                     );
                                     diff.transfer_fee_mints = transfer_fee_mints;
+                                    diff.token2022_mints = token2022_mints;
+                                    // Round 21: the transaction's own account
+                                    // list, from its bytes and the
+                                    // simulator's resolved lookups.
+                                    diff.transaction_accounts =
+                                        artifact_message.as_ref().map(|m| {
+                                            let mut keys = m.static_keys.clone();
+                                            if let Some(l) = sim_res.loaded_addresses.as_ref() {
+                                                keys.extend(l.all().cloned());
+                                            }
+                                            keys
+                                        });
+                                    // Round 21: what ran, and in which
+                                    // epoch — both only when the diff
+                                    // involves a transfer fee at all.
+                                    if crate::state_diff::diff_involves_transfer_fee(&diff) {
+                                        if let Some(message) = artifact_message.as_ref() {
+                                            diff.token2022_executed = token2022_executed(
+                                                message,
+                                                sim_res.loaded_addresses.as_ref(),
+                                                sim_res.inner_instructions.as_deref(),
+                                            );
+                                        }
+                                        match within_budget(&budget, client.get_epoch_info()).await
+                                        {
+                                            Ok(Ok(info)) => {
+                                                let durable = artifact_message
+                                                    .as_ref()
+                                                    .and_then(crate::tx_artifact::durable_nonce)
+                                                    .is_some();
+                                                diff.fee_epoch =
+                                                    fee_epoch_context(&info, sim_res.slot, durable);
+                                            }
+                                            Ok(Err(e)) => {
+                                                tracing::warn!("getEpochInfo failed: {}", e)
+                                            }
+                                            Err(()) => {
+                                                tracing::warn!("getEpochInfo ran out of budget")
+                                            }
+                                        }
+                                    }
                                     observed_diff = Some(diff);
                                 }
                                 Err(e) => {
@@ -6288,6 +6759,8 @@ impl GraphiteCore {
                     (risk_summary, risk_warnings)
                 } else {
                     let detail = assess_with_warnings(&RiskAssessmentInput {
+                        verified_self_refund_close: false,
+                        writable_extra_accounts: None,
                         program_id: input.program_id.clone(),
                         accounts: input.account_addresses.clone(),
                         cpi_targets: undeclared.clone(),
@@ -6518,9 +6991,16 @@ impl GraphiteCore {
                 "L4_StateVerification",
                 l4_result.status,
                 format!(
-                    "{} | NOTE: the pre-state was read at slot {pre} and the simulation ran at slot {sim}; state changes made by other transactions in the {} slot(s) between them are attributed to this transaction by this diff",
+                    "{} | NOTE: the pre-state was read at slot {pre} and the simulation ran at slot {sim}; state changes made by other transactions in the {} slot(s) between them are attributed to this transaction by this diff{}",
                     l4_result.reason,
-                    pre.abs_diff(sim)
+                    pre.abs_diff(sim),
+                    if pre_lamports_aligned > 0 {
+                        format!(
+                            " — except lamports: the pre-state lamports of {pre_lamports_aligned} account(s) were taken from the simulator's own preBalances, read at the simulation's slot"
+                        )
+                    } else {
+                        String::new()
+                    }
                 ),
             ),
             _ => l4_result,
@@ -6529,6 +7009,61 @@ impl GraphiteCore {
         let l4_result = self
             .plugins
             .fold_verifier(LayerId::L4StateVerification, l4_result, &ctx);
+
+        // Round 21: the deferred write escalations (see Step 3c), decided by
+        // Graphite's own observation. An account marked writable beyond its
+        // declaration passes only when the simulated diff observed it and it
+        // did not change; changed, or not observed, it blocks as an identity
+        // mismatch, as it always did.
+        // Rebound mutable: with `rpc` the observed-CPI stage above rebinds it.
+        #[cfg(feature = "rpc")]
+        let mut risk_warnings = risk_warnings;
+        risk_warnings.append(&mut privilege_notes);
+        let risk_summary = if deferred_write_escalations.is_empty() {
+            risk_summary
+        } else {
+            let observed = observed_diff
+                .as_ref()
+                .filter(|d| d.provenance == crate::state_diff::DiffProvenance::RpcSimulated);
+            let mut unexplained: Vec<String> = Vec::new();
+            for &i in &deferred_write_escalations {
+                let a = &mut resolution.resolved_accounts[i];
+                match observed.and_then(|d| d.deltas.iter().find(|x| x.pubkey == a.address)) {
+                    Some(delta) if delta.is_noop() => risk_warnings.push(format!(
+                        "account {} ({}) is declared read-only for this instruction and marked writable in the transaction; the simulation observed it unchanged, so the flag granted a write nothing made",
+                        a.address, a.role
+                    )),
+                    other => {
+                        a.privilege_mismatch = true;
+                        unexplained.push(format!(
+                            "{} (role={}, kind=privilege: declared read-only, writable in the transaction, {})",
+                            if a.address.len() >= 8 { &a.address[..8] } else { &a.address },
+                            a.role,
+                            if other.is_some() {
+                                "and the simulation shows it changed"
+                            } else {
+                                "and no pre/post diff observed it"
+                            }
+                        ));
+                    }
+                }
+            }
+            if unexplained.is_empty() {
+                risk_summary
+            } else {
+                let mut summary = risk_summary;
+                summary.status = "Blocked".to_string();
+                summary.findings.push(RiskFinding {
+                    pattern: "AccountIdentityMismatch".to_string(),
+                    reason: format!(
+                        "Account identity mismatch: {} account(s) do not match manifest-declared identity: {}",
+                        unexplained.len(),
+                        unexplained.join(", ")
+                    ),
+                });
+                summary
+            }
+        };
 
         // L5: Semantic Verification
         let l5_result = self.verify_semantic(
@@ -7517,6 +8052,26 @@ fn generate_summary(
     parts.join(" | ")
 }
 
+/// The one runtime the synchronous `GraphiteCore::verify` drives (Round 21).
+/// Built on first use; a failure to build it is kept and returned to every
+/// later caller, never retried into a half-built state.
+#[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+fn sync_runtime() -> Result<&'static tokio::runtime::Runtime, VerificationError> {
+    static RUNTIME: std::sync::OnceLock<Result<tokio::runtime::Runtime, String>> =
+        std::sync::OnceLock::new();
+    RUNTIME
+        .get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_name("graphite-sync-verify")
+                .enable_all()
+                .build()
+                .map_err(|e| e.to_string())
+        })
+        .as_ref()
+        .map_err(|e| VerificationError::TransactionBuild(e.clone()))
+}
+
 #[cfg(test)]
 mod tests {
     /// Round 19 (F-19-12): a snapshot never commits over a newer one. The
@@ -7704,6 +8259,10 @@ mod tests {
         // 256-account cap, not account identity).
         accounts[5] = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string();
         accounts[6] = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb".to_string();
+        // Round 21: slot 8 is the program's event authority, which its
+        // on-chain IDL fixes and every executed route_v2 in the 2026-09-23
+        // mainnet sample carries (63 of 63).
+        accounts[8] = "D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf".to_string();
         let input = VerificationInput {
             proposed_intent: ProposedIntent {
                 intent_type: "swap".to_string(),

@@ -341,6 +341,27 @@ export interface ArtifactBoundScope {
    * its absence as unknown, not as empty.
    */
   unobserved_codes?: UnobservedCode[];
+  /**
+   * What the transaction asks of the compute budget, read from its bytes
+   * (Round 21): the v1 header, or Compute Budget instructions for legacy/v0.
+   * Absent from servers older than Round 21 and when the bytes did not parse.
+   */
+  compute_budget?: ComputeBudgetRequest;
+}
+
+/** A transaction's compute-budget request (Round 21). */
+export interface ComputeBudgetRequest {
+  source: "v1_header" | "compute_budget_instructions";
+  compute_unit_limit?: number | null;
+  /** The limit the runtime applies (the set one capped at 1.4M, else the default's upper bound). */
+  effective_compute_unit_limit: number;
+  compute_unit_price_micro_lamports?: number | null;
+  /** The priority fee in lamports (at most this when no limit is set). */
+  priority_fee_lamports: number;
+  heap_bytes?: number | null;
+  loaded_accounts_data_size_limit?: number | null;
+  /** What the runtime would refuse. */
+  problems?: string[];
 }
 
 /** `scope.kind === "descriptive"`: nothing here constrains what gets signed. */

@@ -50,6 +50,29 @@ was measured by reverting the change, re-running over the identical sample, and
 diffing — which produced 9,784 identical verdicts, the evidence that the change
 moved nothing for honest traffic. "The tests pass" would not have shown that.
 
+## Recorded results (three days, Round 21)
+
+The committed 2026-09-23 sample plus two more fetched the same way into a work
+directory (not committed: 12 MB each) — 2026-09-25 (10,019 transactions) and
+2026-09-27 (10,465) — so the measurement is three days of traffic, not one.
+Each was run against Round 20's code (`f47db5a`) and Round 21's, and the
+verdict files diffed row by row.
+
+| | 2026-09-23 | 2026-09-25 | 2026-09-27 |
+|---|---:|---:|---:|
+| verified | 19,440 | 9,973 | 10,444 |
+| parse failures / verify errors | 0 / 0 | 0 / 0 | 0 / 0 |
+| risk Clear, Round 20 → 21 | 11,960 → 13,163 | 5,800 → 6,575 | 6,600 → 7,175 |
+| identity / privilege blocks | 519 → 155 | 249 → 62 | 240 → 82 |
+| Check 2 blocks | 1,370 → 72 | 833 → 48 | 678 → 54 |
+| Blocked → Clear | 1,203 | 775 | 575 |
+| Clear → Blocked | 0 | 0 | 0 |
+
+The causes, and what the remaining blocks are, are in
+`docs/round21-what-happened-not-what-could-2026-09-27.md` §4. To fetch an
+extra day without overwriting the committed sample, run a copy of
+`fetch_mainnet.py` with `OUT` pointed elsewhere.
+
 ## Recorded results (2026-09-23 sample, Round 19)
 
 19,458 transactions (12,134 legacy, 4,022 v0, 3,302 v1), 283 distinct programs,

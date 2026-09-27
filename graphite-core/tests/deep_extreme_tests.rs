@@ -235,6 +235,8 @@ fn risk_input(
     disc: &str,
 ) -> RiskAssessmentInput {
     RiskAssessmentInput {
+        verified_self_refund_close: false,
+        writable_extra_accounts: None,
         program_id: program.to_string(),
         accounts: accounts.iter().map(|s| s.to_string()).collect(),
         cpi_targets: cpi.iter().map(|s| s.to_string()).collect(),
@@ -668,7 +670,11 @@ fn test_verify_meteora_swap_passes_risk() {
         good_evidence(),
     );
     let result = core.verify(&input).unwrap();
-    assert_eq!(result.risk_verdict.status, "Clear");
+    assert_eq!(
+        result.risk_verdict.status, "Clear",
+        "{:?}",
+        result.risk_verdict
+    );
 }
 
 #[test]

@@ -47,6 +47,14 @@ pub struct InstructionDef {
     /// Hex-encoded discriminator bytes (e.g., "02000000" for System Transfer).
     pub discriminator: String,
     pub accounts: Vec<AccountRoleDef>,
+    /// Other account layouts the program accepts for this same instruction,
+    /// each chosen only when the transaction passes EXACTLY its number of
+    /// accounts (Round 21). Raydium AMM v4's swaps take 18 accounts or 17
+    /// (without `amm_target_orders`); with one layout, every account after
+    /// the gap was judged against the wrong slot. Empty for almost every
+    /// instruction.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub account_layouts: Vec<Vec<AccountRoleDef>>,
     pub expected_state_changes: Vec<String>,
     pub allowed_cpis: Vec<String>,
     pub risk_rules: Vec<String>,
@@ -69,6 +77,28 @@ pub struct InstructionDef {
     /// detection logic.
     #[serde(default)]
     pub risk_class: String,
+}
+
+impl InstructionDef {
+    /// The layout that describes a transaction passing `n` accounts: an
+    /// alternate layout of exactly that length, else the primary one. The
+    /// primary is also what a count matching no layout is judged against,
+    /// so an unexpected count is never matched to a layout by proximity.
+    pub fn layout_for(&self, n: usize) -> &[AccountRoleDef] {
+        if self.accounts.len() == n {
+            return &self.accounts;
+        }
+        self.account_layouts
+            .iter()
+            .find(|l| l.len() == n)
+            .map(Vec::as_slice)
+            .unwrap_or(&self.accounts)
+    }
+
+    /// The primary layout and every alternate, for validation.
+    pub fn all_layouts(&self) -> impl Iterator<Item = &Vec<AccountRoleDef>> {
+        std::iter::once(&self.accounts).chain(self.account_layouts.iter())
+    }
 }
 
 /// Account role in an instruction.
@@ -331,41 +361,57 @@ impl ManifestRegistry {
             // derived PDAs nobody authored. An `{account_N}` index must also
             // name a declared slot of the SAME instruction, and a byte range
             // on an account key must fit in 32 bytes.
-            for (slot, a) in ix.accounts.iter().enumerate() {
-                for seed in &a.pda_seeds {
-                    if let Err(reason) = crate::account_resolution::validate_seed_template(seed) {
-                        return Err(ManifestError::Invalid(format!(
+            for layout in ix.all_layouts() {
+                for (slot, a) in layout.iter().enumerate() {
+                    for seed in &a.pda_seeds {
+                        if let Err(reason) = crate::account_resolution::validate_seed_template(seed)
+                        {
+                            return Err(ManifestError::Invalid(format!(
                             "instruction '{}' account {slot} has an unsupported PDA seed template {seed:?}: {reason}",
                             ix.name
                         )));
-                    }
-                    if let Some(rest) = seed.strip_prefix("{account_") {
-                        let idx_str: String =
-                            rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-                        if let Ok(idx) = idx_str.parse::<usize>() {
-                            if idx >= ix.accounts.len() {
-                                return Err(ManifestError::Invalid(format!(
+                        }
+                        if let Some(rest) = seed.strip_prefix("{account_") {
+                            let idx_str: String =
+                                rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                            if let Ok(idx) = idx_str.parse::<usize>() {
+                                if idx >= layout.len() {
+                                    return Err(ManifestError::Invalid(format!(
                                     "instruction '{}' account {slot} seed {seed:?} reads account {idx} but the instruction declares {} account(s)",
                                     ix.name,
-                                    ix.accounts.len()
+                                    layout.len()
                                 )));
-                            }
-                            if let Some(range) =
-                                rest.strip_suffix('}').and_then(|r| r.split_once(':'))
-                            {
-                                let end = range.1.rsplit(':').next().unwrap_or_default();
-                                if let Ok(end) = end.parse::<usize>() {
-                                    if end > 32 {
-                                        return Err(ManifestError::Invalid(format!(
+                                }
+                                if let Some(range) =
+                                    rest.strip_suffix('}').and_then(|r| r.split_once(':'))
+                                {
+                                    let end = range.1.rsplit(':').next().unwrap_or_default();
+                                    if let Ok(end) = end.parse::<usize>() {
+                                        if end > 32 {
+                                            return Err(ManifestError::Invalid(format!(
                                             "instruction '{}' account {slot} seed {seed:?} reads past the 32 bytes of a public key",
                                             ix.name
                                         )));
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // Round 21: a layout is chosen by its exact length, so two layouts of
+        // one length would make the choice arbitrary.
+        for ix in &manifest.instructions {
+            let mut lengths: Vec<usize> = ix.all_layouts().map(Vec::len).collect();
+            lengths.sort_unstable();
+            if lengths.windows(2).any(|w| w[0] == w[1]) {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction '{}' declares two account layouts of the same length; a layout is chosen by its length, so the choice would be arbitrary",
+                    ix.name
+                )));
             }
         }
 

@@ -340,6 +340,24 @@ type VerificationScope struct {
 	// possible and did not happen. Nil from a server older than 2026-09-12,
 	// which is unknown rather than empty.
 	UnobservedCodes []string `json:"unobserved_codes,omitempty"`
+	// ComputeBudget is what the transaction asks of the compute budget, read
+	// from its bytes (Round 21). Nil from older servers and when the bytes
+	// did not parse.
+	ComputeBudget *ComputeBudgetRequest `json:"compute_budget,omitempty"`
+}
+
+// ComputeBudgetRequest is a transaction's compute-budget request: the v1
+// header's values, or the Compute Budget instructions of a legacy or v0
+// transaction (Round 21).
+type ComputeBudgetRequest struct {
+	Source                        string   `json:"source"`
+	ComputeUnitLimit              *uint32  `json:"compute_unit_limit,omitempty"`
+	EffectiveComputeUnitLimit     uint32   `json:"effective_compute_unit_limit"`
+	ComputeUnitPriceMicroLamports *uint64  `json:"compute_unit_price_micro_lamports,omitempty"`
+	PriorityFeeLamports           uint64   `json:"priority_fee_lamports"`
+	HeapBytes                     *uint32  `json:"heap_bytes,omitempty"`
+	LoadedAccountsDataSizeLimit   *uint32  `json:"loaded_accounts_data_size_limit,omitempty"`
+	Problems                      []string `json:"problems,omitempty"`
 }
 
 // The residual codes a Graphite server can report in UnobservedCodes.
