@@ -124,10 +124,15 @@ runtime does not: agave's `is_maybe_writable` demotes a key the header marks
 writable to read-only when it is a sysvar or a builtin program, or when an
 instruction calls it as a program and the upgradeable loader is not among the
 message's accounts. `tx_artifact::runtime_writable` now applies that rule when
-a message is parsed — the always-demoted set (the builtin programs and sysvars
-agave has demoted since before its reserved-key set; later, feature-gated
-additions are deliberately left out, the stricter reading), and invoked
-program ids unless the loader is present or lookup tables could hold it. Every
+a message is parsed — the keys agave reserves with no feature gate (the
+builtin programs and ten sysvars; keys reserved behind a feature are left
+out, the stricter reading — F-22-13), and invoked program ids unless the
+loader is present or lookup tables could hold it. The header's own statement
+is kept beside it (`header_writable`). The runtime oracle checks both against
+agave on every frame it accepts: the header's set exactly, and the demotion
+against agave's own `is_maybe_writable`, which Graphite may exceed only by
+keeping an invoked program id writable when a lookup table could load the
+loader. Every
 consumer of the message's privileges — L1's privilege check, the
 writable-extras count of Checks 3/3b, the accounts L4 diffs, the hook proof —
 reads what the runtime enforces. On the samples this removed the "declared
@@ -281,6 +286,7 @@ readings that localised §2.3–2.6.
 | **F-22-10** | The reference bridge built legacy messages only, so a route needing lookup tables could not be bound | Coverage (client) | — | `BoundTransaction` v0; `executeSwap` reads lookup tables | `bound-transaction.test.ts` (10 v0 tests, one pinning the bytes to the Rust-parsed corpus entry) |
 | **F-22-11** | The executed Token-2022 list was built only for diffs involving a transfer fee, so Round 21's untouched-confidential-state rule could never apply to a mint without one | P3 (a rule that could not run) | Code reading | Built for every readable artifact | `pipeline::a_hook_token2022_invoked_and_the_bytes_bound_is_part_of_the_transfer` (it depends on it) |
 | **F-22-12** | Declared siblings were judged on the raw account count while the primary counted only writable extras from the bytes: a sibling passing read-only accounts past its layout was refused as a drain | P2 (false refusal, fail-closed) | Live mainnet RPC run (8 of 40 refused on a sibling) | The sibling's layout and writable extras from the bytes, as the primary's | `sibling_writable_extras::read_only_extras_on_a_sibling_are_not_a_drain`, `writable_extras_on_a_sibling_still_block` |
+| **F-22-13** | F-22-05's demotion list included the EpochRewards and LastRestartSlot sysvars, which agave reserves only behind the `add_new_reserved_account_keys` feature: on a cluster where it is not active, Graphite read as read-only two accounts the runtime lets a message write — the looser direction. Found while extending the runtime oracle after CI #155 (below); whether the feature is active on mainnet was not checked, and the list no longer depends on it | P3 (a looser reading of two sysvars; no path to harm identified) | The oracle's reserved-keys frames | Only agave's unconditionally reserved keys are demoted; the oracle compares Graphite's writable set with agave's `is_maybe_writable` on every accepted frame | `tools/runtime-oracle` (reserved-keys pass; B27–B30) |
 | NOT A FINDING | The drainer heuristic at the coverage boundary | — | 71% of its refusals are programs signed by five or fewer fee payers, none publishing an IDL | For code Graphite does not describe, a simulation does not bind what the code does at landing — the lower-level invariant the heuristic stands on. It stays | — |
 | NOT A FINDING | PumpSwap / LaunchLab / Tensor account-count refusals in the conformance harness | — | Live mainnet RPC: 10 of 12 real PumpSwap trades risk-Clear; the 2 others are `LookupTablesUnresolved` | The harness has no RPC; a lookup-table account's privilege cannot be read without the table | — |
 | DOCUMENTED LIMITATION | Three published IDLs disagree with their programs' executions: mintfx `transfer` (16 executions), marginfi `lending_account_end_flashloan` (4, one account), Coinflow's instruction `7bac2088…` (not in its IDL) | — | `r22_ground.py`, `r22_slots.py` | Not adopted without a source; those instructions block | — |
@@ -416,6 +422,10 @@ break is caught when the named test fails.
 | B24 | declared siblings back on the raw account count | `src/verification.rs` | `sibling_writable_extras::read_only_extras_on_a_sibling_are_not_a_drain` | yes |
 | B25 | a sibling's read-only extras counted as writable | `src/verification.rs` | the same | yes |
 | B26 | a sibling's writable extras not counted | `src/verification.rs` | `sibling_writable_extras::writable_extras_on_a_sibling_still_block` | yes |
+| B27 | invoked program ids never demoted | `src/tx_artifact.rs` | the runtime oracle | yes (13,807 frames read differently) |
+| B28 | a feature-gated sysvar (EpochRewards) demoted as if always reserved | `src/tx_artifact.rs` | the runtime oracle, reserved-keys pass | yes |
+| B29 | the header's writable set replaced by the runtime's | `src/tx_artifact.rs` | the runtime oracle | yes (3,269 frames) |
+| B30 | a sysvar (Rent) left writable | `src/tx_artifact.rs` | the runtime oracle, reserved-keys pass | yes |
 | T01 | the v0 digest compared to a stored serialization | `artifact.ts` | `bound-transaction.test.ts` | yes |
 | T02 | lookup tables given for a legacy message ignored | `artifact.ts` | `bound-transaction.test.ts` | yes |
 | T03 | the v0 signer set read from nothing | `artifact.ts` | `bound-transaction.test.ts` | yes |
@@ -440,13 +450,14 @@ real transaction still changes the parse.
 | `cargo clippy -D warnings` — all features, featureless lib, cli-only (`--locked`) | clean in all three |
 | `cargo test --locked --all-features` | **1,738 passed, 0 failed, 15 ignored** (was 1,707 / 15) |
 | `cargo test --locked --no-default-features --lib` | **328 passed, 0 failed, 1 ignored** |
-| `cargo test --locked --no-default-features --features cli` | **1,509 passed, 0 failed, 3 ignored** on the final code (was 1,480). The rerun after a comment-only edit to a test file: 1,508 passed and the wall-clock unit test of §7 failed once (58.5 ms against 50 ms); it passed 4 of 5 isolated reruns |
+| `cargo test --locked --no-default-features --features cli` | **1,509 passed, 0 failed, 3 ignored** (was 1,480). In one intermediate run the wall-clock unit test of §7 failed once (58.5 ms against 50 ms); it passed 4 of 5 isolated reruns and in the final mirror |
 | SAK integration (TypeScript) | 129 passed (was 119); `tsc --noEmit` clean |
 | TypeScript SDK | 28 passed, 4 skipped (live-server tests, run in CI's container job); `tsc` clean |
 | Go SDK | `go vet` and `go test` pass |
 | Python layer | 30 passed; the wall-clock perf smoke (at least 10,000 parses/s) measured 5,152/s with this machine at 100% CPU from other applications. The Python layer is unchanged since Round 19, and CI runs this test |
-| Deliberate breaks (§5) | **26 of 26 Rust and 4 of 4 TypeScript caught**, no residue |
-| Mainnet, three days, Round 21 vs Round 22 (§4) | 39,857 verified; 0 parse failures, 0 verify errors; 230 Blocked → Clear, 0 Clear → Blocked; 288 changed rows, every one only losing findings; 0 approvals before and after (no RPC in that harness) |
+| Deliberate breaks (§5) | **30 of 30 Rust (26 against the test suite, 4 against the runtime oracle) and 4 of 4 TypeScript caught**, no residue |
+| Runtime oracle (`tools/runtime-oracle`), as CI runs it | corpus (12 shapes, 1,659 mutations), 6 reserved-key frames, 300,000 generated legacy/v0 and 300,000 v1 frames under each of two seeds: never looser, every accepted frame read the same — now including the header's writable set and agave's demotion of it |
+| Mainnet, three days, Round 21 vs Round 22 (§4) | Rerun on the final tree, after F-22-13: verdict and reason files byte-identical to the run before it. 39,857 verified; 0 parse failures, 0 verify errors; 230 Blocked → Clear, 0 Clear → Blocked; 288 changed rows, every one only losing findings; 0 approvals before and after (no RPC in that harness) |
 | Live mainnet RPC, 40 transactions (§4) | 0 invariant violations; risk Clear 24 → 33 with F-22-12 |
 | Manifest grounding (§2.5) | 45,253 of 45,282 executed manifest instructions resolve clean; 383 of 3,195 instructions observed executing |
 
@@ -456,6 +467,20 @@ still pinned `GetMinimumDelegation`, which this round removed from the Stake
 manifest (it takes no accounts and only writes return data). The pin now
 lists `MoveStake` and `MoveLamports` and asserts that `GetMinimumDelegation`
 and the deprecated `Redelegate` are not described; the mirror was rerun.
+
+**CI #155 (the first push of this round, `58a9ad8`) failed one of its eight
+jobs: the runtime oracle.** Seven were green, the Rust core's full suite and
+the Python layer among them. The oracle compared `ArtifactMessage::writable`
+with the header's own arithmetic, and this round made `writable` the runtime's
+demoted set — the oracle had not been run locally after F-22-05. It now
+compares the header's arithmetic with `header_writable`, and the demoted set
+with agave's `is_maybe_writable`, so F-22-05 is checked by the runtime's own
+code rather than by Graphite's tests alone; a reserved-keys pass makes sure
+the demotion list is exercised at all (random frames almost never name a
+reserved id). Writing that pass surfaced F-22-13. The oracle is now part of
+the local mirror for any change to `tx_artifact`. The Rust legs, the oracle
+and the three-sample conformance above were all rerun on the tree that
+carries both fixes.
 
 Every public-RPC read was paced and read-only; nothing was signed or sent, and
 no key, wallet or fund was touched. This is internal engineering work, not an
@@ -510,6 +535,7 @@ independent audit.
 
 - **Core:** `src/state_diff.rs` (`transfer_hook_reach`, `transfer_hooks_bounded`, `TransactionPrivileges`, `StateDiff::transaction_privileges`, `FeeEpochContext { simulated_epoch, durable_nonce }`, the margin removed), `src/verification.rs` (`transaction_privileges`, `invoked_only_by_token2022`, the executed Token-2022 list for every readable artifact, the observed-hook filter, `fee_epoch_context`, the declared siblings' layout and writable extras), `src/tx_artifact.rs` (`runtime_writable`, `ALWAYS_DEMOTED_KEYS`, `header_writable`), `src/manifest.rs` (`AccountRoleDef::optional`), `src/account_resolution.rs` (the absent rule), `src/cli.rs` and `src/manifest_registry.rs` (struct literals).
 - **Manifests:** `protocols/{stake-program,bpf-loader-upgradeable}.json` rebuilt; `jupiter-v6.json` (13 pins removed); `optional` in 40 manifests from on-chain IDLs and in `tcomp-tcmphj`, `jupiter-dca`, `swap-orchestrator-df1ow4`, `bubblegum-bgumap`, `limo-limom9`, `openbook-v2` from traffic; `variable_accounts` in `swap-orchestrator-df1ow4`, `okx-dex-router-provf4`, `debot-router-g7mvcm`, `raydium-clmm`, `kamino-lending`, `kamino-vault-kvaugm`, `pump-fun`, `sage-sage2h`, `tuktuk-tuktuk`, `zap-zapvx9`, `doves-dovesk`, `cc-vrf-ccvrfu`, `ccip-offramp-offqsm`; alternate layouts in `system-program.json` and `spl-stake-pool.json`; the regression corpus regenerated from them (`fixtures/corpus/*`); `docs/protocol-coverage.md` re-rendered (3,195 instructions).
+- **Runtime oracle:** `tools/runtime-oracle` (the header's writable set and agave's demotion compared on every accepted frame; the reserved-keys pass; `solana-sdk-ids` for the reserved ids).
 - **Tests:** `tests/round22_remaining.rs` (new, 31), `tests/round21_open_list.rs` (the pending-schedule tests rewritten for F-22-01), `tests/mainnet_conformance.rs` (`GRAPHITE_MAINNET_SHOW_DRAINER`), `tests/mainnet_live_rpc.rs` (`GRAPHITE_MAINNET_SHOW_RISK`), struct-literal updates across the older suites.
 - **Bridge:** `integrations/solana-agent-kit/artifact.ts` (`BoundTransaction` v0), `graphite-sak-bridge.ts` (`executeSwap` lookup tables, the version declared from the bytes), `bound-instruction.ts` (`addressLookupTableAddresses`), `bound-transaction.test.ts` (10 v0 tests), `README.md`.
 - **Docs:** this report; `docs/CURRENT.md`, `README.md`, `SECURITY.md`, `ARCHITECTURE.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `graphite-core/README.md`, `graphite-core/CHANGELOG.md`, `tools/mainnet-sample/README.md`, `docs/protocol-coverage.md`.

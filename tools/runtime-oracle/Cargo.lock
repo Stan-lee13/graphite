@@ -263,6 +263,7 @@ dependencies = [
  "serde_json",
  "solana-message",
  "solana-sanitize",
+ "solana-sdk-ids",
  "solana-transaction",
  "wincode",
 ]

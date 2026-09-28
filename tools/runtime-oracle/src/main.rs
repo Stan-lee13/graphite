@@ -15,7 +15,12 @@
 //!    artifact to it, approve it, or reason about it as a transaction.
 //! 2. **The same transaction.** Where both accept, they agree on the message
 //!    bytes, the version, the header, the static keys, every instruction's
-//!    program, account indexes and data, and every lookup.
+//!    program, account indexes and data, and every lookup — and, since
+//!    Round 22, on what the message may write: the header's writable set
+//!    exactly, and the runtime's demotion of it (agave's `is_maybe_writable`
+//!    over the unconditionally reserved keys), which Graphite may exceed only
+//!    by keeping an invoked program id writable when a lookup table could
+//!    load the upgradeable loader.
 //! 3. **No panic** on any input.
 //!
 //! Where Graphite is stricter than the runtime, that is measured and printed
@@ -244,6 +249,149 @@ fn short_reason(why: &str) -> String {
     head.trim().to_string()
 }
 
+/// agave's reserved account keys that are active with no feature gate
+/// (`ReservedAccount::new_active` in agave's `reserved-account-keys`), from
+/// the agave id crate — the set a cluster demotes whatever its feature set.
+#[allow(deprecated)]
+fn always_reserved() -> std::collections::BTreeSet<solana_message::Address> {
+    use solana_sdk_ids::*;
+    [
+        bpf_loader::id(),
+        bpf_loader_deprecated::id(),
+        bpf_loader_upgradeable::id(),
+        config::id(),
+        feature::id(),
+        native_loader::id(),
+        stake::config::id(),
+        stake::id(),
+        system_program::id(),
+        vote::id(),
+        sysvar::clock::id(),
+        sysvar::epoch_schedule::id(),
+        sysvar::fees::id(),
+        sysvar::instructions::id(),
+        sysvar::recent_blockhashes::id(),
+        sysvar::rent::id(),
+        sysvar::rewards::id(),
+        sysvar::slot_hashes::id(),
+        sysvar::slot_history::id(),
+        sysvar::stake_history::id(),
+    ]
+    .into_iter()
+    .collect()
+}
+
+/// Round 22: frames whose header marks every reserved key writable. Random
+/// frames almost never name a reserved id, so without this pass a wrong
+/// demotion list would pass the oracle. Each frame names the fee payer, the
+/// unconditionally reserved keys, two keys agave reserves only behind a
+/// feature gate (the EpochRewards and LastRestartSlot sysvars, which Graphite
+/// must leave writable), and a program the message invokes. Legacy and v0,
+/// with and without the upgradeable loader among the static keys, and v0
+/// with a lookup table (the loader may then be loaded, so Graphite keeps the
+/// invoked id writable).
+fn run_reserved_keys(tally: &mut Tally) -> usize {
+    use solana_message::compiled_instruction::CompiledInstruction;
+    use solana_message::{v0, Hash, MessageHeader};
+    let gated = [
+        solana_sdk_ids::sysvar::epoch_rewards::id(),
+        solana_sdk_ids::sysvar::last_restart_slot::id(),
+    ];
+    let invoked = solana_message::Address::new_from_array([7u8; 32]);
+    let payer = solana_message::Address::new_from_array([1u8; 32]);
+    let mut n = 0;
+    for with_loader in [false, true] {
+        let mut keys = vec![payer];
+        keys.extend(
+            always_reserved()
+                .into_iter()
+                .filter(|k| with_loader || *k != solana_sdk_ids::bpf_loader_upgradeable::id()),
+        );
+        keys.extend(gated);
+        keys.push(invoked);
+        let header = MessageHeader {
+            num_required_signatures: 1,
+            num_readonly_signed_accounts: 0,
+            num_readonly_unsigned_accounts: 0,
+        };
+        let ix = CompiledInstruction {
+            program_id_index: (keys.len() - 1) as u8,
+            accounts: vec![0],
+            data: vec![1, 2, 3],
+        };
+        let legacy = solana_message::legacy::Message {
+            header,
+            account_keys: keys.clone(),
+            recent_blockhash: Hash::new_from_array([9u8; 32]),
+            instructions: vec![ix.clone()],
+        };
+        for (label, message, lookups) in [
+            ("legacy", VersionedMessage::Legacy(legacy), false),
+            (
+                "v0",
+                VersionedMessage::V0(v0::Message {
+                    header,
+                    account_keys: keys.clone(),
+                    recent_blockhash: Hash::new_from_array([9u8; 32]),
+                    instructions: vec![ix.clone()],
+                    address_table_lookups: vec![],
+                }),
+                false,
+            ),
+            (
+                "v0 with a lookup table",
+                VersionedMessage::V0(v0::Message {
+                    header,
+                    account_keys: keys.clone(),
+                    recent_blockhash: Hash::new_from_array([9u8; 32]),
+                    instructions: vec![ix.clone()],
+                    address_table_lookups: vec![v0::MessageAddressTableLookup {
+                        account_key: solana_message::Address::new_from_array([8u8; 32]),
+                        writable_indexes: vec![0],
+                        readonly_indexes: vec![],
+                    }],
+                }),
+                true,
+            ),
+        ] {
+            let tx = VersionedTransaction {
+                signatures: vec![Default::default()],
+                message,
+            };
+            let bytes = bincode::serialize(&tx).expect("serialize");
+            let before = tally.both_accept;
+            tally.check(
+                &format!("reserved keys, {label}, loader present: {with_loader}"),
+                &bytes,
+            );
+            if tally.both_accept == before {
+                tally.disagreements.push(format!(
+                    "reserved keys, {label}, loader present {with_loader}: not accepted by both"
+                ));
+            }
+            // The two feature-gated sysvars stay writable to Graphite, and so
+            // does the invoked program when the loader may be present.
+            if let Ok(parsed) = parse_transaction(&bytes) {
+                for k in gated {
+                    if !parsed.writable.contains(&k.to_string()) {
+                        tally.disagreements.push(format!(
+                            "reserved keys, {label}: feature-gated {k} demoted by Graphite"
+                        ));
+                    }
+                }
+                let keeps_invoked = parsed.writable.contains(&invoked.to_string());
+                if keeps_invoked != (with_loader || lookups) {
+                    tally.disagreements.push(format!(
+                        "reserved keys, {label}, loader present {with_loader}: invoked program writable to Graphite = {keeps_invoked}"
+                    ));
+                }
+            }
+            n += 1;
+        }
+    }
+    n
+}
+
 /// Property 2: both accepted — is it the same transaction?
 fn same_transaction(
     bytes: &[u8],
@@ -357,7 +505,7 @@ fn same_transaction(
     if static_keys != parsed.static_keys {
         return Err("static keys differ".to_string());
     }
-    // Writable set, from the runtime's own header arithmetic.
+    // The header's writable set, from the runtime's own header arithmetic.
     let writable_signed = usize::from(header.num_required_signatures)
         - usize::from(header.num_readonly_signed_accounts);
     let unsigned_writable_end =
@@ -366,8 +514,45 @@ fn same_transaction(
     writable.extend_from_slice(
         &static_keys[usize::from(header.num_required_signatures)..unsigned_writable_end],
     );
-    if writable != parsed.writable {
-        return Err("writable static keys differ".to_string());
+    if writable != parsed.header_writable {
+        return Err("header-writable static keys differ".to_string());
+    }
+    // What the runtime lets the message write (Round 22): agave's own
+    // `is_maybe_writable` over the reserved keys active without a feature
+    // gate. Without lookup tables Graphite must say exactly that. With them
+    // the upgradeable loader may arrive through a table, so Graphite keeps an
+    // invoked program id writable — the stricter reading — and may differ
+    // from the static answer there and nowhere else. A key Graphite calls
+    // read-only that the runtime lets the message write is always a failure.
+    let reserved = always_reserved();
+    let runtime_writable: Vec<String> = static_keys
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| {
+            tx.message
+                .is_maybe_writable_with_reserved_addresses(*i, Some(&reserved))
+        })
+        .map(|(_, k)| k.clone())
+        .collect();
+    if let Some(k) = runtime_writable
+        .iter()
+        .find(|k| !parsed.writable.contains(k))
+    {
+        return Err(format!(
+            "runtime-writable key {k} is read-only to Graphite"
+        ));
+    }
+    let has_lookups = tx
+        .message
+        .address_table_lookups()
+        .is_some_and(|l| !l.is_empty());
+    for k in parsed.writable.iter().filter(|k| !runtime_writable.contains(k)) {
+        let invoked = parsed.instructions.iter().any(|ix| ix.program_id == *k);
+        if !(has_lookups && invoked) {
+            return Err(format!(
+                "Graphite calls {k} writable; the runtime demotes it"
+            ));
+        }
     }
     if parsed.fee_payer != static_keys[0] {
         return Err("fee payer differs".to_string());
@@ -1155,6 +1340,8 @@ fn main() {
     let mut tally = Tally::new();
     let (entries, mutations) = run_corpus(&corpus, &mut tally);
     println!("corpus: {entries} shapes, {mutations} mutations");
+    let reserved_frames = run_reserved_keys(&mut tally);
+    println!("reserved keys: {reserved_frames} frames with every reserved key header-writable");
 
     let mut rng = Rng(seed | 1);
     let mut generated_accepted = 0u64;

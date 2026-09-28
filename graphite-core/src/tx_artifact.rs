@@ -981,10 +981,13 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
 }
 
 /// Keys the runtime never lets a transaction write, whatever its header says:
-/// the sysvars and the builtin programs agave has demoted since before its
-/// reserved-key set existed (`BUILTIN_PROGRAMS_KEYS` and `sysvar::ALL_IDS`).
-/// Keys reserved later behind a feature gate are deliberately NOT here — a
-/// key left out is treated as writable, the stricter reading.
+/// the entries of agave's reserved-account-key set that are active with no
+/// feature gate (`ReservedAccount::new_active`). Keys reserved behind
+/// `add_new_reserved_account_keys` — among them the EpochRewards and
+/// LastRestartSlot sysvars — are deliberately NOT here: whether a cluster demotes them depends on a
+/// feature the bytes do not show, and a key left out is treated as writable,
+/// the stricter reading. The runtime oracle (`tools/runtime-oracle`) checks
+/// this list and the demotion against agave's `is_maybe_writable`.
 const ALWAYS_DEMOTED_KEYS: &[&str] = &[
     "Config1111111111111111111111111111111111111",
     "Feature111111111111111111111111111111111111",
@@ -997,11 +1000,9 @@ const ALWAYS_DEMOTED_KEYS: &[&str] = &[
     "BPFLoader1111111111111111111111111111111111",
     UPGRADEABLE_LOADER,
     "SysvarC1ock11111111111111111111111111111111",
-    "SysvarEpochRewards1111111111111111111111111",
     "SysvarEpochSchedu1e111111111111111111111111",
     "SysvarFees111111111111111111111111111111111",
     "Sysvar1nstructions1111111111111111111111111",
-    "SysvarLastRestartS1ot1111111111111111111111",
     "SysvarRecentB1ockHashes11111111111111111111",
     "SysvarRent111111111111111111111111111111111",
     "SysvarRewards111111111111111111111111111111",
