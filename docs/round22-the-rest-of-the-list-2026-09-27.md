@@ -482,6 +482,12 @@ the local mirror for any change to `tx_artifact`. The Rust legs, the oracle
 and the three-sample conformance above were all rerun on the tree that
 carries both fixes.
 
+**CI #156 on `8d30931` (the fix): success, all eight jobs** — the Rust core
+(fmt, clippy, the three test legs), the dependency CVE audit, the runtime
+oracle under both seeds, the container build and live smoke test, the
+TypeScript SDK and SAK integration, the Go SDK, the dashboard and the Python
+layer.
+
 Every public-RPC read was paced and read-only; nothing was signed or sent, and
 no key, wallet or fund was touched. This is internal engineering work, not an
 independent audit.
