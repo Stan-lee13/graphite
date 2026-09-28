@@ -376,7 +376,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -421,7 +422,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -556,7 +558,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -634,7 +637,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -696,7 +700,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -823,7 +828,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -874,7 +880,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -911,7 +918,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -1324,7 +1332,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",

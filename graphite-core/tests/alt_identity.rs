@@ -55,6 +55,7 @@ fn message_with(lookups: Vec<AddressTableLookup>) -> ArtifactMessage {
         recent_blockhash: TABLE.to_string(),
         signers: vec![TABLE.to_string()],
         writable: vec![TABLE.to_string()],
+        header_writable: vec![TABLE.to_string()],
         instructions: vec![],
         lookups,
         v1_config: None,

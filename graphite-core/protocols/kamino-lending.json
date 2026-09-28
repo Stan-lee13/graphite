@@ -88,7 +88,8 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -197,7 +198,8 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "token_program",
@@ -222,14 +224,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserve_farm_state",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farms_program",
@@ -377,7 +381,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collateralTokenProgram",
@@ -483,7 +488,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collateralTokenProgram",
@@ -519,28 +525,32 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserveFarmState",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "obligationFarmUserState",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserveFarmState",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farmsProgram",
@@ -709,14 +719,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserve_farm_state",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farms_program",
@@ -924,7 +936,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collateralTokenProgram",
@@ -1048,7 +1061,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collateral_token_program",
@@ -1084,14 +1098,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserve_farm_state",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farms_program",
@@ -1180,7 +1196,8 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -1205,14 +1222,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserveFarmState",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farmsProgram",
@@ -1310,14 +1329,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "referrerAccount",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "sysvarInfo",
@@ -1418,14 +1439,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "referrerAccount",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "sysvarInfo",
@@ -2140,7 +2163,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "rent",
@@ -2780,7 +2804,8 @@
     "updates obligation state from current reserve prices"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "variable_accounts": true
   },
   {
    "name": "refreshObligationFarmsForReserve",
@@ -2886,28 +2911,32 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "switchboardPriceOracle",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "switchboardTwapOracle",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "scopePrices",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -3073,7 +3102,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collateralTokenProgram",
@@ -3109,28 +3139,32 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserveFarmState",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "obligationFarmUserState",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserveFarmState",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farmsProgram",
@@ -3305,14 +3339,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserve_farm_state",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "lending_market_authority",
@@ -3635,14 +3671,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserve_farm_state",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "lending_market_authority",
@@ -3985,7 +4023,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collateralTokenProgram",
@@ -4108,7 +4147,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "collateral_token_program",
@@ -4144,14 +4184,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserve_farm_state",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farms_program",
@@ -4246,14 +4288,16 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserve_farm_state",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "farms_program",
@@ -4667,14 +4711,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "depositReserve",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "lendingMarket",
@@ -5198,14 +5244,16 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "progressCallbackCustomAccount1",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "instructionSysvarAccount",
@@ -5340,21 +5388,24 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "progressCallbackCustomAccount0",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "progressCallbackCustomAccount1",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "instructionSysvarAccount",

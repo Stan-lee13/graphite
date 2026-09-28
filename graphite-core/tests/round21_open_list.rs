@@ -551,10 +551,11 @@ fn rising() -> Terms {
     }
 }
 
-fn epoch(simulated: u64, latest: Option<u64>) -> Option<FeeEpochContext> {
+/// `nonce`: whether the transaction advances a durable nonce.
+fn epoch(simulated: u64, nonce: bool) -> Option<FeeEpochContext> {
     Some(FeeEpochContext {
         simulated_epoch: simulated,
-        latest_landing_epoch: latest,
+        durable_nonce: nonce,
     })
 }
 
@@ -588,35 +589,36 @@ fn with_the_epoch_read_only_that_epochs_schedule_is_accepted() {
         one_transfer(10_000),
         Some(rising()),
         None,
-        epoch(5, Some(5)),
+        epoch(5, false),
     ));
     assert_unmodelled(&r, "is not the fee Token-2022 charges");
     let r = check(&diff(
         one_transfer(10_000),
         Some(rising()),
         executed(),
-        epoch(5, Some(5)),
+        epoch(5, false),
     ));
     assert_unmodelled(&r, "does not reproduce the observed state");
     assert_modelled(&check(&diff(
         one_transfer(5_000),
         Some(rising()),
         executed(),
-        epoch(5, Some(5)),
+        epoch(5, false),
     )));
     // From epoch 10 the newer schedule is the one.
     assert_modelled(&check(&diff(
         one_transfer(10_000),
         Some(rising()),
         executed(),
-        epoch(10, Some(10)),
+        epoch(10, false),
     )));
 }
 
-/// A pending increase the transaction cannot live to pay is not reported;
-/// one it can is, with the reason it can.
+/// A pending increase is disclosed whenever the transaction can pay it — and
+/// since Round 22 that is always: the landing epoch is not observable and no
+/// number of slots bounds a blockhash's 150 blocks. The reason names why.
 #[test]
-fn a_pending_increase_is_judged_against_the_transactions_lifetime() {
+fn a_pending_increase_is_disclosed_with_why_it_can_be_paid() {
     let executed = || {
         Some(vec![transfer_checked(
             "instruction #0",
@@ -628,43 +630,38 @@ fn a_pending_increase_is_judged_against_the_transactions_lifetime() {
     // Epoch unknown: disclosed, as in Round 20.
     let r = check(&diff(one_transfer(5_000), Some(rising()), executed(), None));
     assert!(detail(&r, "Token2022TransferFeeRising").contains("was not read"));
-    // Expires in epoch 5, the increase is at 10: nothing to say.
-    let r = check(&diff(
-        one_transfer(5_000),
-        Some(rising()),
-        executed(),
-        epoch(5, Some(5)),
-    ));
-    assert_modelled(&r);
-    assert!(
-        !codes(&r).contains(&"Token2022TransferFeeRising".to_string()),
-        "{:?}",
-        r.findings
-    );
-    // Simulated in 9, can land in 10.
-    let r = check(&diff(
-        one_transfer(5_000),
-        Some(rising()),
-        executed(),
-        epoch(9, Some(10)),
-    ));
-    let d = detail(&r, "Token2022TransferFeeRising");
-    assert!(d.contains("epoch 10 begins within"), "{d}");
-    assert!(d.contains("990000 arrives instead of 995000"), "{d}");
+    // Simulated in epoch 5, the increase is at 10. Round 21 stayed silent on
+    // an assumed landing margin; nothing observed bounds it.
+    for simulated in [5, 9] {
+        let r = check(&diff(
+            one_transfer(5_000),
+            Some(rising()),
+            executed(),
+            epoch(simulated, false),
+        ));
+        assert_modelled(&r);
+        let d = detail(&r, "Token2022TransferFeeRising");
+        assert!(d.contains("nothing bounds the epoch it lands in"), "{d}");
+        assert!(
+            d.contains(&format!("simulated in epoch {simulated}")),
+            "{d}"
+        );
+        assert!(d.contains("990000 arrives instead of 995000"), "{d}");
+    }
     // A durable nonce does not expire.
     let r = check(&diff(
         one_transfer(5_000),
         Some(rising()),
         executed(),
-        epoch(5, None),
+        epoch(5, true),
     ));
     assert!(detail(&r, "Token2022TransferFeeRising").contains("durable nonce"));
 }
 
-/// A pending schedule that would take more than half of a transfer blocks —
-/// when the transaction can reach it, and only then.
+/// A pending schedule that would take more than half of a transfer blocks,
+/// for a blockhash transaction as for a durable nonce (Round 22).
 #[test]
-fn a_pending_majority_fee_blocks_only_when_it_can_be_paid() {
+fn a_pending_majority_fee_blocks() {
     let terms = Terms {
         withheld: 0,
         older: (0, u64::MAX, 50),
@@ -678,25 +675,17 @@ fn a_pending_majority_fee_blocks_only_when_it_can_be_paid() {
             1_000_000,
         )])
     };
-    let r = check(&diff(
-        one_transfer(5_000),
-        Some(terms),
-        executed(),
-        epoch(5, Some(5)),
-    ));
-    assert_modelled(&r);
-    let r = check(&diff(
-        one_transfer(5_000),
-        Some(terms),
-        executed(),
-        epoch(5, None),
-    ));
-    assert!(r.blocked);
-    let d = detail(&r, "Token2022TransferFeeMajority");
-    assert!(
-        d.contains("pending schedule") && d.contains("durable nonce"),
-        "{d}"
-    );
+    for (nonce, why) in [(false, "nothing bounds the epoch"), (true, "durable nonce")] {
+        let r = check(&diff(
+            one_transfer(5_000),
+            Some(terms),
+            executed(),
+            epoch(5, nonce),
+        ));
+        assert!(r.blocked, "{:?}", r.findings);
+        let d = detail(&r, "Token2022TransferFeeMajority");
+        assert!(d.contains("pending schedule") && d.contains(why), "{d}");
+    }
 }
 
 // ─── getEpochInfo, read strictly ────────────────────────────────────────────
@@ -745,7 +734,7 @@ fn a_request_cannot_supply_the_executed_list_or_the_epoch() {
             DEST,
             1_000_000,
         )]),
-        epoch(5, Some(5)),
+        epoch(5, false),
     );
     let wire = serde_json::to_value(&d).unwrap();
     assert!(wire.get("token2022_executed").is_none(), "{wire}");
@@ -753,7 +742,7 @@ fn a_request_cannot_supply_the_executed_list_or_the_epoch() {
     let mut injected = wire.clone();
     injected["token2022_executed"] =
         serde_json::json!([{"position": "x", "accounts": [], "data": []}]);
-    injected["fee_epoch"] = serde_json::json!({"simulated_epoch": 1, "latest_landing_epoch": 1});
+    injected["fee_epoch"] = serde_json::json!({"simulated_epoch": 1, "durable_nonce": false});
     let back: StateDiff = serde_json::from_value(injected).unwrap();
     assert!(back.token2022_executed.is_none() && back.fee_epoch.is_none());
     assert_eq!(back.deltas.len(), d.deltas.len());
@@ -1059,8 +1048,9 @@ mod pipeline {
         r#"{"absoluteSlot":1000,"blockHeight":900,"epoch":0,"slotIndex":1000,"slotsInEpoch":432000,"transactionCount":null}"#.to_string()
     }
 
-    /// Graphite asks for the epoch itself, and with it judges the pending
-    /// schedule: epoch 5 is out of this transaction's reach.
+    /// Graphite asks for the epoch itself: the transfer is judged under the
+    /// epoch-0 schedule it paid, and the pending epoch-5 schedule is disclosed
+    /// with the reason nothing bounds its reach (Round 22).
     #[tokio::test]
     async fn graphite_reads_the_epoch_and_judges_the_pending_schedule() {
         let terms = Terms {
@@ -1083,7 +1073,8 @@ mod pipeline {
         );
         assert_ne!(status, LayerStatus::Failed, "{reason}");
         assert!(reason.contains("995000 arrived"), "{reason}");
-        assert!(!reason.contains("Token2022TransferFeeRising"), "{reason}");
+        assert!(reason.contains("Token2022TransferFeeRising"), "{reason}");
+        assert!(reason.contains("simulated in epoch 0"), "{reason}");
 
         // The same transaction against an RPC that cannot say the epoch: the
         // Round 20 disclosure, with the reason.

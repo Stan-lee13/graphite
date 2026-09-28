@@ -1969,6 +1969,7 @@ mod tests {
                     is_signer: false,
                     pda_seeds: vec![],
                     expected_address: vec![],
+                    optional: false,
                 }],
                 expected_state_changes: vec!["debits depositor".to_string()],
                 allowed_cpis: vec![],

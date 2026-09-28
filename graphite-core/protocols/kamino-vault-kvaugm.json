@@ -158,7 +158,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserveCollateralTokenProgram",
@@ -241,7 +242,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "reserveCollateralTokenProgram",
@@ -1176,7 +1178,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "klendProgram",
@@ -1311,7 +1314,8 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "klendProgram",
@@ -1351,7 +1355,8 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "transfer",
+   "variable_accounts": true
   },
   {
    "name": "updateVaultConfig",

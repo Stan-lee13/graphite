@@ -1835,21 +1835,24 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "second_position_nft_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "second_position",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "damm_pool_authority",
@@ -2278,7 +2281,8 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "event_authority",
@@ -2401,7 +2405,8 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "event_authority",

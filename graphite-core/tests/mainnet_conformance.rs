@@ -149,6 +149,8 @@ fn risky_prefix(program: &str, data: &[u8]) -> bool {
 #[derive(Default)]
 struct Tally {
     rows: usize,
+    /// Drainer refusals printed per program (`GRAPHITE_MAINNET_SHOW_DRAINER`).
+    drainer_shown: BTreeMap<String, usize>,
     /// Version-1 rows, verified like every other row since Round 19.
     v1_rows: usize,
     parse_failed: BTreeMap<String, usize>,
@@ -512,6 +514,51 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
             }
             patterns.join("+")
         };
+
+        // Round 22: why the account-count heuristics (Check 3 / 3b) fired on
+        // a primary, read from the bytes — how many accounts the transaction
+        // passes past the manifest's layout, how many of those arrived
+        // through a lookup table, and how many it marks writable.
+        if std::env::var("GRAPHITE_MAINNET_SHOW_DRAINER").is_ok()
+            && result.risk_verdict.findings.iter().any(|f| {
+                f.reason.starts_with("Transaction matches drainer")
+                    || f.reason.starts_with("STMT drainer")
+            })
+        {
+            let n = t.drainer_shown.entry(ix.program_id.clone()).or_default();
+            *n += 1;
+            if *n <= 4 {
+                let declared = registry
+                    .find_instruction(&ix.program_id, &disc)
+                    .map(|i| i.layout_for(resolved[idx].len()).len());
+                let statics = message.static_keys.len();
+                let loaded_writable = row["loaded_writable"].as_array().map_or(0, Vec::len);
+                let (mut via_table, mut writable) = (0usize, 0usize);
+                for &k in ix.account_indexes.iter().skip(declared.unwrap_or(0)) {
+                    let k = usize::from(k);
+                    if k >= statics {
+                        via_table += 1;
+                        if k < statics + loaded_writable {
+                            writable += 1;
+                        }
+                    } else if k != 0 && message.writable.contains(&message.static_keys[k]) {
+                        writable += 1;
+                    }
+                }
+                eprintln!(
+                    "[drainer] slot {slot} {} {ix_name:?} accounts {} declared {declared:?} extras via table {via_table} writable {writable} :: {}",
+                    ix.program_id,
+                    resolved[idx].len(),
+                    result
+                        .risk_verdict
+                        .findings
+                        .iter()
+                        .map(|f| f.reason.chars().take(90).collect::<String>())
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                );
+            }
+        }
 
         verdicts.push(Row {
             slot,

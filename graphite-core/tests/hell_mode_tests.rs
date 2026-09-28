@@ -855,9 +855,11 @@ fn h12_stake_delegate_stake_not_blocked() {
         &[
             "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
             "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
-            "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
-            "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J",
-            "7Np41oeYqPefeNQEHSv1DUhjy2v12k5q3r5r5r5r5r5r",
+            // The sysvars and stake config DelegateStake requires in these
+            // slots (pinned since Round 22).
+            "SysvarC1ock11111111111111111111111111111111",
+            "SysvarStakeHistory1111111111111111111111111",
+            "StakeConfig11111111111111111111111111111111",
             "5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r5r",
         ],
         WalletProfile::TradingBot,

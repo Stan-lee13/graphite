@@ -13,14 +13,146 @@
  },
  "instructions": [
   {
+   "name": "Initialize",
+   "discriminator": "00000000",
+   "accounts": [
+    {
+     "name": "stake",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent_sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRent111111111111111111111111111111111"
+     ]
+    }
+   ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     }
+    ]
+   ],
+   "expected_state_changes": [
+    "initializes accounts.stake with the stake authority, withdraw authority and lockup in data"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "accounts.stake must be an uninitialized, rent-exempt stake account"
+   ],
+   "risk_class": "create"
+  },
+  {
+   "name": "Authorize",
+   "discriminator": "01000000",
+   "accounts": [
+    {
+     "name": "stake",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "clock_sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "clock_sysvar",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "SysvarC1ock11111111111111111111111111111111"
+      ]
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "lockup_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ],
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
+   "expected_state_changes": [
+    "changes the stake or withdraw authority of accounts.stake to the key in data"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "the authority must sign and be the stake account's current stake or withdraw authority",
+    "RISK: handing the withdraw authority to an unknown key gives it the whole stake"
+   ],
+   "risk_class": "authority"
+  },
+  {
    "name": "DelegateStake",
    "discriminator": "02000000",
    "accounts": [
     {
      "name": "stake",
-     "role": "signer",
+     "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
@@ -35,21 +167,30 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_history_sysvar",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarStakeHistory1111111111111111111111111"
+     ]
     },
     {
-     "name": "config_sysvar",
+     "name": "stake_config",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "StakeConfig11111111111111111111111111111111"
+     ]
     },
     {
      "name": "authorized",
@@ -59,14 +200,76 @@
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "vote",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authorized",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "delegates stake account to vote account for staking"
+    "delegates accounts.stake to the vote account accounts.vote"
    ],
    "allowed_cpis": [],
    "risk_rules": [
     "stake must be initialized and have delegated stake authority",
     "authorized must be signer and match stake account's staker",
     "RISK: delegating to unknown/unverified vote accounts should be flagged"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "Split",
+   "discriminator": "03000000",
+   "accounts": [
+    {
+     "name": "stake",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "split_stake",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.stake by data.lamports",
+    "credits accounts.split_stake by data.lamports"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "the authority must sign and be the stake account's current stake or withdraw authority",
+    "accounts.split_stake must be an uninitialized stake account"
    ],
    "risk_class": "authority"
   },
@@ -82,10 +285,10 @@
      "pda_seeds": []
     },
     {
-     "name": "withdrawer",
-     "role": "signer",
-     "is_writable": false,
-     "is_signer": true,
+     "name": "to",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
@@ -93,22 +296,133 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
     },
     {
      "name": "stake_history_sysvar",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarStakeHistory1111111111111111111111111"
+     ]
     },
     {
-     "name": "to",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
+     "name": "withdrawer",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
      "pda_seeds": []
     }
+   ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "to",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "clock_sysvar",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "SysvarC1ock11111111111111111111111111111111"
+      ]
+     },
+     {
+      "name": "stake_history_sysvar",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "SysvarStakeHistory1111111111111111111111111"
+      ]
+     },
+     {
+      "name": "withdrawer",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "lockup_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ],
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "to",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "withdrawer",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ],
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "to",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "withdrawer",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "lockup_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
    ],
    "expected_state_changes": [
     "debits accounts.stake by withdrawal amount",
@@ -137,7 +451,10 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
     },
     {
      "name": "authorized",
@@ -147,8 +464,26 @@
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authorized",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "deactivates stake account — begins cooldown period"
+    "deactivates accounts.stake — begins cooldown period"
    ],
    "allowed_cpis": [],
    "risk_rules": [
@@ -158,107 +493,31 @@
    "risk_class": "authority"
   },
   {
-   "name": "Initialize",
-   "discriminator": "00000000",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Stake Program instruction"
-   ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "create"
-  },
-  {
-   "name": "Authorize",
-   "discriminator": "01000000",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Stake Program instruction"
-   ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "authority"
-  },
-  {
-   "name": "Split",
-   "discriminator": "03000000",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Stake Program instruction"
-   ],
-   "allowed_cpis": [],
-   "risk_rules": [],
-   "risk_class": "authority"
-  },
-  {
    "name": "SetLockup",
    "discriminator": "06000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "stake",
+     "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
-     "role": "readonly",
+     "name": "authority",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "changes the lockup of accounts.stake to the values in data"
    ],
    "allowed_cpis": [],
-   "risk_rules": [],
+   "risk_rules": [
+    "the lockup authority, or the withdraw authority when no lockup is in force, must sign"
+   ],
    "risk_class": "authority"
   },
   {
@@ -266,100 +525,352 @@
    "discriminator": "07000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "destination",
+     "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "clock_sysvar",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "stake_history_sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarStakeHistory1111111111111111111111111"
+     ]
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "destination",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "source",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "credits accounts.destination by the stake and lamports of accounts.source",
+    "debits accounts.source by its whole balance, leaving it closed"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [
+    "the authority must sign and be the stake account's current stake or withdraw authority of both accounts",
+    "both accounts must have the same authorities and lockup"
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "AuthorizeWithSeed",
    "discriminator": "08000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "stake",
+     "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "base",
+     "role": "signer",
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "clock_sysvar",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "base",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "clock_sysvar",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "SysvarC1ock11111111111111111111111111111111"
+      ]
+     },
+     {
+      "name": "lockup_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ],
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "base",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "changes the stake or withdraw authority of accounts.stake, authorized by an address derived from accounts.base"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [
+    "accounts.base must sign; the derived address must be the current authority",
+    "RISK: handing the withdraw authority to an unknown key gives it the whole stake"
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "InitializeChecked",
    "discriminator": "09000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "stake",
+     "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "rent_sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRent111111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "stake_authority",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
      "pda_seeds": []
+    },
+    {
+     "name": "withdraw_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "stake_authority",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "withdraw_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "initializes accounts.stake with accounts.stake_authority and accounts.withdraw_authority"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [
+    "accounts.withdraw_authority must sign"
+   ],
+   "risk_class": "create"
   },
   {
    "name": "AuthorizeChecked",
    "discriminator": "0a000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "stake",
+     "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "clock_sysvar",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
-     "role": "readonly",
+     "name": "new_authority",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "clock_sysvar",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "SysvarC1ock11111111111111111111111111111111"
+      ]
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "new_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "lockup_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ],
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "new_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "changes the stake or withdraw authority of accounts.stake to accounts.new_authority"
    ],
    "allowed_cpis": [],
-   "risk_rules": [],
+   "risk_rules": [
+    "the authority must sign and be the stake account's current stake or withdraw authority",
+    "the new authority must sign"
+   ],
    "risk_class": "authority"
   },
   {
@@ -367,90 +878,185 @@
    "discriminator": "0b000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "stake",
+     "role": "writable",
      "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "base",
+     "role": "signer",
+     "is_writable": false,
      "is_signer": true,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "clock_sysvar",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "new_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "base",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "clock_sysvar",
+      "role": "readonly",
+      "is_writable": false,
+      "is_signer": false,
+      "pda_seeds": [],
+      "expected_address": [
+       "SysvarC1ock11111111111111111111111111111111"
+      ]
+     },
+     {
+      "name": "new_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "lockup_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ],
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "base",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "new_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "changes the stake or withdraw authority of accounts.stake to accounts.new_authority, authorized by an address derived from accounts.base"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [
+    "accounts.base must sign; the derived address must be the current authority",
+    "the new authority must sign"
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "SetLockupChecked",
    "discriminator": "0c000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "stake",
+     "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
-     "role": "readonly",
+     "name": "authority",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "stake",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     },
+     {
+      "name": "new_lockup_authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "changes the lockup of accounts.stake to the values in data"
    ],
    "allowed_cpis": [],
-   "risk_rules": [],
+   "risk_rules": [
+    "the lockup authority, or the withdraw authority when no lockup is in force, must sign"
+   ],
    "risk_class": "authority"
-  },
-  {
-   "name": "GetMinimumDelegation",
-   "discriminator": "0d000000",
-   "accounts": [
-    {
-     "name": "user_authority",
-     "role": "signer",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "program_account",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
-     "pda_seeds": []
-    }
-   ],
-   "expected_state_changes": [
-    "Stake Program instruction"
-   ],
-   "allowed_cpis": [],
-   "risk_rules": []
   },
   {
    "name": "DeactivateDelinquent",
    "discriminator": "0e000000",
    "accounts": [
     {
-     "name": "user_authority",
-     "role": "signer",
+     "name": "stake",
+     "role": "writable",
      "is_writable": true,
-     "is_signer": true,
+     "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "program_account",
+     "name": "delinquent_vote",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "reference_vote",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
@@ -458,10 +1064,84 @@
     }
    ],
    "expected_state_changes": [
-    "Stake Program instruction"
+    "deactivates accounts.stake, delegated to a vote account that has not voted for the delinquency window"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [
+    "permissionless: accounts.reference_vote must have voted recently and accounts.delinquent_vote must not"
+   ]
+  },
+  {
+   "name": "MoveStake",
+   "discriminator": "10000000",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.source by data.lamports of active stake",
+    "credits accounts.destination by data.lamports of active stake"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "the authority must sign and be the stake account's current stake or withdraw authority of both accounts"
+   ],
+   "risk_class": "authority"
+  },
+  {
+   "name": "MoveLamports",
+   "discriminator": "11000000",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.source by data.lamports of free lamports",
+    "credits accounts.destination by data.lamports"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "the authority must sign and be the stake account's current stake or withdraw authority of both accounts"
+   ],
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested"

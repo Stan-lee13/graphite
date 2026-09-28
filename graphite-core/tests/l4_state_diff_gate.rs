@@ -130,6 +130,7 @@ fn diff(deltas: Vec<AccountDelta>) -> StateDiff {
         fee_epoch: None,
         token2022_mints: Default::default(),
         transaction_accounts: None,
+        transaction_privileges: None,
     }
 }
 

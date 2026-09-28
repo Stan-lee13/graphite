@@ -269,3 +269,187 @@ test("a System instruction that is not an advance is not mistaken for one", () =
   const b = build([transfer(), transfer(1)]);
   assert.equal(b.instructions().length, 2);
 });
+
+// ─── Version 0, through lookup tables (Round 22) ────────────────────────────
+//
+// The bridge built legacy messages only, so a route that needs lookup tables
+// to fit in 1,232 bytes could not be bound. `version: 0` compiles a v0
+// message through tables the caller has already fetched. Every guarantee
+// above is re-asserted on it here: same object verified, signed and
+// submitted; the digest checked before signing; the signed bytes carrying
+// the verified message.
+
+import { readFileSync } from "node:fs";
+import {
+  AddressLookupTableAccount,
+  VersionedTransaction,
+} from "@solana/web3.js";
+
+const seeded = (n: number) =>
+  Keypair.fromSeed(Uint8Array.from({ length: 32 }, (_, i) => (i * 7 + n) & 0xff));
+
+/** The real mainnet lookup table the Core's v0 fixture carries. */
+function realTable(): AddressLookupTableAccount {
+  const alt = JSON.parse(
+    readFileSync(
+      new URL("../../graphite-core/fixtures/artifacts/mainnet_v0_alt.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const [address, table] = Object.entries(alt.lookup_tables)[0] as [string, { data_base64: string }];
+  return new AddressLookupTableAccount({
+    key: new PublicKey(address),
+    state: AddressLookupTableAccount.deserialize(Buffer.from(table.data_base64, "base64")),
+  });
+}
+
+const MEMO = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+const COMPUTE_BUDGET = new PublicKey("ComputeBudget111111111111111111111111111111");
+
+/** The corpus's `v0_real_lookup_table` instructions, rebuilt from its recipe. */
+function corpusV0Instructions(signer: PublicKey, table: AddressLookupTableAccount) {
+  const limit = Buffer.alloc(5);
+  limit.writeUInt8(2, 0);
+  limit.writeUInt32LE(200_000, 1);
+  return [
+    new TransactionInstruction({ programId: COMPUTE_BUDGET, keys: [], data: limit }),
+    new TransactionInstruction({
+      programId: MEMO,
+      keys: [
+        { pubkey: signer, isSigner: true, isWritable: true },
+        { pubkey: table.state.addresses[5], isSigner: false, isWritable: true },
+        { pubkey: table.state.addresses[9], isSigner: false, isWritable: false },
+      ],
+      data: Buffer.from("graphite corpus v0", "utf8"),
+    }),
+  ];
+}
+
+function buildV0(signer = payer) {
+  const table = realTable();
+  return BoundTransaction.build({
+    instructions: corpusV0Instructions(signer.publicKey, table),
+    feePayer: signer.publicKey,
+    recentBlockhash: BLOCKHASH,
+    lastValidBlockHeight: 1,
+    version: 0,
+    addressLookupTables: [table],
+  });
+}
+
+function hostileV0(b: BoundTransaction): VersionedTransaction {
+  return (b as unknown as { tx: VersionedTransaction }).tx;
+}
+
+test("v0: the bridge's bytes are the corpus bytes the Rust parser is pinned to", () => {
+  // tests/sak_bridge_corpus.rs requires the Core to read this entry's version,
+  // signers, static keys and lookups from the bytes alone. The bridge must
+  // produce exactly those bytes, not a lookalike.
+  const corpus = JSON.parse(
+    readFileSync(
+      new URL("../../graphite-core/fixtures/artifacts/sak_bridge_corpus.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const entry = corpus.entries.find((e: { name: string }) => e.name === "v0_real_lookup_table");
+  assert.ok(entry, "corpus entry present");
+  const bound = buildV0(seeded(1));
+  assert.deepEqual(Array.from(bound.artifactBytes), entry.raw);
+  assert.equal(
+    createHash("sha256").update(bound.artifactBytes).digest("hex"),
+    entry.transaction_sha256,
+  );
+  assert.equal(bound.version, 0);
+  assert.equal(bound.lookupTableCount, 1);
+});
+
+test("v0: the honest path verifies, signs and submits the same message", () => {
+  const bound = buildV0();
+  const raw = bound.signApproved(approvedDigest(bound), [payer]);
+  assert.deepEqual(Array.from(messageOf(raw)), Array.from(bound.messageBytes));
+  assert.equal(messageOf(raw)[0], 0x80, "a v0 message carries the version prefix");
+  const back = VersionedTransaction.deserialize(raw);
+  assert.equal(back.message.version, 0);
+  assert.equal(back.message.addressTableLookups.length, 1);
+});
+
+test("v0: the unsigned artifact carries empty signature slots", () => {
+  const bound = buildV0();
+  const { count, offset } = readSignatureCount(bound.artifactBytes);
+  assert.equal(count, 1);
+  assert.ok(bound.artifactBytes.subarray(1, offset).every((b) => b === 0));
+});
+
+test("v0: a refreshed blockhash after approval is refused", () => {
+  const bound = buildV0();
+  const digest = approvedDigest(bound);
+  hostileV0(bound).message.recentBlockhash = OTHER_BLOCKHASH;
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
+});
+
+test("v0: a rewritten lookup after approval is refused", () => {
+  const bound = buildV0();
+  const digest = approvedDigest(bound);
+  hostileV0(bound).message.addressTableLookups[0].writableIndexes[0] = 6;
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
+});
+
+test("v0: a second signing is refused, like the first path", () => {
+  const bound = buildV0();
+  const digest = approvedDigest(bound);
+  bound.signApproved(digest, [payer]);
+  assert.throws(() => bound.signApproved(digest, [payer]), /changed between approval/);
+});
+
+test("v0: the signer set is read from the v0 message", () => {
+  // A stranger is refused, and the message's own signer is accepted: a
+  // signer check that read the wrong list would fail one of the two.
+  const refused = buildV0();
+  assert.throws(
+    () => refused.signApproved(approvedDigest(refused), [Keypair.generate()]),
+    /signer set does not match/,
+  );
+  const accepted = buildV0();
+  assert.doesNotThrow(() => accepted.signApproved(approvedDigest(accepted), [payer]));
+});
+
+test("v0: instructions() returns copies of what was compiled", () => {
+  const bound = buildV0();
+  const a = bound.instructions();
+  a[1].data.fill(0);
+  const b = bound.instructions();
+  assert.equal(b.length, 2);
+  assert.equal(b[1].data.toString("utf8"), "graphite corpus v0");
+});
+
+test("lookup tables for a legacy message are refused, not ignored", () => {
+  assert.throws(
+    () =>
+      BoundTransaction.build({
+        instructions: [transfer()],
+        feePayer: payer.publicKey,
+        recentBlockhash: BLOCKHASH,
+        lastValidBlockHeight: 1,
+        addressLookupTables: [realTable()],
+      }),
+    /legacy message, which cannot read them/,
+  );
+});
+
+test("v0: a durable-nonce transaction is refused as for legacy", () => {
+  const nonce = SystemProgram.nonceAdvance({
+    noncePubkey: Keypair.generate().publicKey,
+    authorizedPubkey: payer.publicKey,
+  });
+  assert.throws(
+    () =>
+      BoundTransaction.build({
+        instructions: [nonce, transfer()],
+        feePayer: payer.publicKey,
+        recentBlockhash: BLOCKHASH,
+        lastValidBlockHeight: 1,
+        version: 0,
+      }),
+    /durable-nonce/,
+  );
+});

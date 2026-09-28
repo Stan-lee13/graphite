@@ -1289,11 +1289,13 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         input(
             "Stake11111111111111111111111111111111111111",
             "04000000",
+            // [stake, recipient, clock, stake history, withdrawer]: the
+            // sysvar slots hold the sysvars (pinned since Round 22).
             vec![
                 gen_addr(1),
                 gen_addr(2),
-                gen_addr(3),
-                gen_addr(4),
+                "SysvarC1ock11111111111111111111111111111111".to_string(),
+                "SysvarStakeHistory1111111111111111111111111".to_string(),
                 gen_addr(5),
             ],
             vec![],
@@ -1312,11 +1314,13 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
         input(
             "Stake11111111111111111111111111111111111111",
             "04000000",
+            // [stake, recipient, clock, stake history, withdrawer]: the
+            // sysvar slots hold the sysvars (pinned since Round 22).
             vec![
                 gen_addr(1),
                 gen_addr(2),
-                gen_addr(3),
-                gen_addr(4),
+                "SysvarC1ock11111111111111111111111111111111".to_string(),
+                "SysvarStakeHistory1111111111111111111111111".to_string(),
                 gen_addr(5),
             ],
             vec![],

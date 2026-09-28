@@ -103,6 +103,17 @@ submitted — and nothing is signed under a residual the operator has not accept
   sent to the Core is the grounded one, so the Core's transaction-versus-intent check no
   longer compares the AI's output with itself.
 - Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
+- **Version 0 through lookup tables (Round 22).** `BoundTransaction.build({ version: 0,
+  addressLookupTables })` compiles a v0 message reading accounts through tables the
+  caller has already fetched; `executeSwap` does so when the payload names
+  `addressLookupTableAddresses`, and aborts if any table cannot be read. Every
+  guarantee above holds for it — one object verified, signed and submitted, the digest
+  checked before signing, the signed bytes carrying the verified message — and the
+  verification request declares `uses_versioned_transaction` / `lookup_table_count`
+  from the bytes. Tables given for a legacy message are refused, not ignored. The bridge's
+  v0 bytes are pinned byte-for-byte to the cross-language corpus entry the Rust parser
+  reads (`bound-transaction.test.ts`). Version 1 is not built: web3.js 1.x cannot compile
+  it; the Core verifies v1 bytes from any builder that can.
 - `scope.unobserved` is printed for every verdict; which residuals a deployment
   accepts is the deployment's decision, made in configuration and enforced by the
   residual policy above.

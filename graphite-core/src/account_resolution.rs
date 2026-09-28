@@ -231,6 +231,18 @@ pub fn resolve_accounts(
     for (i, pk) in pubkeys.iter().enumerate() {
         let role_def = layout.get(i);
         let (role, is_pda, is_signer, is_writable, pda_seeds, expected_addrs) = match role_def {
+            // Round 22: Anchor's absent optional account — the program's own
+            // id in a slot its IDL marks optional. It is that known constant:
+            // no PDA to derive, no pinned address to compare, and nothing it
+            // could sign. A writable flag on it is still compared below.
+            Some(r) if r.optional && pk.to_base58() == input.program_id => (
+                "absent".to_string(),
+                false,
+                false,
+                false,
+                vec![],
+                vec!["{program_id}".to_string()],
+            ),
             Some(r) => {
                 let is_pda = !r.pda_seeds.is_empty();
                 let seeds = if is_pda {
@@ -714,6 +726,7 @@ mod tests {
                         is_signer: true,
                         pda_seeds: vec![],
                         expected_address: vec![],
+                        optional: false,
                     },
                     AccountRoleDef {
                         name: "derived".to_string(),
@@ -722,6 +735,7 @@ mod tests {
                         is_signer: false,
                         pda_seeds: vec!["{program_id}".to_string(), "{account_0}".to_string()],
                         expected_address: vec![],
+                        optional: false,
                     },
                 ],
                 expected_state_changes: vec![],
@@ -788,6 +802,7 @@ mod tests {
                         is_signer: true,
                         pda_seeds: vec![],
                         expected_address: vec![],
+                        optional: false,
                     },
                     AccountRoleDef {
                         name: "derived".to_string(),
@@ -796,6 +811,7 @@ mod tests {
                         is_signer: false,
                         pda_seeds: seed_templates.iter().map(|s| s.to_string()).collect(),
                         expected_address: vec![],
+                        optional: false,
                     },
                 ],
                 expected_state_changes: vec![],

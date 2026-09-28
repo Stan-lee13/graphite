@@ -285,7 +285,8 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": "authority"
+   "risk_class": "authority",
+   "variable_accounts": true
   },
   {
    "name": "update_with_signer",

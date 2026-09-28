@@ -5,11 +5,11 @@
 > Do not edit by hand — `tests/docs_match_the_registry.rs` compares this page to
 > the loaded registry, and a hand edit fails CI.
 
-Rendered: 2026-09-26
+Rendered: 2026-09-28
 
 ## In one line
 
-**129 protocol manifests / 3192 instructions**, of which **106 carry a BattleTested tier that a mainnet measurement supports**.
+**129 protocol manifests / 3195 instructions**, of which **106 carry a BattleTested tier that a mainnet measurement supports**.
 
 ## What BattleTested means here
 
@@ -95,10 +95,10 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Marketplace (traderDn) | `traderDnaR5w6Tcoi3NFm53i48FTDNbGjBSZwWXDRrg` | 16 | BattleTested | 1,997 | 101,601s | 61 | 100% |
 | Solend | `So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo` | 16 | BattleTested | 1,991 | 119,277s | 141 | 100% |
 | Stableswap (ghosty4Z) | `ghosty4ZU1Qk1HN7Ymz4pZ15QfspzJZgSYFkdKN6ZLK` | 16 | BattleTested | 1,706 | 34,148s | 42 | 100% |
+| Stake Program | `Stake11111111111111111111111111111111111111` | 16 | BattleTested | 1,840 | 6,889s | 42 | 100% |
 | Verifier (ttaiNybR) | `ttaiNybR4ncnBFsBCQKdVus8BNHepErToRp5cuULduL` | 16 | BattleTested | 1,000 | 19,133s | 41 | 100% |
 | Limo (LiMoM9rM) | `LiMoM9rMhrdYrfzUCxQppvxCSG1FcrUK9G8uLq4A1GF` | 15 | BattleTested | 1,938 | 122,287s | 80 | 100% |
 | Scope (HFn8GnPA) | `HFn8GnPADiny6XqUoWE8uRPPxb29ikn4yTuPa9MF2fWJ` | 15 | BattleTested | 1,000 | 288s | 31 | 100% |
-| Stake Program | `Stake11111111111111111111111111111111111111` | 15 | BattleTested | 1,840 | 6,889s | 42 | 100% |
 | Points (Point2iB) | `Point2iBvz7j5TMVef8nEgpmz4pDr7tU7v3RjAfkQbM` | 14 | BattleTested | 1,000 | 268s | 72 | 100% |
 | Raydium CPMM | `CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C` | 14 | BattleTested | 1,717 | 111s | 176 | 100% |
 | Vault (24Uqj9JC) | `24Uqj9JCLxUeoC3hGfh5W3s9FM9uCHDS2SG3LYwBpyTi` | 14 | BattleTested | 1,371 | 1,210s | 100 | 100% |
@@ -121,13 +121,13 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Data Credits (credMBJh) | `credMBJhYFzfn7NxBMdU4aUqFggAjgztaCcv2Fo6fPT` | 9 | BattleTested | 1,982 | 129,660s | 41 | 100% |
 | Jupiter Limit Order | `jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu` | 9 | BattleTested | 1,758 | 31,416,786s | 55 | 100% |
 | Raydium AMM V4 | `675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8` | 9 | BattleTested | 1,675 | 34s | 102 | 100% |
+| BPF Loader Upgradeable | `BPFLoaderUpgradeab1e11111111111111111111111` | 8 | BattleTested | 1,000 | 748s | 35 | 100% |
 | Bridge (FCW1uBM3) | `FCW1uBM3pZ7fQWvEL9sxTe4fNiH41bu9DWX4ErTZ6aMq` | 8 | BattleTested | 1,000 | 72,877s | 41 | 100% |
 | Bridge Cards (cardWArq) | `cardWArqhdV5jeRXXjUti7cHAa4mj41Nj3Apc6RPZH2` | 8 | BattleTested | 1,000 | 36,040s | 40 | 100% |
 | Zap (zapvX9M3) | `zapvX9M3uf5pvy4wRPAbQgdQsM1xmuiFnkfHKPvwMiz` | 8 | BattleTested | 1,801 | 19,280s | 125 | 100% |
 | Atlas Fee Payer (APR1MEny) | `APR1MEny25pKupwn72oVqMH4qpDouArsX8zX4VwwfoXD` | 7 | BattleTested | 1,000 | 41,511s | 78 | 99% |
 | Doves (DoVEsk76) | `DoVEsk76QybCEHQGzkvYPWLQu9gzNoZZZt3TPiL597e` | 7 | BattleTested | 1,879 | 2,469s | 47 | 100% |
 | Spl Account Compression (cmtDvXum) | `cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK` | 7 | BattleTested | 1,538 | 8,806s | 41 | 100% |
-| BPF Loader Upgradeable | `BPFLoaderUpgradeab1e11111111111111111111111` | 6 | BattleTested | 1,000 | 748s | 35 | 100% |
 | Cc Vrf (ccvrfu3f) | `ccvrfu3fSpbnPLiUqdWAt85Zn9nq96ekwGTbHqGtdgQ` | 6 | BattleTested | 1,000 | 3,045s | 45 | 100% |
 | Orao Vrf (VRFzZoJd) | `VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y` | 6 | BattleTested | 1,000 | 77,460s | 39 | 100% |
 | Relay Depository (99vQwtBw) | `99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2` | 6 | BattleTested | 1,992 | 549s | 90 | 100% |

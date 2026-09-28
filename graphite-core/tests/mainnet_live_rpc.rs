@@ -227,6 +227,23 @@ async fn real_mainnet_transactions_verified_against_a_real_rpc() {
                 &l4_reason[..l4_reason.len().min(900)]
             );
         }
+        // `GRAPHITE_MAINNET_SHOW_RISK=1`: the risk findings of every refused
+        // risk verdict (Round 22) — with an RPC, lookup-table accounts'
+        // privileges are resolved, which the conformance test cannot do.
+        if r.risk_verdict.status != "Clear" && std::env::var("GRAPHITE_MAINNET_SHOW_RISK").is_ok() {
+            println!(
+                "[live] risk {} at slot {} ({}): {}",
+                r.risk_verdict.status,
+                row["slot"],
+                r.instruction_name,
+                r.risk_verdict
+                    .findings
+                    .iter()
+                    .map(|f| f.reason.chars().take(300).collect::<String>())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            );
+        }
         if l4_reason.contains("Token2022TransferFeeCharged") {
             bump("transfer fee modelled and stated".to_string());
         }

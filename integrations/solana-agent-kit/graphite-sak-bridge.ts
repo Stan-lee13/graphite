@@ -35,7 +35,7 @@ import { SolanaAgentKit } from "solana-agent-kit";
 // transaction it is given, including fetching a blockhash when one is missing,
 // and a mutation after approval is a mutation however benign. Signing goes
 // through `signSubmitAndConfirm`, which submits bytes that are already final.
-import { Keypair, Connection, SystemProgram, PublicKey, TransactionInstruction } from "@solana/web3.js";
+import { AddressLookupTableAccount, Keypair, Connection, SystemProgram, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
 
 // Round 19 (F-19-C1): simulation is unsigned by construction; the class
@@ -490,6 +490,9 @@ export class VerifiedSakAgent {
       account_writes: accountWrites, cpi_hops: cpiHops,
       behavior_evidence, real_account_metas: params.realAccountMetas,
       signed_transaction, transaction_instructions,
+      // Round 22: what the bytes are, so the declaration describes them.
+      uses_versioned_transaction: params.bound?.version === 0,
+      lookup_table_count: params.bound?.lookupTableCount ?? 0,
     } as any;
     return this.graphite.verify(input);
   }
@@ -775,11 +778,26 @@ export class VerifiedSakAgent {
     // that used to happen after approval.
     const { blockhash, lastValidBlockHeight } =
       await this.connection.getLatestBlockhash();
+    // Round 22: a route that names lookup tables is built as a v0 message
+    // reading through them. Every table must be readable; one that is not is
+    // a refusal, never a smaller transaction than the route asked for.
+    const tableAddresses = payload.addressLookupTableAddresses ?? [];
+    const addressLookupTables: AddressLookupTableAccount[] = [];
+    for (const address of tableAddresses) {
+      const table = (await this.connection.getAddressLookupTable(new PublicKey(address))).value;
+      if (!table) {
+        throw new Error(
+          `[Graphite] address lookup table ${address} named by the swap payload could not be read. ABORTING.`,
+        );
+      }
+      addressLookupTables.push(table);
+    }
     const boundSwap = BoundTransaction.build({
       instructions: [buildInstructionFromPayload(payload)],
       feePayer: this.walletKeypair.publicKey,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
+      ...(tableAddresses.length > 0 ? { version: 0 as const, addressLookupTables } : {}),
     });
     const verification = await this.verifyTransaction({
       programId: payload.programId ?? JUPITER_V6_PROGRAM,

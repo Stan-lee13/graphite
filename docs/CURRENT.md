@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-09-27, after Round 21 (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-09-27, after Round 22 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -36,7 +36,9 @@ Privilege source:                the transaction's header / tables, never the ca
                                  marked writable is judged by what happened (Round 21): another located
                                  instruction's declared write explains it; otherwise it passes only when
                                  Graphite's simulation observed it unchanged, and blocks without that observation.
-                                 A declared signer that does not sign always blocks
+                                 A declared signer that does not sign always blocks. Writability is the RUNTIME's
+                                 (Round 22): sysvars, builtins and invoked program ids are demoted as agave does;
+                                 an Anchor program's own id in a slot its IDL marks optional is the account ABSENT
 Instruction identity for risk:   the instruction's own leading bytes, never the caller's label — a hex
                                  discriminator contradicting its instruction_data fails L2 for every protocol,
                                  a non-hex one never reaches a verdict, and the known-risky table is keyed on
@@ -52,12 +54,16 @@ Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 
                                  simulation and state reads): 0 invariant violations (`tools/mainnet-sample`,
                                  `tests/mainnet_live_rpc.rs`). Round 21 widened it to three days (2026-09-23,
                                  -25, -27; 39,857 verified): 0 parse failures, 0 verify errors; Round 21 moved
-                                 2,553 executed transactions Blocked → Clear on risk and 0 the other way
-Manifest coverage of the chain:  129 manifests / 3,192 instructions. On a 10,617-transaction mainnet sample,
+                                 2,553 executed transactions Blocked → Clear on risk and 0 the other way; Round 22
+                                 another 230, 0 the other way, and grounded every manifest in 2,998 of its
+                                 programs' own executed transactions (45,253 of 45,282 instructions clean)
+Manifest coverage of the chain:  129 manifests / 3,195 instructions. On a 10,617-transaction mainnet sample,
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%
                                  for the same sample before Round 18. The rest still meet the drainer heuristic
                                  (>=3 accounts, no declared state changes), which is the fail-closed posture at
-                                 the coverage boundary, not a bug
+                                 the coverage boundary, not a bug. Measured in Round 22: 71% of its refusals are of
+                                 programs every transaction of which was signed by five or fewer fee payers (bots
+                                 running their own, IDL-less programs)
 Trust tier a manifest declares:  checked, not believed - `BattleTested` is lowered to `OfficialManifest` at load
                                  unless protocols/battle_tested_evidence.json shows an executable program, >=1,000
                                  successful transactions over a stated window, and >=90% of really-observed
@@ -74,11 +80,13 @@ Token-2022 extensions:           classified; the TRANSFER FEE is modelled (Round
                                  from the pre-state and must end exactly at the post-state — withdrawals of withheld
                                  fees, several transfers into one account and accounts that send and receive are
                                  modelled; the epoch is read and only its schedule accepted; a pending schedule is
-                                 judged against the transaction's lifetime. A hook naming no program, untouched
-                                 confidential state and a mint's unchanged standing powers are inert; a permanent
-                                 delegate moving someone else's tokens is Critical. Anything the model cannot account
-                                 for exactly — a hook that runs a program, changed confidential state, an unknown or
-                                 unreadable extension — blocks
+                                 always judged — no slot margin bounds a blockhash's landing (Round 22). A hook naming
+                                 no program, untouched confidential state and a mint's unchanged standing powers are
+                                 inert; a hook that RUNS a program is inert when the bytes bound it — nothing
+                                 Token-2022 can hand it signs, and every writable account among them is its own
+                                 (Round 22); a permanent delegate moving someone else's tokens is Critical. Anything
+                                 the model cannot account for exactly — a hook the bytes do not bound, changed
+                                 confidential state, an unknown or unreadable extension — blocks
 Input bounds:                    artifact ≤ 1232 bytes (PACKET_DATA_SIZE) for legacy/v0, ≤ 4,096 for v1,
                                  ≤ 256 declared siblings, every
                                  audit-trail field bounded on the way to disk
@@ -222,12 +230,18 @@ transaction under the stated threat model, and no external party has yet tried.
 | L4 observes what the transaction can write | Round 20 (F-20-04): `accounts_for_state_diff` — the union of the manifest's and the transaction's writable accounts | `round20_transfer_fee::pipeline::graphite_fetches_the_mints_schedule_and_models_the_fee` |
 | A caller's diff is the caller's | Round 20 (F-20-01): a request's `state_diff` is re-marked `CallerSupplied` | `l4_state_diff_gate::a_caller_diff_that_claims_rpc_provenance_is_still_the_callers` |
 | A fee-bearing transaction is replayed, not inferred | Round 21 (F-21-03): `verification::token2022_executed` (the transaction's Token-2022 instructions and the simulator's CPIs, in order) → `state_diff::replay_fee_mint`, exact against the post-state; both fields `serde(skip)` | `tests/round21_open_list.rs` (withdrawals, several transfers, send-and-receive, order, and every refusal); `pipeline::the_replay_runs_on_what_graphite_parsed` |
-| The epoch decides the schedule | Round 21 (F-21-04): `getEpochInfo` → `FeeEpochContext`; `applicable_at`; a pending schedule judged against `FEE_LANDING_MARGIN_SLOTS` or a durable nonce | `with_the_epoch_read_only_that_epochs_schedule_is_accepted`, `a_pending_increase_is_judged_against_the_transactions_lifetime`, `pipeline::graphite_reads_the_epoch_and_judges_the_pending_schedule` |
+| The epoch decides the schedule | Round 21 (F-21-04): `getEpochInfo` → `FeeEpochContext`; `applicable_at`. Round 22 (F-22-01): a pending schedule is always judged — no landing margin is assumed | `with_the_epoch_read_only_that_epochs_schedule_is_accepted`, `a_pending_increase_is_disclosed_with_why_it_can_be_paid`, `a_pending_majority_fee_blocks`, `pipeline::graphite_reads_the_epoch_and_judges_the_pending_schedule` |
 | A writable flag is not a write | Round 21 (F-21-01): sibling-declared writes explain it; otherwise deferred to Graphite's own diff (observed unchanged, or it blocks); the signer direction untouched | `round21_open_list::a_writable_flag_is_not_a_write` (5) |
 | Manifests describe the programs as they run | Round 21 (F-21-02): account lists grounded in the on-chain IDLs and executed mainnet instructions; `account_layouts` for alternate layouts, chosen by exact count | `round21_open_list::manifests_match_the_programs` (5) |
 | Token-2022 extensions are judged by what happened | Round 21 (F-21-06/07): `extension_judgement`, `permanent_delegate_exercises`; the mint of every extension-bearing account fetched | `round21_open_list::extensions_judged_by_what_happened` (7) |
 | A self-refunding close is not a drain; read-only remaining accounts are not proliferation | Round 21 (F-21-08/09): `self_refund_closes` from the bytes (a sibling only when every close refunds); `writable_extra_accounts` | `round21_open_list::structural_checks_read_the_bytes` (7) |
 | L4 measures the transaction at one slot, against the transaction | Round 21 (F-21-14/15/16): pre-state lamports from the simulation's `preBalances`; `StateDiff::transaction_accounts`; read-only accounts not diffed | `a_pre_state_read_a_slot_late_does_not_break_conservation`, `a_change_another_instruction_makes_is_not_a_diff_that_fails_to_correspond`, `a_read_only_account_is_not_diffed_for_skew_to_show_on` |
+| A transfer hook is bounded by the bytes | Round 22 (F-22-02/11): `state_diff::transfer_hook_reach`, `transfer_hooks_bounded` over Graphite's executed Token-2022 list and `TransactionPrivileges`; `verification::invoked_only_by_token2022` | `round22_remaining` (hook rule, 11; pipeline, 2) |
+| Privileges are the runtime's | Round 22 (F-22-05): `tx_artifact::runtime_writable` (agave's `is_maybe_writable` demotion) | `round22_remaining::runtime_writability` (4) |
+| Declared siblings are counted like the primary | Round 22 (F-22-12): a byte-keyed sibling's layout and writable extras from the message's privileges | `round22_remaining::sibling_writable_extras` (2) |
+| An absent optional account is not a mismatch | Round 22 (F-22-04): `AccountRoleDef::optional` from IDLs and traffic; the program id in an optional slot resolves as a constant | `round22_remaining::manifests_match_the_programs` (5), `tensor_bids_absent_cosigner_is_not_an_unsigned_signer` |
+| Native manifests match their interfaces | Round 22 (F-22-07/08/09): Stake and BPF Upgradeable Loader rebuilt; alternate layouts for `CreateAccountWithSeed` and the stake pool's SOL authorities | `round22_remaining::native_manifests` (4), `create_account_with_seed_has_its_two_account_layout` |
+| Remaining-account interfaces are declared | Round 22 (F-22-06): `variable_accounts` on sixteen instructions whose own traffic passes variable account lists | `remaining_account_interfaces_are_declared_variable` |
 | The priority fee is read | Round 21 (F-21-10): `tx_artifact::compute_budget_request` → `scope.compute_budget`; `ExcessivePriorityFee` | `round21_open_list::compute_budget` (3), `round19_v1_transactions::the_v1_header_is_the_compute_budget` |
 
 ## What is NOT enforced (documented limitations)
@@ -235,10 +249,11 @@ transaction under the stated threat model, and no external party has yet tried.
 - **The Token-2022 model replays what the simulator reports it executed.**
   With no `innerInstructions` in the simulation, or an index Graphite cannot
   place, the Round 20 diff-only rule decides and says it is arithmetic rather
-  than attribution. A transfer hook that runs a program, confidential-transfer
-  state that changed, an unknown extension and an unread mint still block. An
-  RPC without `getEpochInfo` leaves the Round 20 behaviour: either schedule,
-  a pending one disclosed.
+  than attribution. A transfer hook the bytes do not bound (Round 22),
+  confidential-transfer state that changed, an unknown extension and an unread
+  mint still block — encrypted balances cannot be judged without the owner's
+  key. An RPC without `getEpochInfo` leaves the Round 20 behaviour: either
+  schedule, a pending one disclosed.
 - **A write the diff did not observe still blocks.** The writable-flag rule
   passes an account only on Graphite's own observation; without an RPC, an
   over-privileged account blocks as before.
@@ -254,12 +269,14 @@ transaction under the stated threat model, and no external party has yet tried.
   verification and execution; the blockhash bounds that window to about a
   minute for ordinary transactions, and a permitted durable nonce removes the
   bound.
-- **The manifest set covers a small slice of the chain.** Measured
-  2026-09-17: 92.5% of mainnet transactions sampled call a program with no
-  manifest, and 189 distinct programs appeared in eight blocks against 33
-  shipped manifests. An unmanifested program declares no state changes, so
-  the drainer heuristic blocks every call to one that touches three or more
-  accounts. That is the intended fail-closed direction — it refuses rather
+- **The manifest set covers a slice of the chain.** Measured 2026-09-27
+  over three days: 84–87% of verified transactions call a primary program with
+  no manifest; 71% of the drainer heuristic's refusals are of programs signed
+  by five or fewer fee payers, none of them publishing an IDL. An unmanifested
+  program declares no state changes, so the drainer heuristic blocks every
+  call to one that touches three or more accounts — deliberately: for code
+  Graphite does not describe, a simulation does not bind what it does at
+  landing. That is the intended fail-closed direction — it refuses rather
   than guesses — but it means an agent working outside the manifested set
   is refused, not merely scored lower, and the honest description of
   today's coverage is "the protocols Graphite knows", not "Solana".
@@ -279,10 +296,17 @@ transaction under the stated threat model, and no external party has yet tried.
 - **The runtime oracle covers what it generates.** Agave's `wincode` decode
   path is not a second oracle; the generator is seeded and structure-aware,
   not coverage-guided.
-- **The reference bridge builds legacy messages.** It simulates and signs
-  through web3.js 1.x, which cannot represent a v1 transaction; Graphite
-  verifies v1 bytes from any other builder. v1 would add a larger size limit,
-  not a security property.
+- **The reference bridge builds legacy and v0, not v1.** v0 through lookup
+  tables since Round 22, with every signing guarantee of the legacy path;
+  web3.js 1.x cannot compile v1, and Graphite verifies v1 bytes from any
+  builder that can.
+- **Manifests are grounded where programs were seen running.** 383 of 3,195
+  manifest instructions have been observed executing (three block samples plus
+  2,998 per-program transactions); the rest are grounded in their programs'
+  published interfaces. Three published IDLs disagree with their own programs'
+  executions and are not adopted — mintfx `transfer`, marginfi
+  `lending_account_end_flashloan`, Coinflow's unnamed instruction — so those
+  instructions block.
 - **Without a diff, L4 is `Inconclusive`.** When the simulation failed or no
   RPC is attached, L4 runs a consistency check on the manifest prose and says
   so; a contradiction still fails the layer (Round 21).
@@ -318,11 +342,12 @@ transaction under the stated threat model, and no external party has yet tried.
 | Independent third-party audit | Not performed | Owner |
 | Rounds 15–16 findings | **Closed in Round 17** (every item, each with a regression test; see the Round 17 report and `SECURITY.md`) | — |
 | Identity mismatches on declared slots | **Diagnosed and mostly closed (Round 20)**: the fee payer's structural writable flag was read as an escalation, blocking every self-paid token transfer. Over the 19,458-transaction sample, identity/privilege blocks fell from 1,355 to 519 and 156 executed transactions went from Blocked to Clear; no other verdict loosened. The remainder is mostly declared read-only slots the transaction marks writable (247) — writability is per message, so a program really can write them — and fixed-address mismatches (156). Measured, not loosened | Engineering |
-| Manifests for the traffic that publishes no on-chain IDL | Open (Round 18): the programs that dominate the remaining unmanifested share do not publish an Anchor IDL account, so they need a per-protocol source rather than a sweep | Engineering |
+| Manifests for the traffic that publishes no on-chain IDL | Measured (Round 22): the programs behind 71% of the drainer refusals are signed by five or fewer fee payers and publish no IDL — bots' own programs, not a wallet user's; the programs with an IDL and real users were already manifested and their refusals were fixed | Engineering |
 | Five manifests below the decode bar | Open (Round 18): Metaplex Token Metadata (0.67 — the unified V2 instruction set is not modelled), Bubblegum, Light System Program, Coinflow and Pump Fees. Each is recorded in `battle_tested_evidence.json` with the unnamed leading bytes | Engineering |
 | Branch protection on `main` (required CI, no force-push) | Absent; conflicts with the standing push-to-main workflow | Owner |
-| Version-1 transaction format | **Done (Round 19)**: parsed, never looser than agave, 3,302 of 3,302 real mainnet v1 transactions read and bound; config values not yet surfaced | — |
-| Token-2022 `TransferFee` modelling | **Done (Round 20)**: transfers and harvests modelled against the mint's own schedule; withdrawals of withheld fees and per-transfer attribution in one account are not, and block | — |
+| Version-1 transaction format | **Done (Round 19)**: parsed, never looser than agave, 3,302 of 3,302 real mainnet v1 transactions read and bound; config values surfaced in `scope.compute_budget` (Round 21) | — |
+| Token-2022 `TransferFee` modelling | **Done (Rounds 20–22)**: replayed exactly against the executed instructions (Round 21), a pending schedule always judged (Round 22) | — |
+| Transfer hooks that run a program | **Done where the bytes bound them (Round 22)**; a hook handed a signer or another program's writable account blocks | — |
 | `content_hash` → a name that says it is an instruction-level identifier | Open (it is the 64-bit AuditBind key, not the authoritative binding) | Engineering |
 | Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | — |
 | Coverage-guided fuzzing of `parse_transaction` | Open (the `wincode` oracle and the v1 format are done: Round 19) | Engineering |
@@ -332,12 +357,12 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## Numbers (as of this page's commit)
 
-1,707 Rust tests passing in the all-features build (15 ignored: network- or
-sample-dependent, plus one soak benchmark; for Round 21 the mainnet conformance
-test was run on three days of samples against Round 20's code and this round's,
-the live-mainnet-RPC run four times, and the fee-mint test with its new
-whole-transaction replay phase); 328 in the featureless library build; 1,480 in
-the cli-only build; 119 TypeScript tests in the SAK
+1,738 Rust tests passing in the all-features build (15 ignored: network- or
+sample-dependent, plus one soak benchmark; for Round 22 the mainnet conformance
+test was run on three days of samples against Round 21's code and this round's,
+and the live-mainnet-RPC run on 40 transactions before and after the round's
+last fix); 328 in the featureless library build; 1,509 in the cli-only
+build; 129 TypeScript tests in the SAK
 integration; 32 in the TypeScript SDK (28 hermetic, 4 against a live server — run
 in CI's container job); 34 Go; 31 Python; 6 dashboard; 22 live-probe checks of
 the release binary (all pass; `a1db51f` fails 17 of them); the runtime oracle
@@ -352,6 +377,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-09-27 | [round22-the-rest-of-the-list-2026-09-27.md](round22-the-rest-of-the-list-2026-09-27.md) | Round 21's open items, each measured first. A transfer hook that runs a program is bounded by the bytes (nothing Token-2022 can hand it signs; every writable one is its own) and no longer blocks on sight; the fee landing margin is removed — a pending schedule is always judged; privileges are the runtime's (agave's demotion); Anchor's absent optional accounts recognised (676 slots from IDLs and traffic); every manifest grounded in 2,998 of its programs' own transactions — Jupiter's token-account pins, a placeholder Stake manifest and a swapped BPF Loader layout rebuilt from their interfaces, sixteen remaining-account interfaces declared (45,253 of 45,282 executed instructions clean); declared siblings counted by their writable extras like the primary (live mainnet RPC: risk Clear 24 → 33 of 40). The bridge builds v0. 71% of drainer refusals are bots' own IDL-less programs; the heuristic stays. Three days of mainnet: 230 Blocked → Clear, 0 the other way |
 | 2026-09-27 | [round21-what-happened-not-what-could-2026-09-27.md](round21-what-happened-not-what-could-2026-09-27.md) | The open list closed by observation. Graphite refused on what an account, flag or extension COULD do rather than what the transaction DID: the fee model now replays the executed Token-2022 instructions (withdrawals, several transfers, send-and-receive; 31 of 31 real transactions reproduced exactly) with the epoch read; a writable flag is judged by a sibling's declared write or Graphite's own diff; a null hook, untouched confidential state and unchanged issuer powers are inert and a permanent delegate's exercise is Critical; a self-refunding `CloseAccount` and read-only remaining accounts are no longer drains; the priority fee is read and bounded. 105 manifest instructions rebuilt or corrected where the programs' IDLs AND executed traffic agree. L4 measured at one slot and against the whole transaction (live L4 failures 10 → 2 of 40). Three days of mainnet (39,857 verified): 2,553 executed transactions Blocked → Clear on risk, 0 the other way. 25 of 25 deliberate breaks caught |
 | 2026-09-25 | [round20-the-fee-is-modelled-2026-09-25.md](round20-the-fee-is-modelled-2026-09-25.md) | Token-2022 `TransferFee` modelled: the mint's schedule read by Graphite (a TransferChecked names its mint read-only, so it was never diffed), every withheld amount required to be Token-2022's exact fee on what arrived, value conserved, the fee and the arrival stated, a majority fee blocked; checked against the upstream arithmetic and against real fee-bearing mints (6 isolated real transfers, 0 mismatches). Building it exposed that every self-paid SPL / Token-2022 transfer was already refused — the fee payer's structural writable flag read as a privilege escalation (the cause of Round 18's undiagnosed identity cluster: 1,355 → 519 blocks, 156 real transactions Blocked → Clear, nothing else loosened) and left out of L4's diff — and that a request could label its own state diff as Graphite's |
 | 2026-09-24 | [round19-what-one-observation-is-2026-09-24.md](round19-what-one-observation-is-2026-09-24.md) | An external review of `453dd01` checked and widened, every part of Graphite run live, v1 parsed. The baseline counted a fresh blockhash as a new observation — reproduced on the `a1db51f` release binary as a refused transfer **approved on its third ask** with nothing else changed — and simulated and certified descriptive requests; the reviewer's 256-key window forgot. Also: the CPI-trace rules never ran on real traffic; an undescribed instruction was diffed on one account; the verify key was the operator key; 40 trickling unauthenticated connections shed all traffic; the CLI wrote beside a running server and a corrupt snapshot lifted every quarantine; the reference bridge signed before the verdict (P0, client side). Version 1 parsed, never looser than agave, 3,302 of 3,302 real ones bound. 19,458 real mainnet transactions through the pipeline and 40 against the live mainnet RPC; two false-refusal classes found and fixed; 13 of 13 deliberate breaks caught; the release binary passes 22 of 22 live checks that `a1db51f` fails 17 of |

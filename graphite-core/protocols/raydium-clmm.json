@@ -2676,7 +2676,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "transfer",
+   "variable_accounts": true
   },
   {
    "name": "transfer_reward_owner",

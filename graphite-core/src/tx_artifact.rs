@@ -304,9 +304,16 @@ pub struct ArtifactMessage {
     pub fee_payer: String,
     /// Addresses required to sign, from the header's signer count.
     pub signers: Vec<String>,
-    /// Static addresses the message marks writable. Lookup-table writables are
-    /// counted, not named.
+    /// Static addresses the runtime lets this message write: the header's
+    /// writable positions less the keys agave demotes to read-only
+    /// (`runtime_writable`, Round 22). Lookup-table writables are counted, not
+    /// named.
     pub writable: Vec<String>,
+    /// The static addresses the HEADER marks writable, before the runtime's
+    /// demotion. Kept so the parse still reflects every header byte: two
+    /// headers that differ only in a demoted key's flag are two different
+    /// transactions, and must not read the same (Round 22).
+    pub header_writable: Vec<String>,
     /// The recent blockhash (or durable-nonce value), base58.
     ///
     /// Captured rather than skipped. It was originally read and discarded, and
@@ -956,6 +963,8 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
     let unsigned_writable_end = key_count - num_readonly_unsigned;
     let mut writable: Vec<String> = static_keys[..writable_signed].to_vec();
     writable.extend_from_slice(&static_keys[num_required_signatures..unsigned_writable_end]);
+    let header_writable = writable.clone();
+    let writable = runtime_writable(writable, &static_keys, &instructions, !lookups.is_empty());
 
     Ok(ArtifactMessage {
         version,
@@ -963,11 +972,69 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
         recent_blockhash,
         signers,
         writable,
+        header_writable,
         static_keys,
         instructions,
         lookups,
         v1_config: None,
     })
+}
+
+/// Keys the runtime never lets a transaction write, whatever its header says:
+/// the sysvars and the builtin programs agave has demoted since before its
+/// reserved-key set existed (`BUILTIN_PROGRAMS_KEYS` and `sysvar::ALL_IDS`).
+/// Keys reserved later behind a feature gate are deliberately NOT here — a
+/// key left out is treated as writable, the stricter reading.
+const ALWAYS_DEMOTED_KEYS: &[&str] = &[
+    "Config1111111111111111111111111111111111111",
+    "Feature111111111111111111111111111111111111",
+    "NativeLoader1111111111111111111111111111111",
+    "Stake11111111111111111111111111111111111111",
+    "StakeConfig11111111111111111111111111111111",
+    "Vote111111111111111111111111111111111111111",
+    "11111111111111111111111111111111",
+    "BPFLoader2111111111111111111111111111111111",
+    "BPFLoader1111111111111111111111111111111111",
+    UPGRADEABLE_LOADER,
+    "SysvarC1ock11111111111111111111111111111111",
+    "SysvarEpochRewards1111111111111111111111111",
+    "SysvarEpochSchedu1e111111111111111111111111",
+    "SysvarFees111111111111111111111111111111111",
+    "Sysvar1nstructions1111111111111111111111111",
+    "SysvarLastRestartS1ot1111111111111111111111",
+    "SysvarRecentB1ockHashes11111111111111111111",
+    "SysvarRent111111111111111111111111111111111",
+    "SysvarRewards111111111111111111111111111111",
+    "SysvarS1otHashes111111111111111111111111111",
+    "SysvarS1otHistory11111111111111111111111111",
+    "SysvarStakeHistory1111111111111111111111111",
+];
+
+const UPGRADEABLE_LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
+
+/// The static keys the runtime lets a message write (Round 22) — agave's
+/// `is_maybe_writable`: a key the header marks writable is demoted to
+/// read-only when it is a sysvar or builtin program, or when an instruction
+/// calls it as a program and the upgradeable loader is not among the
+/// message's accounts. Reading the header alone called an invoked program's
+/// own id writable — and a program id Anchor passes for an absent optional
+/// account was then "declared read-only, writable in the transaction".
+///
+/// A message with lookup tables may load the upgradeable loader through
+/// one, which the bytes alone cannot rule out: its program ids are then left
+/// writable, the stricter reading.
+fn runtime_writable(
+    requested: Vec<String>,
+    static_keys: &[String],
+    instructions: &[ArtifactInstruction],
+    has_lookups: bool,
+) -> Vec<String> {
+    let loader_may_be_present = has_lookups || static_keys.iter().any(|k| k == UPGRADEABLE_LOADER);
+    requested
+        .into_iter()
+        .filter(|k| !ALWAYS_DEMOTED_KEYS.contains(&k.as_str()))
+        .filter(|k| loader_may_be_present || !instructions.iter().any(|ix| ix.program_id == *k))
+        .collect()
 }
 
 /// Read a little-endian u32 of the v1 format. v1 uses fixed-width integers
@@ -1190,7 +1257,7 @@ fn parse_v1(bytes: &[u8]) -> Result<(ArtifactMessage, usize), ArtifactParseError
 
     // Every index is now known to be in range, so every account resolves:
     // v1 has no lookup tables and nothing is left unidentified.
-    let instructions = raw_instructions
+    let instructions: Vec<ArtifactInstruction> = raw_instructions
         .into_iter()
         .map(
             |(program_index, account_indexes, data)| ArtifactInstruction {
@@ -1212,6 +1279,8 @@ fn parse_v1(bytes: &[u8]) -> Result<(ArtifactMessage, usize), ArtifactParseError
     let unsigned_writable_end = key_count - num_readonly_unsigned;
     let mut writable: Vec<String> = static_keys[..writable_signed].to_vec();
     writable.extend_from_slice(&static_keys[num_required_signatures..unsigned_writable_end]);
+    let header_writable = writable.clone();
+    let writable = runtime_writable(writable, &static_keys, &instructions, false);
 
     Ok((
         ArtifactMessage {
@@ -1220,6 +1289,7 @@ fn parse_v1(bytes: &[u8]) -> Result<(ArtifactMessage, usize), ArtifactParseError
             recent_blockhash,
             signers,
             writable,
+            header_writable,
             static_keys,
             instructions,
             lookups: Vec::new(),

@@ -5264,42 +5264,42 @@
     "note": "BPF Loader (classic)::Finalize near-prefix discriminator"
   },
   {
-    "hash": "4ddad2d757cd57c4477d4ffb0f786e4a08ca3056b7f8a3a200eb74bef99b8b33",
+    "hash": "328d3033915cb5529a21195de92b90e721c1abafcd17c426b8638df73c065399",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::InitializeBuffer intent=transfer"
   },
   {
-    "hash": "d1a35c51de9ed7199be356b870656a575e2fc85079320e26b86cf17c33cafe3e",
+    "hash": "b364dac3ddec6950a152d2f5929b8fc45a38575d5f5667f4bedafdf71298679a",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::InitializeBuffer empty intent — Check 10 gate"
   },
   {
-    "hash": "d0bada92819efe8b4379e1328ef0d922b1e3bafa19869b124fd25d4e291683aa",
+    "hash": "7f5cc45273b1a058f579c633862561a3f503f252fc1f72d8206e278f41c7776c",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::InitializeBuffer swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "6ea8c75f88b9dfa9ede7ef9971102bafbdcd41c4639909d35c061c4ced77abff",
+    "hash": "b29c3568c3fd1a230938f7801a7fd51b913c96b6959c9162674c23267a0ef45f",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::InitializeBuffer +8 accounts — STMT drainer"
   },
   {
-    "hash": "15a46f293ffca9f7832e8f204196d3e60ead9f3f76cbf5f34cefced6b9ed5cad",
+    "hash": "2752c21cf00d6212c52a962d6959a8a29f21cd9a97ca54b5752e38f0dedaba3a",
     "split": "dev",
     "class": "padded-width",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::InitializeBuffer zero-padded discriminator"
   },
   {
-    "hash": "22a5d1bd0549e485297fc11eb95b1441757c86421eaa942b4c529e3c729578d4",
+    "hash": "015e25c37ef51badf5d93876c75ff70b11e2a97f6851d9976a6488397799cc61",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
@@ -5313,126 +5313,126 @@
     "note": "BPF Loader Upgradeable unknown discriminator — P12 Response 2 (approved under 0.40 floor)"
   },
   {
-    "hash": "8b28eea3e9a6c42c87f5f01d889aa388197922ff3125e6461a64f852ee64fd5d",
+    "hash": "fcadeb03123374491be28b7375cf31ae296e6106e587ff6cca1c9cd9668243c6",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Write intent=transfer"
   },
   {
-    "hash": "b146365e17403b68c90bc8c925070f76a7eaac9e144413a7831905e53ba36bbd",
+    "hash": "f9e31698b3a9a3dccbf651a71c34fc57b5cde97cc86d0bfd77ec73f49843020d",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Write empty intent — Check 10 gate"
   },
   {
-    "hash": "4df72ec0f1bddf4bd6b805066fc2745f2fe2bc6a08f697d121e447830df80b22",
+    "hash": "ef14370147c47d4335910a36dffcfb51393e542040f6b19a1fada668bf5933ec",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Write swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "85f78e98509b53d7230284e52e93e98bcc23dfb6d8e5a3df1a65d3e2249aca1f",
+    "hash": "c209b5cf375eb28d20f19d6e290c5935355f9bddcbbf09e959f8ec23ee5a769e",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Write +8 accounts — STMT drainer"
   },
   {
-    "hash": "09db558a7d7b37b2f9f03ef0c05205a567c945013f14e3b46c353a0326462db7",
+    "hash": "d124dd4e698610c16998847177d2ad07230235adccd23bf72b62b51a61a44ec9",
     "split": "dev",
     "class": "padded-width",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Write zero-padded discriminator"
   },
   {
-    "hash": "202549e62d2b968af460bd936f15c05e003a6aaba71858b6085078984fac7e7e",
+    "hash": "08870def042be2ab52e0cd8733e406563957e09709b0333ca2e9af4fa2aa3af9",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Write near-prefix discriminator"
   },
   {
-    "hash": "9cfc94f5bee606a0bfe7547a3f3ecd9be5f6ac50fec370deedefeebc8b5288c8",
+    "hash": "7bc99558c69fdc850a317a9aeec25afb313519e37fe139481b8949e4d946ef71",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::DeployWithMaxDataLen intent=transfer"
   },
   {
-    "hash": "a81f07b4d5abd260806268821411e7a04ccf71120f8c73ee1d6f4c2d7fbf9238",
+    "hash": "1c3d5c5ebaddccaacea59f7210cbf11eb237443eb3b15b56f5d08964694d01ab",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::DeployWithMaxDataLen empty intent — Check 10 gate"
   },
   {
-    "hash": "840c45b18a789a8c943f6e54fab98c767705f57d0883ea8c8098a03c1329b2e2",
+    "hash": "25931a7443e7ce7b674035bf1de89d7cff17d3cb08e6e6719728ba29dfc7dd1d",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::DeployWithMaxDataLen swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "dca3cdcb730dbb863ac55dbace0bf47bb329b759448a712e7542519c97032e1d",
+    "hash": "1b714d0e81d64b1f936d87f8df054166c433cd4bdf8906323dc9ae5314e256aa",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::DeployWithMaxDataLen +8 accounts — STMT drainer"
   },
   {
-    "hash": "02746912e24f8acc83440ef9b4645c819cf8c539abfb02c70cc8d5ebd61af245",
+    "hash": "237623fc1723a6f663da472b2bb5318e854e238826e21930d293e96f234f999b",
     "split": "dev",
     "class": "padded-width",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::DeployWithMaxDataLen zero-padded discriminator"
   },
   {
-    "hash": "e5598cf1ca18a9fcdeda4f0f8a83da0a446bbe9de18ef0527b1c9898d7d0fcdc",
+    "hash": "3b6c4e65a39a34474d8c7e98ec17df6f2142a32f01b60f11f0014b805c3ae67e",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::DeployWithMaxDataLen near-prefix discriminator"
   },
   {
-    "hash": "c877fec7566341d34ceb7741f405a5e6d1adf659f2a4cecfeb544057a88114b4",
+    "hash": "dfacfcd47cb62ccb3f35bb002c2a03cb39fbe03361c405287c581639982f7d29",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Upgrade intent=transfer"
   },
   {
-    "hash": "1c6cae3c45020aaf8babcc1d50202232f62c6d994b8bdce880207fd2526f8807",
+    "hash": "adfa40a696b2eb3efd67edb9fc1ee6a4edf2d732f531e54e693995f90ae21596",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Upgrade empty intent — Check 10 gate"
   },
   {
-    "hash": "d09100e81e9848c8b09dbf7ac289779f24aafe3003ac443ba137c8aec1d15f28",
+    "hash": "915dfd1fec7dc110ee9c2723aaf12dcacce5348c0c16e3fd84a7e5d7af2586b3",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Upgrade swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "efcc850d837fc8d788de4ab08099f632957374a1929e4da08ef73a30ab42ee83",
+    "hash": "301f50d29918dac0a75c40199219800a8d1edb427c321d82b5759c22797f4ab1",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Upgrade +8 accounts — STMT drainer"
   },
   {
-    "hash": "dd37d95119c042fc8c4a890b76a84d5924c699f961033ecbeb4db26495c17aed",
+    "hash": "6ad32e289c98f3fd6aa2aedea9e08efe13d07f34b8f122565db57647682b9692",
     "split": "dev",
     "class": "padded-width",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Upgrade zero-padded discriminator"
   },
   {
-    "hash": "d352af442471f9d7936c2220168da667832a6f1301c9c6331b77fccaffcc5688",
+    "hash": "1390a5ece5c8c228075f1b48f97dcc2220b6851348ef3b272485f434a79df212",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
@@ -5481,46 +5481,130 @@
     "note": "BPF Loader Upgradeable::SetAuthority near-prefix discriminator"
   },
   {
-    "hash": "c8c23e28dfdce845b5fa5893e79cbe17b8322cad12e01cdb3d54ba0d4cd83d3f",
+    "hash": "9e722892937433b5a7a9d63350426161bce989cb6c4d25433f553a9b109665f6",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Close intent=transfer"
   },
   {
-    "hash": "26cdf0d846789d22f8cff571c7d2bbc4695b924070179adc70c151458654d94c",
+    "hash": "3ffd4db53e7c08f70400aa9e3c7786e538cab0817dd9132c18b403dfcb694f53",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Close empty intent — Check 10 gate"
   },
   {
-    "hash": "b4d323f0dcda0c144a1b77f32ef9a8b46f0dec5b66034757d9db7fbf47534741",
+    "hash": "f5cb277204a50f52d3d3ccfe3fee29236eb6fd1d5f7c826c38401dd37db3d403",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Close swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "b98556d2f94eb521bfca4cc8ff4eb22580c0e1f39ba3251a496f08d00c27490b",
+    "hash": "187135113c7d7368b211b12f4a6d6d8ecf344a118f916ace74c0a818ce19789e",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Close +8 accounts — STMT drainer"
   },
   {
-    "hash": "be9021ccbe87a9ede1b5c1bdc1f0a4aa1250abff9cdff01e9939b3219d8c746f",
+    "hash": "c98ea92593240753ef1fd619e5d04e65b40d74a26831fb8a66b3cb72b9d4005e",
     "split": "dev",
     "class": "padded-width",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Close zero-padded discriminator"
   },
   {
-    "hash": "4f814e96821c7f4727efd6ec7a362d5d0c4bd6d88d6286262030634105e3fec8",
+    "hash": "94c155bf1c39dfe7c4ac50865ba67255d06abb957d8c07a477c5c9f37e621389",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "BPF Loader Upgradeable::Close near-prefix discriminator"
+  },
+  {
+    "hash": "615210ca9d058e3d869dc549b968d8784a55173b869a9bb75b0cbadb5f62d248",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::ExtendProgram intent=transfer"
+  },
+  {
+    "hash": "3fc0e9a0d16e4efec04b9ff20d1eb67bcd2e495dee5e9771c8fad515ef8093d9",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::ExtendProgram empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e439ebf8d0233999e80341242108661c268383a82a300bbde0d0c67a48b0ec64",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::ExtendProgram swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "92bdc68081acc993640d000b9bb659fb9b7f808c25250744bbe95485cc18603d",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::ExtendProgram +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "7691569a79141730faf34036d3a1f0c4443db87ec146128c1ada1a4ed038100f",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::ExtendProgram zero-padded discriminator"
+  },
+  {
+    "hash": "9a86c6ee18f66829dbb8012cc1af2c8513bc78d3544bebf9659f9e6689bdb98c",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::ExtendProgram near-prefix discriminator"
+  },
+  {
+    "hash": "8c0b17d72817f55a1d262f856dd4815942ac36a61497035b3e7c2708e2380996",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::SetAuthorityChecked intent=transfer"
+  },
+  {
+    "hash": "6fb96b5600c1fb852abfcf64a7d5ad76af879a87285052818290be2493a68dbe",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::SetAuthorityChecked empty intent — Check 10 gate"
+  },
+  {
+    "hash": "3c3ef09be922914f4a298ca89a8b06c1c7e23e68d9eb09b1d51bbf77c5ee3df1",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::SetAuthorityChecked swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "38048783a583a0e2d8f0b5612dc7a18efb8ea98881cf6669a12b70bd4f9e77d8",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::SetAuthorityChecked +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "23a4b52492c81ea09c4b91e417c84a98b61efab415a8107ee1136df235cae80d",
+    "split": "dev",
+    "class": "padded-width",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::SetAuthorityChecked zero-padded discriminator"
+  },
+  {
+    "hash": "4bf4bec74eb88da3fc910844e1296475d0e4dd8b259a9e56dfc789453b2682dd",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "BPF Loader Upgradeable::SetAuthorityChecked near-prefix discriminator"
   },
   {
     "hash": "6a76730a3f16389ed714858f85818eb315f7be459eedf0b0ddd3af35f8eb761a",
@@ -10990,13 +11074,6 @@
     "note": "Swap Orchestrator (DF1ow4ts)::swap empty intent — Check 10 gate"
   },
   {
-    "hash": "cb0f7d866d096d41a1c4ceebb4ee4bb081f260573113a99c13144ff071f56b02",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Swap Orchestrator (DF1ow4ts)::swap +8 accounts — STMT drainer"
-  },
-  {
     "hash": "2c303cd23e9bf9c46df107327c1f92eacc35390b6269688988abad65f8ba38f1",
     "split": "dev",
     "class": "canonical",
@@ -11009,13 +11086,6 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Swap Orchestrator (DF1ow4ts)::swap2 empty intent — Check 10 gate"
-  },
-  {
-    "hash": "9e3e0d7812b751c404d24271670435526ab2bdc7c52b43f93a4889384bf3a2b8",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Swap Orchestrator (DF1ow4ts)::swap2 +8 accounts — STMT drainer"
   },
   {
     "hash": "aeff6e7c8c7bba07e56974aedad03db0d6cb08f12f4887569701549eaa40d2d9",
@@ -11394,13 +11464,6 @@
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Doves (DoVEsk76)::update_many_with_pyth_lazer swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "5ee6c61860fdc254fbbf0b4f40a5b88f383fb075aaac0f3ce4404571cb20fbde",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Doves (DoVEsk76)::update_many_with_pyth_lazer +8 accounts — STMT drainer"
   },
   {
     "hash": "947d31557c314f507950cb3a766896db78073b12c25a854a8dee18705067920c",
@@ -16434,13 +16497,6 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Debot Router (G7MVcM9Y)::swap empty intent — Check 10 gate"
-  },
-  {
-    "hash": "2ec63510f8795f5e11698160bccaa4e0227ad98c6ba35095f06f2e29e562f282",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Debot Router (G7MVcM9Y)::swap +8 accounts — STMT drainer"
   },
   {
     "hash": "a63758c6edaeb6a54f1a4a206edabc57a6f2b00bf43a73582f9ea4b143e16424",
@@ -27559,14 +27615,14 @@
     "note": "Jupiter V6 Aggregator unknown discriminator — P12 Response 2 (approved under 0.40 floor)"
   },
   {
-    "hash": "e89632133e800ee7146c091421e45e0bbe8493cd67cf0b58cf5c6cee3696452e",
+    "hash": "69f84455fb7daa03d02998e1705c3986ef41a50115964bd33d24391be0eed3f4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::sharedAccountsRoute intent=swap"
   },
   {
-    "hash": "6c819612f79080aba973d4d0bb17916ae2efbad3e51787f23b85a9b7b4db26fa",
+    "hash": "2316ffe54af6202f1e58c63b4e774d0e2bea4b7b7dcb9fe84d6917f9bf020c27",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -27587,14 +27643,14 @@
     "note": "Jupiter V6 Aggregator::exactOutRoute empty intent — Check 10 gate"
   },
   {
-    "hash": "21e2e4178f932d160e4ecbf0a90106f071ea187b994b3ec2cfcd05a3061d9b73",
+    "hash": "0fd7a9ccf3ba00a4d9e943893fc022f87b2e01dcff662288b6539890327a8024",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::sharedAccountsExactOutRoute intent=swap"
   },
   {
-    "hash": "1a69d178e18a4c1c4168e0ac736946ae77890758aca9855a29efc72e98c39d4e",
+    "hash": "ec6f48cb298f5b93ec4379aa58d523b6628a31af7b83f1d5c06bc803531b1072",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -27671,14 +27727,14 @@
     "note": "Jupiter V6 Aggregator::routeCheck empty intent — Check 10 gate"
   },
   {
-    "hash": "cd22d9e8fe7d4255b66dd9cc843e03eed92a22ce08a101a1d5f99467417d4dba",
+    "hash": "60190bea1576600a7016c6aa0b6532e6b8c71e31c5b5ac49d7035ddacac51118",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::sharedAccountsRouteCheck intent=swap"
   },
   {
-    "hash": "66846d758b977b800c5e8f7b91d46520f05abbfa894cf166ca4721fedc7d988e",
+    "hash": "3815a9db46e0c786c038a3a347a29263f0951a25e28b100e43aaff3e95fb7b6c",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -27699,14 +27755,14 @@
     "note": "Jupiter V6 Aggregator::exactOutRouteCheck empty intent — Check 10 gate"
   },
   {
-    "hash": "a859ed30bddafa0cf4035caa4979f319c9e5c06974c5fc4406665621c3c75742",
+    "hash": "a442f2f4401ce87fc364391195d308751b7f41e721cdc97b359505fe31b90754",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::sharedAccountsExactOutRouteCheck intent=swap"
   },
   {
-    "hash": "151f638fd58fce0554c1e8503ccdff9aef53c968c1f067f19dfdb1de99fc96e8",
+    "hash": "b4eaabc00daa4c8b612f9d7120f8e2aa0b15893cae03f6a38ae828c0d487d1ac",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -27783,14 +27839,14 @@
     "note": "Jupiter V6 Aggregator::setTokenLedger empty intent — Check 10 gate"
   },
   {
-    "hash": "4c614e2590367086fef0f95cc2691dd8b1d9d46628a4d0402a547f7e1edb00e3",
+    "hash": "7321e848c167a4d1aa70a3f9d973aeab7e069c1194d7fba05bc940735b500538",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::claimToken intent=transfer"
   },
   {
-    "hash": "9de3a8d02f252c3696c2115fa34ccf40c10d341a76073508b62cb9f742027b1a",
+    "hash": "aaa97adbd19edb513abb7f4acdb15a92caa3527c92c63ae1f867a2ae79aa9605",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -27881,14 +27937,14 @@
     "note": "Jupiter V6 Aggregator::route_with_token_ledger_v2 empty intent — Check 10 gate"
   },
   {
-    "hash": "b89bb052aec4cf6ec39f20516768619ac022f250f5f1dc0dd74f07dc49fa7449",
+    "hash": "16af07af35272137c41891cbdfa72008e7089153e4d3445f66ba543980ed2de8",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::shared_accounts_route_with_token_ledger_v2 intent=swap"
   },
   {
-    "hash": "6528ef7392c330868f56e6b7c67fe94459b9b7bd1174cbc4a39043db22e3336d",
+    "hash": "10d17c58b9169404d7ecf8b562287c609974cfee14dd7fd391800e0696483b90",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -27909,14 +27965,14 @@
     "note": "Jupiter V6 Aggregator::routeWithTokenLedger empty intent — Check 10 gate"
   },
   {
-    "hash": "4127dbcd634e3432c5a821338a3d95d467d43ebbf7a890fb0bb45592c9cede55",
+    "hash": "265242c8f7101bb3e3d62f786a23abb65d5160c924348ba0a00a1d1e09bf7690",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Jupiter V6 Aggregator::sharedAccountsRouteWithTokenLedger intent=swap"
   },
   {
-    "hash": "ed8161577b6b3c5e6d0f1cfe6cc6fe6b10333c4c0e0b95ca97d6ce4028a23896",
+    "hash": "81108f5277ce6935c9a764f2ee1994326c2c71a6d1d641a38eb911da44448ab2",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
@@ -28775,13 +28831,6 @@
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Lending::refreshObligation swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "5ba473e870bc66a8b5d8de0aec3bdf4160225ca5128b0c6910636bc1ee07aa1f",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Kamino Lending::refreshObligation +8 accounts — STMT drainer"
   },
   {
     "hash": "6819341c33268f74f32a7efa84790374fe2a5cf93364fbbcbb157a321d9b900f",
@@ -30147,13 +30196,6 @@
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Kamino Vault (KvauGMsp)::investWithMaxAmount swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "59ec599f91aa77a61cdd43105f37662dfc5064b30286c743d2fecd5331f343aa",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Kamino Vault (KvauGMsp)::investWithMaxAmount +8 accounts — STMT drainer"
   },
   {
     "hash": "7a79f694fb6980b3f276d690511937f6c09fffd6d60461858bf80691680e78f8",
@@ -43316,13 +43358,6 @@
     "note": "Sage (SAGE2HAw)::fleetStateHandler swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "c330e24fc0b5a23d31155b3fffb7108b3e5bb1839b4b1a53c8ca6b48f6459671",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Sage (SAGE2HAw)::fleetStateHandler +8 accounts — STMT drainer"
-  },
-  {
     "hash": "1927fe2b0efb6dc283df36f048a8216bc107f7ff7125c6163b837a2e3a1dee1c",
     "split": "dev",
     "class": "canonical",
@@ -50435,39 +50470,39 @@
     "note": "Solend::WithdrawObligationCollateralAndRedeemReserveCollateral near-prefix discriminator"
   },
   {
-    "hash": "0f6a0f67018c52efb9ecbbe5e18e322674e8ffe8b3db8ab59b9bd7747528c5d0",
+    "hash": "cd9608d230fa6f4b22267e4ee60b8e7eef842b2f33a6aedac8b6be174ba4112f",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
-    "note": "Stake Program::DelegateStake intent=stake"
+    "note": "Stake Program::Initialize intent=transfer"
   },
   {
-    "hash": "01f1a18e9c39ec8e0a3d5d132a163209bf6c6854f03ea133ac519a06d7480493",
+    "hash": "db0deb2545d95c309787a818f72705fc1fdd68852617afa8d08fc59b79d77783",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
-    "note": "Stake Program::DelegateStake empty intent — Check 10 gate"
+    "note": "Stake Program::Initialize empty intent — Check 10 gate"
   },
   {
-    "hash": "38c63265444b67474a98a4429206a5f5d69f0050a1f769fc5dea31a9124f3f15",
+    "hash": "bff55e20e2973d6150d49b78ef6fa6826db0211671f29bbc51c66f0c3de887c0",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
-    "note": "Stake Program::DelegateStake swap intent on non-swap program — Check 9"
+    "note": "Stake Program::Initialize swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "c909d3e1f8eff737c58f6b5dfa67e160ec5b4cb9e2d737e65f725e85a070b4d0",
+    "hash": "431e0d0f0d5736ed910a06cb74799f7884185b168b9bfc5100d5da49d00b9fde",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
-    "note": "Stake Program::DelegateStake +8 accounts — STMT drainer"
+    "note": "Stake Program::Initialize +8 accounts — STMT drainer"
   },
   {
-    "hash": "721efe7a9b4592b337579d7ce8e6c9a4d8f6f533f80117df89ff897e10cb7245",
+    "hash": "2600c44d4f1be9117dba495be2adacae381df8365bb910a0bdbca850c4146909",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
-    "note": "Stake Program::DelegateStake near-prefix discriminator"
+    "note": "Stake Program::Initialize near-prefix discriminator"
   },
   {
     "hash": "025690c35593371d01723c079a829a169e4d818700268ddba937015b5b1efd88",
@@ -50477,179 +50512,179 @@
     "note": "Stake Program unknown discriminator — P12 Response 2 (approved under 0.40 floor)"
   },
   {
-    "hash": "c5f05fa329f3e4fd63e3058b121509fd306fd05d5283e1674c38d2fcd6d5c572",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Withdraw intent=stake"
-  },
-  {
-    "hash": "0c30ce2bf04f3e22e6e131377592a2598679c31139acf1458e41e490b5b70b85",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Withdraw empty intent — Check 10 gate"
-  },
-  {
-    "hash": "dcd9b745bffa013a33d837acf85c784f0810199071044c68592302d2b3034a9d",
-    "split": "dev",
-    "class": "intent-mismatch",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Withdraw swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "53d174bef5e7bcdc3c49973a0ddbc8dd33de8927b41663db2873e9eca9aec083",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Withdraw +8 accounts — STMT drainer"
-  },
-  {
-    "hash": "f51afa47a06daf1c4bf848749ede4b5c95767a884312cf89b3b80e9326e340c9",
-    "split": "dev",
-    "class": "near-prefix",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Withdraw near-prefix discriminator"
-  },
-  {
-    "hash": "4369bd07b833cc49991663bf81770bb3fa939249f049609e3328b7763848607f",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Deactivate intent=stake"
-  },
-  {
-    "hash": "9ea85643360fd0e6c113e9369c19d7001d6082d18f0df13768820b97cf92e433",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Deactivate empty intent — Check 10 gate"
-  },
-  {
-    "hash": "f7b76e2eb8ac7914813c24a38b06aaff1cdb32f2ad4dae8c6f407ee5f854961c",
-    "split": "dev",
-    "class": "intent-mismatch",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Deactivate swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "4e56f797d3c52b0e168aba9ae8d988908377fd990e6368efee0a880e0fcc8b17",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Deactivate +8 accounts — STMT drainer"
-  },
-  {
-    "hash": "87c1f6e8da4ad0603f1e446e4d5b184a6d07b37d9ab984322d7d6e1b81ffce4f",
-    "split": "dev",
-    "class": "near-prefix",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Deactivate near-prefix discriminator"
-  },
-  {
-    "hash": "b40a54a1c89c30d96bf24af31cede0a04fb96386a4f14510057a3fc821bb5639",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Initialize intent=transfer"
-  },
-  {
-    "hash": "c51290bcdab0a874322582d185d4d7367c8667092dcc44be52bbf24e70cc3ad7",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Initialize empty intent — Check 10 gate"
-  },
-  {
-    "hash": "ccc8508b93f332a3c13d44d3716947639dc00fba71e76c3173f69c24a1e8fafd",
-    "split": "dev",
-    "class": "intent-mismatch",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Initialize swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "47b5625df5959a5d68b4a6eb544f3df54626d3e1d2f988bf99fca0130b1b31b0",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Initialize +8 accounts — STMT drainer"
-  },
-  {
-    "hash": "9943b4141d3e237104ed4a83bb255588fda75c03fe44d28964e9f551d59314ac",
-    "split": "dev",
-    "class": "near-prefix",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::Initialize near-prefix discriminator"
-  },
-  {
-    "hash": "c7a732d402233b3e9990e386d05d1d5dc87d4df5d62a622dee2f2d76bd148c7e",
+    "hash": "9a501e7595cf05f493c6cc8076549d03436011b6e2d2bee757015590671fb1d7",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Authorize intent=transfer"
   },
   {
-    "hash": "d357961152b88a53183ad8f269fcf5daf3be862cf438e9328cb0800af56c771c",
+    "hash": "e6797d523be4bd97457570d17bfb34609cc1dbeb8c2e6857b66edf955131ae20",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Authorize empty intent — Check 10 gate"
   },
   {
-    "hash": "1107b6940a2ebed3fad02ef7d2243e10e1b8b7905185a7e41450508032ccb105",
+    "hash": "53e81659667e1deea877e89f00539a09a0903c27d9d3143cd0043118eb10719c",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Authorize swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "851bc7611750649e5654e6bf61d9478606ab5c5990a3c226732b712a7fe52d99",
+    "hash": "9608efd99c107d8a464659bcf056401b7dbea2a4621b264a94b912499a1bbc0f",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Authorize +8 accounts — STMT drainer"
   },
   {
-    "hash": "8ebb969453ad24204c26d4c9ef34904a29e4572cc8995ee5b9745c65325d8319",
+    "hash": "21a481f31d0859da27e3b889449f2b47b0cc972c896cefab00f16ba370cd189c",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Authorize near-prefix discriminator"
   },
   {
-    "hash": "4e1acc0420e0bb80c9363239f65b6d9ade5e2b23954047334ec409681c3aec5b",
+    "hash": "a2afdbdd2f95113504a3a8779325a20fb794e2a9588b73252b87947af371c108",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::DelegateStake intent=stake"
+  },
+  {
+    "hash": "0fe11087daf064db43d6bd637f36e2f6c840a92cf2d58195c2f825c57fe0fa97",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::DelegateStake empty intent — Check 10 gate"
+  },
+  {
+    "hash": "62ea7336463895baf51448b90067151c4c17dd82604175b37b3ac582793be4e2",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::DelegateStake swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "9d6eaca58e7dd6c2bce2bb0180216cea024927c10c18a6c01d3842ae0b8e1340",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::DelegateStake +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "0e21cfa3918d018827a57470a9fa4c2b3cd8705b15a864edff8103f7085ba71c",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::DelegateStake near-prefix discriminator"
+  },
+  {
+    "hash": "947ec5940781d1939a5c1d4c815fadf95a09e0ae0e71e25c813f2b5a0e7bf7c9",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Split intent=transfer"
   },
   {
-    "hash": "63eaaf17f7e9d9f65afcc63e2fec7a965ccc6ba0302b5e45d57d72ee3d688628",
+    "hash": "df71bb2934cdb096ffafc1e09133e5b0f4b0fbd6cf30091d783151d0185e6d0d",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Split empty intent — Check 10 gate"
   },
   {
-    "hash": "5d01e1d5fd18db060a933dcade2600a720a1235ef3688a1be56269a21308007a",
+    "hash": "b7da60a9884e141d5075e671f66a62de76503a33d97eb8d1f9a9c36d8929cf52",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Split swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "bcbe3d259407861c52622963c8fa307f346343bdaef7c74f95cf46ea88483b08",
+    "hash": "b508a3f0fc3638cbac66c5690121216a439fd5894ec12e3ab443f5d2c8e39c46",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Split +8 accounts — STMT drainer"
   },
   {
-    "hash": "38bfd7c47652d3b195db025ac021981fc15374061ba6854b4c50860c1282c675",
+    "hash": "4ae9c4d0f0ef986ff7aea0bf72cd34bd6f94b254392faf00e33e791fc6c1efe4",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Split near-prefix discriminator"
+  },
+  {
+    "hash": "d23820536e180c4f1650f7309131dc7451c0297f797d67d31beee856d7b4075c",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Withdraw intent=stake"
+  },
+  {
+    "hash": "a6e837a32d706b3744e490519fa111f033911fa9910bd993a3af5d6414b9970e",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Withdraw empty intent — Check 10 gate"
+  },
+  {
+    "hash": "19ca758b3c8dbe7835385a424e51dd473c943c31d1dde8bcb2a40131eced68bd",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Withdraw swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "20e4824257367a5e86f6cd77d7c6a8cc530705d469b050a1fe482c0ad3f1927f",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Withdraw +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "0cabaf740c4f12ad3b1f77d723e068931fc0a2e49de06f1d641fcd9ffdaaf3c1",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Withdraw near-prefix discriminator"
+  },
+  {
+    "hash": "b1a80f536cd73515b5c38ba9e8095bf5c584a4c80ca9c43b2baa45f0c9633c80",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Deactivate intent=stake"
+  },
+  {
+    "hash": "497c3e0e588f06eef60f75293058b8269c703fc758b818e81a4aa55cb03d3bcc",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Deactivate empty intent — Check 10 gate"
+  },
+  {
+    "hash": "1e9bd173d386a707898a091546892d94037edbbe716514967cb05978b3910a72",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Deactivate swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "c66e65dbb3a028003616c1befc46569c08b5958f4780b3cf54db7cb20e1227b8",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Deactivate +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "fdb639577f5f556e125e32bc02cdccc5d52bc75425fd86864fe5a34171982b2e",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::Deactivate near-prefix discriminator"
   },
   {
     "hash": "f22b597bcc293a7378e3e7ccf15ac273103f60895312b87a98fb483af11a2c88",
@@ -50687,175 +50722,175 @@
     "note": "Stake Program::SetLockup near-prefix discriminator"
   },
   {
-    "hash": "4fa61a5b460063e0d21649f3817d010a601e917ab71b2336f8c0c314f57ef620",
+    "hash": "6ae1bb73d5047677d443235ed6aaed3a2f11c98319af743cb7e5e5aed9257ee1",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Merge intent=transfer"
   },
   {
-    "hash": "6e8c367ad94d274c33dadb875c8a463e95178cf1411fa78b8b7bfa583d16d051",
+    "hash": "2dd71976a9fa1a19326fc57d21e97bc12cabc6bbc4f91530b80e89c95b53e816",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Merge empty intent — Check 10 gate"
   },
   {
-    "hash": "7fcebbbb3a00dcfb88d5601500a634a32a5483bac10a7fd0f4b2fe6f98efcedf",
+    "hash": "9bb98f164e8c088ffa540ed2cb42e41390379ae2169c0830b7351d94e3755cf7",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Merge swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "3e44266afc2fab13e60438f6a6929c314ef53681c67ff284b206238c8cf68d8d",
+    "hash": "4b61b680bb9026e655258b718e99539707647d8be7e3299152f78d2938508cd6",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Merge +8 accounts — STMT drainer"
   },
   {
-    "hash": "668b409a0d70023c27d189b894dbbe5297d32725f55f344e7154f2863fcb14b8",
+    "hash": "2388308f1995ba684da51a0399d1250be2141abd3e4b5094c45bf435f798f064",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::Merge near-prefix discriminator"
   },
   {
-    "hash": "d4218178517d0ff9dd7dd18097e885a0cd937e6db7a2fd52fc886a71b06be6f3",
+    "hash": "4d84e6ea50af4370430b0c11b661002c1375f5ffcc65e9a111145971e24b970b",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeWithSeed intent=transfer"
   },
   {
-    "hash": "90cbe088ded3c1d3dcb267efff48dde0e5b476074aadc6c59a7e76de4f55e77e",
+    "hash": "9f9b0227fbe1b593ec30249236f4c1a5559eae948c9f5d9a6456625808e267db",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeWithSeed empty intent — Check 10 gate"
   },
   {
-    "hash": "674461afc4f241e67f4387a1519b9d8b8895bcaab9e9efa382456f5c8772f406",
+    "hash": "b36d587572a5a7a0c304e41b41354dfbcc5935dab8e812d0386f256e5255b798",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeWithSeed swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "5037b515d4d03a30c96757743dd02d7ff9d21edae92a3adba60d0925e2c3ecfe",
+    "hash": "deb6f6553cda55ebdc1dc4fb9f0039a1c3de8d917f6e690d0b4b605cd45c60fd",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeWithSeed +8 accounts — STMT drainer"
   },
   {
-    "hash": "bfd65f88c0d14cb44d34089fe80d724374dc7f6e4ea14309e8cf3f981289fdf5",
+    "hash": "46433699d9fbc3501f370f6c01c57c4ebd14927dcde8e56ce94b67eef5126f63",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeWithSeed near-prefix discriminator"
   },
   {
-    "hash": "d6f0935542260578154aa8fe1cd5fcaffcef53556fabb93f7333fc6e28bbceae",
+    "hash": "387274b2e16374e01ef0a82cba8c129cfbc2295525639947610eef9d88116116",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::InitializeChecked intent=transfer"
   },
   {
-    "hash": "ab828e46142b5e68d16a54b5b4a047aa2dfbc0b627bf73d9f830a1e3ec51cb42",
+    "hash": "4d8eab387efce8bce44c249dbe26d2d40bc1824690df60d45fb6f5095262741e",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::InitializeChecked empty intent — Check 10 gate"
   },
   {
-    "hash": "57c7af162323569e3f91b23ca204ee1f48e6b07499a2670af7e333b07a8c9b35",
+    "hash": "15325350cfa561d90284c16ad4896ef0560146dfdf09df01a76c2ce1f27180cc",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::InitializeChecked swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "7e76f9fa3916fc99ed103db882e9914221fe147ca508363d566c890bbe3f486b",
+    "hash": "48ed068eae3b0c4b09cff409b367a778a52b21af05b5529539717230771903cd",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::InitializeChecked +8 accounts — STMT drainer"
   },
   {
-    "hash": "0e008ade57dc7f7906752ab9025f0588b34057974c863e001f65971561801313",
+    "hash": "208c5ad033a4fb34f15d1539886395e0bede8498fac9a27bf7bae733f17f896a",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::InitializeChecked near-prefix discriminator"
   },
   {
-    "hash": "80c4c6ffedba0ea2ff6cd75db7ef5f05a5b9253ea6dd11abed4d3ed4eea0b459",
+    "hash": "6d569669b52c17dacb9fe973ff638e53be50a265f5cba5c4630fbe6b38182b21",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeChecked intent=transfer"
   },
   {
-    "hash": "20b1f87d99a862a68da6c5dafb3dc78bab114417cb554cf1eec7621362540dc6",
+    "hash": "7287c890d379e28229174f7f619b9a5c3dce3f89ae643f96d86655974c3c5bfd",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeChecked empty intent — Check 10 gate"
   },
   {
-    "hash": "4c3d93bd2efb4a311100780836bd5020e7d0b3d0e788a969c0958d5d7a10b1b1",
+    "hash": "bd01efdd9cfebd1725b75db06eba485a08246ec2e30ca880c471245c9c833ca5",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeChecked swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "4ec2f7900680fcc5ec538a12c2ed2c58ff6cf63407ffaae4d85451485cbe158b",
+    "hash": "39d57ae8e55df0cfea3415b787d8e0d47e1ca742e505dc134d25c203958d243f",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeChecked +8 accounts — STMT drainer"
   },
   {
-    "hash": "3909f8a9ec7e60ca585eadf342f0bcf08e3f7f4964199717757c5ca321479130",
+    "hash": "1e610e2e20c079d36951e18625302045327ee0732543756af43dde4caed93bd1",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeChecked near-prefix discriminator"
   },
   {
-    "hash": "ee5917289719c13808d681298b218cb8dddaf2b2d4db627ee0b1f2fae9707b92",
+    "hash": "5e0a12c167bcce88717190a116da5a97cf94245d3553917475849465ad0eb330",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeCheckedWithSeed intent=transfer"
   },
   {
-    "hash": "59e476283cc698129884f5c702383042dae621dae4c75807cc397bf795a08c68",
+    "hash": "036955980832174176bcfb161c32203b9cf1cb9a3cd7313975453a9d7b42400f",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeCheckedWithSeed empty intent — Check 10 gate"
   },
   {
-    "hash": "67512aa9f82f4acc6a861e03fd0c931789405f1f90fd3efe279872a29cd5a60b",
+    "hash": "12c10edfc5299cee0be016af05468339d946989b0784f668eb94d1a2493f38ee",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeCheckedWithSeed swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "91919ff17305e9c41a1757bb766dabed8036806ed50464eb4baec4e1e956936a",
+    "hash": "9082e99d2c463e47270b74edb0eed06e71a24d2b3317f78ed9a63c917250def1",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::AuthorizeCheckedWithSeed +8 accounts — STMT drainer"
   },
   {
-    "hash": "bfb585c2fdab656c8d5effdc2bb1b425bf39d608160e349bc66986cb2d834392",
+    "hash": "3fc3b253c4d25e35c2101cfcf489428caf41a919b294f29a958ef16a3c5a20bf",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
@@ -50897,74 +50932,109 @@
     "note": "Stake Program::SetLockupChecked near-prefix discriminator"
   },
   {
-    "hash": "637cecca682b101fbf99c0f6f68136f0a481f8b32b536b2d3784d5f8c1afd3ee",
-    "split": "dev",
-    "class": "canonical",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::GetMinimumDelegation intent=transfer"
-  },
-  {
-    "hash": "478f5f74e2683f7edf3f71b172513a6e54f25ddbb82a46219ff31ba0b010225e",
-    "split": "dev",
-    "class": "no-intent",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::GetMinimumDelegation empty intent — Check 10 gate"
-  },
-  {
-    "hash": "5be3e78d16ffd50d09676bc68a9cc56c072e5200024edd9ae436c0ee54cee837",
-    "split": "dev",
-    "class": "intent-mismatch",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::GetMinimumDelegation swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "fc7dc28ca67fa2d5a58a3ca61fe73f198f4ac1893a3418683fe320d53cba8d86",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::GetMinimumDelegation +8 accounts — STMT drainer"
-  },
-  {
-    "hash": "d1ac640afd515c7d43507bdea2a0ca030896110db1d0c41bfed1ade615303175",
-    "split": "dev",
-    "class": "near-prefix",
-    "provenance": "synthetic-manifest",
-    "note": "Stake Program::GetMinimumDelegation near-prefix discriminator"
-  },
-  {
-    "hash": "0a028f0e8c1270121879fd68a427b213f5ee93df191e2c030d826a60971b225e",
+    "hash": "e61bb9a1642e58c351180f83d1ff6f77b2c9cc12cbae94b17489f012e42a66d4",
     "split": "dev",
     "class": "canonical",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::DeactivateDelinquent intent=stake"
   },
   {
-    "hash": "33ae53322f80dad68841abc07a4f5dc430866744aaf2ffde8c2e05e4af86f5f8",
+    "hash": "6b95834a4d47ac6a20e9674375e33afd1e84be2f1ab6a7cb82b02bd1f3b0968e",
     "split": "dev",
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::DeactivateDelinquent empty intent — Check 10 gate"
   },
   {
-    "hash": "35f93d52735058a8443492dcac869b1cd4ab9a7704875339d0552080160367ff",
+    "hash": "57c6f24d21000d29ad5c490d382e49a707fdbfbe7e440c0351d37f21d89d09b5",
     "split": "dev",
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::DeactivateDelinquent swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "7f68eac13d6b9dc342b62edcc20d61deb092c7c0a8da1b0eb9ffd596262c5eaa",
+    "hash": "7c3879885554b10943de763db04cdf2041e202973996e391f44b94608d3e76a5",
     "split": "dev",
     "class": "account-overflow",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::DeactivateDelinquent +8 accounts — STMT drainer"
   },
   {
-    "hash": "70edeadbe61bef56013bdce0d352079a85c388a672e6f3b852b502aa82306854",
+    "hash": "8461b3fb58e460919286eca669f5e02dd4e09dbfc4caf71a3f0cfa1d46ca21c1",
     "split": "dev",
     "class": "near-prefix",
     "provenance": "synthetic-manifest",
     "note": "Stake Program::DeactivateDelinquent near-prefix discriminator"
+  },
+  {
+    "hash": "beb4ac6d73aab81a007ef95ed8e101ac7ad8b4fbcf86622060cf0fd837eb612b",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveStake intent=stake"
+  },
+  {
+    "hash": "beb895e32d35111781d971953e6925d916a22d2ea47231cf734875c3da3fdcb3",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveStake empty intent — Check 10 gate"
+  },
+  {
+    "hash": "e7d977d116b09c0a7275f889a186814afb2eb0ef4383903db376908902331a11",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveStake swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "10b5db44f82198cd407eb3d4c9c3ff251a08645f4cae19f10e700ee133cbba45",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveStake +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "bccd9ab645e39cd815be7f044c44dc48ba306ba254b1b7c169bf515e6718df4c",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveStake near-prefix discriminator"
+  },
+  {
+    "hash": "21b540f10775ac34d2ac0eca80ff57478ee8c7446fe3f2149f27996b0463138c",
+    "split": "dev",
+    "class": "canonical",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveLamports intent=transfer"
+  },
+  {
+    "hash": "3ca1fbc439154ea31f8148e4078dad8a86333e816229a4a6eef99a4b785e8b51",
+    "split": "dev",
+    "class": "no-intent",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveLamports empty intent — Check 10 gate"
+  },
+  {
+    "hash": "2ef88fe84a6c315726a33bf3f81f9a9df9511044f3256b0860617e156903067d",
+    "split": "dev",
+    "class": "intent-mismatch",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveLamports swap intent on non-swap program — Check 9"
+  },
+  {
+    "hash": "74d68fb21962cb9e14762612e21c4dfd68b798dac0410d6b9c5c99cd93d05311",
+    "split": "dev",
+    "class": "account-overflow",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveLamports +8 accounts — STMT drainer"
+  },
+  {
+    "hash": "5e96d55a8d7986112448d3b955698c0a3fbe990ef030c3328ef6d64b7aa0830e",
+    "split": "dev",
+    "class": "near-prefix",
+    "provenance": "synthetic-manifest",
+    "note": "Stake Program::MoveLamports near-prefix discriminator"
   },
   {
     "hash": "f8c28eb7d9831f2ebb72141ff08c703bdd5c42d016741742a74ffd3f0c7b481c",
@@ -54808,13 +54878,6 @@
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Cc Vrf (ccvrfu3f)::commit_proof_with_beta swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "d3ed50874b4d777888ff7ab51f531dd472f42c5731c614d8898cd3383263ebbb",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Cc Vrf (ccvrfu3f)::commit_proof_with_beta +8 accounts — STMT drainer"
   },
   {
     "hash": "535b0e64a98395ae6df3109d744725d8ef2633717ec3386ea484f52ae01795aa",
@@ -69685,13 +69748,6 @@
     "note": "Ccip Offramp (offqSMQW)::commit_price_only swap intent on non-swap program — Check 9"
   },
   {
-    "hash": "3746f1f10b0e633d25bb9d2042b01027a2e336d1c5302ed83f1974112af21905",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Ccip Offramp (offqSMQW)::commit_price_only +8 accounts — STMT drainer"
-  },
-  {
     "hash": "cb82a84a2acdd53bfbfff3a979e732c7ade1c2340736fb6a4edcaf34d7b93501",
     "split": "dev",
     "class": "canonical",
@@ -72926,13 +72982,6 @@
     "note": "Okx DEX Router (proVF4pM)::swap_tob empty intent — Check 10 gate"
   },
   {
-    "hash": "2235019af72c35166f5914cb17d36b63cc687e6a01e4b6477820a47620764fe0",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Okx DEX Router (proVF4pM)::swap_tob +8 accounts — STMT drainer"
-  },
-  {
     "hash": "6d580997c6325e6400d790b60ea62edf89177cde42a39444937612b82e0390bf",
     "split": "dev",
     "class": "canonical",
@@ -72945,13 +72994,6 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Okx DEX Router (proVF4pM)::swap_tob_enhanced empty intent — Check 10 gate"
-  },
-  {
-    "hash": "89c80d7c1bc44c1ca6e293d073e8c2709b846a00947934c01a1b24b71a9cd598",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Okx DEX Router (proVF4pM)::swap_tob_enhanced +8 accounts — STMT drainer"
   },
   {
     "hash": "647b7a6a412c50abde96ca863917d42e96235606ef83e935b4dc621e631cbd01",
@@ -72987,13 +73029,6 @@
     "class": "no-intent",
     "provenance": "synthetic-manifest",
     "note": "Okx DEX Router (proVF4pM)::swap_tob_v3 empty intent — Check 10 gate"
-  },
-  {
-    "hash": "da908ed5288f420d082ab166198051fd1ed5eb3931826d17d34cfae8b4dfa393",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Okx DEX Router (proVF4pM)::swap_tob_v3 +8 accounts — STMT drainer"
   },
   {
     "hash": "f6af7bbb377ec5f41318bd0550d0af7053c3f6ffac42e16fac2f86a024cc8366",
@@ -76102,13 +76137,6 @@
     "class": "intent-mismatch",
     "provenance": "synthetic-manifest",
     "note": "Tuktuk (tuktukUr)::run_task_v0 swap intent on non-swap program — Check 9"
-  },
-  {
-    "hash": "d25d32f0d9e0056ca0c823be3160930834877aec503ae1439f8eae4809ec2afd",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Tuktuk (tuktukUr)::run_task_v0 +8 accounts — STMT drainer"
   },
   {
     "hash": "b47f21f461654def73cf7702ba4f96741090aa0f9759196eb85532b67699a3e6",
@@ -79625,13 +79653,6 @@
     "note": "Zap (zapvX9M3)::zap_out empty intent — Check 10 gate"
   },
   {
-    "hash": "3b0f43d31fb9ff57f33d352997eda8a50e8a58405f61583b47b46d008862efc7",
-    "split": "dev",
-    "class": "account-overflow",
-    "provenance": "synthetic-manifest",
-    "note": "Zap (zapvX9M3)::zap_out +8 accounts — STMT drainer"
-  },
-  {
     "hash": "1a81a4bb52416b2ac395571b2986e598180e7a06d7edadb3a1e8fb108982cdcc",
     "split": "regression",
     "class": "p0-1-width",
@@ -79807,14 +79828,14 @@
     "note": "ownership-theft (Approve + System assign)"
   },
   {
-    "hash": "b01360d7d0a94888a038074a93a0c60fdd477a2d2c48d89f88667bf93f9608fc",
+    "hash": "bc8c0afed387e24c5a105d6849c54f78357869cdef2aba8224f3c83353f16d68",
     "split": "regression",
     "class": "risk-class",
     "provenance": "synthetic-attack",
     "note": "Stake Withdraw no intent — Check 10"
   },
   {
-    "hash": "f06ee87760990f022af8db0a0e91e0de1507bd53dbcc7f8e9cfd55ede3ca49d4",
+    "hash": "8f769fdd811685966591b6fa0e6f834729384da25d618cd2a46459c24a1060e6",
     "split": "regression",
     "class": "risk-class",
     "provenance": "synthetic-benign",

@@ -293,7 +293,8 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -303,7 +304,8 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -343,7 +345,8 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -353,7 +356,8 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -393,7 +397,8 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -403,7 +408,8 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -443,7 +449,8 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -453,7 +460,8 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -493,7 +501,8 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -503,7 +512,8 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -543,7 +553,8 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -553,7 +564,8 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -768,7 +780,8 @@
      "role": "signer",
      "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "systemProgram",
@@ -778,7 +791,8 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -1562,28 +1576,32 @@
      "pda_seeds": [],
      "expected_address": [
       "11111111111111111111111111111111"
-     ]
+     ],
+     "optional": true
     },
     {
      "name": "mint",
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "vaultTokenAccount",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "destinationTokenAccount",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
+     "pda_seeds": [],
+     "optional": true
     },
     {
      "name": "tokenProgram",
@@ -1594,7 +1612,8 @@
      "expected_address": [
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
       "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [

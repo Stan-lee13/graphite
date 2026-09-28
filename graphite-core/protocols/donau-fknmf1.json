@@ -256,7 +256,8 @@
      "pda_seeds": [
       "breakdown",
       "{account_6}"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [
@@ -597,7 +598,8 @@
      "pda_seeds": [
       "breakdown",
       "{account_7}"
-     ]
+     ],
+     "optional": true
     }
    ],
    "expected_state_changes": [

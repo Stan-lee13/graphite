@@ -3887,7 +3887,8 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "transfer",
+   "variable_accounts": true
   },
   {
    "name": "forceDisbandFleet",

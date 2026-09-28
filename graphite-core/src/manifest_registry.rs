@@ -835,6 +835,7 @@ mod tests {
                 is_signer: false,
                 pda_seeds: vec![],
                 expected_address: vec![],
+                optional: false,
             })
             .collect();
         let err2 = ManifestRegistryEngine::validate_manifest(&m2).unwrap_err();

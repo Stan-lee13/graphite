@@ -232,6 +232,7 @@ fn build_rpc_state_diff(
         fee_epoch: None,
         token2022_mints: Default::default(),
         transaction_accounts: None,
+        transaction_privileges: None,
     }
 }
 
@@ -607,6 +608,88 @@ fn token2022_executed(
     Some(out)
 }
 
+/// The privileges the transaction's bytes give each account (Round 22):
+/// the header's signers and writable static keys, and the lookup tables'
+/// writable section. Lookup-table accounts never sign.
+#[cfg(feature = "rpc")]
+fn transaction_privileges(
+    message: &crate::tx_artifact::ArtifactMessage,
+    loaded: Option<&crate::rpc_client::LoadedAddresses>,
+) -> crate::state_diff::TransactionPrivileges {
+    let mut writable: std::collections::BTreeSet<String> =
+        message.writable.iter().cloned().collect();
+    if let Some(l) = loaded {
+        writable.extend(l.writable.iter().cloned());
+    }
+    crate::state_diff::TransactionPrivileges {
+        signers: message.signers.iter().cloned().collect(),
+        writable,
+    }
+}
+
+/// Whether every execution of `program` the simulator reported was a CPI
+/// made by Token-2022 (Round 22) — the way a transfer hook runs. A top-level
+/// instruction of it, a call from any other program, an inner instruction
+/// without a stack height, or an index that cannot be placed is `false`.
+#[cfg(feature = "rpc")]
+fn invoked_only_by_token2022(
+    message: &crate::tx_artifact::ArtifactMessage,
+    loaded: Option<&crate::rpc_client::LoadedAddresses>,
+    inner: Option<&[crate::rpc_client::ObservedInnerInstruction]>,
+    program: &str,
+) -> bool {
+    use crate::state_diff::SPL_TOKEN_2022_PROGRAM;
+    let Some(inner) = inner else {
+        return false;
+    };
+    if message
+        .instructions
+        .iter()
+        .any(|ix| ix.program_id == program)
+    {
+        return false;
+    }
+    let mut keys: Vec<&str> = message.static_keys.iter().map(String::as_str).collect();
+    if let Some(l) = loaded {
+        keys.extend(l.writable.iter().map(String::as_str));
+        keys.extend(l.readonly.iter().map(String::as_str));
+    }
+    let name = |ix: &crate::rpc_client::ObservedInnerInstruction| {
+        keys.get(usize::from(ix.program_id_index)).copied()
+    };
+    let mut seen = false;
+    for (i, ix) in inner.iter().enumerate() {
+        match name(ix) {
+            None => return false,
+            Some(p) if p != program => continue,
+            Some(_) => {}
+        }
+        seen = true;
+        let Some(height) = ix.stack_height else {
+            return false;
+        };
+        // The caller: the nearest earlier instruction under the same
+        // top-level one, one level up. Height 2 is called by the top level.
+        let parent = if height == 2 {
+            message
+                .instructions
+                .get(usize::from(ix.top_level_index))
+                .map(|t| t.program_id.as_str())
+        } else {
+            inner[..i]
+                .iter()
+                .rev()
+                .take_while(|p| p.top_level_index == ix.top_level_index)
+                .find(|p| p.stack_height == Some(height - 1))
+                .and_then(name)
+        };
+        if parent != Some(SPL_TOKEN_2022_PROGRAM) {
+            return false;
+        }
+    }
+    seen
+}
+
 /// The pre-state's lamports, taken from the simulator's own `preBalances`
 /// (Round 21).
 ///
@@ -655,25 +738,20 @@ fn pre_lamports_from_the_simulation(
     (aligned, changed)
 }
 
-/// Which fee schedule the simulation paid under and which the transaction
-/// can still reach (Round 21). `None` when the simulated slot is unknown or
-/// cannot be placed against the epoch answer.
+/// Which fee schedule the simulation paid under (Round 21), and whether the
+/// transaction expires at all. `None` when the simulated slot is unknown or
+/// cannot be placed against the epoch answer. Where it lands is not
+/// estimated (Round 22): a pending schedule is always judged.
 #[cfg(feature = "rpc")]
 fn fee_epoch_context(
     info: &crate::rpc_client::EpochInfo,
     simulated_slot: Option<u64>,
     durable_nonce: bool,
 ) -> Option<crate::state_diff::FeeEpochContext> {
-    let slot = simulated_slot?;
-    let simulated_epoch = info.epoch_of(slot)?;
-    let latest_landing_epoch = if durable_nonce {
-        None
-    } else {
-        Some(info.epoch_of(slot.checked_add(crate::state_diff::FEE_LANDING_MARGIN_SLOTS)?)?)
-    };
+    let simulated_epoch = info.epoch_of(simulated_slot?)?;
     Some(crate::state_diff::FeeEpochContext {
         simulated_epoch,
-        latest_landing_epoch,
+        durable_nonce,
     })
 }
 
@@ -4082,6 +4160,10 @@ impl GraphiteCore {
         effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
         trace_origin_range: &std::ops::Range<usize>,
         every_close_refunds_its_authority: bool,
+        artifact: Option<(
+            &crate::tx_artifact::ArtifactMessage,
+            Option<&crate::tx_artifact::ResolvedLookups>,
+        )>,
     ) -> Result<(RiskVerdict, Vec<String>), VerificationError> {
         let mut verdict = RiskVerdict::Passed;
         let mut warnings: Vec<String> = Vec::new();
@@ -4189,16 +4271,51 @@ impl GraphiteCore {
                     .entry(ix.program_id.as_str())
                     .or_insert(0) += 1;
             }
+            // Round 22: a DECLARED sibling is judged like the primary — the
+            // layout its account count selects, and the writable accounts
+            // past it counted from the bytes' own privileges (a message's
+            // privileges are per address; L2 requires every declared sibling
+            // to be the instruction in the bytes). A node of a caller-declared
+            // CPI trace has no bytes behind it and keeps the stricter count.
+            let layout_len = self
+                .registry
+                .get(&ix.program_id)
+                .and_then(|m| {
+                    m.instructions.iter().find(|i| {
+                        crate::manifest::discriminator_matches(
+                            &i.discriminator,
+                            &ix.instruction_discriminator,
+                        )
+                    })
+                })
+                .map(|i| i.layout_for(ix.account_addresses.len()).len());
+            let sibling_writable_extras = match (artifact, layout_len) {
+                (Some((message, lookups)), Some(expected))
+                    if !trace_origin_range.contains(&idx) =>
+                {
+                    privileges_from_artifact(message, &ix.account_addresses, lookups)
+                        .filter(|metas| metas.len() == ix.account_addresses.len())
+                        .map(|metas| {
+                            metas
+                                .iter()
+                                .zip(&ix.account_addresses)
+                                .skip(expected)
+                                .filter(|(m, a)| m.is_writable && **a != message.fee_payer)
+                                .count()
+                        })
+                }
+                _ => None,
+            };
             let ix_input = RiskAssessmentInput {
                 verified_self_refund_close: false,
-                writable_extra_accounts: None,
+                writable_extra_accounts: sibling_writable_extras,
                 program_id: ix.program_id.clone(),
                 accounts: ix.account_addresses.clone(),
                 cpi_targets: ix.cpi_targets.clone(),
                 expected_state_changes: risk_ctx.expected_state_changes,
                 allowed_cpis: risk_ctx.allowed_cpis,
                 instruction_discriminator: ix.instruction_discriminator.clone(),
-                expected_account_count: risk_ctx.expected_account_count,
+                expected_account_count: layout_len.or(risk_ctx.expected_account_count),
                 variable_accounts: risk_ctx.variable_accounts,
                 // Deliberately empty — see the method doc comment above.
                 proposed_intent_type: String::new(),
@@ -5703,6 +5820,9 @@ impl GraphiteCore {
                 &effective_instructions,
                 &trace_origin_range,
                 closes.every_close_refunds_its_authority,
+                artifact_message
+                    .as_ref()
+                    .map(|m| (m, resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()))),
             )?;
         risk_warnings.extend(secondary_risk_warnings);
         let risk_verdict = if let RiskVerdict::Blocked {
@@ -5951,6 +6071,13 @@ impl GraphiteCore {
         // outranks a claim about evidence (P5).
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut))]
         let mut observed_diff: Option<crate::state_diff::StateDiff> = None;
+        // Transfer-hook programs the simulator saw Token-2022 invoke, and
+        // ONLY Token-2022, whose reach the transaction's bytes bound
+        // (Round 22) — with why. An observed CPI into one of these is the
+        // hook running inside a transfer, not the primary calling an unknown
+        // program.
+        #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
+        let mut bounded_hook_callees: Vec<(String, String)> = Vec::new();
         // The slots the two halves of that diff were read at, when both are
         // known: (pre-state read, simulation). Different slots mean the diff
         // spans other transactions' changes as well as this one's.
@@ -6550,17 +6677,43 @@ impl GraphiteCore {
                                             }
                                             keys
                                         });
-                                    // Round 21: what ran, and in which
-                                    // epoch — both only when the diff
-                                    // involves a transfer fee at all.
-                                    if crate::state_diff::diff_involves_transfer_fee(&diff) {
-                                        if let Some(message) = artifact_message.as_ref() {
-                                            diff.token2022_executed = token2022_executed(
-                                                message,
+                                    // Round 22: the privileges the bytes
+                                    // give every account, and what
+                                    // Token-2022 ran. The executed list used
+                                    // to be built only for a fee; a transfer
+                                    // hook and untouched confidential state
+                                    // are judged on it too.
+                                    diff.transaction_privileges =
+                                        artifact_message.as_ref().map(|m| {
+                                            transaction_privileges(
+                                                m,
                                                 sim_res.loaded_addresses.as_ref(),
-                                                sim_res.inner_instructions.as_deref(),
-                                            );
+                                            )
+                                        });
+                                    if let Some(message) = artifact_message.as_ref() {
+                                        diff.token2022_executed = token2022_executed(
+                                            message,
+                                            sim_res.loaded_addresses.as_ref(),
+                                            sim_res.inner_instructions.as_deref(),
+                                        );
+                                        for (hook, reach) in
+                                            crate::state_diff::transfer_hooks_bounded(&diff)
+                                        {
+                                            if let Ok(why) = reach {
+                                                if invoked_only_by_token2022(
+                                                    message,
+                                                    sim_res.loaded_addresses.as_ref(),
+                                                    sim_res.inner_instructions.as_deref(),
+                                                    &hook,
+                                                ) {
+                                                    bounded_hook_callees.push((hook, why));
+                                                }
+                                            }
                                         }
+                                    }
+                                    // Round 21: in which epoch — only when
+                                    // the diff involves a transfer fee.
+                                    if crate::state_diff::diff_involves_transfer_fee(&diff) {
                                         match within_budget(&budget, client.get_epoch_info()).await
                                         {
                                             Ok(Ok(info)) => {
@@ -6755,6 +6908,19 @@ impl GraphiteCore {
                     .collect();
                 undeclared.sort();
                 undeclared.dedup();
+                // Round 22: a transfer hook the bytes bound, run by Token-2022
+                // and nothing else, is part of the transfer — named, not
+                // judged as the primary's call into an unknown program.
+                let mut risk_warnings = risk_warnings;
+                undeclared.retain(|p| match bounded_hook_callees.iter().find(|(h, _)| h == p) {
+                    Some((_, why)) => {
+                        risk_warnings.push(format!(
+                            "observed CPI {p}: a Token-2022 transfer hook, invoked only by Token-2022 — {why}"
+                        ));
+                        false
+                    }
+                    None => true,
+                });
                 if undeclared.is_empty() {
                     (risk_summary, risk_warnings)
                 } else {

@@ -20,6 +20,14 @@ export interface BoundInstructionPayload {
   discriminator: string;
   accounts: { pubkey: string; isSigner: boolean; isWritable: boolean }[];
   instructionData?: number[];
+  /**
+   * Address lookup tables the transaction should read accounts through
+   * (Round 22). When present the bridge fetches each table and builds a v0
+   * message; a table it cannot read aborts the swap. Not part of what
+   * AuditBind hashes — the instruction is the same instruction either way,
+   * and the Core reads the tables out of the bytes and resolves them itself.
+   */
+  addressLookupTableAddresses?: string[];
 }
 
 /**

@@ -131,6 +131,15 @@ pub struct AccountRoleDef {
     /// false-positive-block half of those legitimate calls.
     #[serde(default)]
     pub expected_address: Vec<String>,
+    /// The program's own IDL marks this account optional (Round 22). An
+    /// Anchor program is told an optional account is ABSENT by being passed
+    /// its own program id in the slot — the address of an executable account
+    /// that can neither sign nor be written. Such a slot is resolved as that
+    /// known constant, not checked against the expectations of an account
+    /// that is not there. Only the program id means absent; any other
+    /// address in the slot is checked exactly as before.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
 }
 
 /// A protocol manifest — describes one Solana program's instruction surface.
@@ -1443,9 +1452,20 @@ mod tests {
             ("AuthorizeChecked", "0a000000"),
             ("AuthorizeCheckedWithSeed", "0b000000"),
             ("SetLockupChecked", "0c000000"),
-            ("GetMinimumDelegation", "0d000000"),
             ("DeactivateDelinquent", "0e000000"),
+            ("MoveStake", "10000000"),
+            ("MoveLamports", "11000000"),
         ];
+        // Round 22: GetMinimumDelegation (13) takes no accounts and only
+        // writes return data, so there is nothing for a manifest to describe;
+        // left out, it is an unknown instruction and blocks. Redelegate (15)
+        // is deprecated and no longer supported by the program.
+        for absent in ["0d000000", "0f000000"] {
+            assert!(
+                stake.instructions.iter().all(|i| i.discriminator != absent),
+                "Stake {absent} must not be described"
+            );
+        }
         for (name, disc) in official {
             let ix = stake
                 .instructions

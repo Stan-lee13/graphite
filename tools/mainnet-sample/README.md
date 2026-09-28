@@ -50,6 +50,27 @@ was measured by reverting the change, re-running over the identical sample, and
 diffing — which produced 9,784 identical verdicts, the evidence that the change
 moved nothing for honest traffic. "The tests pass" would not have shown that.
 
+## Recorded results (three days, Round 22)
+
+The same three samples, run against Round 21's code (`9284385`, which
+reproduced Round 21's recorded verdicts byte for byte) and Round 22's, diffed
+row by row. `GRAPHITE_MAINNET_SHOW_DRAINER=1` prints, for the first refusals of
+each program by the account-count heuristics, the layout length, how many
+extra accounts arrived through a lookup table and how many are writable.
+
+| | 2026-09-23 | 2026-09-25 | 2026-09-27 |
+|---|---:|---:|---:|
+| verified | 19,440 | 9,973 | 10,444 |
+| parse failures / verify errors | 0 / 0 | 0 / 0 | 0 / 0 |
+| risk Clear, Round 21 → 22 | 13,163 → 13,260 | 6,575 → 6,650 | 7,175 → 7,233 |
+| `AccountIdentityMismatch` verdicts | 145 → 131 | 57 → 50 | 74 → 66 |
+| `Drainer` verdicts | 5,803 → 5,697 | 3,193 → 3,111 | 3,049 → 2,980 |
+| Blocked → Clear | 97 | 75 | 58 |
+| Clear → Blocked | 0 | 0 | 0 |
+
+Every changed verdict only lost findings; none gained one. The causes are in
+`docs/round22-the-rest-of-the-list-2026-09-27.md` §4.
+
 ## Recorded results (three days, Round 21)
 
 The committed 2026-09-23 sample plus two more fetched the same way into a work
@@ -117,6 +138,13 @@ On 2026-09-24, 40 transactions (14 legacy, 24 v0, 2 v1): 0 invariant violations,
 0 approvals. 35 failed to simulate — checked by hand against the same RPC: the
 runtime's own errors for day-old transactions on today's state (stale vote
 slots, insufficient funds, closed accounts), reported as `simulation_failed`.
+
+On 2026-09-28 (Round 22), 40 transactions of the 2026-09-27 sample (16 legacy,
+23 v0, 1 v1), with `GRAPHITE_MAINNET_SHOW_RISK=1` printing every refused risk
+verdict's findings: 0 invariant violations, 0 approvals, all 40 L2 Passed;
+risk Clear 24 before the round's last fix and **33** after it — eight of the
+nine were `SyncNative` transactions refused on their PumpSwap sibling's raw
+account count (F-22-12).
 
 ## Recorded results (2026-09-22, Round 18)
 

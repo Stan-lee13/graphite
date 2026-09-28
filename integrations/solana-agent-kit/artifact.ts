@@ -29,11 +29,14 @@
 
 import { createHash } from "node:crypto";
 import {
+  AddressLookupTableAccount,
   Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
 } from "@solana/web3.js";
 
 /** One entry of the Core's `transaction_instructions`. */
@@ -203,7 +206,17 @@ export class BoundTransaction {
      * `as any` is a hostile in-process actor, and the digest check remains for
      * exactly that case. The two together are the design.
      */
-    private readonly tx: Transaction,
+    private readonly tx: Transaction | VersionedTransaction,
+    /**
+     * The instructions the message was compiled from, isolated. A v0 message
+     * stores lookup-table indexes rather than instructions, so they are kept
+     * rather than decompiled back out of it.
+     */
+    private readonly source: TransactionInstruction[],
+    /** `"legacy"`, or `0` for a v0 message (Round 22). */
+    readonly version: "legacy" | 0,
+    /** How many address lookup tables the v0 message reads; 0 for legacy. */
+    readonly lookupTableCount: number,
     /** The unsigned serialization handed to Graphite. */
     readonly artifactBytes: Uint8Array,
     /** The message, captured before verification. */
@@ -250,11 +263,28 @@ export class BoundTransaction {
     return d.length >= 4 && d[0] === 4 && d[1] === 0 && d[2] === 0 && d[3] === 0;
   }
 
+  /**
+   * Build the one transaction that is verified, signed and submitted.
+   *
+   * `version: 0` compiles a v0 message, reading accounts through
+   * `addressLookupTables` where they hold them (Round 22). Until then the
+   * bridge built legacy messages only, so a route too large for 1,232 bytes
+   * without lookup tables — most aggregator swaps — could not be bound at
+   * all. Everything below holds for both: the same object is verified,
+   * signed and submitted, the digest is checked before signing, and the
+   * signed bytes must carry the verified message. Lookup tables are given
+   * as ACCOUNTS, already fetched: a table that could not be read is the
+   * caller's refusal, never a quietly smaller message. Version 1 is not
+   * built — web3.js 1.x cannot compile it — and is verified by the Core from
+   * any builder that can.
+   */
   static build(params: {
     instructions: TransactionInstruction[];
     feePayer: PublicKey;
     recentBlockhash: string;
     lastValidBlockHeight: number;
+    version?: "legacy" | 0;
+    addressLookupTables?: AddressLookupTableAccount[];
   }): BoundTransaction {
     if (BoundTransaction.isDurableNonce(params.instructions)) {
       throw new Error(
@@ -262,18 +292,58 @@ export class BoundTransaction {
           "It does not expire and lastValidBlockHeight does not bound it; the bridge does not build them.",
       );
     }
-    const tx = new Transaction({
-      feePayer: new PublicKey(params.feePayer.toBytes()),
+    const version = params.version ?? "legacy";
+    const tables = params.addressLookupTables ?? [];
+    const source = params.instructions.map(BoundTransaction.isolate);
+    if (version === "legacy") {
+      if (tables.length > 0) {
+        throw new Error(
+          "BoundTransaction: address lookup tables were given for a legacy message, which cannot read them. " +
+            "Build with version: 0, or without the tables.",
+        );
+      }
+      const tx = new Transaction({
+        feePayer: new PublicKey(params.feePayer.toBytes()),
+        recentBlockhash: params.recentBlockhash,
+      });
+      tx.add(...source.map(BoundTransaction.isolate));
+      const artifactBytes = Uint8Array.from(
+        tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+      );
+      return new BoundTransaction(
+        tx,
+        source,
+        "legacy",
+        0,
+        artifactBytes,
+        Uint8Array.from(tx.serializeMessage()),
+        params.lastValidBlockHeight,
+      );
+    }
+    if (version !== 0) {
+      throw new Error(`BoundTransaction: unsupported message version ${String(version)}`);
+    }
+    const message = new TransactionMessage({
+      payerKey: new PublicKey(params.feePayer.toBytes()),
       recentBlockhash: params.recentBlockhash,
-    });
-    tx.add(...params.instructions.map(BoundTransaction.isolate));
-    const artifactBytes = Uint8Array.from(
-      tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
-    );
+      instructions: source.map(BoundTransaction.isolate),
+    }).compileToV0Message(tables);
+    const tx = new VersionedTransaction(message);
+    // Unsigned: every signature slot is 64 zero bytes, exactly the shape the
+    // legacy path produces with requireAllSignatures: false.
+    const artifactBytes = Uint8Array.from(tx.serialize());
+    if (artifactBytes.length > MAX_TRANSACTION_BYTES) {
+      throw new Error(
+        `BoundTransaction: the v0 transaction is ${artifactBytes.length} bytes; the network accepts at most ${MAX_TRANSACTION_BYTES}`,
+      );
+    }
     return new BoundTransaction(
       tx,
+      source,
+      0,
+      message.addressTableLookups.length,
       artifactBytes,
-      Uint8Array.from(tx.serializeMessage()),
+      Uint8Array.from(message.serialize()),
       params.lastValidBlockHeight,
     );
   }
@@ -291,13 +361,24 @@ export class BoundTransaction {
    * would hand back the alias `isolate` exists to remove.
    */
   instructions(): TransactionInstruction[] {
-    return this.tx.instructions.map(BoundTransaction.isolate);
+    return this.source.map(BoundTransaction.isolate);
   }
 
   /** The blockhash this transaction was built on. */
   get recentBlockhash(): string {
     // Set in `build`; a Transaction constructed with one always has one.
-    return this.tx.recentBlockhash as string;
+    return this.tx instanceof VersionedTransaction
+      ? this.tx.message.recentBlockhash
+      : (this.tx.recentBlockhash as string);
+  }
+
+  /** The serialization now: unsigned before signing, signed after. */
+  private serializeNow(): Uint8Array {
+    return this.tx instanceof VersionedTransaction
+      ? Uint8Array.from(this.tx.serialize())
+      : Uint8Array.from(
+          this.tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+        );
   }
 
   /**
@@ -333,9 +414,15 @@ export class BoundTransaction {
    * Solana itself will demand.
    */
   private assertSignersMatchTheMessage(signers: Keypair[]): void {
-    const message = this.tx.compileMessage();
-    const required = message.accountKeys
-      .slice(0, message.header.numRequiredSignatures)
+    const [keys, header] =
+      this.tx instanceof VersionedTransaction
+        ? [this.tx.message.staticAccountKeys, this.tx.message.header]
+        : (() => {
+            const m = this.tx.compileMessage();
+            return [m.accountKeys, m.header] as const;
+          })();
+    const required = keys
+      .slice(0, header.numRequiredSignatures)
       .map((k) => k.toBase58())
       .sort();
     const supplied = signers.map((s) => s.publicKey.toBase58()).sort();
@@ -360,9 +447,7 @@ export class BoundTransaction {
    * point — a stored digest would still match after the object moved on.
    */
   private assertApproved(approvedSha256: string): void {
-    const now = Uint8Array.from(
-      this.tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
-    );
+    const now = this.serializeNow();
     const digest = createHash("sha256").update(now).digest("hex");
     if (digest !== approvedSha256) {
       throw new Error(
@@ -383,7 +468,11 @@ export class BoundTransaction {
    * and would hide exactly the mutation this is looking for.
    */
   private signAndFreeze(signers: Keypair[]): Uint8Array {
-    this.tx.sign(...signers);
+    if (this.tx instanceof VersionedTransaction) {
+      this.tx.sign(signers);
+    } else {
+      this.tx.sign(...signers);
+    }
     const raw = Uint8Array.from(this.tx.serialize());
     const submitted = messageOf(raw);
     if (!equalBytes(submitted, this.messageBytes)) {

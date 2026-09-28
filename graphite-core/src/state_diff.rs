@@ -362,31 +362,26 @@ pub struct ExecutedTokenInstruction {
     pub data: Vec<u8>,
 }
 
-/// Which fee schedule applies to a transaction, and which can (Round 21).
+/// Which fee schedule a transaction paid in its simulation (Round 21), and
+/// how it expires.
 ///
 /// A mint carries two schedules and the epoch decides between them. The
-/// simulation ran in one epoch; the transaction can land in a later one only
-/// if its lifetime reaches it. Graphite reads the epoch from the RPC and
-/// bounds the lifetime from the transaction's own bytes.
+/// simulation ran in one epoch, which Graphite reads from the RPC — that is
+/// an observation. Where the transaction LANDS is not: Round 21 bounded it
+/// with an assumed 9,000-slot margin, and Round 22 removed the assumption. A
+/// blockhash is valid for 150 BLOCKS, epochs are counted in SLOTS, and a
+/// skipped slot has no block, so no number of slots bounds when a blockhash
+/// transaction can still land. A pending schedule is therefore always one the
+/// transaction can pay, and is judged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FeeEpochContext {
     /// The epoch the simulation executed in.
     pub simulated_epoch: u64,
-    /// The latest epoch the transaction can still land in. `None` when it has
-    /// no expiry — a durable-nonce transaction.
-    pub latest_landing_epoch: Option<u64>,
+    /// Whether the transaction advances a durable nonce instead of naming a
+    /// recent blockhash — it does not expire at all. Only changes how the
+    /// verdict words the reach of a pending schedule.
+    pub durable_nonce: bool,
 }
-
-/// How far past the simulated slot Graphite assumes a blockhash transaction
-/// can still land when it asks whether a pending fee schedule can reach it.
-///
-/// A blockhash is valid for 150 blocks, about a minute. Blocks are not slots —
-/// a skipped slot produces no block, so 150 blocks can span more than 150
-/// slots — and the assumption only has to be safe, not tight: an hour of
-/// slots is two orders of magnitude past the network's worst sustained skip
-/// rate. Closer than this to an epoch boundary, the next epoch's schedule is
-/// treated as one the transaction can pay.
-pub const FEE_LANDING_MARGIN_SLOTS: u64 = 9_000;
 
 /// An `OptionalNonZeroPubkey`: 32 bytes, all-zero meaning none.
 fn optional_nonzero_pubkey(data: &[u8], offset: usize) -> Option<Option<String>> {
@@ -1108,6 +1103,21 @@ pub struct StateDiff {
     /// deserialized.
     #[serde(skip)]
     pub transaction_accounts: Option<Vec<String>>,
+    /// Which of those accounts the transaction makes signers and which
+    /// writable — its header and the lookup tables' writable section
+    /// (Round 22). What a transfer hook can be handed is bounded by these,
+    /// whatever its code does. Never deserialized.
+    #[serde(skip)]
+    pub transaction_privileges: Option<TransactionPrivileges>,
+}
+
+/// The privileges a transaction's bytes give its accounts (Round 22). An
+/// account a program is handed can be no more privileged than this: the
+/// runtime refuses a CPI that escalates.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TransactionPrivileges {
+    pub signers: std::collections::BTreeSet<String>,
+    pub writable: std::collections::BTreeSet<String>,
 }
 
 /// True when the diff carries a Token-2022 transfer-fee extension anywhere,
@@ -1833,12 +1843,11 @@ fn fee_schedule_candidates(
 /// What a pending schedule means for transfers into one account that paid
 /// `fee` in total under `applied`.
 ///
-/// Round 20 disclosed a higher pending fee whenever one existed. With the
-/// epoch read it is judged: a transaction that expires before the newer
-/// schedule's epoch cannot pay it, and says nothing; one that can reach it —
-/// a durable nonce, or an epoch boundary inside the landing window — is told
-/// what would arrive, and a pending fee that would take more than half of a
-/// transfer blocks like a current one.
+/// A pending schedule is one the transaction can pay: its landing epoch is
+/// not observable and no slot count bounds it (see `FeeEpochContext`). The
+/// verdict says what would arrive under it, and a pending fee that would take
+/// more than half of a transfer blocks like a current one (Round 22 — Round
+/// 21 stayed silent past an assumed 9,000-slot landing margin).
 fn pending_schedule_findings(
     config: &TransferFeeConfigView,
     epoch: Option<FeeEpochContext>,
@@ -1853,14 +1862,11 @@ fn pending_schedule_findings(
     }
     let why = match epoch {
         None => "the current epoch was not read, so Graphite cannot rule out that it lands then".to_string(),
-        Some(c) => match c.latest_landing_epoch {
-            None => "it uses a durable nonce and does not expire".to_string(),
-            Some(latest) if latest >= config.newer.epoch => format!(
-                "epoch {} begins within {FEE_LANDING_MARGIN_SLOTS} slots of the simulation, inside the window in which it can still land",
-                config.newer.epoch
-            ),
-            Some(_) => return,
-        },
+        Some(c) if c.durable_nonce => "it uses a durable nonce and does not expire".to_string(),
+        Some(c) => format!(
+            "it was simulated in epoch {}, and a blockhash lives 150 blocks, not a number of slots — a skipped slot has no block, so nothing bounds the epoch it lands in",
+            c.simulated_epoch
+        ),
     };
     let Some(later) = grosses
         .iter()
@@ -2340,6 +2346,142 @@ fn mint_snapshot<'a>(diff: &'a StateDiff, mint: &str) -> Option<&'a AccountSnaps
         .or_else(|| diff.token2022_mints.get(mint))
 }
 
+/// What a mint's transfer hook could do in THIS transaction, bounded by the
+/// transaction's bytes rather than by the hook's code (Round 22).
+///
+/// Token-2022 invokes the hook with the transfer's source, mint, destination
+/// and authority read-only and unsigned (`spl_transfer_hook_interface::
+/// instruction::execute`), and appends the extra accounts its validation
+/// list names — which it can only take from the accounts the transfer was
+/// itself handed, at no more privilege than the transaction gives them (the
+/// runtime refuses a CPI that escalates). So whatever the hook program does,
+/// at simulation or at landing, it can hold a signature only if one of those
+/// accounts signs the transaction, and write only those the transaction marks
+/// writable — and of those, move value only out of accounts it owns, or via a
+/// signature or delegation over another program's account.
+///
+/// The hook is inert here when every executed Token-2022 instruction that can
+/// invoke it for this mint hands it no signer of the transaction and no
+/// writable account the hook does not own. Top-level transfers are fixed by
+/// the bytes; a transfer made by CPI is taken as the simulator executed it.
+/// Anything unobserved — the executed list, the privileges, an account's
+/// owner — is `Err`, and the extension blocks as before.
+pub fn transfer_hook_reach(diff: &StateDiff, mint: &str, hook: &str) -> Result<String, String> {
+    let executed = diff.token2022_executed.as_ref().ok_or_else(|| {
+        format!(
+            "its mint's transfer hook runs program {hook}, and the executed instructions were not available to show what that program could be handed"
+        )
+    })?;
+    let privileges = diff.transaction_privileges.as_ref().ok_or_else(|| {
+        format!(
+            "its mint's transfer hook runs program {hook}, and the transaction's own privileges were not read"
+        )
+    })?;
+    let mut runs = 0usize;
+    let mut owned: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for ix in executed
+        .iter()
+        .filter(|ix| ix.accounts.iter().any(|a| a == mint))
+    {
+        // What Token-2022 can hand the hook from this instruction. The
+        // checked transfers pass [source, mint, destination, authority,
+        // ...]: the four go read-only, the rest are what the extra metas
+        // draw on (multisig signers included — a signer there fails the
+        // rule, which is the point). A confidential transfer's layout is not
+        // read here: all of its accounts count. No other instruction invokes
+        // a hook.
+        let reach: &[String] = match (ix.data.first(), ix.data.get(1)) {
+            (Some(&T22_IX_TRANSFER_CHECKED), _) => ix.accounts.get(4..).unwrap_or(&[]),
+            (Some(&T22_IX_TRANSFER_FEE), Some(&T22_FEE_IX_TRANSFER_CHECKED_WITH_FEE)) => {
+                ix.accounts.get(4..).unwrap_or(&[])
+            }
+            (Some(t), _) if T22_CONFIDENTIAL_INSTRUCTIONS.contains(t) => &ix.accounts,
+            _ => continue,
+        };
+        runs += 1;
+        for a in reach {
+            if privileges.signers.contains(a) {
+                return Err(format!(
+                    "its mint's transfer hook runs program {hook}, and {} hands it {a}, which signs this transaction — the hook would hold that signature",
+                    ix.position
+                ));
+            }
+            if privileges.writable.contains(a) {
+                let owner = diff
+                    .deltas
+                    .iter()
+                    .find(|d| d.pubkey == *a)
+                    .and_then(|d| d.before.as_ref())
+                    .map(|s| s.owner.as_str());
+                match owner {
+                    Some(o) if o == hook => {
+                        owned.insert(a.as_str());
+                    }
+                    Some(o) => {
+                        return Err(format!(
+                            "its mint's transfer hook runs program {hook}, and {} hands it {a} writable, an account owned by {o} — the hook could move what it holds",
+                            ix.position
+                        ))
+                    }
+                    None => {
+                        return Err(format!(
+                            "its mint's transfer hook runs program {hook}, and {} hands it {a} writable, an account Graphite did not observe before the transaction",
+                            ix.position
+                        ))
+                    }
+                }
+            }
+        }
+    }
+    Ok(if runs == 0 {
+        format!("its mint's transfer hook runs program {hook}, and no transfer of mint {mint} ran in this transaction")
+    } else {
+        format!(
+            "its mint's transfer hook runs program {hook} under {runs} transfer(s), and the bytes hand it no signer and no writable account but {} of its own — whatever its code does, it can move nothing outside its own accounts",
+            owned.len()
+        )
+    })
+}
+
+/// Every transfer-hook program a mint in this diff runs, with whether the
+/// hook is bounded by the bytes as `transfer_hook_reach` decides it
+/// (Round 22). A program named by two mints is bounded only if both are.
+pub fn transfer_hooks_bounded(
+    diff: &StateDiff,
+) -> std::collections::BTreeMap<String, Result<String, String>> {
+    let mut mints: std::collections::BTreeMap<&str, &AccountSnapshot> =
+        std::collections::BTreeMap::new();
+    for d in &diff.deltas {
+        if let Some(s) = d.before.as_ref().or(d.after.as_ref()) {
+            if s.mint.is_some() {
+                mints.insert(d.pubkey.as_str(), s);
+            }
+        }
+    }
+    for (k, s) in &diff.token2022_mints {
+        mints.entry(k.as_str()).or_insert(s);
+    }
+    let mut out: std::collections::BTreeMap<String, Result<String, String>> =
+        std::collections::BTreeMap::new();
+    for (mint, snap) in mints {
+        let Some(Some(Some(hook))) = snap
+            .token2022_powers
+            .as_ref()
+            .map(|p| p.transfer_hook_program.clone())
+        else {
+            continue;
+        };
+        let verdict = transfer_hook_reach(diff, mint, &hook);
+        match out.get(&hook) {
+            Some(Err(_)) => {}
+            _ => {
+                out.insert(hook, verdict);
+            }
+        }
+    }
+    out
+}
+
 /// Whether one extension on one account changes nothing about THIS
 /// transaction (Round 21). `Ok` carries why it is inert, `Err` why it is not;
 /// an extension this does not judge is `Err` with an empty reason.
@@ -2366,13 +2508,21 @@ fn extension_judgement(
             let m = mint_snapshot(diff, &mint).ok_or_else(|| {
                 format!("its mint {mint} was not read, so the hook it runs is unknown")
             })?;
-            match m.token2022_powers.as_ref().map(|p| p.transfer_hook_program.clone()) {
-                None => Err(format!("the extensions of its mint {mint} could not be read exactly")),
-                Some(None) => Ok("its mint carries no transfer hook, so the flag triggers nothing".to_string()),
-                Some(Some(None)) => Ok("its mint's transfer hook names no program, so no hook runs".to_string()),
-                Some(Some(Some(p))) => Err(format!(
-                    "its mint's transfer hook runs program {p} on every transfer — code Graphite does not model"
+            match m
+                .token2022_powers
+                .as_ref()
+                .map(|p| p.transfer_hook_program.clone())
+            {
+                None => Err(format!(
+                    "the extensions of its mint {mint} could not be read exactly"
                 )),
+                Some(None) => Ok(
+                    "its mint carries no transfer hook, so the flag triggers nothing".to_string(),
+                ),
+                Some(Some(None)) => {
+                    Ok("its mint's transfer hook names no program, so no hook runs".to_string())
+                }
+                Some(Some(Some(p))) => transfer_hook_reach(diff, &mint, &p),
             }
         }
         EXT_TRANSFER_HOOK => {
@@ -2385,9 +2535,7 @@ fn extension_judgement(
                         Some(None) => {
                             Ok("the transfer hook names no program, so no hook runs".to_string())
                         }
-                        Some(Some(p)) => Err(format!(
-                            "the transfer hook runs program {p} on every transfer"
-                        )),
+                        Some(Some(p)) => transfer_hook_reach(diff, &delta.pubkey, &p),
                         None => Ok("no transfer hook".to_string()),
                     }
                 }
@@ -3328,6 +3476,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -3363,6 +3512,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -3403,6 +3553,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -3430,6 +3581,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -3464,6 +3616,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -3494,6 +3647,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -3539,6 +3693,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -3573,6 +3728,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -3606,6 +3762,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -3640,6 +3797,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -3671,6 +3829,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -3706,6 +3865,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(&diff, &accounts, &["debit source, credit dest".to_string()]);
@@ -3736,6 +3896,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -3776,6 +3937,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -3811,6 +3973,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -3845,6 +4008,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -3874,6 +4038,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -3905,6 +4070,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["transfer tokens".to_string()]);
@@ -3935,6 +4101,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         // "Update the metadata URI" promises no value movement at all.
@@ -3968,6 +4135,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -4000,6 +4168,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(BOB, true)];
         let report = check(
@@ -4033,6 +4202,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(
@@ -4073,6 +4243,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -4105,6 +4276,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &[]);
@@ -4133,6 +4305,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(BOB, false)];
         let declared = ["credit destination".to_string()];
@@ -4182,6 +4355,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["debit source".to_string()]);
@@ -4221,6 +4395,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true), account(BOB, true)];
         let report = check(
@@ -4276,6 +4451,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(&diff, &accounts, &["frobnicate the widget".to_string()]);
@@ -4317,6 +4493,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(BOB, true)];
         // `before: None` means owner_change() cannot fire — there is no prior
@@ -4355,6 +4532,7 @@ mod tests {
             fee_epoch: None,
             token2022_mints: Default::default(),
             transaction_accounts: None,
+            transaction_privileges: None,
         };
         let accounts = [account(ALICE, true)];
         let report = check(

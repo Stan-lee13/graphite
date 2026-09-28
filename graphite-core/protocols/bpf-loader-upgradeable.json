@@ -23,7 +23,25 @@
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
     }
+   ],
+   "account_layouts": [
+    [
+     {
+      "name": "buffer",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     }
+    ]
    ],
    "expected_state_changes": [
     "initializes a buffer account for program deployment"
@@ -41,6 +59,13 @@
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
     }
    ],
    "expected_state_changes": [
@@ -54,6 +79,20 @@
    "discriminator": "02",
    "accounts": [
     {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "program_data",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "program",
      "role": "writable",
      "is_writable": true,
@@ -62,24 +101,30 @@
     },
     {
      "name": "buffer",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "upgrade_authority",
-     "role": "signer",
+     "name": "rent",
+     "role": "readonly",
      "is_writable": false,
-     "is_signer": true,
-     "pda_seeds": []
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRent111111111111111111111111111111111"
+     ]
     },
     {
-     "name": "payer",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": true,
-     "pda_seeds": []
+     "name": "clock",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
     },
     {
      "name": "system_program",
@@ -92,10 +137,10 @@
      ]
     },
     {
-     "name": "rent",
-     "role": "readonly",
+     "name": "authority",
+     "role": "signer",
      "is_writable": false,
-     "is_signer": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -114,6 +159,13 @@
    "discriminator": "03",
    "accounts": [
     {
+     "name": "program_data",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
      "name": "program",
      "role": "writable",
      "is_writable": true,
@@ -122,16 +174,9 @@
     },
     {
      "name": "buffer",
-     "role": "readonly",
-     "is_writable": false,
+     "role": "writable",
+     "is_writable": true,
      "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "authority",
-     "role": "signer",
-     "is_writable": false,
-     "is_signer": true,
      "pda_seeds": []
     },
     {
@@ -146,6 +191,26 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarRent111111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "clock",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "SysvarC1ock11111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
      "pda_seeds": []
     }
    ],
@@ -162,7 +227,7 @@
    "discriminator": "04",
    "accounts": [
     {
-     "name": "program",
+     "name": "account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -183,6 +248,24 @@
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
     "transfers the program's upgrade authority to a new key"
    ],
@@ -196,7 +279,14 @@
    "discriminator": "05",
    "accounts": [
     {
-     "name": "buffer",
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "recipient",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
@@ -210,15 +300,148 @@
      "pda_seeds": []
     },
     {
-     "name": "recipient",
+     "name": "program",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     }
    ],
+   "account_layouts": [
+    [
+     {
+      "name": "account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "recipient",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "authority",
+      "role": "signer",
+      "is_writable": false,
+      "is_signer": true,
+      "pda_seeds": []
+     }
+    ],
+    [
+     {
+      "name": "account",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "recipient",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     }
+    ]
+   ],
    "expected_state_changes": [
     "closes a buffer account, returning lamports to the recipient"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "ExtendProgram",
+   "discriminator": "06",
+   "accounts": [
+    {
+     "name": "program_data",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "program",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "system_program",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "expected_address": [
+      "11111111111111111111111111111111"
+     ]
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "account_layouts": [
+    [
+     {
+      "name": "program_data",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     },
+     {
+      "name": "program",
+      "role": "writable",
+      "is_writable": true,
+      "is_signer": false,
+      "pda_seeds": []
+     }
+    ]
+   ],
+   "expected_state_changes": [
+    "grows accounts.program_data by data.additional_bytes, funded from accounts.payer"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": []
+  },
+  {
+   "name": "SetAuthorityChecked",
+   "discriminator": "07",
+   "accounts": [
+    {
+     "name": "account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "new_authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "transfers the upgrade or buffer authority of accounts.account to accounts.new_authority"
    ],
    "allowed_cpis": [],
    "risk_rules": []

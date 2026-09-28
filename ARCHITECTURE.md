@@ -5,7 +5,7 @@
 Graphite is a deterministic semantic verification engine for Solana. It verifies
 that transactions constructed by AI agents match their declared intent by checking
 program IDs, CPI chains, account structures, cross-instruction patterns, and risk
-patterns against a knowledge base of 129 protocol manifests covering 3,192
+patterns against a knowledge base of 129 protocol manifests covering 3,195
 instructions.
 
 **Honest framing:** Graphite performs deterministic pattern matching on program
@@ -136,6 +136,8 @@ Most account roles in an instruction are genuinely **externally-determined** —
 `AccountRoleDef.expected_address` (a manifest-declared constant, or a small set of acceptable constants — e.g. a generic "token program" slot that legitimately accepts either classic SPL Token or Token-2022) lets the manifest pin these slots. Account resolution checks the supplied address against them and, on mismatch, sets `ResolvedAccount.expected_address_mismatch` — folded into the SAME hard-block risk finding (`AccountIdentityMismatch`) that a PDA mismatch already produces (Constitution P4). 542 account roles across 19 of the 129 manifests are pinned this way (`graphite-core/scripts/populate_expected_addresses.py` — rerun when onboarding a new protocol).
 
 **Privileges.** `privilege_mismatch` compares the manifest's declared signer/writable expectation with the transaction's real flags (read from its header whenever the bytes are supplied) and flags two directions: a required signer that is not signed, and a declared read-only slot the transaction marks writable. Since Round 20 the second direction is not applied to the transaction's **fee payer**: the runtime makes the fee payer writable in every transaction because it pays the fee, so the flag says nothing about the instruction — and reading it as an escalation blocked every SPL / Token-2022 transfer whose authority also paid the fee (1,355 identity/privilege blocks over a 19,458-transaction mainnet sample fell to 519). The fee payer's signer requirement, and both directions for every other account, are checked as before. **Since Round 21 the write direction is decided by observation**, because Solana grants privileges per message: a write that another located instruction's manifest declares explains the flag, and any other is deferred to the pre/post diff — the account passes only when Graphite's own simulation observed it unchanged, and blocks (with `privilege_mismatch` restored on the resolved account) when it changed or was not observed. The signer direction is decided at resolution, as before. A manifest instruction may declare alternate `account_layouts` for a program that takes more than one (Raydium AMM v4's 17- and 18-account swaps); `layout_for(n)` selects one by exact count, and two of one length are refused at load.
+
+**Since Round 22 the flags are the runtime's.** `tx_artifact::runtime_writable` applies agave's `is_maybe_writable` when a message is parsed: a key the header marks writable is read-only when it is a sysvar or builtin program, or an invoked program id with no upgradeable loader among the accounts (with lookup tables that could hold the loader, an invoked program stays writable — the stricter reading). And a slot the program's IDL marks optional (`AccountRoleDef.optional`) holding the instruction's own program id is Anchor's ABSENT account: it resolves as that constant (`role: "absent"`), with nothing to derive, pin or sign; any other address there is checked as before.
 
 `ResolvedAccount.identity` (`Pda` / `Constant` / `Unverified`) makes the **remaining, unavoidable trust boundary** visible rather than silently assumed safe: an externally-determined account (the large majority of roles) reports `Unverified` honestly — this is not a finding or a penalty, just disclosure (P12: absence of verification is not itself evidence of harm). Closing that remaining boundary for fund-critical externally-determined accounts (e.g. confirming a token account's on-chain owner matches the transaction signer) requires live account data and is tracked as a follow-up, not claimed here.
 
@@ -386,8 +388,8 @@ blockhash window between verification and execution.
 graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
-│   ├── protocols/          # 129 JSON protocol manifests (3,192 instructions) + battle_tested_evidence.json
-│   ├── tests/              # 1,707 tests (unit + adversarial + exploit + RPC trust boundary + real mainnet legacy/v0/v1 + cross-language corpus)
+│   ├── protocols/          # 129 JSON protocol manifests (3,195 instructions) + battle_tested_evidence.json
+│   ├── tests/              # 1,738 tests (unit + adversarial + exploit + RPC trust boundary + real mainnet legacy/v0/v1 + cross-language corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)
