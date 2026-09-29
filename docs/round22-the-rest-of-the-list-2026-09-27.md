@@ -527,13 +527,34 @@ independent audit.
   behind the rate limiter, and a caller can trigger it only by citing a
   signature the chain reports as included. SECURITY.md said the join was
   indexed for the active file; it now says what this count costs. An index of
-  per-key counts is the fix, left for its own round.
+  per-key counts is the fix, left for its own round. **Closed in a follow-up
+  (2026-09-29):** the active file's counts are indexed, trusted only while
+  they account for the file's exact length and recounted from it otherwise;
+  two counts over a 64 MB active file take 8.8 ms and read nothing. The
+  archives are still scanned. Tests
+  `durable::tests::verdict_counts_are_indexed_across_open_append_and_rotation`,
+  `a_verdict_count_the_active_file_contradicts_is_recounted`,
+  `verdict_counts_account_for_a_terminated_torn_tail`; five deliberate breaks
+  (C1–C5), all caught; with the rotation reset removed (C3) the count stayed
+  right, recounted because the length check refused the stale counts, and the
+  test caught the recount.
 - **A wall-clock unit test is flaky under load (P3).**
   `durable::tests::last_verification_scans_a_full_active_file` asserts an
   indexed lookup under 50 ms right after writing a 64 MB file; it failed once
   in the final leg D (58.5 ms hit) and once in five isolated reruns (107 ms
   miss). A miss is index-only for the active file; the time is this machine's
-  I/O and scheduling. The threshold is left as it is.
+  I/O and scheduling. The threshold is left as it is. **Closed in the same
+  follow-up (2026-09-29):** the assertion is now structural — lookups and
+  counts that answer from the index leave a scan counter at zero
+  (`active_lookup_scans`, `active_count_scans`) — with the one-second bound
+  the test's own doc comment always stated. Adding the witness exposed a
+  vacuous test: `last_verification_index_never_answers_from_a_broken_entry`
+  poisoned the bare hash, a key the index has not used since Round 10's
+  `ch:` prefixes, so its fallback scan never ran. It now poisons the real
+  entry and asserts the scan happened. Breaks D1 (the scan without the
+  witness) and D2 (the index bypassed) — both caught.
+  Full mirror of the follow-up: fmt and clippy (three legs) clean; 1,741 /
+  331 / 1,512 passed, 0 failed (three tests more in each leg).
 - **Owner decisions:** the independent third-party audit and branch
   protection on `main`.
 

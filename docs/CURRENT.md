@@ -171,7 +171,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | Token-2022 classification is fail-closed | `detect_token2022_extensions`, `ExtensionScan.malformed` | `tests/token2022_extensions.rs`, `tests/l4_state_diff_gate.rs` |
 | Durable-nonce transactions are refused unless verified | `tx_artifact::durable_nonce`, L2 gate | `tests/durable_nonce.rs`, `tests/durable_nonce_rpc.rs` |
 | Audit records are synced to the device before the response | `AuditLog::append_line` → `sync_data` | Established by code reading — no userspace test can observe it; `durable::tests::audit_append_syncs_the_device` measures the cost (1.2 ms vs 19 µs for the no-op it replaced) and asserts nothing |
-| L8 reconciliation sees the whole trail | `AuditLog::find_verification` by `audit_trail_id` / `transaction_sha256` / `content_hash`: indexed active file, archives newest-first | `durable::tests::read_path_covers_every_archive_after_rotation`, `last_verification_index_tracks_rotation_and_reopen`, `tests/round10_attribution.rs` |
+| L8 reconciliation sees the whole trail | `AuditLog::find_verification` by `audit_trail_id` / `transaction_sha256` / `content_hash`: indexed active file, archives newest-first. `count_verifications` (the verdicts on record beside it): per-key counts of the active file, trusted only while they account for its exact length, else recounted; archives scanned | `durable::tests::read_path_covers_every_archive_after_rotation`, `last_verification_index_tracks_rotation_and_reopen`, `verdict_counts_are_indexed_across_open_append_and_rotation`, `a_verdict_count_the_active_file_contradicts_is_recounted`, `verdict_counts_account_for_a_terminated_torn_tail`, `tests/round10_attribution.rs` |
 | An executed blocked transaction is attributed to ITS verification, not to a same-instruction approval | `audit_execution`: `getTransaction` bytes → `bound_artifact_sha256` → digest → `find_verification(TransactionSha256)`; caller keys most-exact-first with no fallback; `caller_keys_disagree` | `tests/round10_attribution.rs` (approved A newest, blocked B executed → `BlockedButExecuted`, attribution `chain`) |
 | The chain's bytes are the signature's, not merely the RPC's | `tx_artifact::bound_artifact_sha256`: first slot equals the signature; ed25519 `verify_strict` over the message under the fee payer's key; rejected bytes → `Unavailable`, `chain_bytes_rejected`, no fallback to caller keys | `tests/round10_attribution.rs::{chain_bytes_are_accepted_only_when_bound_to_the_signature, an_rpc_that_substitutes_bytes_cannot_attribute_the_execution}`; `tests/l8_live_mainnet.rs::l8_real_chain_bytes_are_bound_to_their_signature` (public devnet, ignored by default) |
 | A frame the runtime would not sanitize is not a transaction | `parse_transaction`: `SignatureCountMismatch`, `ImpossibleHeader` (no writable signer), `ProgramIsFeePayer`, `AccountIndexOutOfRange` (legacy and v0), `EmptyLookup`, `TooManyAccounts` | `tests/round12_runtime_sanitize.rs`; `tests/sak_bridge_corpus.rs`; **`tools/runtime-oracle`** against agave's decoder + `sanitize` over the corpus and 600,000 generated frames, in CI (job `runtime-oracle`) |
@@ -357,11 +357,11 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## Numbers (as of this page's commit)
 
-1,738 Rust tests passing in the all-features build (15 ignored: network- or
+1,741 Rust tests passing in the all-features build (15 ignored: network- or
 sample-dependent, plus one soak benchmark; for Round 22 the mainnet conformance
 test was run on three days of samples against Round 21's code and this round's,
 and the live-mainnet-RPC run on 40 transactions before and after the round's
-last fix); 328 in the featureless library build; 1,509 in the cli-only
+last fix); 331 in the featureless library build; 1,512 in the cli-only
 build; 129 TypeScript tests in the SAK
 integration; 32 in the TypeScript SDK (28 hermetic, 4 against a live server — run
 in CI's container job); 34 Go; 31 Python; 6 dashboard; 22 live-probe checks of

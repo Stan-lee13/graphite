@@ -98,6 +98,21 @@ pub struct AuditLog {
     /// scanning the file (Round 12). Built at open, maintained on append,
     /// cleared on rotation like `active_index`.
     lifecycle_index: Arc<Mutex<HashMap<String, Vec<u64>>>>,
+    /// How many verification records of the ACTIVE file each index key has,
+    /// by verdict, and how many bytes of the file that accounts for. What
+    /// lets `count_verifications` — run by every L8 reconciliation with a
+    /// chain digest — answer for the active file without scanning it.
+    /// Built at open, maintained on append, reset on rotation, and trusted
+    /// only while it accounts for exactly the file's current length.
+    active_counts: Arc<Mutex<ActiveCounts>>,
+    /// Times `count_verifications` had to recount the active file because
+    /// the counts did not account for it. A structural witness for tests:
+    /// an indexed count leaves it unchanged.
+    active_count_scans: Arc<AtomicU64>,
+    /// Times `find_verification` scanned the active file because an indexed
+    /// offset did not read back as its record. The same kind of witness for
+    /// the lookup: an indexed hit or miss leaves it unchanged.
+    active_lookup_scans: Arc<AtomicU64>,
     /// Rotations that could not happen. The record is still appended — an
     /// oversized log is strictly better than a dropped audit trail — but the
     /// failure used to be invisible, and it is retried on every subsequent
@@ -744,14 +759,52 @@ fn push_lifecycle_offset(index: &mut HashMap<String, Vec<u64>>, key: String, off
     entry.push(offset);
 }
 
+/// Verification records per index key in the active file, by verdict, and
+/// the number of the file's bytes they account for.
+///
+/// `len` is what makes the counts safe to answer from. Every append adds
+/// exactly the bytes it wrote, and only when the whole write succeeded;
+/// rotation resets it to the fresh file's zero. A write that failed part-way,
+/// or anything else that changed the file, leaves `len` short of the file's
+/// real length, and a count looked up then is recounted from the file
+/// instead (`AuditLog::count_verifications`).
+#[derive(Debug, Default)]
+struct ActiveCounts {
+    /// Index key (as `index_keys`) → (approved, refused).
+    by_key: HashMap<String, (usize, usize)>,
+    len: u64,
+}
+
+impl ActiveCounts {
+    fn record(&mut self, keys: &[String], approved: bool) {
+        for k in keys {
+            let entry = self.by_key.entry(k.clone()).or_insert((0, 0));
+            if approved {
+                entry.0 += 1;
+            } else {
+                entry.1 += 1;
+            }
+        }
+    }
+}
+
+/// The three indexes of the active file.
+type ActiveIndexes = (
+    HashMap<String, u64>,
+    HashMap<String, Vec<u64>>,
+    ActiveCounts,
+);
+
 /// One pass over the active file: the offset of the last verification line
-/// per key, and the offsets of every lifecycle row per transaction key. A
-/// torn final line and an error record are neither and are skipped.
-fn build_indexes(path: &Path) -> (HashMap<String, u64>, HashMap<String, Vec<u64>>) {
+/// per key, the offsets of every lifecycle row per transaction key, and the
+/// verification records per key by verdict. A torn final line and an error
+/// record are neither and are skipped.
+fn build_indexes(path: &Path) -> ActiveIndexes {
     let mut index = HashMap::new();
     let mut lifecycle = HashMap::new();
+    let mut counts = ActiveCounts::default();
     let Ok(file) = File::open(path) else {
-        return (index, lifecycle);
+        return (index, lifecycle, counts);
     };
     let mut reader = BufReader::new(file);
     let mut offset: u64 = 0;
@@ -769,7 +822,9 @@ fn build_indexes(path: &Path) -> (HashMap<String, u64>, HashMap<String, Vec<u64>
             break;
         }
         if let Ok(r) = serde_json::from_slice::<AuditRecord>(&line) {
-            for k in index_keys(&r) {
+            let keys = index_keys(&r);
+            counts.record(&keys, r.approved);
+            for k in keys {
                 index.insert(k, offset);
             }
         } else if let Some(r) = lifecycle_row(&line) {
@@ -779,7 +834,8 @@ fn build_indexes(path: &Path) -> (HashMap<String, u64>, HashMap<String, Vec<u64>
         }
         offset += n as u64;
     }
-    (index, lifecycle)
+    counts.len = offset;
+    (index, lifecycle, counts)
 }
 
 impl AuditLog {
@@ -798,7 +854,7 @@ impl AuditLog {
     ) -> std::io::Result<Self> {
         let path = path.as_ref().to_path_buf();
         let file = OpenOptions::new().create(true).append(true).open(&path)?;
-        let (active_index, lifecycle_index) = build_indexes(&path);
+        let (active_index, lifecycle_index, active_counts) = build_indexes(&path);
         let torn = ends_without_newline(&path);
         if torn {
             tracing::warn!(
@@ -820,6 +876,9 @@ impl AuditLog {
             archive_stats: Arc::new(Mutex::new(HashMap::new())),
             active_index: Arc::new(Mutex::new(active_index)),
             lifecycle_index: Arc::new(Mutex::new(lifecycle_index)),
+            active_counts: Arc::new(Mutex::new(active_counts)),
+            active_count_scans: Arc::new(AtomicU64::new(0)),
+            active_lookup_scans: Arc::new(AtomicU64::new(0)),
             // A freshly opened log may sit beside an archive written by the
             // process that just exited; treat open as a rotation so that
             // archive is consulted for the first window.
@@ -1044,6 +1103,12 @@ impl AuditLog {
                     Ok(mut g) => g.clear(),
                     Err(poisoned) => poisoned.into_inner().clear(),
                 }
+                // The fresh file holds nothing and accounts for zero bytes;
+                // the rotated records are counted from the archive.
+                match self.active_counts.lock() {
+                    Ok(mut g) => *g = ActiveCounts::default(),
+                    Err(poisoned) => *poisoned.into_inner() = ActiveCounts::default(),
+                }
                 match self.last_rotation.lock() {
                     Ok(mut g) => *g = Some(std::time::Instant::now()),
                     Err(poisoned) => *poisoned.into_inner() = Some(std::time::Instant::now()),
@@ -1194,6 +1259,10 @@ impl AuditLog {
     /// for a key, so the same artifact refused once and approved later
     /// reconciled as approved with no sign that a refusal existed. L8 now
     /// reports these counts beside the record it resolved.
+    ///
+    /// The active file's share comes from `active_counts` (Round 22): it was
+    /// a substring pass over the whole active file on every L8 lookup with a
+    /// chain digest. The archives are still scanned.
     pub fn count_verifications(&self, key: VerificationKey<'_>) -> (usize, usize) {
         let wanted = key.value().trim();
         if wanted.is_empty() {
@@ -1217,22 +1286,51 @@ impl AuditLog {
                 }
             });
         };
-        let archives = {
-            let _guard = match self.file.lock() {
+        // The active file, from the counts, under the append lock so no write
+        // can land between reading the file's length and reading the counts
+        // (Round 22). The counts are used only when they account for exactly
+        // the bytes the file holds; otherwise — a write that failed part-way,
+        // a file changed by something other than this log — the active file
+        // is recounted, the counts replaced by what it holds, and the
+        // disagreement logged. Never an answer from counts the file
+        // contradicts. The archives are immutable and are scanned
+        // ("Archive lookups are scans", SECURITY.md).
+        let (archives, active) = {
+            let file = match self.file.lock() {
                 Ok(g) => g,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            if let Ok(file) = File::open(self.path.as_ref()) {
-                tally(file);
+            let actual = file.metadata().map(|m| m.len()).ok();
+            let mut counts = match self.active_counts.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if actual != Some(counts.len) {
+                tracing::error!(
+                    "audit counts: they account for {} bytes of the active file, which holds {actual:?}; recounting the active file",
+                    counts.len
+                );
+                self.active_count_scans.fetch_add(1, Ordering::Relaxed);
+                *counts = build_indexes(self.path.as_ref()).2;
             }
-            self.archives()
+            let active = counts
+                .by_key
+                .get(&key.index_key())
+                .copied()
+                .unwrap_or((0, 0));
+            drop(counts);
+            // Listed under the append lock too: a rotation between the count
+            // and the listing would count the rotated records twice.
+            let archives = self.archives();
+            drop(file);
+            (archives, active)
         };
         for archive in archives {
             if let Ok(file) = File::open(archive) {
                 tally(file);
             }
         }
-        (approved, refused)
+        (approved + active.0, refused + active.1)
     }
 
     pub fn find_verification(&self, key: VerificationKey<'_>) -> Option<AuditRecord> {
@@ -1288,6 +1386,7 @@ impl AuditLog {
                 tracing::error!(
                     "audit index: offset {offset} for {wanted} did not read back as its record; scanning the active file"
                 );
+                self.active_lookup_scans.fetch_add(1, Ordering::Relaxed);
                 if let Some(r) = File::open(self.path.as_ref()).ok().and_then(find_in) {
                     return Some(r);
                 }
@@ -1346,7 +1445,7 @@ impl AuditLog {
     /// incident response all read that trail.
     #[must_use]
     pub fn append(&self, record: &AuditRecord) -> bool {
-        self.append_line_indexed(record, &index_keys(record))
+        self.append_line_with(record, &index_keys(record), &[], Some(record.approved))
     }
 
     /// Append an error-path record (same durability contract).
@@ -1369,7 +1468,7 @@ impl AuditLog {
     pub fn append_lifecycle(&self, record: &LifecycleEventRecord) -> bool {
         let bounded = record.bounded();
         let keys = bounded.lifecycle_keys();
-        self.append_line_with(&bounded, &[], &keys)
+        self.append_line_with(&bounded, &[], &keys, None)
     }
 
     /// Every lifecycle row on record for a transaction, in file order:
@@ -1497,24 +1596,27 @@ impl AuditLog {
     /// audit record; `audit_append_syncs_the_device` measures it so the
     /// number in the report is observed, not assumed.
     fn append_line<T: serde::Serialize>(&self, record: &T) -> bool {
-        self.append_line_with(record, &[], &[])
+        self.append_line_with(record, &[], &[], None)
     }
 
     /// `append_line`, recording every entry of `index_keys` → this line's
-    /// offset in the active index when the write succeeds. The offset is the
-    /// file's length before the write, read under the same lock the write
-    /// holds, so no other writer can interleave between the two.
-    fn append_line_indexed<T: serde::Serialize>(&self, record: &T, index_keys: &[String]) -> bool {
-        self.append_line_with(record, index_keys, &[])
-    }
-
-    /// `append_line_indexed` with the lifecycle keys this line is indexed
-    /// under as well (Round 12).
+    /// offset in the active index when the write succeeds, every entry of
+    /// `lifecycle_keys` in the lifecycle index (Round 12), and — for a
+    /// verification record, whose verdict is `verdict` — one more record per
+    /// key in the active counts. The offset is the file's length before the
+    /// write, read under the same lock the write holds, so no other writer
+    /// can interleave between the two.
+    ///
+    /// Every successful write, indexed or not, advances the bytes the counts
+    /// account for by exactly what it wrote; a failed one advances nothing,
+    /// whatever landed, so the counts stop matching the file and the next
+    /// count is taken from the file instead.
     fn append_line_with<T: serde::Serialize>(
         &self,
         record: &T,
         index_keys: &[String],
         lifecycle_keys: &[String],
+        verdict: Option<bool>,
     ) -> bool {
         let line = match serde_json::to_string(record) {
             Ok(l) => l,
@@ -1529,6 +1631,8 @@ impl AuditLog {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
+        // The newline written to end a torn tail, when this call writes one.
+        let mut terminated_tail: u64 = 0;
         if self.torn_tail.load(Ordering::SeqCst) {
             if let Err(e) = file.write_all(b"\n").and_then(|_| file.sync_data()) {
                 self.writes_failed.fetch_add(1, Ordering::Relaxed);
@@ -1536,6 +1640,7 @@ impl AuditLog {
                 return false;
             }
             self.torn_tail.store(false, Ordering::SeqCst);
+            terminated_tail = 1;
         }
         let offset = if index_keys.is_empty() && lifecycle_keys.is_empty() {
             None
@@ -1555,6 +1660,16 @@ impl AuditLog {
             return false;
         }
         self.writes_ok.fetch_add(1, Ordering::Relaxed);
+        {
+            let mut counts = match self.active_counts.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            counts.len += terminated_tail + line.len() as u64 + 1;
+            if let Some(approved) = verdict {
+                counts.record(index_keys, approved);
+            }
+        }
         if let Some(offset) = offset {
             let mut index = match self.active_index.lock() {
                 Ok(g) => g,
@@ -2492,10 +2607,17 @@ mod tests {
     }
 
     /// Round 9: what an L8 / lifecycle lookup costs against a full active
-    /// file. Measurement, reported; the assertion is only that the substring
-    /// prefilter keeps a miss on a 64 MB trail under a second, since a miss
-    /// (a hash with no verification on record) is the case a caller can
-    /// force at will.
+    /// file. Measurement, reported. What is asserted is structural: a hit, a
+    /// miss (a hash with no verification on record — the case a caller can
+    /// force at will) and a verdict count all answer from the index without
+    /// reading the file (`active_lookup_scans`, `active_count_scans`), plus a
+    /// one-second sanity bound.
+    ///
+    /// Until 2026-09-29 the assertion was a 50 ms wall-clock bound, right
+    /// after writing 64 MB: it failed under load on the development machine
+    /// (a 58.5 ms hit, a 107 ms miss) with nothing scanned, and a fast enough
+    /// scan would have passed it. The witness is what says whether the file
+    /// was read.
     #[test]
     fn last_verification_scans_a_full_active_file() {
         let dir = std::env::temp_dir().join(format!(
@@ -2556,6 +2678,23 @@ mod tests {
         let miss = log.last_verification_for("ffffffffffffffff");
         let miss_cost = started.elapsed();
         assert!(miss.is_none());
+        // Round 22: the verdict count L8 takes beside the lookup is indexed
+        // too — over this 64 MB file it reads nothing.
+        let started = std::time::Instant::now();
+        assert_eq!(
+            log.count_verifications(VerificationKey::ContentHash("0000000000000010")),
+            (1, 0)
+        );
+        assert_eq!(
+            log.count_verifications(VerificationKey::ContentHash("ffffffffffffffff")),
+            (0, 0)
+        );
+        let count_cost = started.elapsed();
+        assert_eq!(
+            log.active_count_scans.load(Ordering::Relaxed),
+            0,
+            "an indexed count must not scan the file"
+        );
         // A record appended after open is found through the index too, and
         // the newest one wins.
         assert!(log.append(&rec_with("gr-new", "0000000000000010", "P", false)));
@@ -2563,16 +2702,22 @@ mod tests {
         assert_eq!(newest.audit_trail_id, "gr-new");
         assert!(!newest.approved);
         println!(
-            "round9: last_verification_for over a {} MB active file: full scan {:?}; indexed: open {:?}, hit {:?}, miss {:?}",
+            "round9: last_verification_for over a {} MB active file: full scan {:?}; indexed: open {:?}, hit {:?}, miss {:?}; two verdict counts {:?}",
             len / (1024 * 1024),
             full_scan,
             open_cost,
             hit_cost,
-            miss_cost
+            miss_cost,
+            count_cost
+        );
+        assert_eq!(
+            log.active_lookup_scans.load(Ordering::Relaxed),
+            0,
+            "an indexed lookup must not scan the file"
         );
         assert!(
-            hit_cost.as_millis() < 50 && miss_cost.as_millis() < 50,
-            "an indexed lookup must not scan the file: hit {hit_cost:?}, miss {miss_cost:?}"
+            hit_cost.as_millis() < 1_000 && miss_cost.as_millis() < 1_000,
+            "an indexed lookup took a scan's time: hit {hit_cost:?}, miss {miss_cost:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -2610,15 +2755,26 @@ mod tests {
             Some("gr-b".to_string()),
             "the record after the bad line must be indexed"
         );
+        assert_eq!(log.active_lookup_scans.load(Ordering::Relaxed), 0);
         // Poison the index: point the hash at a wrong offset. The lookup
         // must fall back to a scan and still find the right record.
-        log.active_index
-            .lock()
-            .unwrap()
-            .insert("aaaaaaaaaaaaaaaa".to_string(), 7);
+        //
+        // The entry is the index's own key (`ch:<hash>`). Until 2026-09-29
+        // this inserted the bare hash — a key the index has not used since
+        // Round 10's prefixes — so the lookup never met the poisoned entry,
+        // the fallback never ran, and the test passed without testing it.
+        // The scan counter below is what showed it.
+        let poisoned = VerificationKey::ContentHash("aaaaaaaaaaaaaaaa").index_key();
+        assert!(log.active_index.lock().unwrap().contains_key(&poisoned));
+        log.active_index.lock().unwrap().insert(poisoned, 7);
         let r = log.last_verification_for("aaaaaaaaaaaaaaaa").unwrap();
         assert_eq!(r.audit_trail_id, "gr-a");
         assert!(r.approved);
+        assert_eq!(
+            log.active_lookup_scans.load(Ordering::Relaxed),
+            1,
+            "the poisoned entry must have been refused and the file scanned"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -2664,6 +2820,160 @@ mod tests {
                 .last_verification_for(&format!("{i:016x}"))
                 .is_some());
         }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn counts_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "gr-l8-counts-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    const COUNTED_TX: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn counted(id: &str, approved: bool) -> AuditRecord {
+        let mut r = rec_with(id, "00000000000000aa", "P", approved);
+        r.transaction_sha256 = Some(COUNTED_TX.to_string());
+        r
+    }
+
+    fn count_scans(log: &AuditLog) -> u64 {
+        log.active_count_scans.load(Ordering::Relaxed)
+    }
+
+    /// Round 22: `count_verifications` — run by every L8 reconciliation
+    /// with a chain digest — answers for the active file from its counts,
+    /// without reading the file, and the counts are right after open, after
+    /// appends of every kind of row, and across rotation and reopen.
+    ///
+    /// The structural witness is `active_count_scans`: the active file is
+    /// read by a count only when the counts do not account for it. Before
+    /// Round 22 every count was a pass over the whole active file.
+    #[test]
+    fn verdict_counts_are_indexed_across_open_append_and_rotation() {
+        let dir = counts_dir("indexed");
+        let path = audit_path(&dir);
+        let key = VerificationKey::TransactionSha256(COUNTED_TX);
+        {
+            let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+            assert_eq!(log.count_verifications(key), (0, 0));
+            for (i, approved) in [true, false, true].into_iter().enumerate() {
+                assert!(log.append(&counted(&format!("gr-{i}"), approved)));
+            }
+            // Rows that are not verifications of this transaction: another
+            // verification, an error record and a lifecycle row. Each moves
+            // the file on; none may move this count.
+            assert!(log.append(&rec_with("gr-other", "00000000000000bb", "P", false)));
+            assert!(log.append_error(&AuditErrorRecord {
+                timestamp: "t".into(),
+                program_id: "P".into(),
+                instruction_name: "transfer".into(),
+                error: "bad payload".into(),
+                error_type: "bad_input".into(),
+                status: 400,
+            }));
+            assert!(log.append_lifecycle(&lifecycle(LifecycleEvent::Signing, "gr-0", None)));
+            assert_eq!(log.count_verifications(key), (2, 1));
+            assert_eq!(
+                log.count_verifications(VerificationKey::AuditTrailId("gr-1")),
+                (0, 1)
+            );
+            assert_eq!(
+                log.count_verifications(VerificationKey::ContentHash("00000000000000aa")),
+                (2, 1)
+            );
+            assert_eq!(
+                log.count_verifications(VerificationKey::ContentHash("00000000000000bb")),
+                (0, 1)
+            );
+            assert_eq!(
+                count_scans(&log),
+                0,
+                "an indexed count must not read the file"
+            );
+        }
+        // Reopen: open's one pass rebuilds the counts.
+        let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+        assert_eq!(log.count_verifications(key), (2, 1));
+        assert!(log.append(&counted("gr-3", false)));
+        assert_eq!(log.count_verifications(key), (2, 2));
+        assert_eq!(count_scans(&log), 0);
+        drop(log);
+        // Rotation after the next append: every record moves to an archive,
+        // the counts are reset with the fresh file, and the total is neither
+        // lost nor counted twice.
+        let log = AuditLog::open_with_rotation(&path, 1, 0).unwrap();
+        assert!(log.append(&counted("gr-4", true)));
+        assert!(
+            log.health().rotations_ok >= 1,
+            "rotation must have happened"
+        );
+        assert_eq!(log.count_verifications(key), (3, 2));
+        assert!(log.active_counts.lock().unwrap().by_key.is_empty());
+        assert_eq!(
+            count_scans(&log),
+            0,
+            "rotation must leave counts the file agrees with"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Counts the active file contradicts are never answered from: a record
+    /// that reached the file some other way — here written straight to it,
+    /// as a write that failed part-way would leave bytes behind — makes the
+    /// next count read the file, replace the counts with what it holds, and
+    /// go back to answering from them.
+    #[test]
+    fn a_verdict_count_the_active_file_contradicts_is_recounted() {
+        let dir = counts_dir("recount");
+        let path = audit_path(&dir);
+        let key = VerificationKey::TransactionSha256(COUNTED_TX);
+        let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+        assert!(log.append(&counted("gr-0", true)));
+        assert_eq!(log.count_verifications(key), (1, 0));
+        assert_eq!(count_scans(&log), 0);
+        {
+            let mut f = OpenOptions::new().append(true).open(&path).unwrap();
+            let line = serde_json::to_string(&counted("gr-foreign", false)).unwrap();
+            writeln!(f, "{line}").unwrap();
+        }
+        assert_eq!(
+            log.count_verifications(key),
+            (1, 1),
+            "the record the counts did not see must be counted"
+        );
+        assert_eq!(
+            count_scans(&log),
+            1,
+            "the contradiction is resolved from the file"
+        );
+        assert_eq!(log.count_verifications(key), (1, 1));
+        assert!(log.append(&counted("gr-1", true)));
+        assert_eq!(log.count_verifications(key), (2, 1));
+        assert_eq!(count_scans(&log), 1, "recounted once, indexed again after");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A file that ends in a partial line gets a newline before the next
+    /// record (Round 19, F-19-23). That byte is part of what the counts
+    /// account for, or every count after it would read the file.
+    #[test]
+    fn verdict_counts_account_for_a_terminated_torn_tail() {
+        let dir = counts_dir("torn");
+        let path = audit_path(&dir);
+        std::fs::write(&path, b"{\"audit_trail_id\":\"gr-torn").unwrap();
+        let key = VerificationKey::TransactionSha256(COUNTED_TX);
+        let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+        assert!(log.append(&counted("gr-0", false)));
+        assert_eq!(log.count_verifications(key), (0, 1));
+        assert_eq!(count_scans(&log), 0);
         std::fs::remove_dir_all(&dir).ok();
     }
 

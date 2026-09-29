@@ -389,7 +389,7 @@ graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
 │   ├── protocols/          # 129 JSON protocol manifests (3,195 instructions) + battle_tested_evidence.json
-│   ├── tests/              # 1,738 tests (unit + adversarial + exploit + RPC trust boundary + real mainnet legacy/v0/v1 + cross-language corpus)
+│   ├── tests/              # 1,741 tests (unit + adversarial + exploit + RPC trust boundary + real mainnet legacy/v0/v1 + cross-language corpus)
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)
