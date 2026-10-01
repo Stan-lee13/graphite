@@ -70,7 +70,7 @@ INTENT_LABELS = {
 # amount / token / output_token / destination / slippage.
 # ---------------------------------------------------------------------------
 _RX = {
-    # A5-02 (2026-09-30 audit): the destination must be the whole word — after
+    # A5-02 (2026-09-29 audit): the destination must be the whole word — after
     # it, only trailing sentence punctuation, then whitespace or the end of the
     # text (the same rule as the bridge's intent-grounding.ts). Without the
     # lookahead, a non-base58 character inside or at the end of an address
@@ -81,7 +81,7 @@ _RX = {
         r"\b(?:transfer|send|pay)\s+"
         r"(?:(?P<amount_all>all|entire|my)\s+(?:my\s+)?|(?P<amount>\d+(?:\.\d+)?)\s+)"
         r"(?P<token>[A-Za-z0-9]+)"
-        r"(?:\s+(?:to|into)\s+(?P<destination>[1-9A-HJ-NP-Za-km-z]{32,44})"
+        r"(?:\s+(?:to|into)\s+(?P<destination>(?-i:[1-9A-HJ-NP-Za-km-z]{32,44}))"
         r"(?=[.,;:!?)\]'\"]*(?:\s|$)))?",
         re.IGNORECASE,
     ),
@@ -230,7 +230,7 @@ def _load_manifests() -> Tuple[Dict[str, Dict[str, List[Dict[str, Any]]]], Dict[
     Returns (grounded, loaded_registry) where grounded is a map from intent to
     candidate manifests, and loaded_registry a map from program_id -> name.
 
-    A5-05 (2026-09-30 audit): the fallback used to store a DICT per manifest
+    A5-05 (2026-09-29 audit): the fallback used to store a DICT per manifest
     while every reader indexes a LIST, so a standalone deployment crashed on
     every modelled intent (`candidates[0]` -> KeyError: 0). It also caught
     only OSError/JSONDecodeError around the whole directory, so one

@@ -184,7 +184,7 @@ export interface BuiltTransaction {
  *  externally-determined (no PDA formula, no fixed constant) — honestly
  *  disclosed rather than silently assumed safe. Mirrors
  *  graphite-core/src/account_resolution.rs AccountIdentity, which serializes
- *  snake_case. A5-03 (2026-09-30 audit): this was `"Pda" | "Constant" |
+ *  snake_case. A5-03 (2026-09-29 audit): this was `"Pda" | "Constant" |
  *  "Unverified"`, which no real verdict ever carries. */
 export type AccountIdentity = "pda" | "constant" | "unverified";
 

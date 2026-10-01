@@ -224,7 +224,7 @@ function loadExploitCorpus(): BenchmarkCase[] {
   return cases;
 }
 
-// A5-07 (2026-09-30 audit): verification went out as a raw `fetch`, outside
+// A5-07 (2026-09-29 audit): verification went out as a raw `fetch`, outside
 // the SDK's transport rule and verdict shape check. It goes through
 // GraphiteClient now; any failure it raises is counted as an HTTP error.
 async function verifyThroughGraphite(graphite: GraphiteClient, case_: BenchmarkCase): Promise<{ approved: boolean; confidence: number; risk: string; latencyMs: number; httpError: boolean }> {

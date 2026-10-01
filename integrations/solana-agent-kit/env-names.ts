@@ -16,7 +16,7 @@
  * bridge at a Core and an AI layer it never used: both silently defaulted to
  * localhost. A legacy name set without its replacement is now a startup error.
  *
- * A5-07 (2026-09-30 audit): `devnet-test.ts` read `GRAPHITE_URL`, a third
+ * A5-07 (2026-09-29 audit): `devnet-test.ts` read `GRAPHITE_URL`, a third
  * name for the same thing, and so repeated the pattern. It reads
  * `GRAPHITE_CORE_URL` now, and the old name is refused like the others.
  */
@@ -41,7 +41,7 @@ export function assertNoLegacyEnvNames(env: Record<string, string | undefined> =
 /**
  * What a log line may say about an RPC endpoint: its host, nothing else.
  *
- * A5-07 (2026-09-30 audit): the dev scripts printed the first 45 or 50
+ * A5-07 (2026-09-29 audit): the dev scripts printed the first 45 or 50
  * characters of the RPC URL. A provider URL of the `…/?api-key=<key>` shape
  * puts the key from about character 40, so part of it reached the terminal
  * and whatever collects it. The host carries no path, query or userinfo.

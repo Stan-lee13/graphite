@@ -165,7 +165,7 @@ def test_impersonation_vanity_warning():
     assert result["intent_type"] == "transfer"
     assert any(w["code"] == "IMPERSONATION_VANITY" for w in result["advisory_warnings"])
     # Reserved-prefix impersonation (Compu... mimics Compute Budget). 44
-    # characters: this fixture was 45 until A5-02 (2026-09-30 audit), and was
+    # characters: this fixture was 45 until A5-02 (2026-09-29 audit), and was
     # only flagged because the parser took its 44-character prefix.
     result = parse_intent("Send 1 SOL to CompuW2npNTB9RqH2gP8ZbA2HnHqn1fT2E6G4Z1B2C3D")
     assert any(w["code"] == "IMPERSONATION_VANITY" for w in result["advisory_warnings"])
@@ -492,7 +492,7 @@ def test_transfer_candidates():
     print("✓ test_transfer_candidates passed")
 
 # ---------------------------------------------------------------------------
-# A5-02 (2026-09-30 audit): a destination is the whole word the user typed,
+# A5-02 (2026-09-29 audit): a destination is the whole word the user typed,
 # never a prefix of it. A non-base58 character inside or at the end of an
 # address used to stop the group short and return the prefix.
 # ---------------------------------------------------------------------------
@@ -522,7 +522,7 @@ def test_destination_is_never_a_prefix_of_the_typed_word():
 
 
 # ---------------------------------------------------------------------------
-# A5-05 (2026-09-30 audit): the embedded fallback for a standalone
+# A5-05 (2026-09-29 audit): the embedded fallback for a standalone
 # deployment. It stored a dict where every reader indexes a list, so without
 # the registry every modelled intent crashed (KeyError: 0), and one unreadable
 # manifest killed the import.
@@ -560,6 +560,18 @@ def _assert_every_modelled_intent_parses(grounded_intents=()):
         # Embedded-only is reported as such: protocol signal 0.7, not 1.0.
         assert result["confidence_components"]["protocol"] == (1.0 if grounded else 0.7), intent
     assert parse_intent("do something random")["intent_type"] == "unknown"
+
+
+def test_a_destination_is_case_sensitive_base58():
+    """Review F15: the transfer pattern is case-insensitive for its verbs, and
+    the address class was too, so it admitted 'I', 'O' and 'l' (not base58)
+    and an upper-cased address. The address part is now case-sensitive."""
+    good = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+    assert parse_intent(f"Send 1 SOL to {good}")["extracted_parameters"]["destination"] == good
+    for bad in (good[:-1] + "I", good[:-1] + "O", good[:-1] + "l", good.upper()):
+        r = parse_intent(f"Send 1 SOL to {bad}")
+        assert r["extracted_parameters"].get("destination") in (None, ""), bad
+    print("✓ test_a_destination_is_case_sensitive_base58 passed")
 
 
 def test_standalone_fallback_parses_every_modelled_intent():
@@ -777,6 +789,7 @@ if __name__ == "__main__":
     test_protocol_candidates_grounded()
     test_transfer_candidates()
     test_destination_is_never_a_prefix_of_the_typed_word()
+    test_a_destination_is_case_sensitive_base58()
     test_standalone_fallback_parses_every_modelled_intent()
     test_a_bad_manifest_costs_only_itself()
     import pytest

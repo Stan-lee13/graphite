@@ -145,7 +145,7 @@ export class GraphiteClient {
   /**
    * Every request goes through here: the configured timeout, and no redirects.
    *
-   * A5-04 (2026-09-30 audit): `fetch` follows redirects by default, and
+   * A5-04 (2026-09-29 audit): `fetch` follows redirects by default, and
    * `assertSecureBaseUrl` checks only the configured base URL. A Core or a
    * proxy answering 307 to an http:// URL took the request — body included —
    * to a location the transport rule never saw, and the verdict that came

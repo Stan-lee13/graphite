@@ -109,7 +109,7 @@ test("the AI layer's echo must be the text that was sent", () => {
   assert.throws(() => assertEcho("Transfer 1 SOL", " Transfer 1 SOL"), IntentGroundingError);
 });
 
-// A5-02 (2026-09-30 audit): a non-base58 character inside or at the end of a
+// A5-02 (2026-09-29 audit): a non-base58 character inside or at the end of a
 // typed address split it into base58 runs, and the address-shaped prefix was
 // taken as "the one address in the request". The Python parser stopped at the
 // same character, so both sides agreed on an address the user never wrote.
@@ -150,7 +150,28 @@ test("A5-02: trailing sentence punctuation after an address is still just punctu
   }
 });
 
-// A5-01 (2026-09-30 audit): the swap path forwarded the AI layer's label to
+test("F12: a quoted address is the address; a quoted typo is still refused", () => {
+  for (const [open, close] of [["(", ")"], ['"', '"'], ["'", "'"], ["`", "`"], ["[", "]"], ["(", ")."]]) {
+    const g = groundTransferIntent(`Send 1 SOL to ${open}${FULL}${close}`, {
+      amount: "1",
+      destination: FULL,
+      input_token: "SOL",
+    });
+    assert.equal(g.destination, FULL, `${open}…${close}`);
+    assert.throws(
+      () =>
+        groundTransferIntent(`Send 1 SOL to ${open}${FULL.slice(0, 43)}0${close}`, {
+          amount: "1",
+          destination: FULL.slice(0, 43),
+          input_token: "SOL",
+        }),
+      (e: unknown) => e instanceof IntentGroundingError,
+      `quoted typo ${open}…${close}`,
+    );
+  }
+});
+
+// A5-01 (2026-09-29 audit): the swap path forwarded the AI layer's label to
 // the Core unchanged, and the Core's intent-mismatch checks are keyed on it.
 const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";

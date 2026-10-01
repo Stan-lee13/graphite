@@ -58,7 +58,7 @@ test("isLoopbackHost compares canonical forms only", () => {
   assert.equal(isLoopbackHost("0.0.0.0"), false);
 });
 
-// A5-04 (2026-09-30 audit): fetch followed redirects, and the transport check
+// A5-04 (2026-09-29 audit): fetch followed redirects, and the transport check
 // covers only the configured base URL — a 307 took the request to a location
 // the check never saw, and the verdict from there was accepted. Loopback
 // http:// on both ends, which the base-URL rule allows.

@@ -186,7 +186,9 @@ jobs:
         run: |
           set -euo pipefail
           status=0
-          for pkg in integrations/solana-agent-kit:solana-agent-kit                      sdk/typescript:sdk-typescript                      dashboard:dashboard; do
+          for pkg in integrations/solana-agent-kit:solana-agent-kit \
+                     sdk/typescript:sdk-typescript \
+                     dashboard:dashboard; do
             dir=${pkg%%:*}; list=${pkg##*:}
             echo "::group::npm audit ${dir}"
             # npm audit exits 1 whenever it finds anything, listed or not;
@@ -289,10 +291,9 @@ jobs:
       # CI: the SDK and the server could disagree about a field name or a
       # verdict's meaning with a fully green pipeline. The container is a
       # live server; point the SDK at it.
-      # Exact release, not a floating major (A6-08). 20.20.2 is the last
-      # 20.x (nodejs.org/dist/index.json); Node 20 reached end of life in
-      # April 2026, so moving the SDK and SAK jobs to 22 is the owner's
-      # next bump.
+      # Exact release, not a floating major (A6-08): 22.23.3, the current
+      # 22.x LTS (nodejs.org/dist/index.json), on every Node job. Node 20
+      # reached end of life in April 2026.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.23.3"

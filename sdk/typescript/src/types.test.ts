@@ -1,5 +1,5 @@
 /**
- * A5-03 (2026-09-30 audit): the Core serializes `AccountIdentity` snake_case
+ * A5-03 (2026-09-29 audit): the Core serializes `AccountIdentity` snake_case
  * (`#[serde(rename_all = "snake_case")]` in
  * graphite-core/src/account_resolution.rs). The SDK type and the published
  * schema said "Pda" | "Constant" | "Unverified", which no real verdict ever

@@ -105,7 +105,7 @@ func TestListManifestsRefusesANon200(t *testing.T) {
 	}
 }
 
-// A5-04 (2026-09-30 audit): CheckBaseURL covered the configured BaseURL only,
+// A5-04 (2026-09-29 audit): CheckBaseURL covered the configured BaseURL only,
 // and the default client followed redirects — a 307 to an http:// URL had the
 // body and the key re-sent to the new location, and the verdict read back
 // from it was accepted. Every call now refuses a redirect, whatever

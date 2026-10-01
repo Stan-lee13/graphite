@@ -33,7 +33,7 @@ import { assertNoLegacyEnvNames, rpcHostForLog } from "./env-names.js";
 /**
  * The Core, through the SDK client and nowhere else.
  *
- * A5-07 (2026-09-30 audit): this script verified with a raw `fetch` carrying
+ * A5-07 (2026-09-29 audit): this script verified with a raw `fetch` carrying
  * `Bearer $GRAPHITE_API_KEY` to `GRAPHITE_URL` — a name nothing else reads,
  * no transport rule, no shape check on the verdict — and built the
  * `GraphiteClient` that would have refused an http:// non-loopback URL only

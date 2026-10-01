@@ -1,7 +1,7 @@
 /**
  * The programs a swap may be built against — the Core's own swap set.
  *
- * A5-01 (2026-09-30 audit): `executeSwap` accepted a payload for any program.
+ * A5-01 (2026-09-29 audit): `executeSwap` accepted a payload for any program.
  * An SPL Token `Approve` of u64::MAX to an attacker delegate, handed in as the
  * "route" for "Swap 1 SOL for USDC", went to the Core as a swap request. A
  * payload the bridge will sign as a swap must at least be addressed to a

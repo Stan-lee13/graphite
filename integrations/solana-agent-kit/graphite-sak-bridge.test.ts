@@ -226,7 +226,7 @@ test("F-19-C6: a legacy env var name without its replacement refuses to start", 
 });
 
 // ---------------------------------------------------------------------------
-// A5-01 (2026-09-30 audit): executeSwap forwarded the AI layer's intent_type
+// A5-01 (2026-09-29 audit): executeSwap forwarded the AI layer's intent_type
 // to the Core unchanged and accepted a payload for any program. The Core's
 // intent-mismatch checks are keyed on that label, so an AI answering
 // "approve" to "Swap 1 SOL for USDC" switched off the Approve check for an

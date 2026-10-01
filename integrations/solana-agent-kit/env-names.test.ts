@@ -1,5 +1,5 @@
 /**
- * A5-07 (2026-09-30 audit): the dev scripts skipped the transport rules and
+ * A5-07 (2026-09-29 audit): the dev scripts skipped the transport rules and
  * printed part of the RPC URL.
  *
  *   - `devnet-test.ts` verified with a raw `fetch` carrying the API key to

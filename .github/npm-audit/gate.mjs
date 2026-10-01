@@ -4,7 +4,10 @@
 //   node gate.mjs audit.json <package>.allow
 //
 // Fails when the lockfile carries a HIGH or CRITICAL advisory that is not
-// listed in the package's allowlist, when a listed advisory is no longer
+// listed in the package's allowlist. An entry `GHSA-xxxx@package` covers that
+// advisory in that package only, so the same advisory surfacing in another
+// package is NEW (review of the 2026-09-29 audit's fix, F14); a bare
+// `GHSA-xxxx` covers it in any package. It also fails when a listed advisory is no longer
 // reported (the list must be pruned in the same change that fixes it), and
 // when the report is missing or is an npm error instead of an audit.
 //
@@ -42,7 +45,7 @@ if (report.error || report.auditReportVersion !== 2 || !report.metadata?.vulnera
 }
 
 const GATED = new Set(["high", "critical"]);
-const found = new Map(); // GHSA id -> {severity, name, range, title}
+const found = new Map(); // "GHSA id@package" -> {id, severity, name, range, title}
 for (const vuln of Object.values(report.vulnerabilities)) {
   for (const via of vuln.via) {
     // String entries point at another package's entry; the advisory itself is
@@ -53,7 +56,13 @@ for (const vuln of Object.values(report.vulnerabilities)) {
       fail(`advisory without an id on ${via.name}: ${via.title}`);
       continue;
     }
-    found.set(id, { severity: via.severity, name: via.name, range: via.range, title: via.title });
+    found.set(`${id}@${via.name}`, {
+      id,
+      severity: via.severity,
+      name: via.name,
+      range: via.range,
+      title: via.title,
+    });
   }
 }
 
@@ -65,14 +74,18 @@ const allowed = new Set(
     .map((l) => l.split(/\s+/)[0]),
 );
 
-for (const [id, a] of found) {
-  if (!allowed.has(id)) {
-    fail(`NEW ${a.severity} advisory ${id} in ${a.name} ${a.range}: ${a.title}`);
+const allows = (key, id) => allowed.has(key) || allowed.has(id);
+
+for (const [key, a] of found) {
+  if (!allows(key, a.id)) {
+    fail(`NEW ${a.severity} advisory ${a.id} in ${a.name} ${a.range}: ${a.title}`);
   }
 }
-for (const id of allowed) {
-  if (!found.has(id)) {
-    fail(`${id} is allowlisted but no longer reported at high/critical; remove it from ${allowPath}`);
+const foundIds = new Set([...found.values()].map((a) => a.id));
+for (const entry of allowed) {
+  const reported = entry.includes("@") ? found.has(entry) : foundIds.has(entry);
+  if (!reported) {
+    fail(`${entry} is allowlisted but no longer reported at high/critical; remove it from ${allowPath}`);
   }
 }
 

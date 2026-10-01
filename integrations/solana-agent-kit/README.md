@@ -168,7 +168,7 @@ verdict on what actually landed.
 
 ```bash
 npm run typecheck
-npm test                 # 119 tests: BoundTransaction gate, execution-boundary fuzz,
+npm test                 # 146 tests: BoundTransaction gate, execution-boundary fuzz,
                          # TOCTOU signing boundary, AuditBind, artifact, nonces,
                          # residual policy, execution lifecycle (incl. the Round 12
                          # submission-report retry)

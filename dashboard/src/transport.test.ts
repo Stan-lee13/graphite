@@ -44,7 +44,7 @@ test("non-http schemes and garbage are refused", () => {
   assert.equal(isLoopbackHost("127.0.0.256"), false);
 });
 
-// A5-04 (2026-09-30 audit): fetch followed redirects, so a 307 took the
+// A5-04 (2026-09-29 audit): fetch followed redirects, so a 307 took the
 // console's request somewhere the transport rule never checked. Loopback on
 // both ends; the target must never be contacted.
 test("a redirect from the Core is a failed request, and its target is never contacted", async () => {

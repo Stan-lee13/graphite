@@ -114,7 +114,7 @@ func NewClient(baseURL string) *Client {
 // refuseRedirect stops the client at the first redirect and hands the 3xx
 // back, which every method then refuses (see do).
 //
-// A5-04 (2026-09-30 audit): CheckBaseURL is enforced on BaseURL, but the
+// A5-04 (2026-09-29 audit): CheckBaseURL is enforced on BaseURL, but the
 // default client followed redirects, so a Core or a proxy answering 307 to an
 // http:// URL had the request body and the Authorization header re-sent in
 // cleartext, and the verdict read back over that hop was accepted. The Core's
@@ -509,7 +509,7 @@ type BuiltAccountMeta struct {
 // against a manifest-declared fixed address), or "unverified" (genuinely
 // externally-determined — no PDA formula, no fixed constant). Mirrors
 // graphite-core/src/account_resolution.rs AccountIdentity, which serializes
-// snake_case. A5-03 (2026-09-30 audit): these constants were "Pda" /
+// snake_case. A5-03 (2026-09-29 audit): these constants were "Pda" /
 // "Constant" / "Unverified", so a consumer comparing against them never
 // matched a real verdict.
 type AccountIdentity string

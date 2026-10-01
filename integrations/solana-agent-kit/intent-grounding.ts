@@ -41,7 +41,14 @@ const ADDRESS_LENGTH_RUN = /[1-9A-HJ-NP-Za-km-z]{32,}/;
  * Sentence punctuation a word may end with. Only this is stripped, and only
  * from the end: "to <address>." is an address followed by a full stop.
  */
-const TRAILING_PUNCTUATION = /[.,;:!?)\]"']+$/;
+const TRAILING_PUNCTUATION = /[.,;:!?)\]"'`]+$/;
+/**
+ * Quoting a word may begin with: "(<address>)", "\"<address>\"" and
+ * "`<address>`" are the address, quoted. Only this is stripped, and only from
+ * the start (review of the 2026-09-29 audit's fix, F12: a quoted address was
+ * refused).
+ */
+const LEADING_QUOTING = /^[(\["'`]+/;
 /**
  * A number standing on its own: not glued to letters or digits on either
  * side (so the digits inside an address never count), with an optional
@@ -85,7 +92,7 @@ export function assertEcho(sent: string, echoed: unknown): void {
 /**
  * The address-shaped words of the input, exactly as written.
  *
- * A5-02 (2026-09-30 audit): this used to collect base58 RUNS, so any
+ * A5-02 (2026-09-29 audit): this used to collect base58 RUNS, so any
  * non-base58 character split a word — the digit 0, a Cyrillic homoglyph, a
  * '-', '.' or '_'. Typed as the last character of a 44-character address it
  * left a 43-character run, which was then "the one address in the request",
@@ -93,13 +100,14 @@ export function assertEcho(sent: string, echoed: unknown): void {
  * holds. The Python parser stopped at the same character, so the two agreed.
  *
  * Words are split on whitespace instead, and only trailing sentence
- * punctuation is stripped. A word that carries an address-length base58 run
+ * punctuation and leading quoting ("(", "[", quotes, a backtick) are
+ * stripped. A word that carries an address-length base58 run
  * but is not itself address-shaped is refused, not trimmed into one.
  */
 function addressTokens(input: string): string[] {
   const addresses: string[] = [];
   for (const word of input.split(/\s+/)) {
-    const token = word.replace(TRAILING_PUNCTUATION, "");
+    const token = word.replace(TRAILING_PUNCTUATION, "").replace(LEADING_QUOTING, "");
     if (ADDRESS_SHAPE.test(token)) {
       addresses.push(token);
     } else if (ADDRESS_LENGTH_RUN.test(token)) {
@@ -196,6 +204,10 @@ export function groundTransferIntent(
 }
 
 /** A verb that asks for a swap, as a whole word (the AI layer's own vocabulary). */
+// The base verb only, as the Python parser reads it: "Swapping is fun" is
+// talk about swapping, not a request for one, and a request refused here is
+// one the user can rephrase. The two sides must agree on what a swap
+// request is (review F12 considered and kept this).
 const SWAP_VERB = /(?<![0-9A-Za-z])(?:swap|trade|exchange|convert|sell|buy)(?![0-9A-Za-z])/i;
 /** The labels the Core reads as the swap class (`risk_engine::canonical_intent`). */
 const SWAP_CLASS_LABELS: ReadonlySet<string> = new Set(["swap", "trade", "exchange"]);
@@ -205,7 +217,7 @@ const SWAP_CLASS_LABELS: ReadonlySet<string> = new Set(["swap", "trade", "exchan
  * from the AI layer's label, and refuse a payload for a program that does not
  * swap. Returns the `intent_type` to send: always `"swap"`.
  *
- * A5-01 (2026-09-30 audit): `executeSwap` forwarded the AI layer's
+ * A5-01 (2026-09-29 audit): `executeSwap` forwarded the AI layer's
  * `intent_type` to the Core unchanged. The Core's intent-mismatch checks
  * (CloseAccount, Create/Allocate, Approve, and the program-supports-intent
  * check) fire when the transaction does something other than the declared
