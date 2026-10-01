@@ -142,6 +142,31 @@ export class GraphiteClient {
     return this.timeoutMs > 0 ? AbortSignal.timeout(this.timeoutMs) : undefined;
   }
 
+  /**
+   * Every request goes through here: the configured timeout, and no redirects.
+   *
+   * A5-04 (2026-09-30 audit): `fetch` follows redirects by default, and
+   * `assertSecureBaseUrl` checks only the configured base URL. A Core or a
+   * proxy answering 307 to an http:// URL took the request — body included —
+   * to a location the transport rule never saw, and the verdict that came
+   * back from it was accepted. `redirect: "error"` makes any redirect a failed
+   * request; the target is never contacted.
+   */
+  private async send(path: string, init: RequestInit = {}): Promise<Response> {
+    try {
+      return await fetch(`${this.baseUrl}${path}`, { ...init, redirect: "error", signal: this.signal() });
+    } catch (e) {
+      const cause = (e as { cause?: { message?: unknown } }).cause;
+      if (typeof cause?.message === "string" && /redirect/i.test(cause.message)) {
+        throw new Error(
+          `Graphite ${path} answered with a redirect; redirects are refused, because the new ` +
+            "location has not passed the base-URL transport check (A5-04)",
+        );
+      }
+      throw e;
+    }
+  }
+
   private headers(extra?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = { ...extra };
     if (this.apiKey) {
@@ -151,11 +176,10 @@ export class GraphiteClient {
   }
 
   async verify(input: VerificationInput): Promise<VerificationResult> {
-    const response = await fetch(`${this.baseUrl}/verify`, {
+    const response = await this.send("/verify", {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify(input),
-      signal: this.signal(),
     });
 
     if (!response.ok) {
@@ -187,11 +211,10 @@ export class GraphiteClient {
    * `blocked` verdict has just told Graphite the gate was bypassed.
    */
   async recordLifecycleEvent(event: LifecycleEventInput): Promise<LifecycleEventReceipt> {
-    const response = await fetch(`${this.baseUrl}/audit/event`, {
+    const response = await this.send("/audit/event", {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify(event),
-      signal: this.signal(),
     });
     const raw = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok || raw.recorded !== true) {
@@ -214,11 +237,10 @@ export class GraphiteClient {
    * audited against.
    */
   async verifyExecution(input: ExecutionCheckInput): Promise<ExecutionCheckResult> {
-    const response = await fetch(`${this.baseUrl}/verify/execution`, {
+    const response = await this.send("/verify/execution", {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify(input),
-      signal: this.signal(),
     });
     const raw = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
@@ -232,16 +254,13 @@ export class GraphiteClient {
   }
 
   async health(): Promise<{ status: string; service: string; version: string }> {
-    const response = await fetch(`${this.baseUrl}/health`, { signal: this.signal() });
+    const response = await this.send("/health");
     if (!response.ok) throw new Error(`Health check failed: ${response.status}`);
     return (await response.json()) as { status: string; service: string; version: string };
   }
 
   async listManifests(): Promise<ProtocolManifest[]> {
-    const response = await fetch(`${this.baseUrl}/manifests`, {
-      headers: this.headers(),
-      signal: this.signal(),
-    });
+    const response = await this.send("/manifests", { headers: this.headers() });
     if (!response.ok) throw new Error(`Failed to list manifests: ${response.status}`);
     return (await response.json()) as ProtocolManifest[];
   }

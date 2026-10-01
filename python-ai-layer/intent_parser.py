@@ -40,9 +40,7 @@ Usage:
 import json
 import os
 import re
-import sys
 import argparse
-import statistics
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -72,11 +70,19 @@ INTENT_LABELS = {
 # amount / token / output_token / destination / slippage.
 # ---------------------------------------------------------------------------
 _RX = {
+    # A5-02 (2026-09-30 audit): the destination must be the whole word — after
+    # it, only trailing sentence punctuation, then whitespace or the end of the
+    # text (the same rule as the bridge's intent-grounding.ts). Without the
+    # lookahead, a non-base58 character inside or at the end of an address
+    # ('0', a Cyrillic homoglyph, '-', '.', '_') stopped the group short, and
+    # the prefix — at 43 characters usually a valid key nobody holds — came
+    # back as the destination. Such a word now yields no destination at all.
     "transfer": re.compile(
         r"\b(?:transfer|send|pay)\s+"
         r"(?:(?P<amount_all>all|entire|my)\s+(?:my\s+)?|(?P<amount>\d+(?:\.\d+)?)\s+)"
         r"(?P<token>[A-Za-z0-9]+)"
-        r"(?:\s+(?:to|into)\s+(?P<destination>[1-9A-HJ-NP-Za-km-z]{32,44}))?",
+        r"(?:\s+(?:to|into)\s+(?P<destination>[1-9A-HJ-NP-Za-km-z]{32,44})"
+        r"(?=[.,;:!?)\]'\"]*(?:\s|$)))?",
         re.IGNORECASE,
     ),
     "swap": re.compile(
@@ -186,44 +192,81 @@ _MANIFEST_DIR = os.path.normpath(
 )
 
 
-def _load_manifests() -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, str]]]:
-    """Load manifests -> {intent: {filename: {program_id, name, discriminator}}}.
+# A manifest that cannot be read or does not have the expected shape.
+# UnicodeDecodeError and json.JSONDecodeError are both ValueErrors; a
+# non-object document fails on `.get` (AttributeError) or on iteration
+# (TypeError).
+_MANIFEST_LOAD_ERRORS = (OSError, ValueError, AttributeError, TypeError)
+
+
+def _load_one_manifest(fn: str) -> Tuple[str, str, Dict[str, List[Dict[str, Any]]]]:
+    """Read one manifest -> (program_id, name, {intent: [candidate, ...]}).
+
+    Everything is built before anything is returned, so a manifest that fails
+    halfway contributes nothing rather than a partial candidate list.
+    """
+    with open(os.path.join(_MANIFEST_DIR, fn), encoding="utf-8") as f:
+        manifest = json.load(f)
+    protocol = manifest.get("protocol", {})
+    program_id = str(protocol.get("program_id", ""))
+    name = str(protocol.get("name", fn))
+    by_intent: Dict[str, List[Dict[str, Any]]] = {}
+    for instr in manifest.get("instructions", []):
+        iname = str(instr.get("name", ""))
+        for intent, kws in INTENT_KEYWORDS.items():
+            if any(kw.lower() in iname.lower() for kw in kws):
+                by_intent.setdefault(intent, []).append({
+                    "program_id": program_id,
+                    "name": name,
+                    "instruction": iname,
+                    "discriminator": str(instr.get("discriminator", "")),
+                })
+    return program_id, name, by_intent
+
+
+def _load_manifests() -> Tuple[Dict[str, Dict[str, List[Dict[str, Any]]]], Dict[str, str]]:
+    """Load manifests -> {intent: {filename: [{program_id, name, instruction, discriminator}]}}.
 
     Returns (grounded, loaded_registry) where grounded is a map from intent to
     candidate manifests, and loaded_registry a map from program_id -> name.
+
+    A5-05 (2026-09-30 audit): the fallback used to store a DICT per manifest
+    while every reader indexes a LIST, so a standalone deployment crashed on
+    every modelled intent (`candidates[0]` -> KeyError: 0). It also caught
+    only OSError/JSONDecodeError around the whole directory, so one
+    non-UTF-8 or non-object manifest killed the import. Each manifest is now
+    loaded on its own, and every intent whose canonical manifest did not load
+    gets the embedded entry — in the same list shape, marked `embedded` so
+    `_canonical_for` reports it as not grounded.
     """
-    grounded: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    grounded: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
     loaded_registry: Dict[str, str] = {}
     try:
-        for fn in os.listdir(_MANIFEST_DIR):
-            if not fn.endswith(".json") or fn == "verified_program_ids.json":
-                continue
-            with open(os.path.join(_MANIFEST_DIR, fn), encoding="utf-8") as f:
-                manifest = json.load(f)
-            program_id = manifest.get("protocol", {}).get("program_id", "")
-            name = manifest.get("protocol", {}).get("name", fn)
-            if not program_id:
-                continue
-            loaded_registry[program_id] = name
-            for instr in manifest.get("instructions", []):
-                iname = str(instr.get("name", ""))
-                for intent, kws in INTENT_KEYWORDS.items():
-                    if any(kw.lower() in iname.lower() for kw in kws):
-                        grounded.setdefault(intent, {}).setdefault(fn, []).append({
-                            "program_id": program_id,
-                            "name": name,
-                            "instruction": iname,
-                            "discriminator": str(instr.get("discriminator", "")),
-                        })
-    except (OSError, json.JSONDecodeError):
-        # Registry unavailable (standalone deployment) — embedded fallback.
-        for intent, (fn, pid, instr) in FALLBACK_CANONICAL.items():
-            grounded.setdefault(intent, {})[fn] = {
+        names = sorted(os.listdir(_MANIFEST_DIR))
+    except OSError:
+        names = []  # registry unavailable (standalone deployment)
+    for fn in names:
+        if not fn.endswith(".json") or fn == "verified_program_ids.json":
+            continue
+        try:
+            program_id, name, by_intent = _load_one_manifest(fn)
+        except _MANIFEST_LOAD_ERRORS:
+            continue  # this manifest only; the rest still ground
+        if not program_id:
+            continue
+        loaded_registry[program_id] = name
+        for intent, cands in by_intent.items():
+            grounded.setdefault(intent, {})[fn] = cands
+    # Embedded fallback, per intent, for whatever the registry did not supply.
+    for intent, (fn, pid, instr) in FALLBACK_CANONICAL.items():
+        if fn not in grounded.get(intent, {}):
+            grounded.setdefault(intent, {})[fn] = [{
                 "program_id": pid,
                 "name": fn,
                 "instruction": instr,
                 "discriminator": "",
-            }
+                "embedded": True,
+            }]
     return grounded, loaded_registry
 
 
@@ -249,11 +292,13 @@ def _canonical_for(intent: str) -> Tuple[str, str, str, bool]:
     # "ApproveChecked"). Falls back to the first keyword match otherwise.
     candidates = _GROUNDED.get(intent, {}).get(fn, [])
     if candidates:
-        grounded = True
         picked = next(
             (c for c in candidates if c["instruction"].lower() == instr.lower()),
             candidates[0],
         )
+        # The embedded table is not the registry: a suggestion taken from it
+        # is embedded-only (protocol signal 0.7), never "grounded".
+        grounded = not picked.get("embedded", False)
         pid = picked["program_id"]
         disc = picked["discriminator"]
         name = picked["name"]
@@ -500,9 +545,9 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
             })
 
     # --- confidence (per-signal, deterministic) ---
-    # phrase: 1.0 strong match, 0.6 partial (withdraw-as-stake still strong),
-    #        0.2 unknown. Here any matched intent is a strong phrase match.
-    phrase_signal = 1.0
+    # phrase: 1.0 strong match, 0.2 unknown. The branch that matched set it;
+    # an unknown intent returned above, so every intent here matched a phrase.
+    phrase_signal = phrase_strength
     # parameters: fraction of the intent's expected fields present.
     if intent == "transfer":
         expected = 3  # amount, input_token, destination

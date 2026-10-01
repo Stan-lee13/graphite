@@ -2,7 +2,9 @@
 // plain http:// to another machine. Run: npm test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insecureBaseReason, isLoopbackHost } from "./transport.ts";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { fetchFromCore, insecureBaseReason, isLoopbackHost } from "./transport.ts";
 
 const LOCAL_PAGE = "http://127.0.0.1:5173";
 
@@ -40,4 +42,33 @@ test("non-http schemes and garbage are refused", () => {
   assert.notEqual(insecureBaseReason("ftp://127.0.0.1", LOCAL_PAGE), null);
   assert.notEqual(insecureBaseReason("not a url", LOCAL_PAGE), null);
   assert.equal(isLoopbackHost("127.0.0.256"), false);
+});
+
+// A5-04 (2026-09-30 audit): fetch followed redirects, so a 307 took the
+// console's request somewhere the transport rule never checked. Loopback on
+// both ends; the target must never be contacted.
+test("a redirect from the Core is a failed request, and its target is never contacted", async () => {
+  let targetHits = 0;
+  const target = createServer((_req, res) => {
+    targetHits++;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end("{}");
+  });
+  const redirector = createServer((req, res) => {
+    res.writeHead(307, { location: `http://127.0.0.1:${(target.address() as AddressInfo).port}${req.url}` });
+    res.end();
+  });
+  for (const server of [target, redirector]) {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  }
+  try {
+    const base = `http://127.0.0.1:${(redirector.address() as AddressInfo).port}`;
+    await assert.rejects(fetchFromCore(`${base}/graph`, { Authorization: "Bearer " + "k".repeat(32) }));
+    assert.equal(targetHits, 0);
+  } finally {
+    for (const server of [target, redirector]) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
 });

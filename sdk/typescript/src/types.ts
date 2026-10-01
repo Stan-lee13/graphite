@@ -178,17 +178,26 @@ export interface BuiltTransaction {
   data_len: number;
 }
 
-/** How an account's identity is verified. `Pda` = re-derived from the
- *  manifest's seed template; `Constant` = matched against a manifest-declared
- *  fixed address (e.g. the SPL Token program); `Unverified` = genuinely
+/** How an account's identity is verified. `pda` = re-derived from the
+ *  manifest's seed template; `constant` = matched against a manifest-declared
+ *  fixed address (e.g. the SPL Token program); `unverified` = genuinely
  *  externally-determined (no PDA formula, no fixed constant) — honestly
  *  disclosed rather than silently assumed safe. Mirrors
- *  graphite-core/src/account_resolution.rs AccountIdentity. */
-export type AccountIdentity = "Pda" | "Constant" | "Unverified";
+ *  graphite-core/src/account_resolution.rs AccountIdentity, which serializes
+ *  snake_case. A5-03 (2026-09-30 audit): this was `"Pda" | "Constant" |
+ *  "Unverified"`, which no real verdict ever carries. */
+export type AccountIdentity = "pda" | "constant" | "unverified";
+
+/** Every identity value, as the Core puts it on the wire. */
+export const ACCOUNT_IDENTITIES: readonly AccountIdentity[] = ["pda", "constant", "unverified"] as const;
 
 export interface ResolvedAccount {
   address: string;
   role: string;
+  /** The slot's name in the manifest (`source`, `authority`, ...). Omitted
+   *  by the Core when empty: an account past the manifest's declared list,
+   *  or of an unknown program. */
+  name?: string;
   is_pda: boolean;
   is_signer: boolean;
   is_writable: boolean;

@@ -105,9 +105,47 @@ func NewClient(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
 		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:       30 * time.Second,
+			CheckRedirect: refuseRedirect,
 		},
 	}
+}
+
+// refuseRedirect stops the client at the first redirect and hands the 3xx
+// back, which every method then refuses (see do).
+//
+// A5-04 (2026-09-30 audit): CheckBaseURL is enforced on BaseURL, but the
+// default client followed redirects, so a Core or a proxy answering 307 to an
+// http:// URL had the request body and the Authorization header re-sent in
+// cleartext, and the verdict read back over that hop was accepted. The Core's
+// own RPC client refuses redirects (Round 12); so does this one.
+func refuseRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
+// do sends req without following redirects, whatever HTTPClient a caller
+// installed, and refuses a 3xx answer. HTTPClient is an exported field a
+// caller can replace with one that follows redirects; the policy is applied
+// to a copy per request rather than trusted to the field.
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	hc := http.DefaultClient
+	if c.HTTPClient != nil {
+		hc = c.HTTPClient
+	}
+	noRedirect := *hc
+	noRedirect.CheckRedirect = refuseRedirect
+	resp, err := noRedirect.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		resp.Body.Close()
+		return nil, fmt.Errorf(
+			"graphite: %s %s answered %d (redirect to %q); redirects are refused, because the "+
+				"hop would bypass CheckBaseURL (A5-04)",
+			req.Method, req.URL.Path, resp.StatusCode, resp.Header.Get("Location"))
+	}
+	return resp, nil
 }
 
 // NewClientWithAPIKey creates a client for a secured Core deployment. The key
@@ -466,23 +504,30 @@ type BuiltAccountMeta struct {
 	IsWritable bool   `json:"is_writable"`
 }
 
-// AccountIdentity describes how an account's identity is verified: "Pda"
-// (re-derived from the manifest's seed template), "Constant" (matched
-// against a manifest-declared fixed address), or "Unverified" (genuinely
+// AccountIdentity describes how an account's identity is verified: "pda"
+// (re-derived from the manifest's seed template), "constant" (matched
+// against a manifest-declared fixed address), or "unverified" (genuinely
 // externally-determined — no PDA formula, no fixed constant). Mirrors
-// graphite-core/src/account_resolution.rs AccountIdentity.
+// graphite-core/src/account_resolution.rs AccountIdentity, which serializes
+// snake_case. A5-03 (2026-09-30 audit): these constants were "Pda" /
+// "Constant" / "Unverified", so a consumer comparing against them never
+// matched a real verdict.
 type AccountIdentity string
 
 const (
-	AccountIdentityPda        AccountIdentity = "Pda"
-	AccountIdentityConstant   AccountIdentity = "Constant"
-	AccountIdentityUnverified AccountIdentity = "Unverified"
+	AccountIdentityPda        AccountIdentity = "pda"
+	AccountIdentityConstant   AccountIdentity = "constant"
+	AccountIdentityUnverified AccountIdentity = "unverified"
 )
 
 // ResolvedAccount is a resolved account with identity verification status.
 type ResolvedAccount struct {
-	Address     string          `json:"address"`
-	Role        string          `json:"role"`
+	Address string `json:"address"`
+	Role    string `json:"role"`
+	// Name is the slot's name in the manifest ("source", "authority", ...).
+	// The Core omits it when empty: an account past the manifest's declared
+	// list, or of an unknown program.
+	Name        string          `json:"name,omitempty"`
 	IsPDA       bool            `json:"is_pda"`
 	IsSigner    bool            `json:"is_signer"`
 	IsWritable  bool            `json:"is_writable"`
@@ -581,7 +626,7 @@ func (c *Client) Verify(input *VerificationInput) (*VerificationResult, error) {
 	req.Header.Set("Content-Type", "application/json")
 	c.setAuth(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request: %w", err)
 	}
@@ -606,7 +651,11 @@ func (c *Client) Health() error {
 	if err != nil {
 		return err
 	}
-	resp, err := c.HTTPClient.Get(endpoint)
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -629,7 +678,7 @@ func (c *Client) ListManifests() ([]ProtocolManifest, error) {
 	}
 	c.setAuth(req)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}

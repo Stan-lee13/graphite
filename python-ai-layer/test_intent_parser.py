@@ -164,8 +164,10 @@ def test_impersonation_vanity_warning():
     result = parse_intent("Transfer 5 SOL to iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111")
     assert result["intent_type"] == "transfer"
     assert any(w["code"] == "IMPERSONATION_VANITY" for w in result["advisory_warnings"])
-    # Reserved-prefix impersonation (Compu... mimics Compute Budget).
-    result = parse_intent("Send 1 SOL to CompuW2npNTB9RqH2gP8ZbA2HnHqn1fT2E6G4Z1B2C3D4")
+    # Reserved-prefix impersonation (Compu... mimics Compute Budget). 44
+    # characters: this fixture was 45 until A5-02 (2026-09-30 audit), and was
+    # only flagged because the parser took its 44-character prefix.
+    result = parse_intent("Send 1 SOL to CompuW2npNTB9RqH2gP8ZbA2HnHqn1fT2E6G4Z1B2C3D")
     assert any(w["code"] == "IMPERSONATION_VANITY" for w in result["advisory_warnings"])
     # A normal address must NOT warn.
     result = parse_intent("Transfer 1 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU")
@@ -463,7 +465,7 @@ def test_program_ids_match_manifests():
         )
 
     # Every FALLBACK_CANONICAL program_id must exist in the registry too.
-    for intent, (fn, pid, instr) in FALLBACK_CANONICAL.items():
+    for intent, (_fn, pid, _instr) in FALLBACK_CANONICAL.items():
         assert pid in verified_ids, (
             f"fallback canonical {intent} -> {pid} not in verified_program_ids.json"
         )
@@ -489,11 +491,149 @@ def test_transfer_candidates():
     assert "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" in ids  # SPL Token
     print("✓ test_transfer_candidates passed")
 
+# ---------------------------------------------------------------------------
+# A5-02 (2026-09-30 audit): a destination is the whole word the user typed,
+# never a prefix of it. A non-base58 character inside or at the end of an
+# address used to stop the group short and return the prefix.
+# ---------------------------------------------------------------------------
+_FULL_ADDRESS = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+
+
+def test_destination_is_never_a_prefix_of_the_typed_word():
+    full = _FULL_ADDRESS
+    assert len(full) == 44
+    for typed in (
+        full[:43] + "0",  # digit zero for the letter o
+        full[:43] + "А",  # Cyrillic A
+        full[:43] + "-",
+        full[:40] + "." + full[40:],
+        full[:40] + "_" + full[40:],
+        full + "z",  # 45 characters: no 44-character prefix either
+        full[:43] + "0.",  # a full stop after the typo changes nothing
+    ):
+        result = parse_intent(f"Send 1 SOL to {typed}")
+        params = result["extracted_parameters"] or {}
+        assert "destination" not in params, (ascii(typed), params)
+    # Sentence punctuation after a whole address is still just punctuation.
+    for tail in ("", ".", ",", "!", "?", ";", ":", ")", "]", '"', "'", ").", ", then"):
+        params = parse_intent(f"Send 1 SOL to {full}{tail}")["extracted_parameters"]
+        assert params["destination"] == full, ascii(tail)
+    print("✓ test_destination_is_never_a_prefix_of_the_typed_word passed")
+
+
+# ---------------------------------------------------------------------------
+# A5-05 (2026-09-30 audit): the embedded fallback for a standalone
+# deployment. It stored a dict where every reader indexes a list, so without
+# the registry every modelled intent crashed (KeyError: 0), and one unreadable
+# manifest killed the import.
+# ---------------------------------------------------------------------------
+_MODELLED = (
+    ("Transfer 1 SOL to " + _FULL_ADDRESS, "transfer"),
+    ("Swap 1 SOL for USDC", "swap"),
+    ("Stake 10 SOL", "stake"),
+    ("Close my account", "close"),
+    ("Create a new token account", "create"),
+    ("Approve USDC", "approve"),
+    ("Revoke the delegate", "revoke"),
+)
+
+
+def _with_manifest_dir(path, check):
+    """Reload the registry from `path`, run `check`, restore the real one."""
+    saved = (_ip._MANIFEST_DIR, _ip._GROUNDED, _ip._REGISTRY)
+    try:
+        _ip._MANIFEST_DIR = path
+        _ip._GROUNDED, _ip._REGISTRY = _ip._load_manifests()
+        check()
+    finally:
+        _ip._MANIFEST_DIR, _ip._GROUNDED, _ip._REGISTRY = saved
+
+
+def _assert_every_modelled_intent_parses(grounded_intents=()):
+    for text, intent in _MODELLED:
+        result = parse_intent(text)
+        assert result["intent_type"] == intent, (text, result["intent_type"])
+        pid = _ip.FALLBACK_CANONICAL[intent][1]
+        assert result["suggested_program_id"] == pid, (intent, result["suggested_program_id"])
+        assert result["protocol_candidates"], intent
+        grounded = intent in grounded_intents
+        # Embedded-only is reported as such: protocol signal 0.7, not 1.0.
+        assert result["confidence_components"]["protocol"] == (1.0 if grounded else 0.7), intent
+    assert parse_intent("do something random")["intent_type"] == "unknown"
+
+
+def test_standalone_fallback_parses_every_modelled_intent():
+    import tempfile
+
+    absent = os.path.join(os.path.dirname(os.path.abspath(__file__)), "no-such-registry-dir")
+    assert not os.path.exists(absent)
+
+    def check_absent():
+        assert _ip._REGISTRY == {}
+        entry = _ip._GROUNDED["transfer"]["system-program.json"]
+        assert isinstance(entry, list) and entry[0]["embedded"] is True
+        assert _ip._canonical_for("transfer")[3] is False  # not grounded
+        _assert_every_modelled_intent_parses()
+
+    _with_manifest_dir(absent, check_absent)
+    with tempfile.TemporaryDirectory() as empty:
+        _with_manifest_dir(empty, _assert_every_modelled_intent_parses)
+    print("✓ test_standalone_fallback_parses_every_modelled_intent passed")
+
+
+def test_a_bad_manifest_costs_only_itself():
+    import shutil
+    import tempfile
+
+    real_dir = _ip._MANIFEST_DIR
+    with tempfile.TemporaryDirectory() as d:
+        # One good manifest: the System Program, which grounds transfer.
+        shutil.copy(os.path.join(real_dir, "system-program.json"), d)
+        bad = {
+            "not-utf8.json": b"\xff\xfe\x00{",
+            "not-json.json": b"{ this is not json",
+            "a-list.json": b"[1, 2, 3]",
+            "protocol-a-string.json": b'{"protocol": "x", "instructions": []}',
+            "instructions-a-number.json": b'{"protocol": {"program_id": "P", "name": "n"}, "instructions": 5}',
+            "instruction-a-string.json": b'{"protocol": {"program_id": "Q", "name": "n"}, "instructions": ["Swap"]}',
+        }
+        for name, body in bad.items():
+            with open(os.path.join(d, name), "wb") as f:
+                f.write(body)
+
+        def check():
+            # The good manifest loaded; none of the bad ones did, not even partly.
+            assert set(_ip._REGISTRY) == {"11111111111111111111111111111111"}, _ip._REGISTRY
+            for by_fn in _ip._GROUNDED.values():
+                assert not set(by_fn) & set(bad), by_fn.keys()
+            _assert_every_modelled_intent_parses(grounded_intents=("transfer",))
+
+        _with_manifest_dir(d, check)
+    print("✓ test_a_bad_manifest_costs_only_itself passed")
+
+
 
 # ---------------------------------------------------------------------------
 # Performance smoke test — the labeler must stay fast (no LLM, no network).
+#
+# What this guards is the SHAPE of the labeler: pure local rules, no model
+# call, no network. That is checked structurally — every socket connect is
+# refused while it parses — and the throughput floor sits two orders of
+# magnitude above any per-parse network or model round trip (~100 ms, i.e.
+# ~10/s). The floor used to be 10,000/s, a machine-speed target that failed
+# on this project's own build box under load (1,000–3,500/s, old and new
+# parser alike; 2026-09-29 audit, A6-11), which trains people to ignore red.
 # ---------------------------------------------------------------------------
-def test_performance_smoke():
+def test_performance_smoke(monkeypatch):
+    import socket
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("the labeler opened a network connection")
+
+    monkeypatch.setattr(socket.socket, "connect", refuse)
+    monkeypatch.setattr(socket.socket, "connect_ex", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+
     corpus = [
         "Transfer 1 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
         "Swap 1 SOL for USDC",
@@ -507,8 +647,8 @@ def test_performance_smoke():
         parse_intent(corpus[i % len(corpus)])
     elapsed = time.perf_counter() - start
     per_sec = n / elapsed
-    print(f"✓ test_performance_smoke passed ({per_sec:,.0f} parses/sec)")
-    assert per_sec > 10_000, f"labeler too slow: {per_sec:,.0f} parses/sec"
+    print(f"test_performance_smoke passed ({per_sec:,.0f} parses/sec)")
+    assert per_sec > 500, f"labeler too slow: {per_sec:,.0f} parses/sec"
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +776,13 @@ if __name__ == "__main__":
     test_program_ids_match_manifests()
     test_protocol_candidates_grounded()
     test_transfer_candidates()
-    test_performance_smoke()
+    test_destination_is_never_a_prefix_of_the_typed_word()
+    test_standalone_fallback_parses_every_modelled_intent()
+    test_a_bad_manifest_costs_only_itself()
+    import pytest
+
+    with pytest.MonkeyPatch.context() as mp:
+        test_performance_smoke(mp)
     test_bind_host_defaults_to_loopback()
     test_a_stalled_client_does_not_stall_other_callers()
     test_a_short_body_times_out_and_is_refused()

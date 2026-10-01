@@ -39,3 +39,18 @@ export function insecureBaseReason(base: string, pageOrigin: string): string | n
   }
   return `${url.protocol} is not a Core address. Use https://, or http:// on this machine.`;
 }
+
+/**
+ * `fetch` for every request the console makes to the Core: never follows a
+ * redirect.
+ *
+ * A5-04 (2026-09-30 audit): the transport rule above is checked against the
+ * configured base, and `fetch` follows redirects by default — a Core or a
+ * proxy answering 307 to an http:// URL took the request, and what the
+ * console then displayed, somewhere the rule never looked. With
+ * `redirect: "error"` a redirect is a failed request and its target is not
+ * contacted.
+ */
+export function fetchFromCore(url: string, headers: Record<string, string>): Promise<Response> {
+  return fetch(url, { headers, redirect: "error" });
+}

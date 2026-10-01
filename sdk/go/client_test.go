@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -101,5 +102,45 @@ func TestListManifestsRefusesANon200(t *testing.T) {
 		if err == nil {
 			t.Errorf("status %d: ListManifests returned %v and no error — a failed request read as \"no manifests\"", status, manifests)
 		}
+	}
+}
+
+// A5-04 (2026-09-30 audit): CheckBaseURL covered the configured BaseURL only,
+// and the default client followed redirects — a 307 to an http:// URL had the
+// body and the key re-sent to the new location, and the verdict read back
+// from it was accepted. Every call now refuses a redirect, whatever
+// HTTPClient the caller installed, and the redirect target is never reached.
+func TestRedirectsAreRefusedAndNeverFollowed(t *testing.T) {
+	var targetHits atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"approved":true,"confidence":0.99,"audit_trail_id":"gr-x","content_hash":"0123456789abcdef",` +
+			`"risk_verdict":{"status":"Clear","findings":[]}}`))
+	}))
+	defer target.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer redirector.Close()
+
+	for _, name := range []string{"NewClient's own HTTP client", "a caller-supplied client that follows redirects"} {
+		c := NewClientWithAPIKey(redirector.URL, strings.Repeat("k", 32))
+		if name != "NewClient's own HTTP client" {
+			c.HTTPClient = &http.Client{} // the zero value follows up to 10 redirects
+		}
+		res, err := c.Verify(&VerificationInput{ProgramID: "11111111111111111111111111111111", WalletProfile: WalletProfileGaming})
+		if err == nil || !strings.Contains(err.Error(), "redirects are refused") {
+			t.Errorf("%s: Verify must refuse a 307, got result %+v, err %v", name, res, err)
+		}
+		if err := c.Health(); err == nil || !strings.Contains(err.Error(), "redirects are refused") {
+			t.Errorf("%s: Health must refuse a 307, got %v", name, err)
+		}
+		if m, err := c.ListManifests(); err == nil || !strings.Contains(err.Error(), "redirects are refused") {
+			t.Errorf("%s: ListManifests must refuse a 307, got %v, %v", name, m, err)
+		}
+	}
+	if n := targetHits.Load(); n != 0 {
+		t.Fatalf("the redirect target was reached %d time(s); it must never be", n)
 	}
 }

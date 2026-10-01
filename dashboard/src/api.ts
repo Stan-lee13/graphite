@@ -6,7 +6,7 @@
 // their own Core from the Connect screen. Both settings live in this
 // browser's localStorage and nowhere else — never in a URL, never in a log.
 
-import { insecureBaseReason } from "./transport";
+import { fetchFromCore, insecureBaseReason } from "./transport";
 
 export interface GraphNode {
   program_id: string;
@@ -292,7 +292,8 @@ async function request(path: string, conn: Connection = connection): Promise<Res
   if (insecure !== null) throw new ApiError("insecure", path, undefined, insecure);
   let resp: Response;
   try {
-    resp = await fetch(`${conn.base}${path}`, { headers: authHeaders(conn.key) });
+    // A5-04: a redirect rejects here and is reported as no response.
+    resp = await fetchFromCore(`${conn.base}${path}`, authHeaders(conn.key));
   } catch {
     throw new ApiError("network", path);
   }
