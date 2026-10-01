@@ -13,13 +13,13 @@
   },
   "dependencies": {
     "solana-agent-kit": "^2.0.10",
-    "@solana/web3.js": "^1.95.0",
+    "@solana/web3.js": "^1.99.0",
     "bs58": "^6.0.0"
   },
   "devDependencies": {
-    "tsx": "^4.0.0",
-    "typescript": "^5.5.0",
-    "@types/node": "^22.0.0"
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "@types/node": "^26.6.3"
   },
   "overrides": {
     "fast-uri": "3.1.8",
