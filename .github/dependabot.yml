@@ -1,6 +1,9 @@
-# Dependency update PRs (A6-05). Weekly, one grouped PR per ecosystem and
-# directory, and at most two open at a time per entry, so this raises a
-# signal instead of a queue nobody reads. Every PR still has to pass the
+# Dependency update PRs (A6-05). Weekly. Minor and patch updates come as one
+# grouped PR per ecosystem and directory; a MAJOR update always comes as its
+# own PR, because a major is a change to review on its merits (the first run
+# grouped React 19, TypeScript 7 and tower 0.5 with patch bumps). At most two
+# open at a time per entry, so this raises a signal instead of a queue nobody
+# reads. Every PR still has to pass the
 # whole CI, including `cargo audit` and the npm advisory gate
 # (.github/npm-audit/): an update that fixes an allowlisted advisory fails
 # that gate until the entry is removed, which is the point. Security updates
@@ -18,6 +21,7 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: cargo
     directory: /graphite-core
@@ -27,6 +31,7 @@ updates:
     groups:
       graphite-core:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # The oracle pins the agave crates at the versions whose decoder it
   # mirrors; review a bump there as a change to the referee.
@@ -35,36 +40,60 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    ignore:
+      # bincode 1.3 is the version agave's packet decoder uses; the oracle
+      # must decode exactly as the runtime does, so it moves when agave does.
+      - dependency-name: bincode
+        update-types: ["version-update:semver-major"]
     groups:
       runtime-oracle:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /integrations/solana-agent-kit
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    ignore:
+      # @types/node follows the Node major CI and the docs run (22 LTS): types
+      # from a later major would typecheck APIs the runtime does not have.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       sak:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /sdk/typescript
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    ignore:
+      # @types/node follows the Node major CI and the docs run (22 LTS): types
+      # from a later major would typecheck APIs the runtime does not have.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       sdk-typescript:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
     directory: /dashboard
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    ignore:
+      # @types/node follows the Node major CI and the docs run (22 LTS): types
+      # from a later major would typecheck APIs the runtime does not have.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       dashboard:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # sdk/go has no dependencies today; this keeps the `go` directive and any
   # future module under review.
@@ -76,6 +105,7 @@ updates:
     groups:
       sdk-go:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # requirements-lock.txt is hash-pinned (`pip install --require-hashes`).
   - package-ecosystem: pip
@@ -86,3 +116,4 @@ updates:
     groups:
       python-ai-layer:
         patterns: ["*"]
+        update-types: ["minor", "patch"]

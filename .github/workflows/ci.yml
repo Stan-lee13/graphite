@@ -40,7 +40,7 @@ jobs:
       # `persist-credentials: false` on every checkout (A6-10): nothing here
       # pushes, so the token has no reason to sit in .git/config where every
       # later step, dependency install scripts included, could read it.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Pinned to a commit of the `stable` branch (2026-09-12). The action
@@ -137,7 +137,7 @@ jobs:
       run:
         working-directory: graphite-core
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch, 2026-09-12
@@ -177,7 +177,7 @@ jobs:
       # carries known advisories with no non-breaking fix, so a bare
       # `--audit-level=high` would be permanently red; the allowlists in
       # .github/npm-audit/ say what each one is and where it comes from.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.23.3"
       - name: npm advisories — SAK bridge, TypeScript SDK, dashboard
@@ -208,7 +208,7 @@ jobs:
       run:
         working-directory: tools/runtime-oracle
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch, 2026-09-12
@@ -246,7 +246,7 @@ jobs:
     # runner, and the Go live step adds a toolchain setup. 30 is ample.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # The Dockerfile/compose stack is the documented one-command deploy
@@ -293,7 +293,7 @@ jobs:
       # 20.x (nodejs.org/dist/index.json); Node 20 reached end of life in
       # April 2026, so moving the SDK and SAK jobs to 22 is the owner's
       # next bump.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.23.3"
       - name: TypeScript SDK conformance against the live container
@@ -352,9 +352,9 @@ jobs:
       # The Go SDK's real-server tests sit behind `//go:build liveserver`, so
       # the Go job (no server, no tag) never compiles them (A6-02). Same
       # container, same throwaway key, same toolchain pin as the Go job.
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.22.12"
+          go-version: "1.27.1"
           # sdk/go has no dependencies and no go.sum to key a cache on.
           cache: false
       - name: Go SDK conformance against the live container
@@ -429,10 +429,10 @@ jobs:
     # long pole. 20 is generous.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.23.3"
       - name: SDK typecheck + AuditBind cross-language parity
@@ -494,17 +494,24 @@ jobs:
     runs-on: ubuntu-24.04
     # Under a minute; no dependencies to fetch.
     timeout-minutes: 15
+    # Both Go releases that still get security fixes: the module's floor
+    # (go.mod `go 1.26`) and the newest. Go 1.22, tested until 2026-09-30,
+    # had been out of support since 2025.
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26.8", "1.27.1"]
     defaults:
       run:
         working-directory: sdk/go
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # Exact patch release, not a floating minor (Round 10).
-          go-version: "1.22.12"
+          # Exact patch releases, not floating minors (Round 10).
+          go-version: ${{ matrix.go }}
       # Mirrors the Rust job's `cargo fmt --check`. gofmt exits 0 whether or
       # not it finds anything, so the check is on its OUTPUT being empty —
       # and the unformatted file list is printed before failing, so the fix
@@ -531,10 +538,10 @@ jobs:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # 22: the dashboard's unit tests (Round 19 — the plain-HTTP
           # refusal and the router's malformed-escape handling) run under
@@ -562,16 +569,24 @@ jobs:
     runs-on: ubuntu-24.04
     # Seconds; five hash-pinned wheels.
     timeout-minutes: 15
+    # The oldest supported Python the layer runs on (3.11, supported to
+    # 2027-10) and a newer one (3.13, to 2029-10), so the advisory layer is
+    # known to run on what deployments will move to. The locked wheels are
+    # pure Python.
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
     defaults:
       run:
         working-directory: python-ai-layer
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
       # Hash-locked: every wheel's SHA-256 is in the lock file, so the index
       # cannot substitute a package (Round 10).
       - name: Install test deps
