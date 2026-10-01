@@ -602,8 +602,10 @@ async fn an_execution_of_unverified_bytes_is_not_attributed_to_a_sibling_verific
 }
 
 /// Without the chain's bytes, the caller's most exact key decides — and the
-/// `content_hash`-only case is exactly the pre-Round-10 answer, now labelled
-/// as such: A's approval, for B's execution.
+/// `content_hash`-only case finds A's approval for B's execution. That used to
+/// reconcile as `ApprovedAndExecuted`; since R1 (review of the 2026-09-29
+/// audit) an approval found by a caller key is never an execution of it:
+/// `Unavailable`. B's block, found by B's own keys, still alarms.
 #[tokio::test]
 async fn without_chain_bytes_the_most_exact_caller_key_decides_and_content_hash_alone_is_ambiguous()
 {
@@ -630,9 +632,13 @@ async fn without_chain_bytes_the_most_exact_caller_key_decides_and_content_hash_
         audit.recorded_audit_trail_id.as_deref(),
         Some(a.audit_trail_id.as_str())
     );
-    assert_eq!(
-        audit.reconciliation,
-        ExecutionReconciliation::ApprovedAndExecuted
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::Unavailable { .. }
+        ),
+        "A's approval, found by a content_hash, must not reconcile as B's execution: {:?}",
+        audit.reconciliation
     );
 
     // transaction_sha256 of B: B's block.

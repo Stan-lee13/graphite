@@ -132,8 +132,13 @@ async fn a_blocked_transaction_that_executed_is_a_discrepancy() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The same chain status against an APPROVED record is the ordinary case, which
+/// The same chain status against an APPROVED record is not a discrepancy, which
 /// is what makes the test above meaningful rather than "any confirmation alarms".
+/// This mock serves no transaction bytes, so the record is found by the
+/// caller's `content_hash`, and since R1 (review of the 2026-09-29 audit) that
+/// is not evidence that THIS signature is the approved transaction:
+/// `Unavailable`, not `ApprovedAndExecuted` (the chain-bytes path is pinned in
+/// `audit_review_r1_l8_needs_chain_bytes.rs` and `round10_attribution.rs`).
 #[tokio::test]
 async fn an_approved_transaction_that_executed_is_not_a_discrepancy() {
     let dir = temp_dir("approved-exec");
@@ -153,9 +158,13 @@ async fn an_approved_transaction_that_executed_is_not_a_discrepancy() {
         .await;
     h.join().unwrap();
 
-    assert_eq!(
-        audit.reconciliation,
-        ExecutionReconciliation::ApprovedAndExecuted
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::Unavailable { .. }
+        ),
+        "{:?}",
+        audit.reconciliation
     );
     assert!(!audit.reconciliation.is_discrepancy());
     let _ = std::fs::remove_dir_all(&dir);
@@ -163,7 +172,9 @@ async fn an_approved_transaction_that_executed_is_not_a_discrepancy() {
 
 /// Approved then failed on chain is not a security failure — Graphite verifies
 /// intent and structure, not that a transaction will succeed — and must not be
-/// reported as one.
+/// reported as one. Without the chain's bytes the failure cannot be tied to the
+/// approved verification either (R1), so it is `Unavailable`, never an alarm;
+/// `round12_rpc_equivocation.rs` pins `ApprovedButFailedOnChain` from bytes.
 #[tokio::test]
 async fn an_approved_transaction_that_failed_on_chain_is_reported_but_not_alarmed() {
     let dir = temp_dir("approved-failed");
@@ -183,15 +194,14 @@ async fn an_approved_transaction_that_failed_on_chain_is_reported_but_not_alarme
         .await;
     h.join().unwrap();
 
-    match &audit.reconciliation {
-        ExecutionReconciliation::ApprovedButFailedOnChain { error } => {
-            assert!(
-                error.is_some(),
-                "the on-chain error must be carried through"
-            );
-        }
-        other => panic!("expected ApprovedButFailedOnChain, got {other:?}"),
-    }
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::Unavailable { .. }
+        ),
+        "{:?}",
+        audit.reconciliation
+    );
     assert!(!audit.reconciliation.is_discrepancy());
     let _ = std::fs::remove_dir_all(&dir);
 }

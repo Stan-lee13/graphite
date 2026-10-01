@@ -375,8 +375,10 @@ async fn a_status_without_bytes_is_disclosed_as_caller_attributed() {
     let (log, dir) = temp_log("nobytes");
     let rec = record(&log, &signed, true);
 
-    // With the exact key, the caller's attestation stands in — and the
-    // answer says so twice: `attribution` and `chain_bytes_unavailable`.
+    // With the exact key the record is found, and the answer says how twice:
+    // `attribution` and `chain_bytes_unavailable`. Since R1 (review of the
+    // 2026-09-29 audit) a caller's key is not evidence that this signature is
+    // the approved transaction, so the reconciliation is Unavailable.
     let audit = core
         .audit_execution(
             &sig,
@@ -387,9 +389,13 @@ async fn a_status_without_bytes_is_disclosed_as_caller_attributed() {
             Some(&log),
         )
         .await;
-    assert_eq!(
-        audit.reconciliation,
-        ExecutionReconciliation::ApprovedAndExecuted
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::Unavailable { .. }
+        ),
+        "{:?}",
+        audit.reconciliation
     );
     assert_eq!(audit.attribution, ExecutionAttribution::AuditTrailId);
     let why = audit.chain_bytes_unavailable.as_deref().expect("disclosed");

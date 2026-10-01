@@ -198,7 +198,11 @@ committed as a test and the fix reverted once to show the test fails without it:
   behind the signature, zeroes the signature slots (which reproduces the artifact the
   bridge sent, byte for byte) and joins on their digest; caller keys stand in only without
   the chain's bytes, most exact first (`audit_trail_id` → `transaction_sha256` →
-  `content_hash`), never falling back, and are cross-checked. `/audit/event` resolves
+  `content_hash`), never falling back, and are cross-checked. A record found by a caller
+  key supports only the alarm: a blocked record plus any sighting is `BlockedButExecuted`,
+  but an approved one is `Unavailable`, never `ApprovedAndExecuted` — a key names a
+  verdict, it does not prove this signature is that transaction (R1, review of the
+  2026-09-29 audit). `/audit/event` resolves
   `verdict_on_record` the same way, refuses contradicting keys, and records the key used.
   The bridge sends the exact keys and refuses to submit unless its signing was resolved
   by `audit_trail_id`.

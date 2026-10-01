@@ -1761,6 +1761,19 @@ pub enum ExecutionAttribution {
     None,
 }
 
+impl ExecutionAttribution {
+    /// The key the record was found by, as the API spells it.
+    pub fn key_name(self) -> &'static str {
+        match self {
+            Self::Chain => "chain-bytes",
+            Self::AuditTrailId => "audit_trail_id",
+            Self::TransactionSha256 => "transaction_sha256",
+            Self::ContentHash => "content_hash",
+            Self::None => "no",
+        }
+    }
+}
+
 /// The keys a caller may supply to `/verify/execution`, alongside the
 /// signature. All optional; the chain's bytes take precedence over all of
 /// them when available, and they are cross-checked against what the chain
@@ -3506,6 +3519,22 @@ impl GraphiteCore {
                     ExecutionReconciliation::Unavailable {
                         reason: format!(
                             "the RPC reports {signature} at {commitment} commitment only — one node's view, which the cluster may still discard; re-check once confirmed"
+                        ),
+                    }
+                } else if attribution != ExecutionAttribution::Chain {
+                    // A positive conclusion about an APPROVED verification
+                    // needs the chain's own bytes, bound to this signature
+                    // and digesting to the approved transaction. Without
+                    // them the record was found by a key the caller chose:
+                    // any successful signature presented with the key of any
+                    // approval reconciled as "the approved transaction
+                    // executed" (review of the 2026-09-29 audit, R1). A
+                    // blocked record still alarms above on any sighting; the
+                    // two claims are not symmetric and must not be.
+                    ExecutionReconciliation::Unavailable {
+                        reason: format!(
+                            "the chain's bytes for {signature} were not available, so this execution cannot be tied to the approved verification: the record was found by the caller's {} key, which names an approval but is not evidence that this signature is that transaction",
+                            attribution.key_name()
                         ),
                     }
                 } else if *success {
