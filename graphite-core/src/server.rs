@@ -3011,6 +3011,11 @@ async fn quarantine_list_handler(
     })))
 }
 
+/// The one audit trail id whose lifecycle reports are held between the
+/// history read and the append in tests (see `lifecycle_event_handler`).
+#[cfg(test)]
+const RACE_WINDOW_TRAIL_ID: &str = "gr-cafecafecafecafe";
+
 async fn lifecycle_event_handler(
     State(state): State<AppState>,
     payload: Result<Json<LifecycleEventBody>, axum::extract::rejection::JsonRejection>,
@@ -3300,6 +3305,16 @@ async fn lifecycle_event_handler(
                 transaction_sha256: transaction_sha256.as_deref(),
                 transaction_signature: transaction_signature.as_deref(),
             });
+            // Tests only: hold the window between the history read and the
+            // append open for one dedicated trail id, so a test can show the
+            // lock above is what closes it. Without this the race needs a
+            // read to land in the microseconds before another report's
+            // append, and the test passed with the lock removed (break B54
+            // of the 2026-09-29 audit's campaign).
+            #[cfg(test)]
+            if audit_trail_id.as_deref() == Some(RACE_WINDOW_TRAIL_ID) {
+                std::thread::sleep(std::time::Duration::from_millis(40));
+            }
             let sequence_anomalies = lifecycle_sequence_anomalies(
                 event_type,
                 transaction_signature.as_deref(),
@@ -6484,12 +6499,15 @@ Connection: close
     /// together: the first one recorded is the only one without a
     /// `signature conflict`. Without the critical section several read a
     /// history holding none of the others, and two signatures for one
-    /// transaction were recorded with no conflict on either.
+    /// transaction were recorded with no conflict on either. The reports use
+    /// `RACE_WINDOW_TRAIL_ID`, which the handler holds open between the read
+    /// and the append in tests, so the race is certain rather than lucky: the
+    /// first version of this test passed with the lock removed (break B54).
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_reports_of_two_signatures_cannot_both_miss_the_conflict() {
         let (state, dir) = test_state();
         let log = state.audit.clone().unwrap();
-        assert!(log.append(&verification_row("bbbbbbbbbbbbbbbb", true)));
+        assert!(log.append(&verification_row("cafecafecafecafe", true)));
         let app = build_app(state, vec![]);
         const REPORTS: u8 = 16;
         let start = std::sync::Arc::new(tokio::sync::Barrier::new(REPORTS as usize));
@@ -6505,8 +6523,9 @@ Connection: close
                         None,
                         serde_json::json!({
                             "event_type": "submission",
-                            "content_hash": "bbbbbbbbbbbbbbbb",
-                            "audit_trail_id": "gr-bbbbbbbbbbbbbbbb",
+                            "content_hash": "cafecafecafecafe",
+                            // Held open between read and append in tests.
+                            "audit_trail_id": RACE_WINDOW_TRAIL_ID,
                             "transaction_signature": sig(i),
                         }),
                     )
