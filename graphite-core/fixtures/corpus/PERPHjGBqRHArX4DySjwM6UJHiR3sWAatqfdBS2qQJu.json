@@ -3628,7 +3628,7 @@
     "program_id": "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu",
     "version": "1.0.0",
     "content_hash": "18844c0d0890fec434de8c9e6681a5150b1dc0cd8fe231a73f4b03f96715d20b",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -3837,7 +3837,7 @@
     "program_id": "PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu",
     "version": "1.0.0",
     "content_hash": "2d64d9c449c3fab65b6e661a0c9e8f3addcbf39fb91491e74f6f5cd34899ab2e",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {

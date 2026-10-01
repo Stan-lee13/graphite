@@ -36,8 +36,10 @@ fn flagged(b: &ComputeBaseline, cu: u64) -> bool {
         baseline: b.clone(),
         divergence_threshold: 2.0, // what the pipeline passes
     })
-    .map(|r| r.flagged)
-    .unwrap_or(true)
+    // An error is not "flagged": it would let the band test below pass on a
+    // check that never ran (review F13).
+    .expect("the integrity check must run on a well-formed baseline")
+    .flagged
 }
 
 /// Largest (or smallest) compute figure the current baseline accepts.

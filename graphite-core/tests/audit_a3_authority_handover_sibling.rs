@@ -190,7 +190,7 @@ fn every_sibling_authority_selector_needs_a_high_risk_class() {
     // loaded registry: every instruction whose NAME says it changes an
     // authority/admin/owner must carry a class Check 10 acts on.
     let reg = graphite_core::load_seed_manifests();
-    let high = ["drain", "authority", "withdraw", "mint", "close"];
+    let high = graphite_core::manifest::HIGH_RISK_CLASSES;
     let mut missing = Vec::new();
     for m in reg.list() {
         for ix in &m.instructions {

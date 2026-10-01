@@ -93,6 +93,66 @@ const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// `GRAPHITE_MAX_CONNECTIONS`.
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
+/// The most connections one peer may hold open at once when Graphite faces
+/// clients directly (review of the 2026-09-29 audit's fix, F8). The global
+/// cap alone let one client hold all of them: ~205 half-sent heads a second,
+/// each waiting out the header timeout, and every other client was closed
+/// at accept. Behind a trusted proxy every connection comes from the proxy,
+/// so the default there is no per-peer cap (the proxy enforces one); set
+/// `GRAPHITE_MAX_CONNECTIONS_PER_IP` to choose either way (0 = no cap).
+const DEFAULT_MAX_CONNECTIONS_PER_PEER: usize = 64;
+
+/// Open connections per peer (keyed like the rate limiter: IPv6 per /64),
+/// released by [`PeerSlot`] on drop.
+#[derive(Default)]
+struct PeerConnections {
+    open: std::sync::Mutex<HashMap<IpAddr, usize>>,
+}
+
+/// One peer's claim on a connection slot; returns it when dropped.
+struct PeerSlot {
+    peers: Arc<PeerConnections>,
+    key: IpAddr,
+}
+
+impl PeerConnections {
+    /// A slot for `ip`, unless it already holds `limit` (0 = no limit; the
+    /// connection is still counted, so the map stays exact).
+    fn claim(self: &Arc<Self>, ip: IpAddr, limit: usize) -> Option<PeerSlot> {
+        let key = rate_limit_key(ip);
+        let mut open = self.lock();
+        let n = open.entry(key).or_insert(0);
+        if limit != 0 && *n >= limit {
+            return None;
+        }
+        *n += 1;
+        drop(open);
+        Some(PeerSlot {
+            peers: Arc::clone(self),
+            key,
+        })
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<IpAddr, usize>> {
+        match self.open.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+}
+
+impl Drop for PeerSlot {
+    fn drop(&mut self) {
+        let mut open = self.peers.lock();
+        if let Some(n) = open.get_mut(&self.key) {
+            *n -= 1;
+            if *n == 0 {
+                open.remove(&self.key);
+            }
+        }
+    }
+}
+
 /// How many verifications may be in flight at once before the server sheds
 /// load.
 ///
@@ -1036,11 +1096,24 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|n| *n > 0)
         .unwrap_or(DEFAULT_MAX_CONNECTIONS);
+    let max_per_peer = std::env::var("GRAPHITE_MAX_CONNECTIONS_PER_IP")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(if trust_proxy_hops == 0 {
+            DEFAULT_MAX_CONNECTIONS_PER_PEER
+        } else {
+            0
+        });
     tracing_log(&format!(
-        "connection limit: {max_connections} (GRAPHITE_MAX_CONNECTIONS); a request head must arrive within {}s",
+        "connection limit: {max_connections} (GRAPHITE_MAX_CONNECTIONS), {} per peer (GRAPHITE_MAX_CONNECTIONS_PER_IP); a request head must arrive within {}s",
+        if max_per_peer == 0 {
+            "no limit".to_string()
+        } else {
+            max_per_peer.to_string()
+        },
         HEADER_READ_TIMEOUT.as_secs()
     ));
-    serve_hardened(listener, app, max_connections, shutdown).await?;
+    serve_hardened(listener, app, max_connections, max_per_peer, shutdown).await?;
     Ok(())
 }
 
@@ -1058,12 +1131,14 @@ async fn serve_hardened(
     listener: tokio::net::TcpListener,
     app: Router,
     max_connections: usize,
+    max_per_peer: usize,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
     use hyper_util::rt::{TokioIo, TokioTimer};
     use tower::ServiceExt as _;
 
     let permits = Arc::new(tokio::sync::Semaphore::new(max_connections));
+    let peers = Arc::new(PeerConnections::default());
     let graceful = hyper_util::server::graceful::GracefulShutdown::new();
     let mut shutdown = std::pin::pin!(shutdown);
     loop {
@@ -1078,6 +1153,13 @@ async fn serve_hardened(
                 }
             },
             _ = &mut shutdown => break,
+        };
+        let Some(peer_slot) = peers.claim(remote.ip(), max_per_peer) else {
+            tracing::warn!(
+                "connection from {remote} closed at accept: that peer already holds {max_per_peer} connections (GRAPHITE_MAX_CONNECTIONS_PER_IP)"
+            );
+            drop(stream);
+            continue;
         };
         let Ok(permit) = permits.clone().try_acquire_owned() else {
             tracing::warn!(
@@ -1108,6 +1190,7 @@ async fn serve_hardened(
                 tracing::debug!("connection from {remote} ended: {e}");
             }
             drop(permit);
+            drop(peer_slot);
         });
     }
     drop(listener);
@@ -3181,60 +3264,83 @@ async fn lifecycle_event_handler(
         VerdictOnRecord::Approved => {}
     }
 
-    // A4-11 (2026-09-29 audit): the history read and the append below are
-    // one step. Two reports arriving together each read a history without
-    // the other and were both recorded, so two different signatures for one
+    // A4-11 (2026-09-29 audit): the history read and the append are one
+    // step. Two reports arriving together each read a history without the
+    // other and were both recorded, so two different signatures for one
     // transaction carried no `signature conflict`. Lifecycle reports are few;
     // they are taken one at a time.
-    static LIFECYCLE_REPORTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    let _one_report_at_a_time = LIFECYCLE_REPORTS.lock().await;
-
+    //
+    // The read, the comparison and the append run in ONE blocking task that
+    // holds the lock throughout (review of that fix, F9). With an async lock
+    // around separate awaits, a request cancelled by the timeout released
+    // the lock while its append was still running on the blocking pool, and
+    // the race was back. A blocking task runs to completion whatever happens
+    // to the request that started it, so its lock is held until the row is
+    // written.
+    //
     // The rows already on record for this transaction, and how this one
-    // sits against them (Round 12). Computed by Graphite from its own trail;
-    // recorded on the row and returned, never used to refuse — a report out
-    // of order is still a report — except that the two findings that mean a
-    // report is FALSE are logged as loudly as a discrepancy, because one of
-    // the two reports must be.
-    let history = {
+    // sits against them (Round 12), are computed by Graphite from its own
+    // trail; recorded on the row and returned, never used to refuse — a
+    // report out of order is still a report — except that the two findings
+    // that mean a report is FALSE are logged as loudly as a discrepancy,
+    // because one of the two reports must be.
+    static LIFECYCLE_REPORTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let (prior_events_on_record, record, recorded) = {
         let log = log.clone();
-        let audit_trail_id = audit_trail_id.clone();
-        let transaction_sha256 = transaction_sha256.clone();
-        let transaction_signature = transaction_signature.clone();
-        tokio::task::spawn_blocking(move || {
-            log.lifecycle_history(crate::durable::LifecycleKey {
+        let event_type = body.event_type;
+        let reported_by = body.reported_by;
+        let detail = body.detail;
+        off_runtime(move || {
+            let _one_report_at_a_time = match LIFECYCLE_REPORTS.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let history = log.lifecycle_history(crate::durable::LifecycleKey {
                 audit_trail_id: audit_trail_id.as_deref(),
                 transaction_sha256: transaction_sha256.as_deref(),
                 transaction_signature: transaction_signature.as_deref(),
-            })
+            });
+            let sequence_anomalies = lifecycle_sequence_anomalies(
+                event_type,
+                transaction_signature.as_deref(),
+                &history,
+            );
+            let record = LifecycleEventRecord {
+                event_type,
+                timestamp: crate::durable::now_utc_rfc3339(),
+                content_hash,
+                verdict_on_record: Some(verdict_on_record),
+                verdict_on_record_key: Some(verdict_on_record_key),
+                transaction_sha256,
+                audit_trail_id,
+                transaction_signature,
+                reported_by,
+                detail,
+                observed_by_graphite: false,
+                sequence_anomalies,
+            };
+            let recorded = log.append_lifecycle(&record);
+            (history.len(), record, recorded)
         })
         .await
-        .map_err(|join| {
-            tracing_server_error(&format!(
-                "lifecycle history lookup did not complete: {join}"
-            ));
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "internal server error" })),
-            )
-        })?
     };
-    let sequence_anomalies =
-        lifecycle_sequence_anomalies(body.event_type, transaction_signature.as_deref(), &history);
-    if !sequence_anomalies.is_empty() {
+    if !record.sequence_anomalies.is_empty() {
         Metrics::inc(&state.metrics.lifecycle_sequence_anomalies);
-        let loud = sequence_anomalies
+        let loud = record
+            .sequence_anomalies
             .iter()
             .any(|a| a.starts_with("signature conflict"));
         let line = format!(
             "LIFECYCLE SEQUENCE: {:?} reported by {:?} for {} — {}",
-            body.event_type,
-            body.reported_by.as_deref().unwrap_or("<unnamed>"),
-            audit_trail_id
+            record.event_type,
+            record.reported_by.as_deref().unwrap_or("<unnamed>"),
+            record
+                .audit_trail_id
                 .as_deref()
-                .or(transaction_sha256.as_deref())
-                .or(transaction_signature.as_deref())
-                .unwrap_or(&content_hash),
-            sequence_anomalies.join("; ")
+                .or(record.transaction_sha256.as_deref())
+                .or(record.transaction_signature.as_deref())
+                .unwrap_or(&record.content_hash),
+            record.sequence_anomalies.join("; ")
         );
         if loud {
             tracing_server_error(&line);
@@ -3242,22 +3348,7 @@ async fn lifecycle_event_handler(
             tracing_log(&line);
         }
     }
-
-    let record = LifecycleEventRecord {
-        event_type: body.event_type,
-        timestamp: crate::durable::now_utc_rfc3339(),
-        content_hash,
-        verdict_on_record: Some(verdict_on_record),
-        verdict_on_record_key: Some(verdict_on_record_key),
-        transaction_sha256,
-        audit_trail_id,
-        transaction_signature,
-        reported_by: body.reported_by,
-        detail: body.detail,
-        observed_by_graphite: false,
-        sequence_anomalies,
-    };
-    if !append_lifecycle_off_runtime(log, record.clone()).await {
+    if !recorded {
         // `recorded: true` is the one thing this endpoint promises. When the
         // append fails the promise cannot be made, and the caller — which is
         // reporting a signing or submission it already performed — must know
@@ -3282,7 +3373,7 @@ async fn lifecycle_event_handler(
         "verdict_on_record": verdict_on_record,
         "verdict_on_record_key": verdict_on_record_key,
         "sequence_anomalies": record.sequence_anomalies,
-        "prior_events_on_record": history.len(),
+        "prior_events_on_record": prior_events_on_record,
     })))
 }
 
@@ -3433,6 +3524,30 @@ async fn append_lifecycle_off_runtime(log: &AuditLog, record: LifecycleEventReco
     off_runtime(move || log.append_lifecycle(&record)).await
 }
 
+/// The most dashboard scans that run at once. Each parses the active audit
+/// file on the blocking pool, which the audit appends of `/verify` also use;
+/// unbounded, a burst of dashboard polls queued every verdict's write behind
+/// them (review of the 2026-09-29 audit's fix, F9). Excess scans wait their
+/// turn on this permit, not on the pool.
+const MAX_CONCURRENT_DASHBOARD_SCANS: usize = 4;
+
+/// [`off_runtime`] for a dashboard scan, at most
+/// [`MAX_CONCURRENT_DASHBOARD_SCANS`] at a time.
+async fn dashboard_scan<T, F>(scan: F) -> T
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    static SCANS: tokio::sync::Semaphore =
+        tokio::sync::Semaphore::const_new(MAX_CONCURRENT_DASHBOARD_SCANS);
+    // The semaphore is never closed, so acquiring cannot fail.
+    let _permit = SCANS
+        .acquire()
+        .await
+        .expect("the scan semaphore is never closed");
+    off_runtime(scan).await
+}
+
 /// Run a scan of the audit trail on the blocking pool (A4-04, 2026-09-29
 /// audit). The dashboard's `/api/*` reads parse the audit file; on the async
 /// runtime each held a worker for as long as the parse took, and a few polls
@@ -3464,7 +3579,7 @@ async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde
     // dashboard is observability). The scan is O(log) per poll, which is
     // fine at the dashboard's cadence on a single core node.
     let audit = state.audit.clone();
-    let (records, _, total, _) = off_runtime(move || match &audit {
+    let (records, _, total, _) = dashboard_scan(move || match &audit {
         Some(log) => log.read_tail_filtered(CONFIDENCE_SERIES_CAP, AuditSelector::All),
         None => (Vec::new(), Vec::new(), 0, 0),
     })
@@ -3492,7 +3607,7 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
     // Bounded read: only the most recent violations are surfaced; memory
     // stays bounded by the cap while `count` reports the exact total.
     let audit = state.audit.clone();
-    let (records, errors, total_violations, _) = off_runtime(move || match &audit {
+    let (records, errors, total_violations, _) = dashboard_scan(move || match &audit {
         Some(log) => log.read_tail_filtered(VIOLATIONS_CAP, AuditSelector::Blocked),
         None => (Vec::new(), Vec::new(), 0, 0),
     })
@@ -3544,7 +3659,7 @@ async fn top_protocols_handler(State(state): State<AppState>) -> Json<serde_json
     // Streaming per-program counts: memory is bounded by distinct programs,
     // never by log size.
     let audit = state.audit.clone();
-    let observed = off_runtime(move || match &audit {
+    let observed = dashboard_scan(move || match &audit {
         Some(log) => log.observations_by_program(),
         None => std::collections::HashMap::new(),
     })
@@ -3701,6 +3816,45 @@ mod tests {
 
     const PEER: SocketAddr =
         SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 7)), 9);
+
+    /// F8 (review of the 2026-09-29 audit's fix): one peer holds at most its
+    /// share of connections, a slot comes back when its connection ends, and
+    /// an IPv6 /64 counts as one peer, as it does for the rate limiter.
+    #[test]
+    fn one_peer_cannot_hold_every_connection() {
+        let peers = Arc::new(PeerConnections::default());
+        let a: IpAddr = "203.0.113.7".parse().unwrap();
+        let b: IpAddr = "198.51.100.1".parse().unwrap();
+        let first = peers.claim(a, 2).expect("first");
+        let _second = peers.claim(a, 2).expect("second");
+        assert!(
+            peers.claim(a, 2).is_none(),
+            "a third connection from one peer is refused"
+        );
+        assert!(peers.claim(b, 2).is_some(), "another peer is unaffected");
+        drop(first);
+        assert!(
+            peers.claim(a, 2).is_some(),
+            "a slot comes back when its connection ends"
+        );
+
+        let v6a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let v6b: IpAddr = "2001:db8:1:2::ffff".parse().unwrap();
+        let _x = peers.claim(v6a, 1).expect("first in the /64");
+        assert!(
+            peers.claim(v6b, 1).is_none(),
+            "the same /64 is the same peer"
+        );
+
+        // 0 is no limit, and every slot is still returned: a peer with no
+        // open connection leaves no entry behind.
+        let held: Vec<_> = (0..100)
+            .map(|_| peers.claim(b, 0).expect("unlimited"))
+            .collect();
+        assert_eq!(peers.lock().get(&rate_limit_key(b)).copied(), Some(100));
+        drop(held);
+        assert_eq!(peers.lock().get(&rate_limit_key(b)).copied(), None);
+    }
 
     /// A4-02: a second `X-Forwarded-For` LINE is part of the same list; the
     /// proxy-appended entry is the last one of all lines, never the first
@@ -6322,6 +6476,136 @@ Connection: close
             3
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A4-11, and its review F9 (2026-09-29 audit): reports for one
+    /// transaction are taken one at a time, from the history read to the
+    /// append. Sixteen submissions under sixteen different signatures, sent
+    /// together: the first one recorded is the only one without a
+    /// `signature conflict`. Without the critical section several read a
+    /// history holding none of the others, and two signatures for one
+    /// transaction were recorded with no conflict on either.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_reports_of_two_signatures_cannot_both_miss_the_conflict() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        assert!(log.append(&verification_row("bbbbbbbbbbbbbbbb", true)));
+        let app = build_app(state, vec![]);
+        const REPORTS: u8 = 16;
+        let start = std::sync::Arc::new(tokio::sync::Barrier::new(REPORTS as usize));
+        let reports: Vec<_> = (1..=REPORTS)
+            .map(|i| {
+                let app = app.clone();
+                let start = start.clone();
+                tokio::spawn(async move {
+                    start.wait().await;
+                    post_json(
+                        &app,
+                        "/audit/event",
+                        None,
+                        serde_json::json!({
+                            "event_type": "submission",
+                            "content_hash": "bbbbbbbbbbbbbbbb",
+                            "audit_trail_id": "gr-bbbbbbbbbbbbbbbb",
+                            "transaction_signature": sig(i),
+                        }),
+                    )
+                    .await
+                })
+            })
+            .collect();
+        let mut without_conflict = 0;
+        for report in reports {
+            let (status, body) = report.await.unwrap();
+            assert_eq!(status, axum::http::StatusCode::OK, "{body}");
+            let conflict = body["sequence_anomalies"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a.as_str().unwrap().starts_with("signature conflict"));
+            without_conflict += usize::from(!conflict);
+        }
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(
+            without_conflict, 1,
+            "{without_conflict} of {REPORTS} different signatures for one transaction were \
+             recorded with no `signature conflict`: concurrent reports each read a history \
+             without the others"
+        );
+    }
+
+    /// A4-09 (2026-09-29 audit): a verdict is counted on /metrics only once it
+    /// is on the audit trail. Before the fix the approved/blocked counter went
+    /// up before the append, so a verdict refused with 503 because the trail
+    /// could not be written still showed as one Graphite had given.
+    #[tokio::test]
+    async fn a_verdict_that_could_not_be_recorded_is_not_counted() {
+        let (state, dir) = test_state();
+        let log = state.audit.clone().unwrap();
+        // Make every append fail, as `lifecycle_event_reports_an_unrecorded_
+        // event_instead_of_panicking` does: a read-only handle in the log.
+        {
+            let ro = std::fs::OpenOptions::new()
+                .read(true)
+                .open(audit_path(&dir))
+                .unwrap();
+            *log.file.lock().unwrap() = ro;
+        }
+        let metrics = state.metrics.clone();
+        let app = build_app(state, vec![]);
+        let input: serde_json::Value =
+            serde_json::from_str(include_str!("../../examples/verify-input.json"))
+                .expect("the committed example parses");
+        let (status, body) = post_json(&app, "/verify", None, input).await;
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(
+            status,
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "precondition: the verdict cannot be recorded, so it is refused: {body}"
+        );
+        assert_eq!(body["error_type"], "AuditWriteFailed", "{body}");
+        let counted = metrics
+            .verify_approved
+            .load(std::sync::atomic::Ordering::Relaxed)
+            + metrics
+                .verify_blocked
+                .load(std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            counted, 0,
+            "a verdict refused with 503 because it could not be written was counted on /metrics \
+             as one Graphite gave"
+        );
+    }
+
+    /// F9 (review of the 2026-09-29 audit's fix A4-04): dashboard scans run on
+    /// the blocking pool, which every audit append shares, so at most
+    /// `MAX_CONCURRENT_DASHBOARD_SCANS` run at once and further polls wait for
+    /// a permit instead of taking the pool.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn dashboard_scans_run_a_bounded_number_at_a_time() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static RUNNING: AtomicUsize = AtomicUsize::new(0);
+        static PEAK: AtomicUsize = AtomicUsize::new(0);
+        let scans: Vec<_> = (0..3 * MAX_CONCURRENT_DASHBOARD_SCANS)
+            .map(|_| {
+                tokio::spawn(dashboard_scan(|| {
+                    let now = RUNNING.fetch_add(1, Ordering::SeqCst) + 1;
+                    PEAK.fetch_max(now, Ordering::SeqCst);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    RUNNING.fetch_sub(1, Ordering::SeqCst);
+                }))
+            })
+            .collect();
+        for scan in scans {
+            scan.await.unwrap();
+        }
+        let peak = PEAK.load(Ordering::SeqCst);
+        assert!(peak > 1, "precondition: the scans ran concurrently");
+        assert!(
+            peak <= MAX_CONCURRENT_DASHBOARD_SCANS,
+            "{peak} dashboard scans held the blocking pool at once (cap \
+             {MAX_CONCURRENT_DASHBOARD_SCANS})"
+        );
     }
 
     /// From submission onward the signature is required, and a signature

@@ -234,7 +234,7 @@
     "authorized must be signer and match stake account's staker",
     "RISK: delegating to unknown/unverified vote accounts should be flagged"
    ],
-   "risk_class": "authority"
+   "risk_class": "stake"
   },
   {
    "name": "Split",
@@ -271,7 +271,7 @@
     "the authority must sign and be the stake account's current stake or withdraw authority",
     "accounts.split_stake must be an uninitialized stake account"
    ],
-   "risk_class": "authority"
+   "risk_class": "stake"
   },
   {
    "name": "Withdraw",
@@ -490,7 +490,7 @@
     "authorized must be signer and match stake account's staker",
     "stake must currently be active"
    ],
-   "risk_class": "authority"
+   "risk_class": "stake"
   },
   {
    "name": "SetLockup",
@@ -600,7 +600,7 @@
     "the authority must sign and be the stake account's current stake or withdraw authority of both accounts",
     "both accounts must have the same authorities and lockup"
    ],
-   "risk_class": "authority"
+   "risk_class": "stake"
   },
   {
    "name": "AuthorizeWithSeed",
@@ -1105,7 +1105,7 @@
    "risk_rules": [
     "the authority must sign and be the stake account's current stake or withdraw authority of both accounts"
    ],
-   "risk_class": "authority"
+   "risk_class": "stake"
   },
   {
    "name": "MoveLamports",
@@ -1141,7 +1141,7 @@
    "risk_rules": [
     "the authority must sign and be the stake account's current stake or withdraw authority of both accounts"
    ],
-   "risk_class": "authority"
+   "risk_class": "stake"
   }
  ],
  "trust_tier": "BattleTested"

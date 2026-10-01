@@ -222,6 +222,36 @@ async fn a_verified_nonce_passes_l2_when_the_operator_opted_in() {
     println!("L2: {reason}");
 }
 
+/// A durable-nonce transaction opens with System `AdvanceNonceAccount`, and
+/// the pipeline judges it like any other instruction after the primary.
+/// Advancing a nonce moves no value and hands nothing over; once the operator
+/// has opted in and L2 has verified the nonce account, it must not be what
+/// refuses the transaction (2026-10-01).
+#[tokio::test]
+async fn a_permitted_nonce_advance_is_not_refused_as_a_hand_over() {
+    let s = shape();
+    let endpoint = serve(
+        &s.nonce_account,
+        Served::Account {
+            authority: s.payer.clone(),
+            value: s.nonce_value.clone(),
+        },
+    );
+    let r = verify(&endpoint, &s, true).await;
+    assert_eq!(l2(&r).0, LayerStatus::Passed, "precondition: {}", l2(&r).1);
+    let on_the_advance: Vec<_> = r
+        .risk_verdict
+        .findings
+        .iter()
+        .map(|f| format!("{f:?}"))
+        .filter(|f| f.contains("secondary instruction #1"))
+        .collect();
+    assert!(
+        r.risk_verdict.status != "Blocked" || on_the_advance.is_empty(),
+        "the nonce advance refused a permitted durable-nonce transfer: {on_the_advance:?}"
+    );
+}
+
 /// Same account served, no opt-in: still refused. The fetch is not even
 /// attempted — the default refuses before asking.
 #[tokio::test]

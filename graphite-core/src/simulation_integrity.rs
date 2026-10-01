@@ -483,7 +483,15 @@ pub fn update_baseline(
     let (learned_cu, learned_aw, learned_ch) = if baseline.sample_count >= MIN_SAMPLES {
         let clamp = |v: f64, mean: f64, std: f64| {
             let s = effective_spread(mean, std);
-            v.clamp((mean - s).max(0.0), mean + s)
+            let (lo, hi) = ((mean - s).max(0.0), mean + s);
+            // `f64::clamp` panics on NaN or inverted bounds; a baseline that
+            // produces them (a corrupted persisted one) learns the value as
+            // observed rather than crashing the verifier (review F5).
+            if lo <= hi {
+                v.clamp(lo, hi)
+            } else {
+                v
+            }
         };
         (
             clamp(
@@ -1071,6 +1079,21 @@ mod tests {
         };
         let r = check_simulation_integrity(&input).unwrap();
         assert!(!r.flagged, "normal usage must not flag: {:?}", r.reason);
+    }
+
+    /// F5: a baseline whose bounds come out NaN or inverted is updated, not
+    /// a panic.
+    #[test]
+    fn a_broken_baseline_does_not_panic_the_update() {
+        for mean in [f64::NAN, -1.0e9] {
+            let mut b = ComputeBaseline {
+                sample_count: MIN_SAMPLES,
+                mean_compute_units: mean,
+                ..Default::default()
+            };
+            update_baseline(&mut b, 1_000, 2, 0);
+            assert_eq!(b.sample_count, MIN_SAMPLES + 1);
+        }
     }
 
     #[test]

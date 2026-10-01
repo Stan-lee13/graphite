@@ -18,7 +18,7 @@
 //! `spawn_blocking`, as F-19-18 did for the other scans.
 //!
 //! The test pre-fills the audit file, starts the server with two workers,
-//! calibrates against one scan's duration so it does not depend on the
+//! calibrates against one scan and an idle `/health` so it does not depend on the
 //! machine's speed, and pins that `/health` answers in under half a scan while
 //! four dashboard reads run. The test profile is opt-level 2, so the timings
 //! are release-like.
@@ -151,10 +151,13 @@ fn dashboard_reads_do_not_stall_the_rest_of_the_server() {
         "one /api/policy-violations: {:?}; idle /health: {:?}",
         one_scan, idle_health
     );
+    // Relative, not absolute: the comparison below needs a scan to be long
+    // next to an idle /health, whatever the machine. A fixed 300 ms floor
+    // failed on fast release runners for no defect (review F13).
     assert!(
-        one_scan >= Duration::from_millis(300),
-        "the pre-filled trail scans in {one_scan:?} on this machine; raise RECORDS so one scan \
-         takes at least 300 ms, or the measurement below means nothing"
+        one_scan >= idle_health.max(Duration::from_millis(1)) * 20,
+        "one scan ({one_scan:?}) is not long next to an idle /health ({idle_health:?}); raise \
+         RECORDS, or the measurement below means nothing"
     );
 
     // Two workers; four concurrent dashboard reads.

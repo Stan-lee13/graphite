@@ -310,10 +310,25 @@ impl ManifestRegistryEngine {
         // the newest record it became the manifest in force — the correction
         // rolled back with no new signature. A label or a content hash the log
         // already holds for this program is refused.
-        if self.records.iter().any(|r| {
-            r.program_id == program_id
-                && (r.version_label == version_label || r.content_hash == content_hash)
-        }) {
+        //
+        // One exception (review of that fix, F11): the manifest IN FORCE (the
+        // program's newest record), handed in again unchanged with evidence
+        // that earns it a HIGHER tier — more attesters. That cannot roll
+        // anything back (it is the head), and without it the only way to
+        // raise an accepted version's tier was to relabel identical content.
+        let head_tier = self
+            .records
+            .iter()
+            .rev()
+            .find(|r| r.program_id == program_id)
+            .filter(|h| h.content_hash == content_hash && h.version_label == version_label)
+            .map(|h| h.trust_tier);
+        if head_tier.is_none()
+            && self.records.iter().any(|r| {
+                r.program_id == program_id
+                    && (r.version_label == version_label || r.content_hash == content_hash)
+            })
+        {
             return Err(RegistryError::VersionAlreadyAccepted(version_label));
         }
 
@@ -323,6 +338,10 @@ impl ManifestRegistryEngine {
             return Err(RegistryError::NoEvidence);
         }
         let tier = compute_trust_tier(&evidence);
+        if head_tier.is_some_and(|head| tier <= head) {
+            // The head again, with nothing new: a replay.
+            return Err(RegistryError::VersionAlreadyAccepted(version_label));
+        }
 
         // P10 gate: promotion requires the ENGINE'S OWN replay over this
         // program's fixtures to pass (fabricated runs are impossible).
@@ -1062,6 +1081,60 @@ mod tests {
             .unwrap();
         assert_eq!(record.evidence.community_verified_count, 2);
     }
+    /// F11 (review of the A3-07 fix): the manifest in force, handed in again
+    /// unchanged with evidence that earns a higher tier, is accepted; the
+    /// same submission once more is a replay and refused.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn the_head_may_be_resubmitted_only_to_raise_its_tier() {
+        const PROGRAM: &str = NON_SEED;
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let (a, b) = (key(61), key(62));
+        engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
+        engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
+        let core = GraphiteCore::new();
+
+        // v1.0, signed by one reviewer: OfficialManifest.
+        let signed = signed_submission(PROGRAM, "v1.0", &a);
+        let corpus = onboarding_corpus(&core, &signed);
+        let first = engine
+            .submit(&mut store, signed.clone(), Some((&corpus, &core)))
+            .unwrap();
+        assert!(matches!(first, RegistryDecision::Accepted { .. }));
+
+        // The same content and label, now attested by two reviewers.
+        let hash = signed.content_hash();
+        let mut attested = signed.clone();
+        attested.attestations = [&a, &b]
+            .into_iter()
+            .map(|k| ReviewerAttestation {
+                reviewer_pubkey: pubkey_b58(k),
+                signature_hex: sign(k, &hash),
+            })
+            .collect();
+        let upgraded = engine
+            .submit(&mut store, attested.clone(), Some((&corpus, &core)))
+            .expect("more evidence for the head raises its tier");
+        assert_eq!(
+            upgraded,
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::CommunityVerified,
+                version_label: "v1.0".to_string(),
+            }
+        );
+
+        // Nothing new: refused as a replay.
+        assert!(matches!(
+            engine.submit(&mut store, attested, Some((&corpus, &core))),
+            Err(RegistryError::VersionAlreadyAccepted(_))
+        ));
+        assert!(matches!(
+            engine.submit(&mut store, signed, Some((&corpus, &core))),
+            Err(RegistryError::VersionAlreadyAccepted(_))
+        ));
+    }
+
     fn seed_heuristic_inferred(store: &mut SemanticGraphStore, program_id: &str) {
         store
             .append(Behavior {

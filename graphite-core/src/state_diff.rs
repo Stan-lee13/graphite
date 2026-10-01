@@ -1355,6 +1355,14 @@ impl DeclaredEffects {
             absent: expected_state_changes.is_empty(),
             ..Self::default()
         };
+        // Whether some line was prose Graphite could not map to an effect.
+        // A name list, a bare identifier and an explicit "no state changes"
+        // are read — they declare nothing — so a declaration made only of
+        // those is interpretable, and an undeclared token debit under it is
+        // Critical (review of the 2026-09-29 audit's fix, F1: counting them
+        // as unrecognised softened that debit to a warning on 27 seed
+        // instructions, and on every memo).
+        let mut uninterpreted_prose = false;
         for raw in expected_state_changes {
             if raw == UNDESCRIBED_INSTRUCTION_EFFECTS {
                 continue;
@@ -1362,6 +1370,7 @@ impl DeclaredEffects {
             let lower = raw.to_lowercase();
             if lower.trim_start().starts_with("modifies writable accounts")
                 || !lower.trim().contains(char::is_whitespace)
+                || lower.contains("no state change")
             {
                 continue;
             }
@@ -1384,7 +1393,12 @@ impl DeclaredEffects {
             if has(&["clos"]) {
                 found.push("close");
             }
-            if has(&["creat", "initiali", "allocat"])
+            // "creator" is a role, not an act of creation (F7: metaplex
+            // `SignMetadata` "marks the creator as verified").
+            if words
+                .iter()
+                .any(|w| w.starts_with("creat") && !w.starts_with("creator"))
+                || has(&["initiali", "allocat"])
                 || is(&["init", "open", "opens", "opened", "opening"])
                 || lower.contains("new account")
             {
@@ -1404,6 +1418,9 @@ impl DeclaredEffects {
             }
             if has(&["freez", "froze", "thaw"]) {
                 found.push("freeze");
+            }
+            if found.is_empty() {
+                uninterpreted_prose = true;
             }
             for effect in found {
                 match effect {
@@ -1431,6 +1448,7 @@ impl DeclaredEffects {
             .all(|s| s == UNDESCRIBED_INSTRUCTION_EFFECTS);
         e.unrecognised = !e.absent
             && !only_undescribed
+            && uninterpreted_prose
             && !(e.debit
                 || e.credit
                 || e.close
@@ -3174,6 +3192,21 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
 
     let mut net_lamport_out: i128 = 0;
     let mut token_debit = false;
+    // A token debit on a signer's account that a NAMED debit declaration does
+    // not cover (F2, review of the 2026-09-29 audit's fix).
+    let mut signer_debit_outside_scope: Option<String> = None;
+    // Who signed: the transaction's own privileges where Graphite has them,
+    // else the resolved accounts' signer flags.
+    let signers: std::collections::HashSet<&str> = match input.diff.transaction_privileges.as_ref()
+    {
+        Some(p) => p.signers.iter().map(String::as_str).collect(),
+        None => input
+            .resolved_accounts
+            .iter()
+            .filter(|a| a.is_signer)
+            .map(|a| a.address.as_str())
+            .collect(),
+    };
 
     // The manifest slot names each account holds in this instruction, for
     // the scoped per-account checks (A2-01): an effect the manifest states
@@ -3446,7 +3479,34 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         }
         if d.token_delta().is_some_and(|t| t < 0) {
             token_debit = true;
+            // A debit declared about named accounts (`debits accounts.vault`)
+            // excuses those accounts. A token account a SIGNER owns that the
+            // declaration does not name is the user's other money: the
+            // scenario is a primary that declares a debit of one vault and a
+            // sibling that drains the user's other token account. Accounts
+            // owned by programs (pool vaults paying out a swap) are not
+            // signers' and keep the transaction-wide judgement below.
+            let owner = d
+                .before
+                .as_ref()
+                .and_then(|s| s.token.as_ref())
+                .map(|t| t.owner.as_str());
+            if declared.debit
+                && !declares("debit")
+                && owner.is_some_and(|o| signers.contains(o))
+                && signer_debit_outside_scope.is_none()
+            {
+                signer_debit_outside_scope = Some(d.pubkey.clone());
+            }
         }
+    }
+
+    if let Some(account) = signer_debit_outside_scope {
+        findings.push(StateDiffFinding::critical(
+            "UndeclaredTokenDebit",
+            Some(account.as_str()),
+            "a token account a signer owns was debited, and the manifest declares a debit only of other accounts",
+        ));
     }
 
     // A manifest that promises nothing cannot be contradicted, so value
@@ -4387,6 +4447,102 @@ mod tests {
         );
         assert!(report.blocked);
         assert!(codes(&report).contains(&"UndeclaredTokenDebit"));
+    }
+
+    /// A token debit of `owner_key`'s account `ALICE`, as one delta.
+    fn token_debit_of(owner_key: &[u8; 32]) -> StateDiff {
+        let before = token_account_bytes(&[1u8; 32], owner_key, 1_000, None, 1, None);
+        let after = token_account_bytes(&[1u8; 32], owner_key, 0, None, 1, None);
+        StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: ALICE.to_string(),
+                before: Some(token_snapshot(ALICE, 2_039_280, &before)),
+                after: Some(token_snapshot(ALICE, 2_039_280, &after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            ..Default::default()
+        }
+    }
+
+    /// F1 (review of the 2026-09-29 audit's fix): a declaration made only of
+    /// account-name lists, or that says "no state changes", is interpretable
+    /// and declares nothing, so an undeclared token debit under it is
+    /// Critical, not a warning.
+    #[test]
+    fn a_name_list_alone_declares_nothing_and_a_debit_under_it_is_critical() {
+        let diff = token_debit_of(&[2u8; 32]);
+        let accounts = [account(ALICE, true)];
+        for declaration in [
+            vec!["modifies writable accounts: market, openOrdersAccount, owner".to_string()],
+            vec!["no state changes; the memo is recorded in the transaction log".to_string()],
+        ] {
+            let report = check(&diff, &accounts, &declaration);
+            assert!(report.blocked, "{declaration:?}: {:?}", report.findings);
+            assert!(
+                codes(&report).contains(&"UndeclaredTokenDebit"),
+                "{declaration:?}"
+            );
+        }
+        // Real prose Graphite cannot map still warns rather than blocks.
+        let report = check(
+            &diff,
+            &accounts,
+            &["reconciles the perpetual funding ledger".to_string()],
+        );
+        assert!(!report.blocked, "{:?}", report.findings);
+        assert!(codes(&report).contains(&"UninterpretableDeclarationWithTokenDebit"));
+    }
+
+    /// F2: a debit declared about named accounts excuses those accounts, not
+    /// a signer's other token account. A program-owned account (a pool vault)
+    /// keeps the transaction-wide judgement.
+    #[test]
+    fn a_named_debit_does_not_excuse_draining_a_signers_other_account() {
+        let signer_key = [2u8; 32];
+        let signer = bs58::encode(signer_key).into_string();
+        let mut diff = token_debit_of(&signer_key);
+        diff.transaction_privileges = Some(TransactionPrivileges {
+            signers: [signer.clone()].into(),
+            writable: [signer.clone(), ALICE.to_string()].into(),
+        });
+        let accounts = [account(ALICE, true)];
+        let declaration = ["debits accounts.vault by data.amount".to_string()];
+        let report = check(&diff, &accounts, &declaration);
+        assert!(report.blocked, "{:?}", report.findings);
+        assert!(codes(&report).contains(&"UndeclaredTokenDebit"));
+
+        // The same debit, declared for this account by name, is fine.
+        let named = ResolvedAccount {
+            name: "vault".to_string(),
+            ..account(ALICE, true)
+        };
+        let report = check(&diff, &[named], &declaration);
+        assert!(
+            !codes(&report).contains(&"UndeclaredTokenDebit"),
+            "{:?}",
+            report.findings
+        );
+
+        // A program-owned account (no signer owns it) debited under a named
+        // declaration: a pool paying out, judged as before.
+        let pool_owned = token_debit_of(&[9u8; 32]);
+        let mut pool_owned = pool_owned;
+        pool_owned.transaction_privileges = diff.transaction_privileges.clone();
+        let report = check(&pool_owned, &accounts, &declaration);
+        assert!(
+            !codes(&report).contains(&"UndeclaredTokenDebit"),
+            "{:?}",
+            report.findings
+        );
+    }
+
+    /// F7: "creator" is a role, not creation.
+    #[test]
+    fn creator_does_not_declare_creation() {
+        let e = DeclaredEffects::parse(&["marks the creator as verified".to_string()]);
+        assert!(!e.create);
+        let e = DeclaredEffects::parse(&["creates accounts.metadata".to_string()]);
+        assert!(e.create);
     }
 
     #[test]

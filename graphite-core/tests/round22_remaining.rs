@@ -170,11 +170,22 @@ fn diff(
     d
 }
 
+/// A changed account as the resolver hands it to L4: with the slot name
+/// Token-2022's `TransferChecked` gives it, so the manifest's "debits
+/// accounts.source" covers the account it is about (F2 scopes a declared debit
+/// to the accounts it names).
 fn resolved(address: &str) -> ResolvedAccount {
+    let name = if address == b58(&SOURCE) {
+        "source"
+    } else if address == b58(&DEST) {
+        "destination"
+    } else {
+        ""
+    };
     ResolvedAccount {
         address: address.to_string(),
         role: "account".to_string(),
-        name: String::new(),
+        name: name.to_string(),
         is_pda: false,
         is_signer: false,
         is_writable: true,

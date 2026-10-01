@@ -109,8 +109,8 @@ pub struct RiskAssessmentInput {
     #[serde(default)]
     pub extracted_output_token: Option<String>,
     /// Machine-readable security class declared in the manifest for this
-    /// instruction ("drain", "authority", "withdraw", "mint", "close",
-    /// "create", "transfer", or empty). Consumed by Check 10 as a
+    /// instruction (one of `manifest::RISK_CLASSES`, or the derived
+    /// `authority_change`). Consumed by Check 10 as a
     /// fail-closed gate when the agent declares no intent for a high-risk
     /// class.
     #[serde(default)]
@@ -853,7 +853,7 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
 
     // P0 Check 10: Manifest-declared high-risk class with NO declared intent.
     // The manifest declares the security class of each instruction
-    // ("drain", "authority", "withdraw", "mint", "close"). A high-risk
+    // (`manifest::HIGH_RISK_CLASSES` are the high-risk ones). A high-risk
     // instruction with an EMPTY declared intent means the agent never said
     // what it was doing — fail closed (P12). This extends protection to every
     // onboarded protocol without per-protocol detection logic: tagging the
@@ -866,9 +866,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // to the wallet that closed it — there is no unstated movement to state.
     // Every sibling carries no intent by construction, so without this the
     // Check 2 exemption for a self-refunding close was undone here.
-    let high_risk_classes = ["drain", "authority", "withdraw", "mint", "close"];
     let self_refund = input.verified_self_refund_close && input.manifest_risk_class == "close";
-    if high_risk_classes.contains(&input.manifest_risk_class.as_str())
+    if crate::manifest::HIGH_RISK_CLASSES.contains(&input.manifest_risk_class.as_str())
         && input.proposed_intent_type.trim().is_empty()
         && !self_refund
     {
@@ -1507,10 +1506,10 @@ mod tests {
 
     #[test]
     fn test_high_risk_class_without_declared_intent_is_blocked() {
-        // Check 10: every manifest-declared high-risk class (drain,
-        // authority, withdraw, mint, close) with an EMPTY declared intent
-        // is fail-closed — the agent never stated what it was doing.
-        for cls in ["drain", "authority", "withdraw", "mint", "close"] {
+        // Check 10: every manifest-declared high-risk class with an EMPTY
+        // declared intent is fail-closed — the agent never stated what it
+        // was doing.
+        for cls in crate::manifest::HIGH_RISK_CLASSES {
             let input = RiskAssessmentInput {
                 verified_self_refund_close: false,
                 writable_extra_accounts: None,

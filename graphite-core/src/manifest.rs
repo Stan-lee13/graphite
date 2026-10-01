@@ -86,6 +86,22 @@ pub const AUTHORITY_CHANGE_CLASS: &str = "authority_change";
 
 /// The security classes a manifest may declare (`InstructionDef::risk_class`).
 /// Anything else is refused at load (A3-02).
+///
+/// `authority` means the instruction changes WHO controls something, or is
+/// an operation only a protocol's or mint's authority may perform (thawing an
+/// account, setting a fee, verifying a collection).
+/// [`InstructionDef::security_class`] reads it as a hand-over that blocks
+/// under any intent: no intent declares one, and an agent wallet is not a
+/// protocol's administrator.
+///
+/// It does not mean "needs a signature". `stake` is a stake account's own
+/// operations under the authority that already controls it (delegate,
+/// deactivate, split, merge, move): the runtime keeps the authorities as they
+/// are, or requires the accounts involved to share them, so nothing is handed
+/// over. The Stake Program's manifest had tagged those `authority`, and the
+/// System Program's had tagged `AdvanceNonceAccount` the same way, which made
+/// staking and every permitted durable-nonce transaction unverifiable once
+/// the tag meant a hand-over (2026-10-01, F3 follow-up).
 pub const RISK_CLASSES: &[&str] = &[
     "",
     "drain",
@@ -95,7 +111,13 @@ pub const RISK_CLASSES: &[&str] = &[
     "close",
     "create",
     "transfer",
+    "stake",
 ];
+
+/// The classes Check 10 refuses when the request declares no intent: an
+/// instruction that moves value or control the agent never stated (P12).
+pub const HIGH_RISK_CLASSES: &[&str] =
+    &["drain", "authority", "withdraw", "mint", "close", "stake"];
 
 impl ProtocolManifest {
     /// The instruction a call with this discriminator (hex, from the bytes)
@@ -117,71 +139,147 @@ impl ProtocolManifest {
     }
 }
 
-/// Whether an instruction's NAME says it changes who controls something.
-///
-/// The name words are split on `_` and on lower-to-upper case changes, so
-/// `transferOwnership`, `set_admin` and `SetLendingMarketOwnerAndConfig` all
-/// read the same way. A name counts when one of its words is a control word
-/// (authority, admin, owner, ownership, governance). Two exceptions, each an
-/// instruction that removes a power rather than handing one over or only
-/// reads one: `InitializeImmutableOwner` (makes the owner unchangeable), and
-/// the read-only `check_*`/`has_*`/`is_*`/`get_*` predicates.
-///
-/// This is deliberately a floor on the manifest's own tag, not a replacement
-/// for it: 106 such instructions across the seed registry were tagged
-/// `transfer` (the name contains "transfer"), `create` or nothing, and a
-/// derived class cannot be mistagged by the next onboarding.
-pub fn names_an_authority_change(name: &str) -> bool {
+/// The words of an instruction name, lowercased: split on non-alphanumerics,
+/// on lower-to-upper changes (`setAdmin`), at the end of an acronym
+/// (`setPDAAuthority` → set, pda, authority) and between letters and digits
+/// (`setAuthority2` → set, authority, 2).
+fn name_words(name: &str) -> Vec<String> {
+    let chars: Vec<char> = name.chars().collect();
     let mut words: Vec<String> = Vec::new();
     let mut current = String::new();
-    let mut prev_lower = false;
-    for c in name.chars() {
+    for (i, &c) in chars.iter().enumerate() {
         if !c.is_ascii_alphanumeric() {
             if !current.is_empty() {
                 words.push(std::mem::take(&mut current));
             }
-            prev_lower = false;
             continue;
         }
-        if c.is_ascii_uppercase() && prev_lower && !current.is_empty() {
-            words.push(std::mem::take(&mut current));
+        if let Some(&prev) = i.checked_sub(1).and_then(|j| chars.get(j)) {
+            let next_lower = chars.get(i + 1).is_some_and(|n| n.is_ascii_lowercase());
+            let boundary = (c.is_ascii_uppercase()
+                && (prev.is_ascii_lowercase() || prev.is_ascii_digit()))
+                // The last capital of an acronym starts the next word.
+                || (c.is_ascii_uppercase() && prev.is_ascii_uppercase() && next_lower)
+                || (c.is_ascii_digit() != prev.is_ascii_digit() && prev.is_ascii_alphanumeric());
+            if boundary && !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
         }
-        prev_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
         current.push(c.to_ascii_lowercase());
     }
     if !current.is_empty() {
         words.push(current);
     }
+    words
+}
+
+/// Whether an instruction's NAME says it changes who controls something.
+///
+/// A name counts when either of these holds:
+///
+/// - One of its words is a control word that only ever names a power:
+///   authority, admin, owner, ownership, governance, auth.
+/// - It pairs a mutating verb (set, update, change, transfer, grant, enable,
+///   disable, add, remove, allow, revoke, accept, replace, rotate, assign,
+///   appoint, nominate) with a word that names a power only in that pairing:
+///   manager, operator, delegate, guardian, controller, council, role,
+///   member, threshold, governor, treasury, recipient, pauser, signer,
+///   timelock, permission, keeper. `DelegateStake` (no verb) moves funds;
+///   `updateUserDelegate` hands over trading power.
+///
+/// Two exceptions hand no power over: `InitializeImmutableOwner` (the owner
+/// becomes unchangeable) and a `check_*`/`has_*`/`is_*`/`get_*` predicate
+/// with no mutating verb in it (`check_admin` reads; `check_and_set_admin`
+/// writes). Creating state with an authority set is NOT an exception: it is
+/// a grant all the same. A token account created with someone else's close
+/// authority (`create_ata_with_close_authority`) can be closed by them, and a
+/// wrapped-SOL account's SOL goes wherever its closer says.
+///
+/// The name is a floor under the manifest's own tag (see
+/// [`InstructionDef::security_class`]), not a replacement for it: at the
+/// 2026-09-29 audit 106 such instructions across the seed registry were
+/// tagged `transfer`, `create` or nothing, and the review of that audit's
+/// fix found 30 more the first version of this rule missed (`grant_role`,
+/// `multisigAddMember`, `setOperator`, `set_treasury`, `set_delegate`, ...).
+pub fn names_an_authority_change(name: &str) -> bool {
     const CONTROL: &[&str] = &[
         "authority",
         "authorities",
         "admin",
         "admins",
         "owner",
+        "owners",
         "ownership",
         "governance",
+        "auth",
+        "auths",
+    ];
+    const VERBS: &[&str] = &[
+        "set", "update", "change", "transfer", "grant", "enable", "disable", "add", "remove",
+        "allow", "revoke", "accept", "replace", "rotate", "assign", "appoint", "nominate",
+    ];
+    const POWERS: &[&str] = &[
+        "manager",
+        "managers",
+        "operator",
+        "operators",
+        "delegate",
+        "delegates",
+        "guardian",
+        "guardians",
+        "controller",
+        "council",
+        "role",
+        "roles",
+        "member",
+        "members",
+        "threshold",
+        "governor",
+        "treasury",
+        "recipient",
+        "recipients",
+        "pauser",
+        "signer",
+        "signers",
+        "timelock",
+        "permission",
+        "permissions",
+        "keeper",
+        "keepers",
     ];
     const READ_ONLY: &[&str] = &["check", "has", "is", "get"];
-    if words.iter().any(|w| w == "immutable") {
+    let words = name_words(name);
+    let has = |set: &[&str]| words.iter().any(|w| set.contains(&w.as_str()));
+    if has(&["immutable"]) {
         return false;
     }
-    if words
-        .first()
-        .is_some_and(|w| READ_ONLY.contains(&w.as_str()))
+    let mutates = has(VERBS);
+    if !mutates
+        && words
+            .first()
+            .is_some_and(|w| READ_ONLY.contains(&w.as_str()))
     {
         return false;
     }
-    words.iter().any(|w| CONTROL.contains(&w.as_str()))
+    has(CONTROL) || (mutates && has(POWERS))
 }
 
 impl InstructionDef {
     /// The security class the pipeline judges this instruction by: the
     /// manifest's `risk_class`, raised to [`AUTHORITY_CHANGE_CLASS`] when the
-    /// instruction's name says it changes who controls something (see
-    /// [`names_an_authority_change`]). Every risk lookup goes through here,
-    /// primary and sibling alike, so the two cannot disagree.
+    /// manifest tags the instruction `authority` or its name says it changes
+    /// who controls something (see [`names_an_authority_change`]). Every
+    /// risk lookup goes through here, primary and sibling alike, so the two
+    /// cannot disagree.
+    ///
+    /// An `authority`-tagged instruction used to be blocked only when the
+    /// request declared no intent (Check 10), so any declared intent — and
+    /// Check 9 accepts `transfer` for every program — let a protocol's own
+    /// admin hand-overs (`SetManager`, `set_guardian`, `setTreeDelegate`, 588
+    /// tagged instructions in the seed registry) through the Risk Engine
+    /// (review of the 2026-09-29 audit's fixes, F3).
     pub fn security_class(&self) -> &str {
-        if names_an_authority_change(&self.name) {
+        if self.risk_class == "authority" || names_an_authority_change(&self.name) {
             AUTHORITY_CHANGE_CLASS
         } else {
             &self.risk_class
@@ -939,6 +1037,144 @@ fn clamp_unmeasured_tier(manifest: &mut ProtocolManifest) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Names that hand over control, and names that do not (review F3).
+    #[test]
+    fn authority_change_names_are_recognised() {
+        for name in [
+            "SetAuthority",
+            "set_admin",
+            "transferOwnership",
+            "SetLendingMarketOwnerAndConfig",
+            "update_auths",
+            "setPDAAuthority",
+            "setAuthority2",
+            "set_admin2",
+            "setOwners",
+            "grant_role",
+            "revoke_role",
+            "multisigAddMember",
+            "multisigRemoveMember",
+            "multisigChangeThreshold",
+            "programConfigSetTreasury",
+            "updateUserDelegate",
+            "set_delegate",
+            "setTreeDelegate",
+            "ChangeFeeRecipient",
+            "set_fee_recipient",
+            "setOperator",
+            "transfer_market_operator",
+            "allowOperator",
+            "SetManager",
+            "set_guardian",
+            "setEmergencyCouncil",
+            "permission_set",
+            "setAccessController",
+            "add_or_update_merchant_manager",
+            "set_pauser",
+            "check_and_set_admin",
+            "create_ata_with_close_authority",
+            "initializeGroupAuthority",
+            "init_dex_admin",
+        ] {
+            assert!(names_an_authority_change(name), "{name} hands over control");
+        }
+        for name in [
+            "Transfer",
+            "TransferChecked",
+            "swap",
+            "DelegateStake",
+            "Redelegate",
+            "delegate_v0",
+            "deposit",
+            "withdraw_from_treasury",
+            "InitializeImmutableOwner",
+            "check_admin",
+            "has_role",
+            "is_operator",
+            "get_owner",
+            "create_operator_account",
+            "close_delegation_v0",
+            "crank_turn",
+        ] {
+            assert!(!names_an_authority_change(name), "{name} does not");
+        }
+    }
+
+    /// An `authority`-tagged instruction is an authority change whatever its
+    /// name; any other tag is kept unless the name says otherwise.
+    #[test]
+    fn the_authority_tag_raises_the_security_class() {
+        let ix = |name: &str, risk_class: &str| InstructionDef {
+            account_layouts: vec![],
+            name: name.to_string(),
+            discriminator: "01".to_string(),
+            accounts: vec![],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            risk_rules: vec![],
+            variable_accounts: false,
+            risk_class: risk_class.to_string(),
+        };
+        assert_eq!(
+            ix("update_amm_config", "authority").security_class(),
+            AUTHORITY_CHANGE_CLASS
+        );
+        assert_eq!(
+            ix("grant_role", "transfer").security_class(),
+            AUTHORITY_CHANGE_CLASS
+        );
+        assert_eq!(ix("swap", "transfer").security_class(), "transfer");
+        assert_eq!(ix("deposit", "").security_class(), "");
+    }
+
+    /// Staking is not a hand-over (2026-10-01, F3 follow-up). Once the
+    /// `authority` tag blocked under any intent, the Stake Program's own
+    /// operations, tagged `authority` by its hand-written manifest, could not
+    /// be verified at all: delegating, deactivating, splitting, merging and
+    /// moving stake. None of them changes who controls a stake account. The
+    /// ones that do, `Authorize*` and `SetLockup*` (which can replace the
+    /// lockup custodian), still block.
+    #[test]
+    fn staking_is_not_an_authority_change_but_authorizing_is() {
+        let stake = super::load_seed_manifests()
+            .get("Stake11111111111111111111111111111111111111")
+            .expect("the Stake Program is a seed manifest")
+            .clone();
+        let class = |name: &str| {
+            stake
+                .instructions
+                .iter()
+                .find(|ix| ix.name == name)
+                .unwrap_or_else(|| panic!("{name} is in the Stake manifest"))
+                .security_class()
+                .to_string()
+        };
+        for name in [
+            "DelegateStake",
+            "Deactivate",
+            "Split",
+            "Merge",
+            "MoveStake",
+            "MoveLamports",
+        ] {
+            assert_eq!(class(name), "stake", "{name}");
+            assert!(
+                HIGH_RISK_CLASSES.contains(&class(name).as_str()),
+                "{name} still needs a declared intent"
+            );
+        }
+        for name in [
+            "Authorize",
+            "AuthorizeChecked",
+            "AuthorizeWithSeed",
+            "AuthorizeCheckedWithSeed",
+            "SetLockup",
+            "SetLockupChecked",
+        ] {
+            assert_eq!(class(name), AUTHORITY_CHANGE_CLASS, "{name}");
+        }
+    }
     use sha2::{Digest, Sha256};
     use std::collections::BTreeSet;
 

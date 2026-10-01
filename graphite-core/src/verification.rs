@@ -593,6 +593,14 @@ pub const MAX_CPI_TRACE_NODES: usize = 4096;
 fn validate_identifiers(input: &VerificationInput) -> Result<(), VerificationError> {
     const MAX_ID: usize = 44;
     const MAX_DISC: usize = 128;
+    // A declared sibling or trace node carries the instruction's whole data
+    // as its discriminator (the bridge's `declareSiblings` does, and L2
+    // matches it against the bytes), so it is bounded by the largest frame
+    // Graphite parses, in hex — not by the primary's 128. At 128, every
+    // bridge transaction with a sibling of more than 64 data bytes (a long
+    // memo, an Ed25519 verify, an oracle update, a second swap leg) was
+    // refused (review of the 2026-09-29 audit's fix, F4).
+    const MAX_DECLARED_DATA: usize = 2 * crate::tx_artifact::MAX_V1_TRANSACTION_BYTES;
     fn check(field: &str, value: &str, max: usize) -> Result<(), VerificationError> {
         if value.len() > max {
             return Err(VerificationError::InvalidInput(format!(
@@ -628,7 +636,7 @@ fn validate_identifiers(input: &VerificationInput) -> Result<(), VerificationErr
         check(
             &format!("transaction_instructions[{i}].instruction_discriminator"),
             &ix.instruction_discriminator,
-            MAX_DISC,
+            MAX_DECLARED_DATA,
         )?;
         if ix.account_addresses.len() > 256 || ix.cpi_targets.len() > 32 {
             return Err(VerificationError::InvalidInput(format!(
@@ -666,7 +674,7 @@ fn validate_identifiers(input: &VerificationInput) -> Result<(), VerificationErr
             check(
                 "cpi_trace instruction_discriminator",
                 &n.instruction_discriminator,
-                MAX_DISC,
+                MAX_DECLARED_DATA,
             )?;
             for a in &n.account_addresses {
                 check("cpi_trace account_addresses", a, MAX_ID)?;
@@ -3120,16 +3128,22 @@ impl GraphiteCore {
         // bytes fetch gets what is left. A call the deadline cuts off is
         // reported as such, never as an answer.
         let budget = RpcBudget::new(self.rpc_budget);
+        // The status calls get at most half the budget, so the bytes fetch
+        // that follows always has the other half. On one shared deadline a
+        // primary that was slow but in time left the fetch almost nothing,
+        // the chain's bytes came back unavailable, and attribution fell back
+        // to the caller's keys (review of the 2026-09-29 audit's fix, F10).
+        let status_slice = (budget.total() / 2).min(budget.remaining());
         let witness_call = async {
             match &self.inclusion_witness {
                 None => None,
-                Some(witness) => {
-                    Some(within_budget(&budget, witness.get_signature_status(signature)).await)
-                }
+                Some(witness) => Some(
+                    within_budget_of(status_slice, witness.get_signature_status(signature)).await,
+                ),
             }
         };
         let (primary, witness_answer) = tokio::join!(
-            within_budget(&budget, self.verify_execution(signature)),
+            within_budget_of(status_slice, self.verify_execution(signature)),
             witness_call
         );
         let chain_status = match primary {
@@ -4448,7 +4462,7 @@ impl GraphiteCore {
     ///     transfer heuristics (3/3b/5), and system-account impersonation
     ///     (Check 10a).
     ///   - Check 10b ("manifest declares this instruction's class as
-    ///     drain/authority/withdraw/mint/close and NO intent was declared —
+    ///     one of `manifest::HIGH_RISK_CLASSES` and NO intent was declared —
     ///     fail closed") is DELIBERATELY activated by the empty intent for
     ///     every secondary instruction: the agent's declaration never
     ///     mentioned it, so P12 fail-closed applies exactly as the check was
@@ -8749,6 +8763,28 @@ mod tests {
             "https://a.example/?k=1",
             "https://a.example/?k=2"
         ));
+    }
+
+    /// F4 (review of the 2026-09-29 audit's fix): a declared sibling carries
+    /// its whole instruction data as its discriminator, so a sibling with
+    /// more than 64 data bytes is a legitimate request; only data longer
+    /// than any frame Graphite parses is refused.
+    #[test]
+    fn a_sibling_with_long_data_is_not_refused_at_the_door() {
+        let mut input: VerificationInput =
+            serde_json::from_str(include_str!("../../examples/verify-input.json"))
+                .expect("the committed example parses");
+        let sibling = |data_bytes: usize| crate::tx_pattern_analysis::TransactionInstruction {
+            program_id: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr".to_string(),
+            instruction_discriminator: "ab".repeat(data_bytes),
+            account_addresses: vec![],
+            cpi_targets: vec![],
+        };
+        input.transaction_instructions = vec![sibling(200)];
+        assert!(validate_identifiers(&input).is_ok());
+        input.transaction_instructions =
+            vec![sibling(crate::tx_artifact::MAX_V1_TRANSACTION_BYTES + 1)];
+        assert!(validate_identifiers(&input).is_err());
     }
 
     /// A2-09 (2026-09-29 audit): an RPC diff without the simulator's balance

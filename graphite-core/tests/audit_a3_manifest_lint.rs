@@ -57,16 +57,20 @@ fn no_pda_seed_reads_its_own_address() {
 
 #[test]
 fn risk_class_is_in_check_10s_vocabulary() {
-    let known = [
-        "",
-        "drain",
-        "authority",
-        "withdraw",
-        "mint",
-        "close",
-        "create",
-        "transfer",
-    ];
+    // Every class a manifest may declare has a deliberate Check 10 treatment:
+    // high-risk (refused without an intent) or one of the three that are not.
+    // A class added to the loader without a place here fails, instead of
+    // reaching the Risk Engine unplaced (2026-10-01: four copies of the list
+    // had drifted from each other).
+    let low = ["", "create", "transfer"];
+    let high = graphite_core::manifest::HIGH_RISK_CLASSES;
+    for class in graphite_core::manifest::RISK_CLASSES {
+        assert!(
+            low.contains(class) != high.contains(class),
+            "risk class {class:?} must be exactly one of high-risk or low-risk for Check 10"
+        );
+    }
+    let known: Vec<&str> = low.iter().chain(high.iter()).copied().collect();
     let reg = load_seed_manifests();
     let mut bad = Vec::new();
     for m in reg.list() {

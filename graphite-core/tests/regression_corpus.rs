@@ -18,12 +18,12 @@
 //! Labeling rules (each is a documented Graphite behavior, not a Graphite
 //! result):
 //!   - Discriminator in the RISKY_PATTERNS policy set → block (unconditional).
-//!   - Instruction NAMED for an authority change (a word of its name is
-//!     authority/admin/owner/ownership/governance) → block under any intent
-//!     (Check 2b, A3-01/A3-02 2026-09-29 audit).
+//!   - Instruction the manifest tags `authority`, or whose NAME hands over
+//!     control (`manifest::names_an_authority_change`) → block under any
+//!     intent (Check 2b, A3-01/A3-02 2026-09-29 audit and its review).
 //!   - Swap intent on a swap program whose manifest state changes cannot
 //!     establish output credit → block (FakeSwap).
-//!   - High-risk manifest class (drain/authority/withdraw/mint/close) with
+//!   - High-risk manifest class (`manifest::HIGH_RISK_CLASSES`) with
 //!     empty intent → block (Check 10, P12 fail-closed).
 //!   - Intent the program does not support → block (Check 9).
 //!   - Unique account count > manifest expected + 2 on a non-DEX,
@@ -586,11 +586,12 @@ fn canonical_expected(
     state_changes: &[String],
     intent: &str,
     manifest_accounts: &[graphite_core::manifest::AccountRoleDef],
+    authority_change: bool,
 ) -> bool {
     if risky_policy_block(program, disc) {
         return false;
     }
-    if graphite_core::manifest::names_an_authority_change(name) {
+    if authority_change {
         return false; // Check 2b: an authority change blocks under any intent
     }
     if intent == "swap" && is_swap_program(program) {
@@ -670,6 +671,9 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
                 &ins.expected_state_changes,
                 intent,
                 &ins.accounts,
+                // The manifest's `authority` tag, or a name that hands over
+                // control (`InstructionDef::security_class`).
+                ins.security_class() == graphite_core::manifest::AUTHORITY_CHANGE_CLASS,
             );
             let instruction_data = Some(instruction_data);
 
