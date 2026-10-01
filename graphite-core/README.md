@@ -9,7 +9,7 @@ The Rust verification engine — the heart of Graphite.
 | `account_resolution` | PDA derivation (Solana hash-chain algorithm), account role validation | L1 |
 | `verification` | 8-layer pipeline orchestrator (L1–L8) — implements L2 Instruction Verification and L4 State Verification inline | L2/L4 |
 | `transaction_builder` | Canonical serialization, compute budget estimate | — |
-| `risk_engine` | 11 attack pattern detectors (13 risk checks, hard gate) | L7 |
+| `risk_engine` | 10 of the 12 detection patterns in 16 checks, hard gate (the other two come from `tx_pattern_analysis`; `PluginBlock` names a plugin veto) | L7 |
 | `confidence_engine` | Weighted signal scoring + trust tier ceilings | L6 |
 | `policy_engine` | Per-wallet profile thresholds (Treasury, TradingBot, Gaming, Enterprise) | L6 |
 | `simulation_integrity` | 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm + MAD baseline | L3 |
@@ -35,9 +35,9 @@ The Rust verification engine — the heart of Graphite.
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 1,741 tests (0 failures, 15 network- or sample-dependent ignored)
-cargo test --release --no-default-features --lib            # 331 — the featureless library
-cargo test --release --no-default-features --features cli   # 1,512 — cli without the server
+cargo test --release     # 1,844 tests (0 failures, 15 network- or sample-dependent ignored)
+cargo test --release --no-default-features --lib            # 341 — the featureless library
+cargo test --release --no-default-features --features cli   # 1,594 — cli without the server
 cargo clippy --release -- -D warnings  # 0 warnings
 ```
 
@@ -48,7 +48,7 @@ cargo clippy --release -- -D warnings  # 0 warnings
 GRAPHITE_API_KEY=$(openssl rand -hex 32) cargo run --release --bin graphite -- server --port 7331
 
 # CLI
-cargo run --release --bin graphite -- verify --input examples/verify-input.json
+cargo run --release --bin graphite -- verify --file ../examples/verify-input.json
 
 # Benchmark
 cargo run --release --bin graphite -- benchmark

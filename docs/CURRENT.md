@@ -56,8 +56,12 @@ Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 
                                  -25, -27; 39,857 verified): 0 parse failures, 0 verify errors; Round 21 moved
                                  2,553 executed transactions Blocked → Clear on risk and 0 the other way; Round 22
                                  another 230, 0 the other way, and grounded every manifest in 2,998 of its
-                                 programs' own executed transactions (45,253 of 45,282 instructions clean)
-Manifest coverage of the chain:  129 manifests / 3,195 instructions. On a 10,617-transaction mainnet sample,
+                                 programs' own executed transactions (45,253 of 45,282 instructions clean).
+                                 Measured on samples fetched on those dates; the samples are not in the repo
+                                 (tools/mainnet-sample/mainnet_sample.json is gitignored), so a re-run
+                                 measures a fresh sample, not these
+Manifest coverage of the chain:  129 manifests / 3,195 instructions. On a 10,617-transaction mainnet sample
+                                 fetched on 2026-09-23 (not in the repo),
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%
                                  for the same sample before Round 18. The rest still meet the drainer heuristic
                                  (>=3 accounts, no declared state changes), which is the fail-closed posture at
@@ -137,9 +141,20 @@ Server authentication:           required by default, ≥ 32 characters; GRAPHIT
 Signing before the verdict:      never, in the reference bridge (Round 19): the pre-verdict simulation is unsigned by
                                  construction, and SolanaAgentKit holds a wallet that cannot sign
 Request path:                    no per-request deep copy of state (/health ~1 ms; 960 verifies/s in-process with
-                                 fdatasync per record); refusals drain the body and are readable (Round 11)
+                                 fdatasync per record, measured locally on 2026-09-15, no run artifact in the repo);
+                                 refusals drain the body and are readable (Round 11); every audit append runs on
+                                 the blocking pool, so a slow disk flush holds a blocking thread, not an async
+                                 worker; HTTP/1.1 only, a request head within 5 s, a body within 2 s, at most
+                                 GRAPHITE_MAX_CONNECTIONS (1,024) connections open, at most
+                                 GRAPHITE_MAX_CONNECTIONS_PER_IP (64; none behind a trusted proxy) per peer
+Container health:                `graphite healthcheck` (the image's HEALTHCHECK) passes any 2xx from /health;
+                                 `--strict` also fails on `degraded: true`, for an orchestrator that should
+                                 replace a node whose audit trail is failing. The image keeps the default
 Repository integrity:            CI token read-only; actions pinned by commit SHA; base images pinned by digest;
-                                 toolchain 1.98.1 in CI and in the container; Go, cargo-audit and Python (hash-locked) pinned
+                                 toolchain 1.98.1 in CI and in the container; Go, cargo-audit and Python (hash-locked) pinned;
+                                 runner image (ubuntu-24.04) and Node (20.20.2, 22.23.3) exact; npm installs run no
+                                 dependency install scripts; all five lockfiles audited (npm against a named allowlist
+                                 of known advisories in .github/npm-audit/); every job time-bounded
 Independent third-party audit:   NOT PERFORMED — every campaign report is internal engineering work
 Branch protection on main:       ABSENT — an owner decision; see "Not yet done"
 ```
@@ -153,7 +168,7 @@ transaction under the stated threat model, and no external party has yet tried.
 |---|---|---|
 | The signed message is the verified message | `BoundTransaction.signApproved` (TS): digest re-check, signer set derived from the compiled message, message-slice equality | `integrations/solana-agent-kit/bound-transaction.test.ts`, `execution-boundary-fuzz.test.ts` |
 | A descriptive verdict never reaches execution | `ResidualPolicy.assertExecutable` requires `scope.kind === "artifact_bound"` | `residual-policy.test.ts`, `toctou-signing-boundary.test.ts` |
-| An approved verdict with an unaccepted residual never reaches execution | `ResidualPolicy` (bridge): every non-inherent `unobserved_codes` entry refuses unless named in `GRAPHITE_ACCEPT_UNOBSERVED` / `acceptUnobserved`; a server reporting no codes refuses | `residual-policy.test.ts` (each of the 12 non-inherent codes), `execution-lifecycle.test.ts` |
+| An approved verdict with an unaccepted residual never reaches execution | `ResidualPolicy` (bridge): every non-inherent `unobserved_codes` entry refuses unless named in `GRAPHITE_ACCEPT_UNOBSERVED` / `acceptUnobserved`; a server reporting no codes refuses | `residual-policy.test.ts` (each of the 13 non-inherent codes), `execution-lifecycle.test.ts` |
 | `artifact_bound` means the described instruction was located in the bytes | L2 artifact branch: parse failure fails; missing `instruction_data` fails; exact-data match at one position under the described program and accounts | `tests/round9_identity_requires_data.rs` (100 SOL under a 0.002 SOL description, refused), `tests/artifact_binding.rs` |
 | Instruction identity is positional and complete | `compare_instruction_accounts`, `sibling_coverage` | `tests/instruction_account_identity.rs`, `tests/described_siblings.rs` |
 | An artifact the network would refuse is refused before it is parsed | `MAX_TRANSACTION_BYTES` = 1232 (4,096 for a v1 frame: `max_frame_bytes`, Round 19) at `/verify` entry, in `parse_transaction`, and in TS `messageOf`; `MAX_TRANSACTION_INSTRUCTIONS` = 256 | `tests/round9_resource_bounds.rs` (122 s → 1.6 ms) |
@@ -166,7 +181,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | A declaration too short to identify a risky instruction is refused | Round 14: `disc_matches` fires when the input is at least as long as the selector; a strict PREFIX of one sat in the gap. Reachable only in descriptive mode, where there are no bytes to re-derive from | `tests/truncated_discriminator.rs` (a descriptive `01` on System, and a descriptive `0` sibling on SPL Token, are both refused; a complete `03` still clears) |
 | The gate behaves the same on real traffic as on the fixtures | Whole finalized mainnet blocks, every transaction pushed through the full pipeline artifact-bound — real bytes, real data, accounts resolved from the block's own `loadedAddresses`, every sibling declared | `tests/mainnet_conformance.rs` + `tools/mainnet-sample` (10,669 transactions, 2026-09-17: 0 parse failures, 0 false refusals, 1,087/1,087 risky-table blocks confirmed against the real bytes, 0 verdicts changed by Round 13) |
 | An undeclared authority change is a finding, not silence | `state_diff::AccountDelta::{token_authority_change, mint_authority_change, freeze_authority_change}` — the SPL `owner` field is the authority, distinct from `owner_change`'s owning program | `state_diff::tests::{a_token_account_changing_hands_is_critical, a_mint_authority_changing_hands_is_critical, a_freeze_authority_appearing_from_nothing_is_critical}` plus four controls |
-| Wire-format bounds on both sides | `compact_u16` (Rust), `messageOf` / `readSignatureCount` (TS) | `tests/wire_format_bounds.rs`; 1,647-mutation cross-language corpus in `tests/sak_bridge_corpus.rs` |
+| Wire-format bounds on both sides | `compact_u16` (Rust), `messageOf` / `readSignatureCount` (TS) | `tests/wire_format_bounds.rs`; 1,659-mutation cross-language corpus in `tests/sak_bridge_corpus.rs` |
 | Provider fields cannot override canonical evidence | `rpc_client.rs` derives writes/hops from canonical fields only | `tests/provider_field_precedence.rs` |
 | Token-2022 classification is fail-closed | `detect_token2022_extensions`, `ExtensionScan.malformed` | `tests/token2022_extensions.rs`, `tests/l4_state_diff_gate.rs` |
 | Durable-nonce transactions are refused unless verified | `tx_artifact::durable_nonce`, L2 gate | `tests/durable_nonce.rs`, `tests/durable_nonce_rpc.rs` |
@@ -186,7 +201,7 @@ transaction under the stated threat model, and no external party has yet tried.
 | The request path does not deep-copy state | `AppState.core: Arc<GraphiteCore>`, `registry_engine: Arc<…>` | `server::request_path_cost::{app_state_clone_is_a_reference_count_not_a_deep_copy, health_answers_in_milliseconds_on_loopback}` |
 | A refusal is readable, never a reset | `refuse_after_draining` on 401 / 429 / 503 | `server::request_path_cost::early_refusals_drain_the_body_so_the_status_is_readable` |
 | The API key is not guessable by length | `server::MIN_API_KEY_CHARS` = 32 in `auth_posture` | `server::tests::auth_is_required_unless_dev_mode_is_named_and_the_bind_is_loopback` |
-| The SDK and the server agree on the wire | `sdk/typescript/src/live-server.test.ts` against the CI container, failing if skipped | `.github/workflows/ci.yml` container job |
+| The SDK and the server agree on the wire | `sdk/typescript/src/live-server.test.ts` and `sdk/go/live_server_test.go` (`-tags liveserver`) against the CI container, failing on any failed or skipped test and requiring each live test to pass by name | `.github/workflows/ci.yml` container job |
 | A lifecycle `verdict_on_record` is about the transaction the event names | `/audit/event` resolves by `audit_trail_id`, else `transaction_sha256`, else `content_hash`; contradicting keys → 400 | `server::tests::lifecycle_verdict_resolves_by_the_most_exact_key_and_refuses_contradiction` |
 | A compressed RPC response cannot outgrow the cap | `read_body_capped` bounds decompressed chunks | `tests/round10_rpc_decompression.rs` (65 KB → 64 MiB refused in 35 ms) |
 | Caller-reported lifecycle rows are bounded and carry what the trail knows | `LifecycleEventRecord::bounded`, `/audit/event` shape and length checks, `verdict_on_record` computed server-side | `durable::tests::lifecycle_event_fields_are_bounded_on_disk`, `server::tests::lifecycle_events_carry_the_verdict_on_record` |
@@ -325,9 +340,13 @@ transaction under the stated threat model, and no external party has yet tried.
 - **A compromised process is out of scope.** Deep copies, private fields and
   digest checks defend against callers and plugins that behave like
   JavaScript; not against code that rewrites the bridge module.
-- **Without RPC, L3 is Inconclusive** and confidence is capped below every
-  built-in profile's threshold; `approved` is unreachable. This is the intended
-  fail-closed shape, not a degraded mode.
+- **Without RPC, L3 is Inconclusive** and the verdict's scope carries
+  `not_simulated`, which the reference bridge's `ResidualPolicy` refuses by
+  default. `approved` is still reachable: on trust the semantic graph has
+  already earned, or on evidence an operator seeded (`graphite evidence seed` /
+  `baseline`), confidence can clear a profile's threshold with no simulation.
+  An integration other than the reference bridge must refuse `not_simulated`
+  itself if it wants that guarantee.
 - **Lifecycle events reported by callers are attestations.** `POST
   /audit/event` records what the caller said with `reported_by`; Graphite
   cannot witness a signing it did not perform and does not claim to. What it

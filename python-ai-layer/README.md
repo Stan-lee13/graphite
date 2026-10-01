@@ -100,6 +100,6 @@ python3 -m pytest test_intent_parser.py -v
 python3 test_intent_parser.py
 ```
 
-31 tests: every intent class, parameter extraction, risk hints, confidence
+35 tests: every intent class, parameter extraction, risk hints, confidence
 components, manifest grounding (no fabricated IDs), determinism, the P1
 invariant, and a performance smoke test (must exceed 10k parses/sec).

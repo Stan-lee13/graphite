@@ -53,7 +53,7 @@ Every PR must satisfy all 16 Constitution principles. The most commonly violated
 - **P1**: AI assists, never decides. No LLM output is the final authority on a transaction's safety.
 - **P2**: Deterministic verification. Same inputs → same outputs. No timestamps, random numbers, or non-deterministic operations in the verification path.
 - **P6**: Unknown protocol confidence cap (0.55). No evidence can override this.
-- **P12**: Fail-closed on unknown. Unknown instructions on known protocols return BLOCKED, not an error. Anything Graphite cannot observe is disclosed in `scope.unobserved`, never assumed.
+- **P12**: Graceful degradation on the unknown. Constitution v1.1 says Graphite "never fails closed on the unknown": an unrecognised protocol gets a capped-confidence, explained result, never a crash. Graphite deliberately diverges in places (an unmanifested program touching three or more accounts is refused; see SECURITY.md and docs/CURRENT.md), and that divergence is an open owner decision, not a principle to cite. Anything Graphite cannot observe is disclosed in `scope.unobserved`, never assumed.
 - **P5**: Simulation is evidence, not truth. RPC-derived values come only from canonical response fields and can lower or fail a verdict, never manufacture one.
 - **P9**: The audit trail is append-only and synced before the response; a verdict that cannot be recorded is refused.
 - **P16**: No public performance claim without a linked, reproducible benchmark run backing the exact number.
@@ -64,14 +64,14 @@ Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), 
 
 - [ ] `cargo fmt --all -- --check` clean (0 diffs)
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes (0 warnings)
-- [ ] `cargo test --release` passes (0 failures — currently 1,741 tests, 15 ignored; `--include-ignored` for the live RPC corpus and the mainnet sample)
-- [ ] `cargo test --release --no-default-features --lib` (331) and `--no-default-features --features cli` (1,512) pass — the feature matrix is tested, not just checked
+- [ ] `cargo test --release` passes (0 failures — currently 1,844 tests, 15 ignored; `--include-ignored` for the live RPC corpus and the mainnet sample)
+- [ ] `cargo test --release --no-default-features --lib` (341) and `--no-default-features --features cli` (1,594) pass — the feature matrix is tested, not just checked
 - [ ] `cargo audit --deny warnings` clean
 - [ ] Container builds, boots, `/health` answers, `/data` is writable, unauthenticated `/verify` is `401`, and a keyless container refuses to start
-- [ ] TypeScript SDK `npm run build` + `npm test`; SAK integration `npm run typecheck` + `npm test` (100) and the regenerated artifact fixture + corpus show no diff
+- [ ] TypeScript SDK `npm run build` + `npm test`; SAK integration `npm run typecheck` + `npm test` (145) and the regenerated artifact fixture + corpus show no diff
 - [ ] Go SDK `gofmt` / `go vet` / `go test ./...` pass
-- [ ] Python AI layer `pytest` passes (27)
-- [ ] Dashboard `npm run typecheck` + `npm run build`
+- [ ] Python AI layer `pytest` passes (34)
+- [ ] Dashboard `npm run typecheck` + `npm test` + `npm run build`
 - [ ] No new `unwrap()` or `panic!()` in the verification hot path
 - [ ] Constitution principles checked (P1-P16)
 - [ ] No public performance claim without reproducible benchmark (P16)
@@ -94,7 +94,7 @@ preference:
    `create_with_seed(find_program_address([], program), "anchor:idl", program)`,
    owned by the program itself. `scripts/fetch_onchain_idls.py` pulls it and
    `scripts/onboard_from_inventory.py` turns it into a manifest. This is how
-   the 49 programs onboarded in Round 18 were built.
+   the 96 programs onboarded in Round 18 were built.
 2. **The protocol's published IDL or program source**, with discriminators
    derived the way the program's own generated client derives them
    (`sha256("global:" + snake_case(name))[0..8]` for Anchor, the borsh variant
@@ -149,7 +149,11 @@ update.
 
 ## Reporting Issues
 
-Use the appropriate issue template:
+**Security vulnerabilities are never reported as public issues.** A verdict
+bypass, an auth bypass, or anything else exploitable goes privately through
+[SECURITY.md](SECURITY.md).
+
+For everything else, use the appropriate issue template:
 - [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Protocol Manifest Request](.github/ISSUE_TEMPLATE/protocol_manifest.md)
-- [Security Report](.github/ISSUE_TEMPLATE/security_report.md) — or see [SECURITY.md](SECURITY.md) for private disclosure
+- [Hardening Suggestion](.github/ISSUE_TEMPLATE/hardening_suggestion.md): defence in depth, stricter defaults, missing tests. No exploit details; the issue is public.

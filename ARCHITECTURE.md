@@ -47,7 +47,7 @@ The pipeline executes in order. Each layer is tracked in the verification result
    Without RPC and without a supplied diff, the layer falls back to a structural consistency check on the manifest prose against the resolved account list (fund-movement wording must be matched by at least two writable accounts, authority wording by a signer, and so on) — honest about being a consistency check rather than a diff. See `tests/l4_state_diff_gate.rs`, which asserts the diff path through `verify` rather than against `check_state_diff` directly.
 5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program. The intent vocabulary is exactly: `swap|trade|exchange`, `transfer|send`, `stake|delegate`, `close|close_account`, `create|create_account`, `approve|revoke` (anything else fails closed). The advisory labeler (v2, C21) emits only this vocabulary.
 6. **L6 Policy Verification** — Computes confidence (0.0–1.0 from weighted signals + tier ceilings) and applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Gaming 55%, Enterprise 99%) and trust tier requirements
-7. **L7 Risk Verification** — Pattern-matches against 11 known attack patterns (13 risk checks, hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack, FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, Impersonation (system-account impersonation — SolPhishHunter arXiv:2505.04094), MultiInstructionDrain (C29), and CpiTraceAnomaly (C29). Runs early for fail-fast but is reported at L7 per architecture spec. Every instruction in the transaction is assessed, not just the primary — see "Secondary Instruction Risk Assessment" below.
+7. **L7 Risk Verification** — Pattern-matches against 12 known attack patterns (16 risk checks, hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack (including any instruction named for an authority change, Check 2b), FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, Impersonation (system-account impersonation — SolPhishHunter arXiv:2505.04094), UnspendableDestination, MultiInstructionDrain (C29), and CpiTraceAnomaly (C29). A registered plugin's veto is reported as `PluginBlock`. Runs early for fail-fast but is reported at L7 per architecture spec. Every instruction in the transaction is assessed, not just the primary — see "Secondary Instruction Risk Assessment" below.
 8. **L8 Execution Verification** — Post-submission: `POST /verify/execution` (or `graphite execution`) confirms the signature on-chain and reconciles it against the verdict on the append-only trail. Outcomes: ApprovedAndExecuted, ApprovedButFailedOnChain, **BlockedButExecuted** (the gate was bypassed — the one worth paging on, and invisible to every layer inside a verification request), BlockedAndNotExecuted, NotFound, NoVerificationOnRecord, Unavailable. Caller-driven by design: Graphite does not watch the chain. Live-validated against mainnet. Since Round 12 an RPC's word for *inclusion* is weighed, not taken: the status's `confirmationStatus` is read and a `processed`-only sighting draws no positive conclusion; `getTransaction`'s slot and outcome are held against `getSignatureStatuses` and a contradiction draws none (`chain_inconsistent`); a malformed status is `Unavailable`; redirects are never followed; and with `GRAPHITE_RPC_WITNESS_URL` a second, independent RPC must agree (`inclusion_witness`) before an approval is reported executed. The alarm is asymmetric on purpose: a BLOCKED transaction sighted by either endpoint, at any commitment, is `BlockedButExecuted` — the bytes are fetched from whichever endpoint saw it and bound to the signature like any other.
 
 ### Key Properties
@@ -170,7 +170,7 @@ instruction with its program, account indexes and raw data, and the address-tabl
 lookups with their indexes. A parse failure never yields a partial answer.
 `message_bytes` — the same signature skip the parser uses — is exported so the
 TypeScript bridge's `messageOf` and Graphite's acceptance language can be asserted equal:
-`tests/sak_bridge_corpus.rs` replays 12 transaction shapes and 1,647 byte-level
+`tests/sak_bridge_corpus.rs` replays 12 transaction shapes and 1,659 byte-level
 mutations emitted by `@solana/web3.js` and requires exact agreement on every one.
 An artifact larger than its format's bound — `PACKET_DATA_SIZE` (1232 bytes) for legacy
 and v0, 4,096 bytes for v1 (`tx_artifact::max_frame_bytes`) — is refused before a byte is
@@ -298,7 +298,7 @@ reconciliation), `POST /audit/event` (caller-reported lifecycle events, P9),
 ## What Graphite Does NOT Do (Honest)
 
 - Does NOT decode instruction data semantics beyond the discriminator for protocols it has no manifest for (it parses the transaction's wire format — structure, accounts, privileges, data bytes — but reads amounts and arguments only where a manifest or the state diff gives them meaning)
-- Does NOT detect novel attack patterns (only the 11 known patterns / 14 checks are matched)
+- Does NOT detect novel attack patterns (only the 12 known patterns / 16 checks are matched)
 - Does NOT use AI/ML in the verification path (deterministic pattern matching only; the Python layer is an advisory labeler)
 - Does NOT treat the advisory labeler's suggestions as decisions — a wrong suggestion simply fails to match and the verification blocks (P1)
 - Does NOT watch the chain — L8 is caller-driven; someone must report the signature after submission
@@ -373,7 +373,7 @@ Graphite approved is the exact message contained in the bytes signed and submitt
   transaction's identity and is not what the signing gate checks.
 - **Durable-nonce shapes are refused at build.** `lastValidBlockHeight` does not bound them.
 - **Cross-language agreement is asserted, not assumed.** `emit-corpus.ts` records what
-  `@solana/web3.js` and `messageOf` conclude about 12 shapes and 1,647 mutations
+  `@solana/web3.js` and `messageOf` conclude about 12 shapes and 1,659 mutations
   (including pads to exactly 1232 and 1233 bytes); `tests/sak_bridge_corpus.rs` requires
   Graphite to agree; CI regenerates the corpus and fails on drift.
 
@@ -389,7 +389,7 @@ graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
 │   ├── protocols/          # 129 JSON protocol manifests (3,195 instructions) + battle_tested_evidence.json
-│   ├── tests/              # 1,741 tests (unit + adversarial + exploit + RPC trust boundary + real mainnet legacy/v0/v1 + cross-language corpus)
+│   ├── tests/              # integration suites (adversarial + exploit + RPC trust boundary + real mainnet legacy/v0/v1 + cross-language corpus); 1,844 tests in the default leg counting src/ unit tests
 │   └── Cargo.toml
 ├── sdk/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)
