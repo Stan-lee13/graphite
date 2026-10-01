@@ -331,7 +331,7 @@
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
     "content_hash": "2c791b5538a7aa6a9480bcec48a0e83774516f2e10a4037f0b04013ffbd6029b",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -3350,7 +3350,7 @@
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
     "content_hash": "3043feaf59a08ef288edf051fc210b55a7f4ae3bafb2370306a215d6b142a450",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -3614,7 +3614,7 @@
     "program_id": "11111111111111111111111111111111",
     "version": "1.0.0",
     "content_hash": "ee0d5566fb4e64d4a288e95e142f06dbc93b2dcc9b03d9a35cb098892246f086",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {

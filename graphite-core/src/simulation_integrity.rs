@@ -469,29 +469,69 @@ pub fn update_baseline(
     let n = baseline.sample_count as f64;
     let new_n = n + 1.0;
 
+    // A2-06 (2026-09-29 audit): a mature baseline learns from an observation
+    // no further than one effective spread from its centre. Every recorded
+    // observation had passed the check, but the check accepts up to 2 spreads
+    // out, and recording one at that edge WIDENS the spread it is judged by:
+    // 600 distinct edge observations, alternating direction, took a program
+    // centred on 100k CU from a band ending near 150k to one ending near
+    // 800k — L3 disabled for every caller of the program by one party, at no
+    // fee. Winsorized at one spread, an edge observation still counts, its
+    // pull on the centre is bounded, and it can no longer grow the spread
+    // past what honest variation has shown. The bootstrap (fewer than
+    // MIN_SAMPLES) has no centre to hold to and records as observed.
+    let (learned_cu, learned_aw, learned_ch) = if baseline.sample_count >= MIN_SAMPLES {
+        let clamp = |v: f64, mean: f64, std: f64| {
+            let s = effective_spread(mean, std);
+            v.clamp((mean - s).max(0.0), mean + s)
+        };
+        (
+            clamp(
+                new_compute_units as f64,
+                baseline.mean_compute_units,
+                baseline.std_compute_units,
+            )
+            .round() as u64,
+            clamp(
+                f64::from(new_account_writes),
+                baseline.mean_account_writes,
+                baseline.std_account_writes,
+            )
+            .round() as u32,
+            clamp(
+                f64::from(new_cpi_hops),
+                baseline.mean_cpi_hops,
+                baseline.std_cpi_hops,
+            )
+            .round() as u32,
+        )
+    } else {
+        (new_compute_units, new_account_writes, new_cpi_hops)
+    };
+
     // Signal 1: Compute units (Welford's algorithm)
-    let delta_cu = new_compute_units as f64 - baseline.mean_compute_units;
+    let delta_cu = learned_cu as f64 - baseline.mean_compute_units;
     let new_mean_cu = baseline.mean_compute_units + delta_cu / new_n;
     let new_var_cu = (baseline.std_compute_units * baseline.std_compute_units * n
-        + delta_cu * (new_compute_units as f64 - new_mean_cu))
+        + delta_cu * (learned_cu as f64 - new_mean_cu))
         / new_n;
     baseline.mean_compute_units = new_mean_cu;
     baseline.std_compute_units = new_var_cu.max(0.0).sqrt();
 
     // Signal 2: Account writes (Welford's algorithm)
-    let delta_aw = new_account_writes as f64 - baseline.mean_account_writes;
+    let delta_aw = learned_aw as f64 - baseline.mean_account_writes;
     let new_mean_aw = baseline.mean_account_writes + delta_aw / new_n;
     let new_var_aw = (baseline.std_account_writes * baseline.std_account_writes * n
-        + delta_aw * (new_account_writes as f64 - new_mean_aw))
+        + delta_aw * (learned_aw as f64 - new_mean_aw))
         / new_n;
     baseline.mean_account_writes = new_mean_aw;
     baseline.std_account_writes = new_var_aw.max(0.0).sqrt();
 
     // Signal 3: CPI hops (Welford's algorithm)
-    let delta_ch = new_cpi_hops as f64 - baseline.mean_cpi_hops;
+    let delta_ch = learned_ch as f64 - baseline.mean_cpi_hops;
     let new_mean_ch = baseline.mean_cpi_hops + delta_ch / new_n;
     let new_var_ch = (baseline.std_cpi_hops * baseline.std_cpi_hops * n
-        + delta_ch * (new_cpi_hops as f64 - new_mean_ch))
+        + delta_ch * (learned_ch as f64 - new_mean_ch))
         / new_n;
     baseline.mean_cpi_hops = new_mean_ch;
     baseline.std_cpi_hops = new_var_ch.max(0.0).sqrt();

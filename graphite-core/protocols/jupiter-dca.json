@@ -130,7 +130,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "periodic_swap"
+   "risk_class": "transfer"
   },
   {
    "name": "openDcaV2",
@@ -256,7 +256,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "periodic_swap"
+   "risk_class": "transfer"
   },
   {
    "name": "closeDca",
@@ -564,7 +564,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "periodic_swap"
+   "risk_class": "transfer"
   },
   {
    "name": "withdrawFees",

@@ -91,10 +91,7 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [
-      "orao-vrf-randomness-request",
-      "{account_3}"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "client",

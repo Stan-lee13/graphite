@@ -4,7 +4,8 @@ version = "0.2.0-beta"
 edition = "2021"
 description = "Graphite — Transaction verification for Solana AI agents"
 license = "MIT"
-# # publish = false  # Removed for public release  # Removed for public release
+# Publishable: no `publish = false`. Whether this crate goes to crates.io is
+# the owner's decision (2026-09-29 audit, A6-15).
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -34,6 +35,12 @@ axum = { version = "0.8", optional = true }
 tower = { version = "0.4", optional = true, features = ["limit", "util"] }
 tower-http = { version = "0.6", features = ["cors", "limit", "timeout", "trace", "catch-panic"], optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
+# The server's own accept loop (A4-03, 2026-09-29 audit): axum's `serve` gives
+# hyper no timer, so the request-head read had no deadline and a client that
+# never finished its head held a connection forever. Both crates are already
+# in the tree through axum; naming them adds no dependency.
+hyper = { version = "1", optional = true, features = ["server", "http1"] }
+hyper-util = { version = "0.1", optional = true, features = ["tokio", "server", "server-graceful", "service", "http1"] }
 
 # CLI (feature-gated)
 clap = { version = "4", features = ["derive"], optional = true }
@@ -41,7 +48,7 @@ ed25519-dalek = { version = "2", default-features = false, features = ["std", "f
 
 [features]
 default = ["server", "cli"]
-server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "dep:tracing-subscriber", "rpc"]
+server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "dep:tracing-subscriber", "dep:hyper", "dep:hyper-util", "rpc"]
 # cli pulls tokio: the synchronous verify() wrapper needs an async runtime,
 # and the CLI's verify subcommand uses it. A no-feature LIBRARY build still
 # compiles (verify() degrades to a fail-closed stub) — only the library core

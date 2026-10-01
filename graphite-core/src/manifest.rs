@@ -79,7 +79,115 @@ pub struct InstructionDef {
     pub risk_class: String,
 }
 
+/// The security class the pipeline gives an instruction that changes who
+/// controls a protocol or an account (A3-01/A3-02, 2026-09-29 audit). Never
+/// read from a manifest: derived by [`InstructionDef::security_class`].
+pub const AUTHORITY_CHANGE_CLASS: &str = "authority_change";
+
+/// The security classes a manifest may declare (`InstructionDef::risk_class`).
+/// Anything else is refused at load (A3-02).
+pub const RISK_CLASSES: &[&str] = &[
+    "",
+    "drain",
+    "authority",
+    "withdraw",
+    "mint",
+    "close",
+    "create",
+    "transfer",
+];
+
+impl ProtocolManifest {
+    /// The instruction a call with this discriminator (hex, from the bytes)
+    /// is: the first whose declared discriminator the input starts with, or,
+    /// for a program described by ONE instruction with no discriminator — the
+    /// Memo programs, whose whole data is the memo — that instruction, for
+    /// any data (A3, 2026-09-29 audit: an empty selector matched nothing, so
+    /// every memo was judged as an undescribed instruction of a described
+    /// program). Every manifest lookup goes through here.
+    pub fn instruction_for(&self, discriminator_hex: &str) -> Option<&InstructionDef> {
+        if let [only] = self.instructions.as_slice() {
+            if only.discriminator.is_empty() {
+                return Some(only);
+            }
+        }
+        self.instructions
+            .iter()
+            .find(|i| discriminator_matches(&i.discriminator, discriminator_hex))
+    }
+}
+
+/// Whether an instruction's NAME says it changes who controls something.
+///
+/// The name words are split on `_` and on lower-to-upper case changes, so
+/// `transferOwnership`, `set_admin` and `SetLendingMarketOwnerAndConfig` all
+/// read the same way. A name counts when one of its words is a control word
+/// (authority, admin, owner, ownership, governance). Two exceptions, each an
+/// instruction that removes a power rather than handing one over or only
+/// reads one: `InitializeImmutableOwner` (makes the owner unchangeable), and
+/// the read-only `check_*`/`has_*`/`is_*`/`get_*` predicates.
+///
+/// This is deliberately a floor on the manifest's own tag, not a replacement
+/// for it: 106 such instructions across the seed registry were tagged
+/// `transfer` (the name contains "transfer"), `create` or nothing, and a
+/// derived class cannot be mistagged by the next onboarding.
+pub fn names_an_authority_change(name: &str) -> bool {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut prev_lower = false;
+    for c in name.chars() {
+        if !c.is_ascii_alphanumeric() {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            prev_lower = false;
+            continue;
+        }
+        if c.is_ascii_uppercase() && prev_lower && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        prev_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
+        current.push(c.to_ascii_lowercase());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    const CONTROL: &[&str] = &[
+        "authority",
+        "authorities",
+        "admin",
+        "admins",
+        "owner",
+        "ownership",
+        "governance",
+    ];
+    const READ_ONLY: &[&str] = &["check", "has", "is", "get"];
+    if words.iter().any(|w| w == "immutable") {
+        return false;
+    }
+    if words
+        .first()
+        .is_some_and(|w| READ_ONLY.contains(&w.as_str()))
+    {
+        return false;
+    }
+    words.iter().any(|w| CONTROL.contains(&w.as_str()))
+}
+
 impl InstructionDef {
+    /// The security class the pipeline judges this instruction by: the
+    /// manifest's `risk_class`, raised to [`AUTHORITY_CHANGE_CLASS`] when the
+    /// instruction's name says it changes who controls something (see
+    /// [`names_an_authority_change`]). Every risk lookup goes through here,
+    /// primary and sibling alike, so the two cannot disagree.
+    pub fn security_class(&self) -> &str {
+        if names_an_authority_change(&self.name) {
+            AUTHORITY_CHANGE_CLASS
+        } else {
+            &self.risk_class
+        }
+    }
+
     /// The layout that describes a transaction passing `n` accounts: an
     /// alternate layout of exactly that length, else the primary one. The
     /// primary is also what a count matching no layout is judged against,
@@ -318,10 +426,7 @@ impl ManifestRegistry {
         program_id: &str,
         discriminator_hex: &str,
     ) -> Option<&'a InstructionDef> {
-        self.get(program_id)?
-            .instructions
-            .iter()
-            .find(|i| discriminator_matches(&i.discriminator, discriminator_hex))
+        self.get(program_id)?.instruction_for(discriminator_hex)
     }
 
     fn validate(&self, manifest: &ProtocolManifest) -> Result<(), ManifestError> {
@@ -353,8 +458,29 @@ impl ManifestRegistry {
             if ix.name.is_empty() {
                 return Err(ManifestError::Invalid("instruction with empty name".into()));
             }
+            // The security class is a closed vocabulary (A3-02, 2026-09-29
+            // audit). The Risk Engine compares it against fixed lists, so a
+            // class it does not know — `multisig_execution` on Squads'
+            // vaultTransactionExecute was one — silently reads as "no special
+            // class" and switches Check 10 off. Refused at load instead.
+            if !RISK_CLASSES.contains(&ix.risk_class.as_str()) {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction '{}' has risk_class {:?}; the recognised classes are {:?}",
+                    ix.name, ix.risk_class, RISK_CLASSES
+                )));
+            }
             // Empty discriminator is allowed (e.g., Memo program uses raw UTF-8 data
-            // with no instruction selector — the entire data field IS the instruction)
+            // with no instruction selector — the entire data field IS the
+            // instruction), and only for a program with that ONE instruction:
+            // it is then the instruction every call is (see
+            // `ProtocolManifest::instruction_for`). Beside others it could
+            // never be told apart from them.
+            if ix.discriminator.is_empty() && manifest.instructions.len() != 1 {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction '{}' has no discriminator, and only a program with a single instruction can be described that way",
+                    ix.name
+                )));
+            }
             if !ix.discriminator.is_empty() {
                 // Validate discriminator is valid hex
                 hex::decode(&ix.discriminator).map_err(|e| {
@@ -384,6 +510,18 @@ impl ManifestRegistry {
                             let idx_str: String =
                                 rest.chars().take_while(|c| c.is_ascii_digit()).collect();
                             if let Ok(idx) = idx_str.parse::<usize>() {
+                                // A slot whose address is derived from its own
+                                // address can only be a fixed point of the
+                                // derivation: every real call fails it (A3-08,
+                                // 2026-09-29 audit — the generator had written
+                                // IDL seeds that read account DATA as the slot
+                                // itself).
+                                if idx == slot {
+                                    return Err(ManifestError::Invalid(format!(
+                                        "instruction '{}' account {slot} seed {seed:?} derives the account from its own address",
+                                        ix.name
+                                    )));
+                                }
                                 if idx >= layout.len() {
                                     return Err(ManifestError::Invalid(format!(
                                     "instruction '{}' account {slot} seed {seed:?} reads account {idx} but the instruction declares {} account(s)",

@@ -118,6 +118,8 @@ pub enum CliCommand {
     #[cfg(feature = "server")]
     Healthcheck {
         port: u16,
+        /// Also fail when the node reports `degraded: true` (A6-13).
+        strict: bool,
     },
     Manifests,
     /// List wallet policy profiles and their thresholds.
@@ -599,28 +601,66 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         #[cfg(feature = "server")]
-        CliCommand::Healthcheck { port } => {
+        CliCommand::Healthcheck { port, strict } => {
             let rt = tokio::runtime::Runtime::new()?;
             let url = format!("http://127.0.0.1:{port}/health");
-            let ok = rt.block_on(async move {
-                match reqwest::Client::builder()
+            let verdict = rt.block_on(async move {
+                let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(4))
                     .build()
-                {
-                    Ok(client) => match client.get(&url).send().await {
-                        Ok(res) => res.status().is_success(),
-                        Err(_) => false,
-                    },
-                    Err(_) => false,
-                }
+                    .map_err(|_| "health check failed: no HTTP client".to_string())?;
+                let res = client
+                    .get(&url)
+                    .send()
+                    .await
+                    .map_err(|_| "health check failed: /health did not answer".to_string())?;
+                let success = res.status().is_success();
+                let body = res.json::<serde_json::Value>().await.ok();
+                health_verdict(success, body.as_ref(), strict)
             });
-            if ok {
-                Ok(())
-            } else {
-                // Non-zero exit is what Docker's HEALTHCHECK reads.
-                Err("health check failed".into())
-            }
+            // Non-zero exit is what Docker's HEALTHCHECK reads.
+            verdict.map_err(Into::into)
         }
+    }
+}
+
+/// Whether a `/health` answer passes the healthcheck.
+///
+/// `/health` answers 200 with `"degraded": true` when the node still serves
+/// but, for example, its audit writes are failing, so that a load balancer
+/// keeps a node that can still refuse. A verdict that cannot be recorded is
+/// refused with 503, so nothing is approved off the trail. The default check
+/// therefore passes on any 2xx, and Docker never saw a degraded trail (A6-13,
+/// 2026-09-29 audit). `--strict` also requires `degraded` to be present and
+/// false, for orchestrators that should replace such a node. A body that is
+/// not the expected JSON fails the strict check rather than passing it.
+#[cfg(feature = "server")]
+fn health_verdict(
+    success: bool,
+    body: Option<&serde_json::Value>,
+    strict: bool,
+) -> Result<(), String> {
+    if !success {
+        return Err("health check failed: /health did not answer 2xx".to_string());
+    }
+    if !strict {
+        return Ok(());
+    }
+    match body
+        .and_then(|b| b.get("degraded"))
+        .and_then(|d| d.as_bool())
+    {
+        Some(false) => Ok(()),
+        Some(true) => {
+            let reasons = body
+                .and_then(|b| b.get("degraded_reasons"))
+                .map(|r| r.to_string())
+                .unwrap_or_default();
+            Err(format!(
+                "health check failed (strict): the node is degraded {reasons}"
+            ))
+        }
+        None => Err("health check failed (strict): /health carried no `degraded` flag".to_string()),
     }
 }
 
@@ -1926,6 +1966,29 @@ pub fn verify_from_stdin(profile: ProfileArg) -> Result<(), Box<dyn std::error::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A6-13: the default check passes any 2xx; `--strict` also refuses a
+    /// degraded node and a body without the flag.
+    #[cfg(feature = "server")]
+    #[test]
+    fn strict_healthcheck_fails_a_degraded_node() {
+        let healthy = serde_json::json!({ "status": "ok", "degraded": false });
+        let degraded = serde_json::json!({
+            "status": "ok",
+            "degraded": true,
+            "degraded_reasons": ["audit writes failing"]
+        });
+        let bare = serde_json::json!({ "status": "ok" });
+        assert!(health_verdict(true, Some(&healthy), false).is_ok());
+        assert!(health_verdict(true, Some(&degraded), false).is_ok());
+        assert!(health_verdict(true, Some(&healthy), true).is_ok());
+        let e = health_verdict(true, Some(&degraded), true).unwrap_err();
+        assert!(e.contains("audit writes failing"), "{e}");
+        assert!(health_verdict(true, Some(&bare), true).is_err());
+        assert!(health_verdict(true, None, true).is_err());
+        assert!(health_verdict(false, Some(&healthy), false).is_err());
+        assert!(health_verdict(false, Some(&healthy), true).is_err());
+    }
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_REG_DIR: AtomicU64 = AtomicU64::new(0);

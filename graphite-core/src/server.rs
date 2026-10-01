@@ -70,8 +70,28 @@ fn is_sha256_hex(s: &str) -> bool {
 }
 
 /// Request timeout. Verification should complete in <1ms; 10s is
-/// generous and prevents slow-loris style attacks.
+/// generous. It starts once a request HEAD has been read: the head itself is
+/// bounded by `HEADER_READ_TIMEOUT`, and it is that bound, with the
+/// connection cap, that stops a slow-loris client.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How long a client may take to send a complete request head, and how long
+/// an idle keep-alive connection is held waiting for the next one (A4-03,
+/// 2026-09-29 audit).
+///
+/// `REQUEST_TIMEOUT` is a tower layer, and a tower layer only runs once a
+/// request exists. axum's `serve` gave hyper no timer, so hyper's own
+/// head-read timeout was inert ("has default, but no timer set"): a client
+/// that sent half a request line — or nothing — held a socket, a descriptor
+/// and a task indefinitely, before auth, the rate limiter or the body timeout
+/// could see it. The server now runs its own accept loop with a timer.
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The most TCP connections held open at once (A4-03). A connection past the
+/// cap is closed at accept, before a byte is read, so descriptor exhaustion
+/// cannot take `accept` down for everyone. Raise with
+/// `GRAPHITE_MAX_CONNECTIONS`.
+const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
 /// How many verifications may be in flight at once before the server sheds
 /// load.
@@ -312,6 +332,25 @@ fn ct_eq(a: &str, b: &str) -> bool {
         == 0
 }
 
+/// The key a client is rate-limited under (Round 19, F-19-16).
+///
+/// An IPv6 client is limited per /64, not per address: a single host is
+/// routinely handed a whole /64, so keying on the full address gave one
+/// client 2^64 fresh buckets — the limit did not apply, and the bucket map
+/// churned at its cap. IPv4 (and IPv4-mapped IPv6) is limited per address.
+fn rate_limit_key(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(_) => ip,
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => IpAddr::V4(v4),
+            None => {
+                let s = v6.segments();
+                IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
+            }
+        },
+    }
+}
+
 /// Best-effort client IP for per-IP rate limiting. `X-Forwarded-For` is
 /// honored ONLY when the server is explicitly behind a trusted proxy
 /// (`GRAPHITE_TRUST_PROXY`); otherwise the header is ignored entirely, so an
@@ -337,25 +376,6 @@ fn ct_eq(a: &str, b: &str) -> bool {
 /// the configured hop count (i.e. the request did not traverse the expected
 /// proxy chain), we fall back to the direct peer address rather than trusting
 /// a partial chain — fail-safe, never fail-open (P12).
-/// The key a client is rate-limited under (Round 19, F-19-16).
-///
-/// An IPv6 client is limited per /64, not per address: a single host is
-/// routinely handed a whole /64, so keying on the full address gave one
-/// client 2^64 fresh buckets — the limit did not apply, and the bucket map
-/// churned at its cap. IPv4 (and IPv4-mapped IPv6) is limited per address.
-fn rate_limit_key(ip: IpAddr) -> IpAddr {
-    match ip {
-        IpAddr::V4(_) => ip,
-        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
-            Some(v4) => IpAddr::V4(v4),
-            None => {
-                let s = v6.segments();
-                IpAddr::V6(std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0))
-            }
-        },
-    }
-}
-
 fn client_ip(
     req: &axum::http::Request<axum::body::Body>,
     addr: SocketAddr,
@@ -364,13 +384,23 @@ fn client_ip(
     if trust_proxy_hops == 0 {
         return addr.ip();
     }
-    if let Some(header) = req
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-    {
-        let entries: Vec<&str> = header
-            .split(',')
+    // EVERY `X-Forwarded-For` line, in order (A4-02, 2026-09-29 audit).
+    // HTTP defines repeated header lines as one comma-joined list, and a
+    // proxy that appends its entry as a NEW line leaves the client's own line
+    // first. Reading only the first line read the client's claim: a second
+    // line chose the rate-limit bucket. A line that is not text makes the
+    // whole chain untrusted, and the peer address is used.
+    let mut lines = Vec::new();
+    for v in req.headers().get_all("x-forwarded-for") {
+        match v.to_str() {
+            Ok(line) => lines.push(line),
+            Err(_) => return addr.ip(),
+        }
+    }
+    if !lines.is_empty() {
+        let entries: Vec<&str> = lines
+            .iter()
+            .flat_map(|line| line.split(','))
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .collect();
@@ -379,7 +409,15 @@ fn client_ip(
         // full expected chain — do not trust any of it.
         if entries.len() >= trust_proxy_hops as usize {
             let idx = entries.len() - trust_proxy_hops as usize;
-            if let Some(ip) = entries.get(idx).and_then(|v| v.parse::<IpAddr>().ok()) {
+            // An entry may carry a port (`203.0.113.7:4711`, `[2001:db8::1]:443`
+            // — some proxies write one); it names the same client, so it
+            // keys the same bucket rather than falling back to the proxy's
+            // address, which would put every client behind it in one bucket.
+            if let Some(ip) = entries.get(idx).and_then(|v| {
+                v.parse::<IpAddr>()
+                    .ok()
+                    .or_else(|| v.parse::<SocketAddr>().ok().map(|a| a.ip()))
+            }) {
                 return ip;
             }
         }
@@ -695,8 +733,9 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             // request timeout, this stops the build instead of quietly
             // recreating the inverted-timeout bug.
             const _: () = assert!(
-                crate::verification::DEFAULT_RPC_BUDGET.as_secs() + 2 <= REQUEST_TIMEOUT.as_secs(),
-                "the RPC budget must leave headroom inside REQUEST_TIMEOUT for the rest of the pipeline"
+                BODY_READ_TIMEOUT.as_secs() + crate::verification::DEFAULT_RPC_BUDGET.as_secs() + 2
+                    <= REQUEST_TIMEOUT.as_secs(),
+                "the body read and the RPC budget must leave headroom inside REQUEST_TIMEOUT for the rest of the pipeline"
             );
             let client = crate::rpc_client::SolanaRpcClient::new(crate::rpc_client::RpcConfig {
                 endpoint,
@@ -992,20 +1031,92 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         }
     };
 
-    // TCP_NODELAY on every accepted connection (Round 11): a small response
-    // should not wait on the peer's delayed ACK.
-    use axum::serve::ListenerExt;
-    let listener = listener.tap_io(|tcp_stream| {
-        if let Err(e) = tcp_stream.set_nodelay(true) {
+    let max_connections = std::env::var("GRAPHITE_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS);
+    tracing_log(&format!(
+        "connection limit: {max_connections} (GRAPHITE_MAX_CONNECTIONS); a request head must arrive within {}s",
+        HEADER_READ_TIMEOUT.as_secs()
+    ));
+    serve_hardened(listener, app, max_connections, shutdown).await?;
+    Ok(())
+}
+
+/// The server's accept loop (A4-03, 2026-09-29 audit).
+///
+/// What axum's `serve` did, plus the two bounds it could not give: every
+/// connection's request head is read under `HEADER_READ_TIMEOUT` (hyper's
+/// timer, which `serve` never installed), and at most `max_connections` are
+/// open at once — one more is closed at accept, before anything is read from
+/// it. HTTP/1.1 only: every Graphite client speaks it, and the version sniff
+/// an HTTP/2-capable builder performs is itself an unbounded read.
+/// TCP_NODELAY on every connection (Round 11). On shutdown, open connections
+/// finish their in-flight request, for at most `REQUEST_TIMEOUT`.
+async fn serve_hardened(
+    listener: tokio::net::TcpListener,
+    app: Router,
+    max_connections: usize,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
+    use hyper_util::rt::{TokioIo, TokioTimer};
+    use tower::ServiceExt as _;
+
+    let permits = Arc::new(tokio::sync::Semaphore::new(max_connections));
+    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    let mut shutdown = std::pin::pin!(shutdown);
+    loop {
+        let (stream, remote) = tokio::select! {
+            accepted = listener.accept() => match accepted {
+                Ok(pair) => pair,
+                Err(e) => {
+                    // EMFILE and friends: back off rather than spin.
+                    tracing::warn!("accept failed: {e}");
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    continue;
+                }
+            },
+            _ = &mut shutdown => break,
+        };
+        let Ok(permit) = permits.clone().try_acquire_owned() else {
+            tracing::warn!(
+                "connection from {remote} closed at accept: {max_connections} connections already open (GRAPHITE_MAX_CONNECTIONS)"
+            );
+            drop(stream);
+            continue;
+        };
+        if let Err(e) = stream.set_nodelay(true) {
             tracing::warn!("TCP_NODELAY could not be set on an accepted connection: {e}");
         }
-    });
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown)
-    .await?;
+        let service =
+            app.clone()
+                .map_request(move |mut req: axum::http::Request<hyper::body::Incoming>| {
+                    req.extensions_mut().insert(ConnectInfo(remote));
+                    req.map(axum::body::Body::new)
+                });
+        let connection = hyper::server::conn::http1::Builder::new()
+            .timer(TokioTimer::new())
+            .header_read_timeout(HEADER_READ_TIMEOUT)
+            .serve_connection(
+                TokioIo::new(stream),
+                hyper_util::service::TowerToHyperService::new(service),
+            );
+        let connection = graceful.watch(connection);
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                tracing::debug!("connection from {remote} ended: {e}");
+            }
+            drop(permit);
+        });
+    }
+    drop(listener);
+    tokio::select! {
+        _ = graceful.shutdown() => {}
+        _ = tokio::time::sleep(REQUEST_TIMEOUT) => {
+            tracing_log("shutdown: connections still open after the request timeout were dropped");
+        }
+    }
     Ok(())
 }
 
@@ -1132,7 +1243,14 @@ const REFUSAL_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// How long an admitted request's body may take to arrive before a
 /// verification permit is spent on it (see `concurrency_limit_middleware`).
-const BODY_READ_TIMEOUT: Duration = Duration::from_secs(5);
+///
+/// 2 s, not 5 (A4-10, 2026-09-29 audit): `REQUEST_TIMEOUT` covers the body
+/// read AND the verification, and 5 s of body plus the 6 s RPC budget was
+/// past it — a slow upload followed by a slow RPC was cut off at 10 s with a
+/// bare 408 and no audit row, the failure the RPC budget was sized to
+/// prevent. A verification body is a few kilobytes; the three bounds are now
+/// asserted together at the RPC client's construction.
+const BODY_READ_TIMEOUT: Duration = Duration::from_secs(2);
 
 async fn auth_middleware(
     State(state): State<AppState>,
@@ -1635,14 +1753,19 @@ async fn verify_handler(
             // claimed by returning it, and a panic would only replace a
             // precise 422 with an opaque 500.
             if let Some(log) = &state.audit {
-                if !log.append_error(&AuditErrorRecord {
-                    timestamp: crate::durable::now_utc_rfc3339(),
-                    program_id: "<malformed>".to_string(),
-                    instruction_name: "<unparseable>".to_string(),
-                    error: message.clone(),
-                    error_type: "JsonRejection".to_string(),
-                    status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
-                }) {
+                if !append_error_off_runtime(
+                    log,
+                    AuditErrorRecord {
+                        timestamp: crate::durable::now_utc_rfc3339(),
+                        program_id: "<malformed>".to_string(),
+                        instruction_name: "<unparseable>".to_string(),
+                        error: message.clone(),
+                        error_type: "JsonRejection".to_string(),
+                        status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
+                    },
+                )
+                .await
+                {
                     tracing_server_error("audit: error record for a 422 was NOT written");
                 }
             }
@@ -1671,6 +1794,28 @@ async fn verify_handler(
     ) {
         Ok(v) => v,
         Err(msg) => {
+            // A4-07 (2026-09-29 audit): a refusal is audited like every other
+            // refusal — the 422 above and the verification errors below both
+            // leave an error record, and this 400 left none, so probing the
+            // profile gate was invisible on the trail.
+            Metrics::inc(&state.metrics.verify_errors);
+            if let Some(log) = &state.audit {
+                if !append_error_off_runtime(
+                    log,
+                    AuditErrorRecord {
+                        timestamp: crate::durable::now_utc_rfc3339(),
+                        program_id: input.program_id.clone(),
+                        instruction_name: "<wallet_profile refused>".to_string(),
+                        error: msg.clone(),
+                        error_type: "InvalidInput".to_string(),
+                        status: StatusCode::BAD_REQUEST.as_u16(),
+                    },
+                )
+                .await
+                {
+                    tracing_server_error("audit: error record for a 400 was NOT written");
+                }
+            }
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
@@ -1688,11 +1833,6 @@ async fn verify_handler(
 
     match state.core.verify_async(&input).await {
         Ok(result) => {
-            Metrics::inc(if result.approved {
-                &state.metrics.verify_approved
-            } else {
-                &state.metrics.verify_blocked
-            });
             tracing_log(&format!(
                 "verify: {} | {} | confidence={:.2} | {}",
                 input.program_id,
@@ -1728,37 +1868,45 @@ async fn verify_handler(
                         .map(|l| l.status.as_str().to_string())
                         .unwrap_or_else(|| "unknown".to_string())
                 };
-                audit_recorded = log.append(&AuditRecord {
-                    // The synchronous construction -> simulation ->
-                    // verification operation Graphite actually performs. Its
-                    // construction and simulation evidence rides on this same
-                    // row (`transaction`, `l3_status`) rather than as separate
-                    // rows: they are inseparable from this one call, and
-                    // splitting them would triple audit volume without adding
-                    // a fact. The stages Graphite does NOT perform arrive via
-                    // POST /audit/event.
-                    event_type: LifecycleEvent::Verification,
-                    timestamp: crate::durable::now_utc_rfc3339(),
-                    audit_trail_id: result.audit_trail_id.clone(),
-                    content_hash: result.content_hash.clone(),
-                    transaction_sha256: match &result.scope {
-                        crate::verification::VerificationScope::ArtifactBound {
-                            transaction_sha256,
-                            ..
-                        } => Some(transaction_sha256.clone()),
-                        crate::verification::VerificationScope::Descriptive { .. } => None,
+                audit_recorded = append_off_runtime(
+                    log,
+                    AuditRecord {
+                        // The synchronous construction -> simulation ->
+                        // verification operation Graphite actually performs. Its
+                        // construction and simulation evidence rides on this same
+                        // row (`transaction`, `l3_status`) rather than as separate
+                        // rows: they are inseparable from this one call, and
+                        // splitting them would triple audit volume without adding
+                        // a fact. The stages Graphite does NOT perform arrive via
+                        // POST /audit/event.
+                        event_type: LifecycleEvent::Verification,
+                        timestamp: crate::durable::now_utc_rfc3339(),
+                        audit_trail_id: result.audit_trail_id.clone(),
+                        content_hash: result.content_hash.clone(),
+                        transaction_sha256: match &result.scope {
+                            crate::verification::VerificationScope::ArtifactBound {
+                                transaction_sha256,
+                                ..
+                            } => Some(transaction_sha256.clone()),
+                            crate::verification::VerificationScope::Descriptive { .. } => None,
+                        },
+                        program_id: input.program_id.clone(),
+                        instruction_name: result.instruction_name.clone(),
+                        protocol_name: result.protocol_name.clone(),
+                        manifest_version: result.manifest_version.clone(),
+                        approved: result.approved,
+                        confidence: result.confidence,
+                        risk_status: result.risk_verdict.status.clone(),
+                        policy_verdict: result.policy_verdict.clone(),
+                        l3_status: layer_status("L3_SimulationVerification"),
+                        l8_status: layer_status("L8_ExecutionVerification"),
+                        wallet_profile: Some(match &profile_note {
+                            Some(note) => format!("{:?} ({note})", input.wallet_profile),
+                            None => format!("{:?}", input.wallet_profile),
+                        }),
                     },
-                    program_id: input.program_id.clone(),
-                    instruction_name: result.instruction_name.clone(),
-                    protocol_name: result.protocol_name.clone(),
-                    manifest_version: result.manifest_version.clone(),
-                    approved: result.approved,
-                    confidence: result.confidence,
-                    risk_status: result.risk_verdict.status.clone(),
-                    policy_verdict: result.policy_verdict.clone(),
-                    l3_status: layer_status("L3_SimulationVerification"),
-                    l8_status: layer_status("L8_ExecutionVerification"),
-                });
+                )
+                .await;
             }
 
             // A verdict Graphite could not record is a verdict it must not hand
@@ -1786,6 +1934,15 @@ async fn verify_handler(
                 ));
             }
 
+            // Counted only once the verdict is on the trail (A4-09,
+            // 2026-09-29 audit): the approved counter went up before the
+            // append, so a verdict refused with 503 for an unwritable trail
+            // still showed on /metrics as an approval that was never given.
+            Metrics::inc(if result.approved {
+                &state.metrics.verify_approved
+            } else {
+                &state.metrics.verify_blocked
+            });
             let mut result = result;
             if let Some(note) = profile_note {
                 // Visible in the response and, via the summary, in the audit
@@ -1826,14 +1983,19 @@ async fn verify_handler(
             // and reported, never a panic, because this response is already a
             // rejection.
             if let Some(log) = &state.audit {
-                if !log.append_error(&AuditErrorRecord {
-                    timestamp: crate::durable::now_utc_rfc3339(),
-                    program_id: input.program_id.clone(),
-                    instruction_name: input.instruction_discriminator.clone(),
-                    error: http_error.message().to_string(),
-                    error_type: error_type.clone(),
-                    status: status.as_u16(),
-                }) {
+                if !append_error_off_runtime(
+                    log,
+                    AuditErrorRecord {
+                        timestamp: crate::durable::now_utc_rfc3339(),
+                        program_id: input.program_id.clone(),
+                        instruction_name: input.instruction_discriminator.clone(),
+                        error: http_error.message().to_string(),
+                        error_type: error_type.clone(),
+                        status: status.as_u16(),
+                    },
+                )
+                .await
+                {
                     tracing_server_error(&format!(
                         "audit: error record for a {} was NOT written",
                         status.as_u16()
@@ -2348,85 +2510,91 @@ async fn execution_handler(
     .flatten()
     .collect();
     let recorded = match audit {
-        Some(log) => log.append_lifecycle(&LifecycleEventRecord {
-            event_type: LifecycleEvent::Confirmation,
-            timestamp: crate::durable::now_utc_rfc3339(),
-            content_hash: result
-                .recorded_content_hash
-                .clone()
-                .or_else(|| body.content_hash.clone())
-                .unwrap_or_default(),
-            verdict_on_record: None,
-            verdict_on_record_key: None,
-            // The exact keys go on this signature's row only when the
-            // attribution IS exact. A `content_hash` attribution names *a*
-            // transaction carrying the instruction; writing that record's
-            // id and digest here would state, on a row keyed by this
-            // signature, that this signature is that transaction — a link
-            // the trail then reports as a conflict against a truthful
-            // report (found by the Round 12 probe). The detail still says
-            // what was resolved and by which key.
-            transaction_sha256: result.chain_transaction_sha256.clone().or_else(|| {
-                chain_attributed
-                    .then(|| result.recorded_transaction_sha256.clone())
-                    .flatten()
-            }),
-            audit_trail_id: if chain_attributed {
-                result.recorded_audit_trail_id.clone()
-            } else {
-                None
-            },
-            transaction_signature: Some(signature.clone()),
-            reported_by: body.reported_by.clone(),
-            detail: Some(format!(
-                "L8 reconciliation: {:?}; attribution: {:?}{}{}{}",
-                result.reconciliation,
-                result.attribution,
-                if caller_claims.is_empty() || chain_attributed {
-                    String::new()
-                } else {
-                    format!(
+        Some(log) => {
+            append_lifecycle_off_runtime(
+                log,
+                LifecycleEventRecord {
+                    event_type: LifecycleEvent::Confirmation,
+                    timestamp: crate::durable::now_utc_rfc3339(),
+                    content_hash: result
+                        .recorded_content_hash
+                        .clone()
+                        .or_else(|| body.content_hash.clone())
+                        .unwrap_or_default(),
+                    verdict_on_record: None,
+                    verdict_on_record_key: None,
+                    // The exact keys go on this signature's row only when the
+                    // attribution IS exact. A `content_hash` attribution names *a*
+                    // transaction carrying the instruction; writing that record's
+                    // id and digest here would state, on a row keyed by this
+                    // signature, that this signature is that transaction — a link
+                    // the trail then reports as a conflict against a truthful
+                    // report (found by the Round 12 probe). The detail still says
+                    // what was resolved and by which key.
+                    transaction_sha256: result.chain_transaction_sha256.clone().or_else(|| {
+                        chain_attributed
+                            .then(|| result.recorded_transaction_sha256.clone())
+                            .flatten()
+                    }),
+                    audit_trail_id: if chain_attributed {
+                        result.recorded_audit_trail_id.clone()
+                    } else {
+                        None
+                    },
+                    transaction_signature: Some(signature.clone()),
+                    reported_by: body.reported_by.clone(),
+                    detail: Some(format!(
+                        "L8 reconciliation: {:?}; attribution: {:?}{}{}{}",
+                        result.reconciliation,
+                        result.attribution,
+                        if caller_claims.is_empty() || chain_attributed {
+                            String::new()
+                        } else {
+                            format!(
                         "; linked by the caller's claim, not by chain bytes (not indexed): {}",
                         caller_claims.join(", ")
                     )
+                        },
+                        if result.caller_keys_disagree.is_empty() {
+                            String::new()
+                        } else {
+                            format!(
+                                "; caller keys disagree: {}",
+                                result.caller_keys_disagree.join(" | ")
+                            )
+                        },
+                        match (
+                            &result.chain_bytes_rejected,
+                            &result.chain_bytes_unavailable,
+                            &result.chain_inconsistent,
+                            &result.inclusion_witness,
+                        ) {
+                            (Some(why), _, _, _) => format!("; chain bytes rejected: {why}"),
+                            (None, unavailable, inconsistent, witness) => {
+                                let mut tail = String::new();
+                                if let Some(why) = unavailable {
+                                    tail.push_str(&format!("; chain bytes unavailable: {why}"));
+                                }
+                                if let Some(why) = inconsistent {
+                                    tail.push_str(&format!("; RPC inconsistent: {why}"));
+                                }
+                                if let Some(w) = witness {
+                                    tail.push_str(&format!(
+                                        "; witness {}: {}",
+                                        if w.agrees { "agrees" } else { "DISAGREES" },
+                                        w.detail
+                                    ));
+                                }
+                                tail
+                            }
+                        }
+                    )),
+                    observed_by_graphite: true,
+                    sequence_anomalies: Vec::new(),
                 },
-                if result.caller_keys_disagree.is_empty() {
-                    String::new()
-                } else {
-                    format!(
-                        "; caller keys disagree: {}",
-                        result.caller_keys_disagree.join(" | ")
-                    )
-                },
-                match (
-                    &result.chain_bytes_rejected,
-                    &result.chain_bytes_unavailable,
-                    &result.chain_inconsistent,
-                    &result.inclusion_witness,
-                ) {
-                    (Some(why), _, _, _) => format!("; chain bytes rejected: {why}"),
-                    (None, unavailable, inconsistent, witness) => {
-                        let mut tail = String::new();
-                        if let Some(why) = unavailable {
-                            tail.push_str(&format!("; chain bytes unavailable: {why}"));
-                        }
-                        if let Some(why) = inconsistent {
-                            tail.push_str(&format!("; RPC inconsistent: {why}"));
-                        }
-                        if let Some(w) = witness {
-                            tail.push_str(&format!(
-                                "; witness {}: {}",
-                                if w.agrees { "agrees" } else { "DISAGREES" },
-                                w.detail
-                            ));
-                        }
-                        tail
-                    }
-                }
-            )),
-            observed_by_graphite: true,
-            sequence_anomalies: Vec::new(),
-        }),
+            )
+            .await
+        }
         None => false,
     };
 
@@ -2669,36 +2837,40 @@ async fn quarantine_handler(
     // The response says whether the record landed, and the log's own counters
     // mark the node degraded.
     let audit_recorded = if let Some(log) = &state.audit {
-        log.append_lifecycle(&LifecycleEventRecord {
-            event_type: LifecycleEvent::OperatorAction,
-            timestamp: crate::durable::now_utc_rfc3339(),
-            verdict_on_record: None,
-            verdict_on_record_key: None,
-            transaction_sha256: None,
-            content_hash: program_id.clone(),
-            audit_trail_id: None,
-            transaction_signature: None,
-            // Who acted is the credential that authorized it; the caller's
-            // own label is kept, marked as a claim.
-            reported_by: Some(match body.reported_by.as_deref().map(str::trim) {
-                Some(label) if !label.is_empty() => format!(
-                    "operator key {} (label claimed by caller: {})",
-                    operator_key_id(&state),
-                    label.chars().take(128).collect::<String>()
-                ),
-                _ => format!("operator key {}", operator_key_id(&state)),
-            }),
-            detail: Some(if body.lift {
-                format!("quarantine lifted for {program_id}")
-            } else {
-                format!(
-                    "quarantined {program_id}: {}",
-                    body.reason.as_deref().unwrap_or("").trim()
-                )
-            }),
-            observed_by_graphite: true,
-            sequence_anomalies: Vec::new(),
-        })
+        append_lifecycle_off_runtime(
+            log,
+            LifecycleEventRecord {
+                event_type: LifecycleEvent::OperatorAction,
+                timestamp: crate::durable::now_utc_rfc3339(),
+                verdict_on_record: None,
+                verdict_on_record_key: None,
+                transaction_sha256: None,
+                content_hash: program_id.clone(),
+                audit_trail_id: None,
+                transaction_signature: None,
+                // Who acted is the credential that authorized it; the caller's
+                // own label is kept, marked as a claim.
+                reported_by: Some(match body.reported_by.as_deref().map(str::trim) {
+                    Some(label) if !label.is_empty() => format!(
+                        "operator key {} (label claimed by caller: {})",
+                        operator_key_id(&state),
+                        label.chars().take(128).collect::<String>()
+                    ),
+                    _ => format!("operator key {}", operator_key_id(&state)),
+                }),
+                detail: Some(if body.lift {
+                    format!("quarantine lifted for {program_id}")
+                } else {
+                    format!(
+                        "quarantined {program_id}: {}",
+                        body.reason.as_deref().unwrap_or("").trim()
+                    )
+                }),
+                observed_by_graphite: true,
+                sequence_anomalies: Vec::new(),
+            },
+        )
+        .await
     } else {
         false
     };
@@ -3009,6 +3181,14 @@ async fn lifecycle_event_handler(
         VerdictOnRecord::Approved => {}
     }
 
+    // A4-11 (2026-09-29 audit): the history read and the append below are
+    // one step. Two reports arriving together each read a history without
+    // the other and were both recorded, so two different signatures for one
+    // transaction carried no `signature conflict`. Lifecycle reports are few;
+    // they are taken one at a time.
+    static LIFECYCLE_REPORTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _one_report_at_a_time = LIFECYCLE_REPORTS.lock().await;
+
     // The rows already on record for this transaction, and how this one
     // sits against them (Round 12). Computed by Graphite from its own trail;
     // recorded on the row and returned, never used to refuse — a report out
@@ -3077,7 +3257,7 @@ async fn lifecycle_event_handler(
         observed_by_graphite: false,
         sequence_anomalies,
     };
-    if !log.append_lifecycle(&record) {
+    if !append_lifecycle_off_runtime(log, record.clone()).await {
         // `recorded: true` is the one thing this endpoint promises. When the
         // append fails the promise cannot be made, and the caller — which is
         // reporting a signing or submission it already performed — must know
@@ -3226,6 +3406,51 @@ async fn manifests_handler(State(state): State<AppState>) -> Response {
     }
 }
 
+/// Append a verification record on the blocking pool.
+///
+/// Every append ends in `sync_data`, a device flush that takes from
+/// microseconds on NVMe to tens of milliseconds on a network disk. Made on
+/// the async runtime, each one held a worker for that long, so under load
+/// the flushes of concurrent verdicts stalled every other request on the
+/// node, `/health` included, and throughput was bounded by the worker count
+/// divided by the flush time. On the blocking pool a flush holds only its
+/// own request. The durability contract is unchanged: the verdict is not
+/// answered until the record is on disk.
+async fn append_off_runtime(log: &AuditLog, record: AuditRecord) -> bool {
+    let log = log.clone();
+    off_runtime(move || log.append(&record)).await
+}
+
+/// [`append_off_runtime`] for an error-path record.
+async fn append_error_off_runtime(log: &AuditLog, record: AuditErrorRecord) -> bool {
+    let log = log.clone();
+    off_runtime(move || log.append_error(&record)).await
+}
+
+/// [`append_off_runtime`] for a lifecycle event.
+async fn append_lifecycle_off_runtime(log: &AuditLog, record: LifecycleEventRecord) -> bool {
+    let log = log.clone();
+    off_runtime(move || log.append_lifecycle(&record)).await
+}
+
+/// Run a scan of the audit trail on the blocking pool (A4-04, 2026-09-29
+/// audit). The dashboard's `/api/*` reads parse the audit file; on the async
+/// runtime each held a worker for as long as the parse took, and a few polls
+/// against a large trail stalled `/verify` and `/health` with it — the class
+/// Round 19 (F-19-18) fixed for L8's lookups. A panic in the scan is
+/// re-raised so the handler answers 500, never a partial view.
+async fn off_runtime<T, F>(scan: F) -> T
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    match tokio::task::spawn_blocking(scan).await {
+        Ok(v) => v,
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        Err(join) => panic!("an audit-trail scan did not complete: {join}"),
+    }
+}
+
 /// Dashboard: Semantic Graph read-only snapshot (P4 — never mutates).
 async fn graph_handler(State(state): State<AppState>) -> Json<crate::verification::GraphSnapshot> {
     Json(state.core.graph_snapshot())
@@ -3238,10 +3463,12 @@ async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde
     // bounded by the cap while `count` reports the exact total (P4 — the
     // dashboard is observability). The scan is O(log) per poll, which is
     // fine at the dashboard's cadence on a single core node.
-    let (records, _, total, _) = match &state.audit {
+    let audit = state.audit.clone();
+    let (records, _, total, _) = off_runtime(move || match &audit {
         Some(log) => log.read_tail_filtered(CONFIDENCE_SERIES_CAP, AuditSelector::All),
         None => (Vec::new(), Vec::new(), 0, 0),
-    };
+    })
+    .await;
     let series: Vec<serde_json::Value> = records
         .iter()
         .rev()
@@ -3264,10 +3491,12 @@ async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde
 async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     // Bounded read: only the most recent violations are surfaced; memory
     // stays bounded by the cap while `count` reports the exact total.
-    let (records, errors, total_violations, _) = match &state.audit {
+    let audit = state.audit.clone();
+    let (records, errors, total_violations, _) = off_runtime(move || match &audit {
         Some(log) => log.read_tail_filtered(VIOLATIONS_CAP, AuditSelector::Blocked),
         None => (Vec::new(), Vec::new(), 0, 0),
-    };
+    })
+    .await;
     let violations: Vec<serde_json::Value> = records
         .iter()
         .rev()
@@ -3314,10 +3543,12 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
 async fn top_protocols_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     // Streaming per-program counts: memory is bounded by distinct programs,
     // never by log size.
-    let observed = match &state.audit {
+    let audit = state.audit.clone();
+    let observed = off_runtime(move || match &audit {
         Some(log) => log.observations_by_program(),
         None => std::collections::HashMap::new(),
-    };
+    })
+    .await;
     // One graph lock per request: the snapshot is owned data, so the guard
     // drops before the audit-log reads below (no nested locking).
     let snapshot = state.core.graph_snapshot();
@@ -3412,7 +3643,21 @@ async fn registry_handler(State(state): State<AppState>) -> Json<serde_json::Val
 ///     an aggregator most needs to parse.
 ///   - `RUST_LOG` could neither raise nor suppress them.
 fn tracing_log(msg: &str) {
-    tracing::info!(target: "graphite", "{}", msg);
+    tracing::info!(target: "graphite", "{}", log_safe(msg));
+}
+
+/// A log line with every control character escaped (A4-12, 2026-09-29
+/// audit). Server log lines interpolate caller-supplied fields — a program
+/// id, a discriminator, an error message quoting them — and in the text log
+/// format a newline in one of them wrote a second, forged log line. JSON
+/// output escapes them itself; the text format did not. Escaped at the one
+/// place every server line passes through, whatever the field.
+fn log_safe(msg: &str) -> std::borrow::Cow<'_, str> {
+    if msg.chars().any(char::is_control) {
+        std::borrow::Cow::Owned(msg.chars().flat_map(char::escape_default).collect())
+    } else {
+        std::borrow::Cow::Borrowed(msg)
+    }
 }
 
 /// A rejected request that the CALLER caused (malformed discriminator, bad
@@ -3424,13 +3669,13 @@ fn tracing_log(msg: &str) {
 /// and bury the genuine server faults underneath it. The line is still emitted
 /// — probing must leave a trail — and the audit record is written either way.
 fn tracing_client_reject(msg: &str) {
-    tracing::warn!(target: "graphite", "{}", msg);
+    tracing::warn!(target: "graphite", "{}", log_safe(msg));
 }
 
 /// A fault on Graphite's side. Rare, actionable, and worth paging on — which
 /// is only true while a caller cannot manufacture one.
 fn tracing_server_error(msg: &str) {
-    tracing::error!(target: "graphite", "{}", msg);
+    tracing::error!(target: "graphite", "{}", log_safe(msg));
 }
 
 #[cfg(test)]
@@ -3456,6 +3701,50 @@ mod tests {
 
     const PEER: SocketAddr =
         SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::new(203, 0, 113, 7)), 9);
+
+    /// A4-02: a second `X-Forwarded-For` LINE is part of the same list; the
+    /// proxy-appended entry is the last one of all lines, never the first
+    /// line's.
+    #[test]
+    fn a_second_xff_line_does_not_choose_the_bucket() {
+        let req = axum::http::Request::builder()
+            .uri("/verify")
+            .header("x-forwarded-for", "6.6.6.6")
+            .header("x-forwarded-for", "198.51.100.42")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        assert_eq!(
+            client_ip(&req, PEER, 1),
+            "198.51.100.42".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    /// An entry with a port names the same client (A4, 2026-09-29 audit):
+    /// it keys that client's bucket, not the proxy's.
+    #[test]
+    fn an_xff_entry_with_a_port_keys_its_client() {
+        let req = req_with_xff(Some("6.6.6.6, 198.51.100.42:4711"));
+        assert_eq!(
+            client_ip(&req, PEER, 1),
+            "198.51.100.42".parse::<IpAddr>().unwrap()
+        );
+        let req = req_with_xff(Some("[2001:db8::1]:443"));
+        assert_eq!(
+            client_ip(&req, PEER, 1),
+            "2001:db8::1".parse::<IpAddr>().unwrap()
+        );
+    }
+
+    /// A4-12: a control character in a logged field cannot start a new line.
+    #[test]
+    fn log_lines_escape_control_characters() {
+        let line = log_safe("verify: evil\nFAKE LINE\r\u{1b}[31m");
+        assert!(!line.contains('\n') && !line.contains('\r') && !line.contains('\u{1b}'));
+        assert!(matches!(
+            log_safe("plain"),
+            std::borrow::Cow::Borrowed("plain")
+        ));
+    }
 
     /// With no trusted proxy configured, the header must be ignored entirely —
     /// a directly-reachable server must never believe a caller-supplied IP.
@@ -4398,6 +4687,7 @@ mod tests {
             policy_verdict: "Approved".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
         }));
         assert!(log.append(&AuditRecord {
             event_type: LifecycleEvent::Verification,
@@ -4415,6 +4705,7 @@ mod tests {
             policy_verdict: "RejectedBelowThreshold".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
         }));
         let app = build_app(state, vec![]);
         let (status, json) = get_json(&app, "/api/confidence-history").await;
@@ -4445,6 +4736,7 @@ mod tests {
             policy_verdict: "RejectedRiskEngineBlock".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
         }));
         // Error-path probe (malformed request) must surface as a violation too.
         assert!(log.append_error(&crate::durable::AuditErrorRecord {
@@ -4496,6 +4788,7 @@ mod tests {
                 policy_verdict: "Approved".to_string(),
                 l3_status: "inconclusive".to_string(),
                 l8_status: "inconclusive".to_string(),
+                wallet_profile: None,
             }));
         }
         let app = build_app(state, vec![]);
@@ -4632,6 +4925,7 @@ mod tests {
         let account = |a: &str| crate::account_resolution::ResolvedAccount {
             address: a.to_string(),
             role: "signer".to_string(),
+            name: String::new(),
             is_pda: false,
             is_signer: true,
             is_writable: true,
@@ -5083,6 +5377,7 @@ mod tests {
             policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
         }
     }
 
@@ -6146,23 +6441,33 @@ mod request_path_cost {
     /// `from_fn_with_state` middleware. Until Round 11 that deep-copied the
     /// whole manifest registry and the community registry engine — about
     /// 15 ms per clone on the reference machine, four clones per request, so
-    /// `/health` answered in ~100 ms. The bound here is two orders of
-    /// magnitude above what `Arc` clones cost and two below what deep copies
-    /// cost, so it is not a timing flake: a thousand clones must stay under
-    /// a quarter of a second (deep copies took fifteen).
+    /// `/health` answered in ~100 ms.
+    ///
+    /// Checked structurally, not by the clock (2026-09-29 audit, A6-11: a
+    /// wall-clock bound on a shared CI runner is a flake waiting to happen):
+    /// every clone must share the SAME core, registry engine and permit pool
+    /// as the original — a deep copy is a different allocation.
     #[test]
     fn app_state_clone_is_a_reference_count_not_a_deep_copy() {
         let (state, dir) = tests::test_state();
-        let t = std::time::Instant::now();
         let mut keep = Vec::with_capacity(1000);
         for _ in 0..1000 {
             keep.push(state.clone());
         }
-        let elapsed = t.elapsed();
-        assert!(
-            elapsed < Duration::from_millis(250),
-            "1000 AppState clones took {elapsed:?}; the request path is deep-copying state again"
-        );
+        for clone in &keep {
+            assert!(
+                Arc::ptr_eq(&clone.core, &state.core),
+                "the core was deep-copied"
+            );
+            assert!(
+                Arc::ptr_eq(&clone.registry_engine, &state.registry_engine),
+                "the registry engine was deep-copied"
+            );
+            assert!(
+                Arc::ptr_eq(&clone.inflight, &state.inflight),
+                "the permit pool was copied: each clone would admit its own requests"
+            );
+        }
         assert_eq!(Arc::strong_count(&state.core), 1001);
         drop(keep);
         std::fs::remove_dir_all(&dir).ok();

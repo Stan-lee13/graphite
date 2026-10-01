@@ -96,6 +96,9 @@ fn lamports(pubkey: &str, n: u64) -> AccountSnapshot {
         transfer_fee_withheld: None,
         transfer_fee_config: None,
         token2022_powers: None,
+        data_sha256: None,
+        executable: false,
+        native_authorities: Vec::new(),
     }
 }
 

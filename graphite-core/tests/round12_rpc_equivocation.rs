@@ -217,6 +217,7 @@ fn record(log: &AuditLog, signed: &[u8], approved: bool) -> AuditRecord {
         policy_verdict: if approved { "Approved" } else { "Rejected" }.to_string(),
         l3_status: "inconclusive".to_string(),
         l8_status: "inconclusive".to_string(),
+        wallet_profile: None,
     };
     assert!(log.append(&r));
     r

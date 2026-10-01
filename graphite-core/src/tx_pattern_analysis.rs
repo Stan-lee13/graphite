@@ -480,7 +480,10 @@ fn impersonates(program_id: &str, known: &[String]) -> Option<String> {
         .find(|k| {
             k.len() > PREFIX_LEN
                 && k.as_str() != program_id
-                && k[..PREFIX_LEN] == program_id[..PREFIX_LEN]
+                // `get`, not `[..]`: a caller's trace can carry a non-ASCII
+                // id, and a byte slice through a character panicked (A3-09).
+                && k.get(..PREFIX_LEN).is_some()
+                && k.get(..PREFIX_LEN) == program_id.get(..PREFIX_LEN)
         })
         .cloned()
 }

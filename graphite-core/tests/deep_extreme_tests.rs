@@ -571,7 +571,7 @@ fn test_verify_jupiter_swap_with_unlisted_cpi_blocked() {
             "DEb5yphxEaPc5BN118svVN4R3GFu9jKs31Gcv5yekjZx",
             "9WzDXwBbmkg8ZTbNMqJx8W5DkxUkq5PjAB8qjGp3q5J",
         ],
-        &["MaliciousDrainerProgram1111111111111111111111"],
+        &["MaliciousDrainerProgram111111111111111111111"],
         WalletProfile::Treasury,
         good_evidence(),
     );

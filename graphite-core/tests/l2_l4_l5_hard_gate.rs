@@ -117,8 +117,13 @@ fn l2_failed_blocks_approval_at_battle_tested_tier_and_tradingbot_threshold() {
     let mut input = system_transfer(WalletProfile::TradingBot);
     // instruction_discriminator is "02000000" (System Transfer) but
     // instruction_data starts with different bytes — a self-contradictory
-    // input (the exact HIGH #1 "Discriminator Check Bypass" class).
-    input.instruction_data = Some(vec![0xff, 0x00, 0x00, 0x00, 1, 0, 0, 0, 0, 0, 0, 0]);
+    // input (the exact HIGH #1 "Discriminator Check Bypass" class). The bytes
+    // name another DESCRIBED System instruction (CreateAccount, tag 0), so
+    // the confidence below is that of a described instruction. Bytes naming
+    // no described instruction (`0xff…`) now score as undescribed on their
+    // own (A3-04, 2026-09-29 audit), which would hide whether the hard gate
+    // or the low score refused them.
+    input.instruction_data = Some(vec![0x00, 0x00, 0x00, 0x00, 1, 0, 0, 0, 0, 0, 0, 0]);
 
     let result = core.verify(&input).unwrap();
 

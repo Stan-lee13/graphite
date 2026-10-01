@@ -382,6 +382,7 @@ fn record(log: &AuditLog, r: &VerificationResult) {
         policy_verdict: r.policy_verdict.clone(),
         l3_status: "inconclusive".to_string(),
         l8_status: "inconclusive".to_string(),
+        wallet_profile: None,
     }));
 }
 

@@ -1782,9 +1782,17 @@ pub fn compute_budget_request(message: &ArtifactMessage) -> ComputeBudgetRequest
                 continue;
             }
         };
-        if ix.data.len() != len {
+        // Too SHORT is what the runtime refuses. Too long is not: agave
+        // decodes these with `try_from_slice_unchecked`, which reads the
+        // variant and its value and ignores whatever follows (A1-02,
+        // 2026-09-29 audit; `compute_budget_instruction_details.rs`,
+        // `process_instruction`). Refusing to read `[3, price, junk]` meant a
+        // price the runtime CHARGES was read as no price at all, and the
+        // ExcessivePriorityFee check saw ~0 lamports where the payer paid up
+        // to 1.4 SOL.
+        if ix.data.len() < len {
             r.problems.push(format!(
-                "instruction #{i} is a Compute Budget instruction of the wrong length ({} bytes, {len} expected)",
+                "instruction #{i} is a Compute Budget instruction too short to decode ({} bytes, {len} needed)",
                 ix.data.len()
             ));
             continue;

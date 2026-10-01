@@ -369,6 +369,7 @@ async fn verify_and_record(
         policy_verdict: r.policy_verdict.clone(),
         l3_status: "inconclusive".to_string(),
         l8_status: "inconclusive".to_string(),
+        wallet_profile: None,
     }));
     r
 }
@@ -737,6 +738,7 @@ async fn every_key_is_exact_across_rotation_and_concurrency() {
             policy_verdict: r.policy_verdict.clone(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
         }));
         ids.push(r.audit_trail_id.clone());
     }

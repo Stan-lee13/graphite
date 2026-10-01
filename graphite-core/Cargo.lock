@@ -630,6 +630,8 @@ dependencies = [
  "ed25519-dalek",
  "flate2",
  "hex",
+ "hyper",
+ "hyper-util",
  "proptest",
  "reqwest",
  "serde",

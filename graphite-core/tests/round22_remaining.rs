@@ -40,7 +40,10 @@ fn b58(k: &[u8; 32]) -> String {
 
 const MINT: [u8; 32] = [21u8; 32];
 const OTHER_MINT: [u8; 32] = [22u8; 32];
-const SRC_OWNER: [u8; 32] = [11u8; 32];
+// The owner signs its own transfers (`hooked_transfer`'s authority): a
+// TransferChecked whose authority is not the source's owner or delegate
+// executes only for a permanent delegate (A2-03, 2026-09-29 audit).
+const SRC_OWNER: [u8; 32] = OWNER_SIGNER;
 const DST_OWNER: [u8; 32] = [12u8; 32];
 const SOURCE: [u8; 32] = [31u8; 32];
 const DEST: [u8; 32] = [32u8; 32];
@@ -171,6 +174,7 @@ fn resolved(address: &str) -> ResolvedAccount {
     ResolvedAccount {
         address: address.to_string(),
         role: "account".to_string(),
+        name: String::new(),
         is_pda: false,
         is_signer: false,
         is_writable: true,

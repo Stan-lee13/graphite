@@ -158,6 +158,7 @@ mod tests {
         ResolvedAccount {
             address: addr.to_string(),
             role: "signer".to_string(),
+            name: String::new(),
             is_pda: false,
             is_signer: signer,
             is_writable: writable,

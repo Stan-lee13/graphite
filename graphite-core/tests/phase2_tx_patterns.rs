@@ -197,7 +197,7 @@ fn cpi_trace_sibling_sweep_is_hard_blocked() {
     let core = GraphiteCore::new();
     let mut input = base_input(TOKEN_PROGRAM, "03", &[SOURCE, DEST, OWNER]);
     let victims: Vec<String> = (0..20)
-        .map(|i| format!("VictimTokenAccount{i:040}"))
+        .map(|i| format!("VictimTokenAccount{i:026}"))
         .collect();
     input.cpi_trace = Some(CpiTraceNode {
         program_id: TOKEN_PROGRAM.to_string(),

@@ -64,6 +64,11 @@ enum Commands {
         /// Port to probe (default: 7331)
         #[arg(short, long, default_value = "7331")]
         port: u16,
+        /// Also fail when /health reports `degraded: true` (for example,
+        /// failing audit writes). Off by default so a load balancer keeps a
+        /// node that still refuses correctly.
+        #[arg(long)]
+        strict: bool,
     },
     /// Run the benchmark suite
     Benchmark,
@@ -433,8 +438,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // `--no-default-features --features cli` job, which is exactly why
         // that job exists — `--all-features` can never surface this.
         #[cfg(feature = "server")]
-        Commands::Healthcheck { port } => {
-            graphite_core::cli::run(graphite_core::cli::CliCommand::Healthcheck { port })
+        Commands::Healthcheck { port, strict } => {
+            graphite_core::cli::run(graphite_core::cli::CliCommand::Healthcheck { port, strict })
         }
         Commands::Benchmark => graphite_core::cli::run(graphite_core::cli::CliCommand::Benchmark),
         Commands::Regression { action } => match action {

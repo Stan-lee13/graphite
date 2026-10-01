@@ -307,7 +307,7 @@
     "program_id": "Cargo2VNTPPTi9c1vq1Jw5d3BWUNr18MjRtSupAghKEk",
     "version": "1.0.0",
     "content_hash": "9c26df5b7f916c28c121ae162a5df551b1f26ddf757a10566f742d208617b9d0",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -3598,7 +3598,7 @@
     "program_id": "Cargo2VNTPPTi9c1vq1Jw5d3BWUNr18MjRtSupAghKEk",
     "version": "1.0.0",
     "content_hash": "0313f5b7c23b44d284944c24afa8f8cff61c1cbe47c848aeec24e5fa92a562b3",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {

@@ -134,6 +134,7 @@ fn resolved(address: &[u8; 32]) -> ResolvedAccount {
     ResolvedAccount {
         address: b58(address),
         role: "account".to_string(),
+        name: String::new(),
         is_pda: false,
         is_signer: false,
         is_writable: true,

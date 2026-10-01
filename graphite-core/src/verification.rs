@@ -172,8 +172,10 @@ fn build_rpc_state_diff(
 ) -> StateDiff {
     let snap =
         |a: &Option<crate::rpc_client::AccountState>, key: &str| -> Option<AccountSnapshot> {
-            a.as_ref()
-                .map(|s| AccountSnapshot::from_raw(key, s.lamports, &s.owner, &s.data))
+            a.as_ref().map(|s| {
+                AccountSnapshot::from_raw(key, s.lamports, &s.owner, &s.data)
+                    .with_executable(s.executable)
+            })
         };
     let deltas: Vec<AccountDelta> = addresses
         .iter()
@@ -283,14 +285,11 @@ fn transfer_fee_mints_to_fetch(
         .chain(post.iter())
         .flatten()
         .filter(|a| a.owner == crate::state_diff::SPL_TOKEN_2022_PROGRAM)
-        // Round 21: every extension-bearing account, not only fee-bearing
-        // ones — a transfer hook's program and a permanent delegate are
-        // facts about the mint too.
-        .filter(|a| {
-            !crate::state_diff::detect_token2022_extensions(&a.data)
-                .found
-                .is_empty()
-        })
+        // Every Token-2022 token account's mint (A2-03, 2026-09-29 audit).
+        // Round 21 took only extension-bearing accounts, but a permanent
+        // delegate lives on the MINT and leaves no mark on the account: a
+        // plain 165-byte account's mint was never read, and a permanent
+        // delegate draining it was not seen.
         .filter_map(|a| crate::state_diff::decode_token_account(&a.data).map(|t| t.mint))
         .filter(|m| !diffed.contains(m.as_str()))
         .collect();
@@ -330,14 +329,27 @@ fn account_resolution_reason(
     resolution: &crate::account_resolution::AccountResolutionResult,
     manifest_found: bool,
     privileges: PrivilegeSource,
-) -> String {
+) -> (LayerStatus, String) {
     use crate::account_resolution::AccountIdentity;
     let total = resolution.resolved_accounts.len();
+    // A3-10 (2026-09-29 audit): an account whose identity check FAILED is
+    // not "confirmed" and not "matched". The counts below used to read only
+    // the kind of check a slot has, so a substituted fixed address was
+    // reported as matched and L1 said Passed while L7 refused the same
+    // account. The layer now reports what the checks found.
+    let failed: Vec<&crate::account_resolution::ResolvedAccount> = resolution
+        .resolved_accounts
+        .iter()
+        .filter(|a| a.pda_mismatch || a.expected_address_mismatch || a.privilege_mismatch)
+        .collect();
     let count = |k: AccountIdentity| {
         resolution
             .resolved_accounts
             .iter()
-            .filter(|a| a.identity == k)
+            .filter(|a| {
+                a.identity == k
+                    && !(a.pda_mismatch || a.expected_address_mismatch || a.privilege_mismatch)
+            })
             .count()
     };
     let pda = count(AccountIdentity::Pda);
@@ -346,6 +358,15 @@ fn account_resolution_reason(
 
     let coverage = if total == 0 {
         "no accounts to resolve".to_string()
+    } else if !failed.is_empty() {
+        format!(
+            "identity FAILED for {} of {total} ({} PDA mismatch, {} fixed-address mismatch, {} privilege mismatch); of the rest, {} confirmed ({pda} PDA(s) re-derived, {constant} fixed address(es) equal to the manifest's) and {unverified} accepted by position",
+            failed.len(),
+            failed.iter().filter(|a| a.pda_mismatch).count(),
+            failed.iter().filter(|a| a.expected_address_mismatch).count(),
+            failed.iter().filter(|a| a.privilege_mismatch).count(),
+            pda + constant
+        )
     } else if unverified == 0 {
         format!("identity confirmed for all {total} ({pda} re-derived as PDAs, {constant} matched against fixed addresses)")
     } else if pda == 0 && constant == 0 {
@@ -359,10 +380,17 @@ fn account_resolution_reason(
         )
     };
 
-    format!(
-        "Resolved {total} account(s), manifest {}; {coverage}; {}",
-        if manifest_found { "found" } else { "not found" },
-        privileges.describe()
+    (
+        if failed.is_empty() {
+            LayerStatus::Passed
+        } else {
+            LayerStatus::Failed
+        },
+        format!(
+            "Resolved {total} account(s), manifest {}; {coverage}; {}",
+            if manifest_found { "found" } else { "not found" },
+            privileges.describe()
+        ),
     )
 }
 
@@ -514,6 +542,182 @@ fn compare_instruction_accounts(
         }
     }
     InstructionAccounts::Match { unresolved }
+}
+
+/// Whether two RPC URLs name the same endpoint (A4, 2026-09-29 audit).
+///
+/// Compared as URLs, not strings: `http://h`, `HTTP://H/` and `http://h:80/`
+/// are one endpoint, and a trimmed-string compare let an operator configure
+/// the primary as its own witness by adding a slash. Unparseable input falls
+/// back to the trimmed string.
+#[cfg(feature = "rpc")]
+fn same_endpoint(a: &str, b: &str) -> bool {
+    /// Scheme, host, effective port, path without a trailing slash, query.
+    fn key(u: &str) -> Option<String> {
+        let url = reqwest::Url::parse(u.trim()).ok()?;
+        Some(format!(
+            "{}://{}:{:?}{}?{:?}",
+            url.scheme(),
+            url.host_str()?.to_ascii_lowercase(),
+            url.port_or_known_default(),
+            url.path().trim_end_matches('/'),
+            url.query(),
+        ))
+    }
+    match (key(a), key(b)) {
+        (Some(x), Some(y)) => x == y,
+        _ => a.trim() == b.trim(),
+    }
+}
+
+/// The deepest declared CPI trace a request may carry. The runtime's
+/// instruction stack is at most a handful of frames deep; a declared trace
+/// deeper than this describes no transaction that can execute.
+pub const MAX_CPI_TRACE_DEPTH: usize = 16;
+/// The most nodes a declared CPI trace may carry.
+pub const MAX_CPI_TRACE_NODES: usize = 4096;
+
+/// Every identifier a caller supplies — program ids, account addresses,
+/// discriminators, in the primary, the declared siblings and the declared
+/// trace — is ASCII with no control characters, and at most as long as a
+/// pubkey (A1-03/A3-09, 2026-09-29 audit).
+///
+/// Only the primary's fields were bounded. A sibling or trace program id of
+/// `"€€€€"` reached code that shortens ids for reason strings by byte index
+/// and panicked, so the request died with no verdict and no audit row. The
+/// shortening is now character-safe too; this refuses such a request at the
+/// door, with a 400 that names the field and never echoes the value (a
+/// newline or control character in an id would otherwise reach the text
+/// log). The declared trace is bounded in depth and size for the same
+/// reason the declaration list is.
+fn validate_identifiers(input: &VerificationInput) -> Result<(), VerificationError> {
+    const MAX_ID: usize = 44;
+    const MAX_DISC: usize = 128;
+    fn check(field: &str, value: &str, max: usize) -> Result<(), VerificationError> {
+        if value.len() > max {
+            return Err(VerificationError::InvalidInput(format!(
+                "{field} is {} characters; the maximum is {max}",
+                value.len()
+            )));
+        }
+        if !value.bytes().all(|b| b.is_ascii() && !b.is_ascii_control()) {
+            return Err(VerificationError::InvalidInput(format!(
+                "{field} contains a character outside printable ASCII (addresses are base58, discriminators hex)"
+            )));
+        }
+        Ok(())
+    }
+    check("program_id", &input.program_id, MAX_ID)?;
+    check(
+        "instruction_discriminator",
+        &input.instruction_discriminator,
+        MAX_DISC,
+    )?;
+    for (i, a) in input.account_addresses.iter().enumerate() {
+        check(&format!("account_addresses[{i}]"), a, MAX_ID)?;
+    }
+    for (i, a) in input.cpi_targets.iter().enumerate() {
+        check(&format!("cpi_targets[{i}]"), a, MAX_ID)?;
+    }
+    for (i, ix) in input.transaction_instructions.iter().enumerate() {
+        check(
+            &format!("transaction_instructions[{i}].program_id"),
+            &ix.program_id,
+            MAX_ID,
+        )?;
+        check(
+            &format!("transaction_instructions[{i}].instruction_discriminator"),
+            &ix.instruction_discriminator,
+            MAX_DISC,
+        )?;
+        if ix.account_addresses.len() > 256 || ix.cpi_targets.len() > 32 {
+            return Err(VerificationError::InvalidInput(format!(
+                "transaction_instructions[{i}] declares {} accounts and {} CPI targets; the maxima are 256 and 32",
+                ix.account_addresses.len(),
+                ix.cpi_targets.len()
+            )));
+        }
+        for (j, a) in ix.account_addresses.iter().enumerate() {
+            check(
+                &format!("transaction_instructions[{i}].account_addresses[{j}]"),
+                a,
+                MAX_ID,
+            )?;
+        }
+        for (j, a) in ix.cpi_targets.iter().enumerate() {
+            check(
+                &format!("transaction_instructions[{i}].cpi_targets[{j}]"),
+                a,
+                MAX_ID,
+            )?;
+        }
+    }
+    if let Some(trace) = &input.cpi_trace {
+        let mut stack = vec![(trace, 0usize)];
+        let mut nodes = 0usize;
+        while let Some((n, depth)) = stack.pop() {
+            nodes += 1;
+            if nodes > MAX_CPI_TRACE_NODES || depth > MAX_CPI_TRACE_DEPTH {
+                return Err(VerificationError::InvalidInput(format!(
+                    "cpi_trace exceeds {MAX_CPI_TRACE_NODES} nodes or depth {MAX_CPI_TRACE_DEPTH}; no executable transaction has such a trace"
+                )));
+            }
+            check("cpi_trace program_id", &n.program_id, MAX_ID)?;
+            check(
+                "cpi_trace instruction_discriminator",
+                &n.instruction_discriminator,
+                MAX_DISC,
+            )?;
+            for a in &n.account_addresses {
+                check("cpi_trace account_addresses", a, MAX_ID)?;
+            }
+            stack.extend(n.children.iter().map(|c| (c, depth + 1)));
+        }
+    }
+    Ok(())
+}
+
+/// Every program the transaction invokes, as far as Graphite can see it: the
+/// primary, the declared siblings and their declared CPIs, the declared CPI
+/// trace, every top-level instruction of the artifact, and every callee the
+/// simulator executed (A3-03). Sorted and deduplicated. A gate that is about
+/// a PROGRAM rather than an instruction — the operator's quarantine — must
+/// read this, not only `input.program_id`.
+fn invoked_programs(
+    input: &VerificationInput,
+    message: Option<&crate::tx_artifact::ArtifactMessage>,
+    observed_callees: Option<&[String]>,
+    observed_tree: Option<&crate::tx_pattern_analysis::CpiTraceNode>,
+) -> Vec<String> {
+    fn walk(node: &crate::tx_pattern_analysis::CpiTraceNode, out: &mut Vec<String>) {
+        // Iterative: a caller-supplied trace can be arbitrarily deep.
+        let mut stack = vec![node];
+        while let Some(n) = stack.pop() {
+            out.push(n.program_id.clone());
+            stack.extend(n.children.iter());
+        }
+    }
+    let mut out = vec![input.program_id.clone()];
+    out.extend(input.cpi_targets.iter().cloned());
+    for ix in &input.transaction_instructions {
+        out.push(ix.program_id.clone());
+        out.extend(ix.cpi_targets.iter().cloned());
+    }
+    if let Some(trace) = &input.cpi_trace {
+        walk(trace, &mut out);
+    }
+    if let Some(m) = message {
+        out.extend(m.instructions.iter().map(|ix| ix.program_id.clone()));
+    }
+    if let Some(callees) = observed_callees {
+        out.extend(callees.iter().cloned());
+    }
+    if let Some(tree) = observed_tree {
+        walk(tree, &mut out);
+    }
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// The programs the simulator's inner instructions called, by address.
@@ -791,7 +995,13 @@ fn self_refund_closes(
             }
         };
         for (k, ix) in m.instructions.iter().enumerate() {
-            if !is_token_close(&ix.program_id, &hex::encode(&ix.data)) || ix.data.len() != 1 {
+            // Every token program executes `[9, <anything>]` as CloseAccount:
+            // the unpacker reads the tag and ignores what follows. So every
+            // instruction the pipeline calls a close (`is_token_close`, keyed
+            // on the leading byte) is counted here, never only the one-byte
+            // form — otherwise a draining `[9, 0]` sibling would not count
+            // and would inherit the honest close's exemption (A1-01).
+            if !is_token_close(&ix.program_id, &hex::encode(&ix.data)) {
                 continue;
             }
             closes += 1;
@@ -2388,6 +2598,21 @@ fn compare_witness(
                         if w.success { "succeeded" } else { "failed" }
                     ),
                 }
+            } else if !w.commitment.is_cluster_backed() {
+                // A4-08 (2026-09-29 audit): `processed` is one node's view of
+                // a block the cluster has not voted on — not inclusion. It
+                // still counts as a SIGHTING (for a blocked transaction any
+                // sighting alarms), but it is not a second, independent
+                // account of inclusion, so it does not agree.
+                InclusionWitness {
+                    agrees: false,
+                    seen: Some(true),
+                    commitment: Some(w.commitment),
+                    detail: format!(
+                        "both place the signature in slot {slot} with the same outcome, but the witness holds it only at {} commitment — one node's view, not a cluster-backed inclusion",
+                        w.commitment
+                    ),
+                }
             } else {
                 InclusionWitness {
                     agrees: true,
@@ -2760,7 +2985,7 @@ impl GraphiteCore {
     #[cfg(feature = "rpc")]
     pub fn attach_inclusion_witness(&mut self, client: SolanaRpcClient) -> Result<(), String> {
         if let Some(primary) = &self.rpc_client {
-            if primary.endpoint().trim() == client.endpoint().trim() {
+            if same_endpoint(primary.endpoint(), client.endpoint()) {
                 return Err(
                     "the inclusion witness is the same endpoint as the primary RPC; a witness must be an independent second source"
                         .to_string(),
@@ -2886,31 +3111,62 @@ impl GraphiteCore {
         audit: Option<&crate::durable::AuditLog>,
     ) -> ExecutionAudit {
         use crate::durable::{AuditRecord, VerificationKey};
-        let chain_status = match self.verify_execution(signature).await {
-            Ok(s) => s,
-            Err(e) => ExecutionVerification::Unavailable(e.to_string()),
+        // A4-05 (2026-09-29 audit): ONE deadline for every RPC call L8 makes,
+        // as `/verify` has. Three sequential calls, each with the client's
+        // own timeout and retry, took ~12 s against slow endpoints — past the
+        // server's request timeout, which then answered 408 and dropped the
+        // handler before its audit row: a BlockedButExecuted computed and
+        // lost. The two status calls are independent and run together; the
+        // bytes fetch gets what is left. A call the deadline cuts off is
+        // reported as such, never as an answer.
+        let budget = RpcBudget::new(self.rpc_budget);
+        let witness_call = async {
+            match &self.inclusion_witness {
+                None => None,
+                Some(witness) => {
+                    Some(within_budget(&budget, witness.get_signature_status(signature)).await)
+                }
+            }
+        };
+        let (primary, witness_answer) = tokio::join!(
+            within_budget(&budget, self.verify_execution(signature)),
+            witness_call
+        );
+        let chain_status = match primary {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => ExecutionVerification::Unavailable(e.to_string()),
+            Err(()) => ExecutionVerification::Unavailable(format!(
+                "the primary RPC did not answer within L8's {:?} RPC budget",
+                budget.total()
+            )),
         };
 
         // The witness's account, when one is attached (Round 12). Asked
         // regardless of what the primary said: a primary that reports no
         // record is exactly what a witness exists to contradict.
         let mut witness_status: Option<crate::rpc_client::SignatureStatus> = None;
-        let inclusion_witness = match &self.inclusion_witness {
-            None => None,
-            Some(witness) => Some(match witness.get_signature_status(signature).await {
-                Err(e) => InclusionWitness {
-                    agrees: false,
-                    seen: None,
-                    commitment: None,
-                    detail: format!("the inclusion witness could not be consulted: {e}"),
-                },
-                Ok(status) => {
-                    let report = compare_witness(&chain_status, status.as_ref());
-                    witness_status = status;
-                    report
-                }
-            }),
-        };
+        let inclusion_witness = witness_answer.map(|answer| match answer {
+            Err(()) => InclusionWitness {
+                agrees: false,
+                seen: None,
+                commitment: None,
+                detail: format!(
+                    "the inclusion witness did not answer within L8's {:?} RPC budget",
+                    budget.total()
+                ),
+            },
+            Ok(Err(e)) => InclusionWitness {
+                agrees: false,
+                seen: None,
+                commitment: None,
+                detail: format!("the inclusion witness could not be consulted: {e}"),
+            },
+            Ok(Ok(status)) => {
+                let report = compare_witness(&chain_status, status.as_ref());
+                witness_status = status;
+                report
+            }
+        });
 
         // The chain's own account of what executed: the bytes behind the
         // signature, with the signature slots zeroed, are the artifact
@@ -2950,7 +3206,10 @@ impl GraphiteCore {
         };
         let chain_transaction_sha256 = match bytes_source {
             Some((client, status_slot, status_success, who)) => {
-                match client.get_chain_transaction(signature).await {
+                let fetched = within_budget(&budget, client.get_chain_transaction(signature))
+                    .await
+                    .unwrap_or(Err(crate::rpc_client::RpcError::Timeout(budget.total())));
+                match fetched {
                     Ok(Some(tx)) => {
                         if let Some(slot) = tx.slot {
                             if slot != status_slot {
@@ -3137,6 +3396,19 @@ impl GraphiteCore {
             .is_some_and(|w| w.seen == Some(true));
         let witness_dissents = inclusion_witness.as_ref().is_some_and(|w| !w.agrees);
         let reconciliation = match (&chain_status, &recorded) {
+            // A4-01 (2026-09-29 audit): the witness exists for exactly the
+            // case where the primary cannot be relied on, and a primary that
+            // is DOWN is the plainest such case. The Unavailable arm below
+            // used to win first, so a blocked transaction the witness placed
+            // in a block reconciled as Unavailable — no discrepancy, no page —
+            // whenever the primary answered 5xx or malformed. One sighting of
+            // a blocked transaction is the alarm, as it is when the primary
+            // answers but does not know the signature.
+            (ExecutionVerification::Unavailable(_), Some(rec))
+                if !rec.approved && witness_saw_it && chain_bytes_rejected.is_none() =>
+            {
+                ExecutionReconciliation::BlockedButExecuted
+            }
             (ExecutionVerification::Unavailable(reason), _) => {
                 ExecutionReconciliation::Unavailable {
                     reason: reason.clone(),
@@ -3321,8 +3593,7 @@ impl GraphiteCore {
         &mut self,
         engine: &crate::manifest_registry::ManifestRegistryEngine,
     ) -> usize {
-        let manifests: Vec<_> = engine.accepted_manifests().cloned().collect();
-        self.registry.merge_community(&manifests)
+        self.registry.merge_community(&engine.manifests_in_force())
     }
 
     /// A clone of this core whose registry has `candidate` applied, sharing
@@ -3621,9 +3892,7 @@ impl GraphiteCore {
         // the old inline matchers also accepted a truncated input that was a
         // 4-char prefix of a known discriminator, minting a false
         // InstructionMatch on a different instruction).
-        let matching_ix = manifest.instructions.iter().find(|ix| {
-            crate::manifest::discriminator_matches(&ix.discriminator, effective_discriminator)
-        });
+        let matching_ix = manifest.instruction_for(effective_discriminator);
 
         let ix = match matching_ix {
             Some(ix) => ix,
@@ -3766,6 +4035,23 @@ impl GraphiteCore {
         }
 
         match diff.provenance {
+            // A2-09 (2026-09-29 audit): without the simulator's balance
+            // arrays neither coverage check runs — whether this diff covers
+            // every account the transaction moved lamports on, and whether
+            // lamports are conserved across it — so "no undeclared effects"
+            // describes the accounts examined, not the transaction.
+            DiffProvenance::RpcSimulated
+                if !diff.covers_all_writable && diff.artifact_balance_writes.is_none() =>
+            {
+                PipelineLayerResult::new(
+                    layer_name,
+                    LayerStatus::Inconclusive,
+                    format!(
+                        "State diff raised no finding across {} changed account(s), but the simulator returned no balance arrays, so neither coverage nor lamport conservation could be checked{suffix}",
+                        report.changed_accounts
+                    ),
+                )
+            }
             DiffProvenance::RpcSimulated => PipelineLayerResult::new(
                 layer_name,
                 LayerStatus::Passed,
@@ -3971,9 +4257,15 @@ impl GraphiteCore {
                 vec!["create", "allocate", "assign", "initialize"],
                 "create intent but instruction does not appear to create an account",
             ),
-            "approve" | "revoke" => (
-                vec!["approve", "revoke", "delegate"],
-                "approve/revoke intent but instruction does not match",
+            // Two opposite effects, two vocabularies (A3-01): a revoke intent
+            // is never consistent with an instruction that grants.
+            "approve" => (
+                vec!["approve", "delegate"],
+                "approve intent but instruction does not appear to grant a delegate",
+            ),
+            "revoke" => (
+                vec!["revoke"],
+                "revoke intent but instruction does not appear to revoke a delegate",
             ),
             _ => {
                 return PipelineLayerResult::new(
@@ -3986,6 +4278,30 @@ impl GraphiteCore {
                 );
             }
         };
+
+        // An instruction whose NAME says it does the opposite of the intent
+        // fails, whatever its prose shares with the intent's vocabulary
+        // (A3-01, 2026-09-29 audit). SPL `Revoke` is described as removing
+        // "the delegate", so an `approve` intent found its keyword in the
+        // prose and passed; a `create` intent passed on a `CloseAccount`
+        // whose prose mentions the account's creation. The name is the
+        // instruction's identity, the prose only its description.
+        let opposites: &[&str] = match intent.as_str() {
+            "approve" => &["revoke"],
+            "revoke" => &["approve"],
+            "create" | "create_account" => &["close"],
+            "close" | "close_account" => &["create", "initialize"],
+            _ => &[],
+        };
+        if let Some(word) = opposites.iter().find(|w| ix_name.contains(**w)) {
+            return PipelineLayerResult::new(
+                layer_name,
+                LayerStatus::Failed,
+                format!(
+                    "{mismatch_msg}: the instruction {instruction_name} is named for the opposite effect ('{word}')"
+                ),
+            );
+        }
 
         let ix_matches = intent_keywords.iter().any(|kw| ix_name.contains(kw));
         let changes_match = changes_lower
@@ -4036,16 +4352,14 @@ impl GraphiteCore {
     ) -> InstructionRiskContext {
         match self.registry.get(program_id) {
             Some(m) => {
-                let ix = m.instructions.iter().find(|i| {
-                    crate::manifest::discriminator_matches(&i.discriminator, discriminator)
-                });
+                let ix = m.instruction_for(discriminator);
                 match ix {
                     Some(ix) => InstructionRiskContext {
                         expected_state_changes: ix.expected_state_changes.clone(),
                         allowed_cpis: ix.allowed_cpis.clone(),
                         expected_account_count: Some(ix.accounts.len()),
                         variable_accounts: ix.variable_accounts,
-                        manifest_risk_class: ix.risk_class.clone(),
+                        manifest_risk_class: ix.security_class().to_string(),
                         manifest_found: true,
                     },
                     None => {
@@ -4280,14 +4594,7 @@ impl GraphiteCore {
             let layout_len = self
                 .registry
                 .get(&ix.program_id)
-                .and_then(|m| {
-                    m.instructions.iter().find(|i| {
-                        crate::manifest::discriminator_matches(
-                            &i.discriminator,
-                            &ix.instruction_discriminator,
-                        )
-                    })
-                })
+                .and_then(|m| m.instruction_for(&ix.instruction_discriminator))
                 .map(|i| i.layout_for(ix.account_addresses.len()).len());
             let sibling_writable_extras = match (artifact, layout_len) {
                 (Some((message, lookups)), Some(expected))
@@ -4522,6 +4829,7 @@ impl GraphiteCore {
                 input.transaction_instructions.len()
             )));
         }
+        validate_identifiers(input)?;
 
         // ONE deadline for every RPC call this verification makes, started
         // before the first of them. A budget that does not cover every call
@@ -4833,6 +5141,7 @@ impl GraphiteCore {
                             } else {
                                 "readonly".to_string()
                             },
+                            name: String::new(),
                             is_pda: false,
                             is_signer: if grounded {
                                 effective_metas[i].is_signer
@@ -5187,12 +5496,7 @@ impl GraphiteCore {
                 // also widened `allowed_cpis` to the union of every instruction
                 // in the protocol. Both were caller-selectable by shortening a
                 // string.
-                let ix = m.instructions.iter().find(|i| {
-                    crate::manifest::discriminator_matches(
-                        &i.discriminator,
-                        &effective_discriminator,
-                    )
-                });
+                let ix = m.instruction_for(&effective_discriminator);
                 match ix {
                     Some(ix) => (ix.expected_state_changes.clone(), ix.allowed_cpis.clone()),
                     None => {
@@ -5235,6 +5539,16 @@ impl GraphiteCore {
         // only (P11); a plugin never supplies verdicts or tiers (P7) — only
         // evidence. The risk CPI allowlist is deliberately NOT extended: an
         // allowlist is an authorization decision, not evidence.
+        //
+        // A3-05 (2026-09-29 audit): nor are the Risk Engine's inputs. Plugin
+        // rules reached `assess` through this same list, and a non-empty list
+        // is exactly what switches the drainer heuristic's "no declared
+        // effects" case off — so a plugin's rules, or a plugin's PANIC (which
+        // pushes a placeholder), removed a Blocked verdict for every
+        // unmanifested program. P8: a plugin vetoes or annotates, never
+        // disarms. The Risk Engine reads the manifest's own list; the plugin
+        // rules go to L4, where they can only be compared with what happened.
+        let risk_expected_state_changes = expected_state_changes.clone();
         if !manifest_found {
             let (plugin_rules, _plugin_cpis) = self
                 .plugins
@@ -5348,18 +5662,13 @@ impl GraphiteCore {
         // label, and that arm refuses.
         let (expected_account_count, variable_accounts, manifest_risk_class) = match manifest {
             Some(m) => {
-                let ix = m.instructions.iter().find(|i| {
-                    crate::manifest::discriminator_matches(
-                        &i.discriminator,
-                        &effective_discriminator,
-                    )
-                });
+                let ix = m.instruction_for(&effective_discriminator);
                 match ix {
                     // The layout this many accounts selects (Round 21).
                     Some(i) => (
                         Some(i.layout_for(input.account_addresses.len()).len()),
                         i.variable_accounts,
-                        i.risk_class.clone(),
+                        i.security_class().to_string(),
                     ),
                     None => (None, false, String::new()),
                 }
@@ -5397,7 +5706,7 @@ impl GraphiteCore {
             program_id: input.program_id.clone(),
             accounts: input.account_addresses.clone(),
             cpi_targets: input.cpi_targets.clone(),
-            expected_state_changes: expected_state_changes.clone(),
+            expected_state_changes: risk_expected_state_changes.clone(),
             allowed_cpis: allowed_cpis.clone(),
             instruction_discriminator: risk_discriminator.clone(),
             expected_account_count,
@@ -5687,11 +5996,7 @@ impl GraphiteCore {
                     .iter()
                     .map(|a| format!(
                         "{} (role={}, kind={})",
-                        if a.address.len() >= 8 {
-                            &a.address[..8]
-                        } else {
-                            &a.address
-                        },
+                        crate::risk_engine::short_id(&a.address),
                         a.role,
                         if a.pda_mismatch {
                             "pda"
@@ -6930,7 +7235,7 @@ impl GraphiteCore {
                         program_id: input.program_id.clone(),
                         accounts: input.account_addresses.clone(),
                         cpi_targets: undeclared.clone(),
-                        expected_state_changes: expected_state_changes.clone(),
+                        expected_state_changes: risk_expected_state_changes.clone(),
                         allowed_cpis: allowed_cpis.clone(),
                         instruction_discriminator: risk_discriminator.clone(),
                         expected_account_count,
@@ -7028,24 +7333,62 @@ impl GraphiteCore {
         // the switch. Quarantine is the operator asserting evidence of a
         // problem, so it fails closed like any other risk finding (P12) and
         // says so, rather than leaving the reader to infer it from a tier.
-        let risk_summary = match self.graph().get(&input.program_id) {
-            Some(b) if b.quarantined => RiskVerdictSummary {
+        //
+        // A3-03 (2026-09-29 audit): withdrawn from trust means withdrawn
+        // wherever it runs. The gate read only the primary's program, so the
+        // quarantined program called as a second instruction or through a
+        // CPI was judged by the ordinary rules and could be approved. Every
+        // program the transaction invokes is checked: the primary, the
+        // declared siblings and CPIs, the declared trace, the artifact's own
+        // top-level instructions and, with RPC, every callee the simulator
+        // executed.
+        let quarantined_hits: Vec<(String, String)> = {
+            #[cfg(feature = "rpc")]
+            let observed: (
+                Option<&[String]>,
+                Option<&crate::tx_pattern_analysis::CpiTraceNode>,
+            ) = (observed_cpi_programs.as_deref(), observed_cpi_tree.as_ref());
+            #[cfg(not(feature = "rpc"))]
+            let observed: (
+                Option<&[String]>,
+                Option<&crate::tx_pattern_analysis::CpiTraceNode>,
+            ) = (None, None);
+            let invoked =
+                invoked_programs(input, artifact_message.as_ref(), observed.0, observed.1);
+            let graph = self.graph();
+            invoked
+                .into_iter()
+                .filter_map(|p| match graph.get(&p) {
+                    Some(b) if b.quarantined => Some((
+                        p,
+                        b.quarantine_reason
+                            .clone()
+                            .unwrap_or_else(|| "no reason recorded".to_string()),
+                    )),
+                    _ => None,
+                })
+                .collect()
+        };
+        let risk_summary = if quarantined_hits.is_empty() {
+            risk_summary
+        } else {
+            let mut f = risk_summary.findings.clone();
+            for (program, reason) in quarantined_hits {
+                f.push(RiskFinding {
+                    pattern: "ProgramQuarantined".to_string(),
+                    reason: if program == input.program_id {
+                        format!("program withdrawn from trust by the operator: {reason}")
+                    } else {
+                        format!(
+                            "the transaction invokes {program}, which the operator withdrew from trust: {reason}"
+                        )
+                    },
+                });
+            }
+            RiskVerdictSummary {
                 status: "Blocked".to_string(),
-                findings: {
-                    let mut f = risk_summary.findings.clone();
-                    f.push(RiskFinding {
-                        pattern: "ProgramQuarantined".to_string(),
-                        reason: format!(
-                            "program withdrawn from trust by the operator: {}",
-                            b.quarantine_reason
-                                .as_deref()
-                                .unwrap_or("no reason recorded")
-                        ),
-                    });
-                    f
-                },
-            },
-            _ => risk_summary,
+                findings: f,
+            }
         };
 
         // Surface plugin findings (L7) on the final risk summary: a Block made
@@ -7117,15 +7460,48 @@ impl GraphiteCore {
             d.provenance = crate::state_diff::DiffProvenance::CallerSupplied;
             d
         });
-        let l4_result = match observed_diff.as_ref().or(caller_diff.as_ref()) {
-            Some(diff) => Self::verify_state_from_diff(
+        let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {
+            (Some(diff), _) => Self::verify_state_from_diff(
                 diff,
                 &expected_state_changes,
                 &accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas),
                 privileges_grounded,
                 fee_payer_for_diff.as_deref(),
             ),
-            None => {
+            // A2-04 (2026-09-29 audit): a caller's diff can only make L4
+            // WORSE. It replaced the structural check outright, so an empty
+            // `state_diff` turned a structural Failed into Inconclusive ("no
+            // observable change") and lifted the rejection that Failed
+            // carries. Both run; the stricter result stands.
+            (None, Some(diff)) => {
+                let from_diff = Self::verify_state_from_diff(
+                    diff,
+                    &expected_state_changes,
+                    &accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas),
+                    privileges_grounded,
+                    fee_payer_for_diff.as_deref(),
+                );
+                let structural = self.verify_state(
+                    &expected_state_changes,
+                    &resolution.resolved_accounts,
+                    manifest_found,
+                );
+                if structural.status == LayerStatus::Failed
+                    && from_diff.status != LayerStatus::Failed
+                {
+                    PipelineLayerResult::new(
+                        "L4_StateVerification",
+                        LayerStatus::Failed,
+                        format!(
+                            "{} | the caller-supplied diff cannot replace the structural check: {}",
+                            structural.reason, from_diff.reason
+                        ),
+                    )
+                } else {
+                    from_diff
+                }
+            }
+            (None, None) => {
                 let mut fallback = self.verify_state(
                     &expected_state_changes,
                     &resolution.resolved_accounts,
@@ -7203,7 +7579,7 @@ impl GraphiteCore {
                         a.privilege_mismatch = true;
                         unexplained.push(format!(
                             "{} (role={}, kind=privilege: declared read-only, writable in the transaction, {})",
-                            if a.address.len() >= 8 { &a.address[..8] } else { &a.address },
+                            crate::risk_engine::short_id(&a.address),
                             a.role,
                             if other.is_some() {
                                 "and the simulation shows it changed"
@@ -7316,6 +7692,21 @@ impl GraphiteCore {
                 .map(|b| b.trust_tier)
                 .unwrap_or(TrustTier::Unknown)
         };
+        // A3-04 (2026-09-29 audit): the tier is earned by what the manifest
+        // DESCRIBES. An instruction the program's manifest does not describe
+        // is, for this verification, as unknown as a program with no
+        // manifest: nothing Graphite knows says what it does, and L5 could
+        // not compare it with the intent. It scored like a described one —
+        // an undescribed Token-2022 extension instruction, a transfer-hook
+        // update, was approved on the Gaming profile — while SECURITY.md said
+        // such calls are refused. It now takes the Unknown tier, so the P6
+        // ceiling applies and no profile's tier floor admits it: refused by
+        // policy with the reason, not blocked as a risk finding (P12).
+        let trust_tier = if manifest_found && instruction_name == "unknown_instruction" {
+            TrustTier::Unknown
+        } else {
+            trust_tier
+        };
 
         // Phase 2 (G4): the three evidence-derived signals now read from the
         // Semantic Graph's internal accumulator — the program's RPC-verified
@@ -7347,10 +7738,12 @@ impl GraphiteCore {
             manifest_found,
             trust_tier,
             &input.proposed_intent,
-            // Only a genuine Failed L5 blocks the intent-alignment signal; an
-            // Inconclusive (skipped) semantic check keeps the pre-GAP-2026-08-06-3
-            // behavior (no alignment penalty) while the layer report is now honest.
-            l5_result.status != LayerStatus::Failed,
+            // A5-06/A3-04 (2026-09-29 audit): alignment credit is earned
+            // only by a semantic check that RAN and passed. An Inconclusive
+            // L5 (skipped: undescribed instruction, no manifest) used to earn
+            // the full signal, so "could not compare" scored as "compared and
+            // agreed". Only a Failed L5 is PENALIZED; only a Passed one earns.
+            l5_result.status,
         );
         let confidence_result = compute_confidence(&signals, trust_tier)
             .map_err(|e| VerificationError::Confidence(e.to_string()))?;
@@ -7541,10 +7934,23 @@ impl GraphiteCore {
                 .as_deref()
                 .and_then(|b| crate::tx_artifact::simulation_identity(b).ok());
             if let Some(key) = observation_key.as_deref() {
+                // A2-07 (2026-09-29 audit): the shadow takes what the trusted
+                // accumulator would have taken but for the flag itself — a
+                // structurally sound request whose only risk finding is the
+                // divergence. It took every flagged request, refused at L2 or
+                // blocked by the Risk Engine included, and an operator who
+                // promoted a shadow those had filled installed a baseline made
+                // of attacker samples.
+                let blocked_only_by_the_flag = risk_summary
+                    .findings
+                    .iter()
+                    .all(|f| f.pattern == "SimulationSpoofing" || f.pattern.ends_with(":warning"));
                 if sim_flagged == Some(true) {
-                    self.graph()
-                        .record_shadow_simulation(&input.program_id, &usage, Some(key));
-                    self.persist_state_async().await;
+                    if !structural_layer_failed && blocked_only_by_the_flag {
+                        self.graph()
+                            .record_shadow_simulation(&input.program_id, &usage, Some(key));
+                        self.persist_state_async().await;
+                    }
                 } else if !structural_layer_failed && risk_summary.status == "Clear" {
                     self.graph()
                         .record_simulation_keyed(&input.program_id, &usage, Some(key));
@@ -7861,11 +8267,11 @@ impl GraphiteCore {
             layers: vec![
                 // L1: Account Resolution — resolve all required accounts/PDAs
                 // ARCHITECTURE.md 3.12: "Resolve all required accounts/PDAs"
-                PipelineLayerResult::new(
-                    "L1_AccountResolution",
-                    LayerStatus::Passed,
-                    account_resolution_reason(&resolution, manifest_found, privilege_source),
-                ),
+                {
+                    let (status, reason) =
+                        account_resolution_reason(&resolution, manifest_found, privilege_source);
+                    PipelineLayerResult::new("L1_AccountResolution", status, reason)
+                },
                 // L2: Instruction Verification — confirm discriminator + args match known shape
                 // ARCHITECTURE.md 3.12: "Confirm instruction discriminator + args match a known shape"
                 PipelineLayerResult::new(
@@ -8024,7 +8430,7 @@ fn build_signals(
     manifest_found: bool,
     trust_tier: TrustTier,
     intent: &ProposedIntent,
-    l5_passed: bool,
+    l5_status: LayerStatus,
 ) -> Vec<WeightedSignal> {
     // Manifest match: binary 1.0/0.0 — did we find a protocol manifest?
     let manifest_value = if manifest_found { 1.0 } else { 0.0 };
@@ -8066,12 +8472,15 @@ fn build_signals(
     // When no manifest exists, this contributes 0 (consistent with
     // Unknown Protocol Mode). This is NOT the same as L5 semantic
     // verification — it's a confidence INPUT, not a pass/fail gate.
-    let intent_alignment = if manifest_found && !intent.intent_type.is_empty() && l5_passed {
-        1.0
-    } else if manifest_found && !intent.intent_type.is_empty() && !l5_passed {
-        0.3
-    } else {
+    let intent_alignment = if !manifest_found || intent.intent_type.is_empty() {
         0.0
+    } else {
+        match l5_status {
+            LayerStatus::Passed => 1.0,
+            LayerStatus::Failed => 0.3,
+            // Not compared: no alignment is known, so none is credited.
+            _ => 0.0,
+        }
     };
 
     // Signal weights must sum to exactly 1.0 (validated by compute_confidence).
@@ -8325,6 +8734,78 @@ mod tests {
     }
 
     use super::*;
+
+    /// A4 (2026-09-29 audit): the witness guard compares URLs, not strings.
+    #[cfg(feature = "rpc")]
+    #[test]
+    fn the_same_endpoint_written_differently_is_the_same_endpoint() {
+        assert!(same_endpoint("http://h:8899", "HTTP://H:8899/"));
+        assert!(same_endpoint(
+            "https://rpc.example",
+            "https://rpc.example:443/"
+        ));
+        assert!(!same_endpoint("https://a.example", "https://b.example"));
+        assert!(!same_endpoint(
+            "https://a.example/?k=1",
+            "https://a.example/?k=2"
+        ));
+    }
+
+    /// A2-09 (2026-09-29 audit): an RPC diff without the simulator's balance
+    /// arrays ran neither coverage check, so its clean result is not a pass.
+    #[test]
+    fn an_rpc_diff_without_balance_arrays_is_not_a_pass() {
+        use crate::state_diff::{AccountDelta, AccountSnapshot, DiffProvenance, StateDiff};
+        let from = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+        let to = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+        let snap = |k: &str, l: u64| {
+            AccountSnapshot::from_raw(k, l, "11111111111111111111111111111111", &[])
+        };
+        let diff = |balance_arrays: bool| StateDiff {
+            deltas: vec![
+                AccountDelta {
+                    pubkey: from.to_string(),
+                    before: Some(snap(from, 10_000_000)),
+                    after: Some(snap(from, 9_000_000)),
+                },
+                AccountDelta {
+                    pubkey: to.to_string(),
+                    before: Some(snap(to, 0)),
+                    after: Some(snap(to, 1_000_000)),
+                },
+            ],
+            provenance: DiffProvenance::RpcSimulated,
+            covers_all_writable: balance_arrays,
+            artifact_balance_writes: balance_arrays.then_some(2),
+            ..Default::default()
+        };
+        let account = |a: &str, signer: bool| ResolvedAccount {
+            address: a.to_string(),
+            role: "writable".to_string(),
+            name: String::new(),
+            is_pda: false,
+            is_signer: signer,
+            is_writable: true,
+            pda_seeds: vec![],
+            identity: Default::default(),
+            expected_address_mismatch: false,
+            pda_mismatch: false,
+            privilege_mismatch: false,
+        };
+        let accounts = [account(from, true), account(to, false)];
+        let expected = ["debits the source and credits the destination".to_string()];
+        let without =
+            GraphiteCore::verify_state_from_diff(&diff(false), &expected, &accounts, true, None);
+        assert_eq!(
+            without.status,
+            LayerStatus::Inconclusive,
+            "{}",
+            without.reason
+        );
+        let with =
+            GraphiteCore::verify_state_from_diff(&diff(true), &expected, &accounts, true, None);
+        assert_eq!(with.status, LayerStatus::Passed, "control: {}", with.reason);
+    }
 
     fn make_input(program: &str, disc: &str, accounts: &[&str]) -> VerificationInput {
         VerificationInput {

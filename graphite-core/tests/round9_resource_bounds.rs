@@ -168,9 +168,14 @@ fn an_artifact_larger_than_a_solana_packet_is_refused_before_it_is_parsed() {
         raw.len(),
         elapsed
     );
+    // The regression this pins is L2 comparing 150,000 siblings with 4,000
+    // declarations — 6×10⁸ comparisons, minutes. The bound is far below that
+    // and far above what a loaded CI runner needs for an O(1) refusal (the
+    // old 500 ms took 1.3 s on a busy 8 GB build box; 2026-09-29 audit,
+    // A6-11), so it measures the algorithm, not the machine.
     assert!(
-        elapsed.as_millis() < 500,
-        "refusal must cost nothing: {elapsed:?}"
+        elapsed.as_secs() < 5,
+        "refusal must not examine the artifact: {elapsed:?}"
     );
 
     // The parser refuses it too, independently of the pipeline, so a library

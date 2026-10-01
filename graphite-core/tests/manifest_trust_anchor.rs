@@ -184,26 +184,41 @@ fn a_manifest_with_duplicate_discriminators_is_rejected() {
     );
 }
 
-/// Empty discriminators are legitimate (the Memo program's entire data field
-/// IS the instruction) and must not be treated as ambiguous with each other.
+/// An empty discriminator is legitimate for a program described by ONE
+/// instruction (the Memo program's entire data field IS the instruction), and
+/// that instruction answers every call (`ProtocolManifest::instruction_for`).
+///
+/// Two empty discriminators are not: the bytes cannot say which of the two a
+/// call is, so the second could never be the instruction a call resolves to,
+/// and its description would be judged against nothing. The loader refuses
+/// that manifest (A3-02, 2026-09-29 audit: every instruction must be
+/// addressable), as it refuses two equal non-empty discriminators above.
 #[test]
-fn empty_discriminators_are_not_treated_as_ambiguous() {
-    let json = format!(
-        r#"{{
+fn an_empty_discriminator_loads_only_as_the_sole_instruction() {
+    let manifest = |instructions: &str| {
+        format!(
+            r#"{{
         "graphite_manifest_version": "1.0",
         "protocol": {{ "name": "Memo-like", "program_id": "{UNKNOWN_PROGRAM}", "website": "", "github": "" }},
         "version": {{ "label": "1.0", "effective_from_slot": 0, "previous_version_ref": null }},
-        "instructions": [
-            {{ "name": "Memo",  "discriminator": "", "accounts": [], "expected_state_changes": [], "allowed_cpis": [], "risk_rules": [] }},
-            {{ "name": "Memo2", "discriminator": "", "accounts": [], "expected_state_changes": [], "allowed_cpis": [], "risk_rules": [] }}
-        ],
+        "instructions": [{instructions}],
         "trust_tier": "OfficialManifest"
     }}"#
-    );
-    let mut registry = ManifestRegistry::new();
+        )
+    };
+    let memo = r#"{ "name": "Memo",  "discriminator": "", "accounts": [], "expected_state_changes": [], "allowed_cpis": [], "risk_rules": [] }"#;
+    let memo2 = r#"{ "name": "Memo2", "discriminator": "", "accounts": [], "expected_state_changes": [], "allowed_cpis": [], "risk_rules": [] }"#;
     assert!(
-        registry.load_from_json(&json).is_ok(),
-        "empty discriminators are a legitimate shape and must still load"
+        ManifestRegistry::new()
+            .load_from_json(&manifest(memo))
+            .is_ok(),
+        "a sole instruction with an empty discriminator is a legitimate shape"
+    );
+    assert!(
+        ManifestRegistry::new()
+            .load_from_json(&manifest(&format!("{memo}, {memo2}")))
+            .is_err(),
+        "two empty discriminators are ambiguous and must be refused"
     );
 }
 

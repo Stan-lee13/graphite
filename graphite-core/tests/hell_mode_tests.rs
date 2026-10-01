@@ -1258,7 +1258,7 @@ fn h23_unknown_program_cpi_many_accounts_safe_intent_permissive() {
             "11111111111111111111111111111111".to_string(),
         ],
         instruction_data: None,
-        cpi_targets: vec!["DrainerProgram1111111111111111111111111111111".to_string()],
+        cpi_targets: vec!["DrainerProgram111111111111111111111111111111".to_string()],
         wallet_profile: WalletProfile::Gaming,
         behavior_evidence: max_evidence(),
         compute_units: 150,

@@ -358,7 +358,8 @@
     "reassigns accounts.account owner to data.owner"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "TransferWithSeed",
@@ -391,7 +392,8 @@
     "credits accounts.to lamports by data.lamports"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   }
  ],
  "trust_tier": "BattleTested"

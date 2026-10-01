@@ -220,7 +220,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "program-upgrade primitive: if the upgrade authority is compromised, the program's behavior changes silently — verifier should flag upgrades to known protocols"
-   ]
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "SetAuthority",
@@ -272,7 +273,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "authority-transfer primitive: transfer to an unexpected address is a prelude to upgrade abuse"
-   ]
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "Close",
@@ -352,7 +354,8 @@
     "closes a buffer account, returning lamports to the recipient"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "ExtendProgram",
@@ -444,7 +447,8 @@
     "transfers the upgrade or buffer authority of accounts.account to accounts.new_authority"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested"

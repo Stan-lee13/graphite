@@ -2084,12 +2084,7 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [
-      "gt_exchange_vault",
-      "{account_1}",
-      "{account_2}",
-      "{account_2}"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "event_authority",
@@ -6214,11 +6209,7 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [
-      "vi_for_swaps",
-      "{account_1}",
-      "{account_3}"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "market",
@@ -6354,11 +6345,7 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [
-      "vi_for_swaps",
-      "{account_1}",
-      "{account_2}"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "market",
@@ -6720,11 +6707,7 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [
-      "user",
-      "{account_1}",
-      "{account_2}"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "event_authority",
@@ -7271,12 +7254,7 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [
-      "gt_exchange_vault",
-      "{account_1}",
-      "{account_3}",
-      "{account_3}"
-     ]
+     "pda_seeds": []
     },
     {
      "name": "exchange",
@@ -7608,11 +7586,7 @@
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
-     "pda_seeds": [
-      "user",
-      "{account_1}",
-      "{account_4}"
-     ]
+     "pda_seeds": []
     }
    ],
    "expected_state_changes": [
@@ -8116,11 +8090,7 @@
      "role": "readonly",
      "is_writable": false,
      "is_signer": false,
-     "pda_seeds": [
-      "user",
-      "{account_1}",
-      "{account_4}"
-     ]
+     "pda_seeds": []
     }
    ],
    "expected_state_changes": [

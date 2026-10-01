@@ -56,6 +56,12 @@ pub enum AccountIdentity {
 pub struct ResolvedAccount {
     pub address: String, // base58
     pub role: String,
+    /// The slot's name in the manifest (`source`, `authority`, ...); empty for
+    /// an account past the declared list or of an unknown program. L4 reads
+    /// it to scope a declared effect to the account the manifest names
+    /// (A2-01, 2026-09-29 audit).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
     pub is_pda: bool,
     pub is_signer: bool,
     pub is_writable: bool,
@@ -230,13 +236,15 @@ pub fn resolve_accounts(
 
     for (i, pk) in pubkeys.iter().enumerate() {
         let role_def = layout.get(i);
-        let (role, is_pda, is_signer, is_writable, pda_seeds, expected_addrs) = match role_def {
+        let (role, name, is_pda, is_signer, is_writable, pda_seeds, expected_addrs) = match role_def
+        {
             // Round 22: Anchor's absent optional account — the program's own
             // id in a slot its IDL marks optional. It is that known constant:
             // no PDA to derive, no pinned address to compare, and nothing it
             // could sign. A writable flag on it is still compared below.
             Some(r) if r.optional && pk.to_base58() == input.program_id => (
                 "absent".to_string(),
+                r.name.clone(),
                 false,
                 false,
                 false,
@@ -321,6 +329,7 @@ pub fn resolve_accounts(
                 }
                 (
                     r.role.clone(),
+                    r.name.clone(),
                     is_pda,
                     r.is_signer,
                     r.is_writable,
@@ -330,7 +339,15 @@ pub fn resolve_accounts(
             }
             None => {
                 // Extra accounts not in manifest — assign generic role
-                ("extra".to_string(), false, false, false, vec![], vec![])
+                (
+                    "extra".to_string(),
+                    String::new(),
+                    false,
+                    false,
+                    false,
+                    vec![],
+                    vec![],
+                )
             }
         };
         // Whether the manifest declared anything about THIS slot at all.
@@ -387,6 +404,7 @@ pub fn resolve_accounts(
         resolved.push(ResolvedAccount {
             address: pk.to_base58(),
             role,
+            name,
             is_pda,
             is_signer,
             is_writable,
@@ -427,6 +445,7 @@ fn resolve_unknown(pubkeys: &[Pubkey], metas: &[RealAccountMeta]) -> AccountReso
         .map(|(i, pk)| ResolvedAccount {
             address: pk.to_base58(),
             role: "unknown".to_string(),
+            name: String::new(),
             is_pda: !solana_types::is_on_curve(pk),
             is_signer: grounded && metas[i].is_signer,
             is_writable: !grounded || metas[i].is_writable,

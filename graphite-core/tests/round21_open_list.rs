@@ -37,7 +37,11 @@ fn b58(k: &[u8; 32]) -> String {
 }
 
 const MINT: [u8; 32] = [21u8; 32];
-const SRC_OWNER: [u8; 32] = [11u8; 32];
+// The source's owner is the signer that moves its tokens: a TransferChecked
+// whose authority is not the account's owner or delegate executes on chain
+// only for the mint's permanent delegate, which L4 now refuses to assume
+// away when the mint is unread (A2-03, 2026-09-29 audit).
+const SRC_OWNER: [u8; 32] = OWNER_SIGNER;
 const DST_OWNER: [u8; 32] = [12u8; 32];
 const THIRD_OWNER: [u8; 32] = [13u8; 32];
 const SOURCE: [u8; 32] = [31u8; 32];
@@ -139,6 +143,7 @@ fn resolved(address: &str) -> ResolvedAccount {
     ResolvedAccount {
         address: address.to_string(),
         role: "account".to_string(),
+        name: String::new(),
         is_pda: false,
         is_signer: false,
         is_writable: true,
@@ -233,6 +238,15 @@ fn ix(position: &str, accounts: &[[u8; 32]], data: Vec<u8>) -> ExecutedTokenInst
     }
 }
 
+/// The owner of a fixture token account, which signs its transfers.
+fn owner_of(account: [u8; 32]) -> [u8; 32] {
+    match account {
+        DEST => DST_OWNER,
+        THIRD => THIRD_OWNER,
+        _ => SRC_OWNER,
+    }
+}
+
 fn transfer_checked(
     at: &str,
     from: [u8; 32],
@@ -242,7 +256,7 @@ fn transfer_checked(
     let mut data = vec![12u8];
     data.extend_from_slice(&amount.to_le_bytes());
     data.push(6);
-    ix(at, &[from, MINT, to, OWNER_SIGNER], data)
+    ix(at, &[from, MINT, to, owner_of(from)], data)
 }
 
 fn transfer_checked_with_fee(
@@ -256,7 +270,7 @@ fn transfer_checked_with_fee(
     data.extend_from_slice(&amount.to_le_bytes());
     data.push(6);
     data.extend_from_slice(&fee.to_le_bytes());
-    ix(at, &[from, MINT, to, OWNER_SIGNER], data)
+    ix(at, &[from, MINT, to, owner_of(from)], data)
 }
 
 // ─── Several transfers, and accounts that send and receive ─────────────────
@@ -1984,9 +1998,11 @@ mod compute_budget {
             "{:?}",
             b.problems
         );
+        // Too short is refused; trailing bytes are not (agave reads the
+        // value and ignores the rest — 2026-09-29 audit, A1-02).
         let b = budget(&legacy(&[vec![2u8, 1, 2]]));
         assert!(
-            b.problems.iter().any(|p| p.contains("wrong length")),
+            b.problems.iter().any(|p| p.contains("too short")),
             "{:?}",
             b.problems
         );

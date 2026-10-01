@@ -156,6 +156,22 @@ pub struct AccountSnapshot {
     /// `None` when one of them is present and could not be read exactly.
     #[serde(default)]
     pub token2022_powers: Option<Token2022Powers>,
+    /// SHA-256 of the account's data, hex (A2-05, 2026-09-29 audit). The
+    /// snapshot kept the length and the decoded token views only, so a
+    /// rewrite of any other data — a stake account's withdrawer, a program's
+    /// upgrade authority, any program's own state — compared equal and was
+    /// read as "observed unchanged". `None` for a snapshot built without data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_sha256: Option<String>,
+    /// Whether the account is executable (A2-05).
+    #[serde(default)]
+    pub executable: bool,
+    /// The authorities a NATIVE account records in its data, decoded where
+    /// the layout is fixed: a Stake account's staker, withdrawer and lockup
+    /// custodian, and a program's upgrade authority in its ProgramData
+    /// account (A2-05). Empty for every other account.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub native_authorities: Vec<(String, String)>,
 }
 
 /// `ExtensionType` discriminants the model reads beyond the transfer fee.
@@ -522,8 +538,61 @@ impl AccountSnapshot {
             } else {
                 None
             },
+            data_sha256: Some({
+                use sha2::Digest;
+                hex::encode(sha2::Sha256::digest(data))
+            }),
+            executable: false,
+            native_authorities: native_authorities(owner, data),
         }
     }
+
+    /// The same snapshot with the account's executable flag (A2-05).
+    pub fn with_executable(mut self, executable: bool) -> Self {
+        self.executable = executable;
+        self
+    }
+}
+
+/// The authorities a native account keeps at fixed offsets in its data
+/// (A2-05, 2026-09-29 audit).
+///
+/// - Stake (`StakeStateV2`, u32 tag 1 Initialized or 2 Stake): `Meta` =
+///   rent-exempt reserve (u64, 4..12), `Authorized` { staker 12..44,
+///   withdrawer 44..76 }, `Lockup` { unix_timestamp 76..84, epoch 84..92,
+///   custodian 92..124 }.
+/// - BPF Upgradeable Loader `ProgramData` (u32 tag 3): slot (u64, 4..12),
+///   `Option<Pubkey>` upgrade authority (tag byte 12, key 13..45).
+///
+/// Anything shorter than its layout, or another state, decodes to nothing.
+fn native_authorities(owner: &str, data: &[u8]) -> Vec<(String, String)> {
+    let key = |r: std::ops::Range<usize>| data.get(r).map(|b| bs58::encode(b).into_string());
+    let tag = data
+        .get(0..4)
+        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let mut out = Vec::new();
+    match (owner, tag) {
+        ("Stake11111111111111111111111111111111111111", Some(1 | 2)) => {
+            if let (Some(staker), Some(withdrawer), Some(custodian)) =
+                (key(12..44), key(44..76), key(92..124))
+            {
+                out.push(("stake staker".to_string(), staker));
+                out.push(("stake withdrawer".to_string(), withdrawer));
+                out.push(("stake lockup custodian".to_string(), custodian));
+            }
+        }
+        ("BPFLoaderUpgradeab1e11111111111111111111111", Some(3)) => match data.get(12) {
+            Some(0) => out.push(("program upgrade authority".to_string(), "none".to_string())),
+            Some(1) => {
+                if let Some(k) = key(13..45) {
+                    out.push(("program upgrade authority".to_string(), k));
+                }
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    out
 }
 
 /// How an authority that may or may not exist is written in a finding.
@@ -863,18 +932,28 @@ impl AccountDelta {
         let a = self.after.as_ref()?.mint.as_ref()?;
         Some(i128::from(a.supply) - i128::from(b.supply))
     }
-    /// A delegate that exists after the transaction and did not before.
+    /// A delegate power that exists after the transaction and did not before:
+    /// a new delegate, or the same delegate allowed to move MORE (A2-02,
+    /// 2026-09-29 audit). A delegation is the pair (delegate, allowance); an
+    /// allowance raised from 1 to u64::MAX for an existing delegate is a grant
+    /// of everything, and comparing the key alone did not see it. A lowered
+    /// allowance takes power away and is not a grant.
     pub fn delegate_granted(&self) -> Option<String> {
-        let after = self.after.as_ref()?.token.as_ref()?.delegate.clone()?;
-        let before = self
-            .before
-            .as_ref()
-            .and_then(|s| s.token.as_ref())
-            .and_then(|t| t.delegate.clone());
-        if before.as_deref() == Some(after.as_str()) {
-            None
-        } else {
-            Some(after)
+        let after = self.after.as_ref()?.token.as_ref()?;
+        let delegate = after.delegate.clone()?;
+        let before = self.before.as_ref().and_then(|s| s.token.as_ref());
+        match before {
+            Some(b) if b.delegate.as_deref() == Some(delegate.as_str()) => {
+                if after.delegated_amount > b.delegated_amount {
+                    Some(format!(
+                        "{delegate} (allowance raised from {} to {})",
+                        b.delegated_amount, after.delegated_amount
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => Some(delegate),
         }
     }
     /// A close authority that exists after the transaction and did not before.
@@ -1194,7 +1273,7 @@ impl StateDiffFinding {
 /// vocabulary is deliberately narrow: each keyword below appears in the shipped
 /// seed manifests, and a word not listed here simply contributes no promise,
 /// which is the conservative direction (an unpromised effect is a finding).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DeclaredEffects {
     pub debit: bool,
     pub credit: bool,
@@ -1214,6 +1293,21 @@ pub struct DeclaredEffects {
     /// movement is reported as a warning rather than a block. Blocking on
     /// prose we failed to parse would punish a manifest for its wording.
     pub unrecognised: bool,
+    /// Where each declared effect applies (A2-01, 2026-09-29 audit): an
+    /// effect stated about `accounts.<name>` excuses that account only; one
+    /// stated without naming an account excuses any. The booleans above say
+    /// whether an effect is declared ANYWHERE, for the transaction-level
+    /// checks; the per-account checks ask `covers`.
+    scopes: std::collections::BTreeMap<&'static str, EffectScope>,
+}
+
+/// Where one declared effect applies. See `DeclaredEffects::covers`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct EffectScope {
+    /// Declared without naming an account: it applies to any.
+    anywhere: bool,
+    /// The manifest account names it was declared about.
+    accounts: std::collections::BTreeSet<String>,
 }
 
 impl DeclaredEffects {
@@ -1228,6 +1322,34 @@ impl DeclaredEffects {
         !self.absent && !self.unrecognised
     }
 
+    /// Whether `effect` is declared for an account known to the manifest by
+    /// any of `names` (the slot names the account holds in this instruction;
+    /// empty for an account the instruction does not name). An effect
+    /// declared about one named account does not excuse another: "sets
+    /// accounts.account owner" is InitializeAccount3's account, not every
+    /// account the transaction touches (A2-01).
+    pub fn covers(&self, effect: &str, names: &[&str]) -> bool {
+        self.scopes
+            .get(effect)
+            .is_some_and(|s| s.anywhere || names.iter().any(|n| s.accounts.contains(*n)))
+    }
+
+    /// Parse the manifest's prose (A2-01, 2026-09-29 audit: rebuilt).
+    ///
+    /// Three rules the substring match it replaces did not have:
+    ///
+    /// - A list of account NAMES is not a statement of effects. The generated
+    ///   `modifies writable accounts: pool, owner, lpMint, payer` line — on
+    ///   2,589 of 3,195 shipped instructions — made `owner` an authority
+    ///   change, `lpMint` a mint and `payer` a debit, switching the matching
+    ///   L4 checks off for every account in the transaction: 417 instructions
+    ///   declared an authority change, 232 a mint and 133 a debit through a
+    ///   name alone. Such a line, and a bare identifier, now declares
+    ///   nothing. `accounts.<x>` and `data.<x>` references are read as
+    ///   references, never as words.
+    /// - Words, not substrings: `payer` is not `pay`, `fees` is `fee`.
+    /// - Scope: an effect stated about `accounts.<name>` applies to that
+    ///   account only (`covers`).
     pub fn parse(expected_state_changes: &[String]) -> Self {
         let mut e = Self {
             absent: expected_state_changes.is_empty(),
@@ -1237,53 +1359,70 @@ impl DeclaredEffects {
             if raw == UNDESCRIBED_INSTRUCTION_EFFECTS {
                 continue;
             }
-            let c = raw.to_lowercase();
-            // Value leaving an account.
-            if c.contains("debit")
-                || c.contains("transfer")
-                || c.contains("swap")
-                || c.contains("withdraw")
-                || c.contains("deposit")
-                || c.contains("repay")
-                || c.contains("borrow")
-                || c.contains("stake")
-                || c.contains("unstake")
-                || c.contains("send")
-                || c.contains("pay")
-                || c.contains("fee")
+            let lower = raw.to_lowercase();
+            if lower.trim_start().starts_with("modifies writable accounts")
+                || !lower.trim().contains(char::is_whitespace)
             {
-                e.debit = true;
-                e.credit = true;
+                continue;
             }
-            if c.contains("credit") || c.contains("receive") || c.contains("reward") {
-                e.credit = true;
+            let (named, words) = effect_words(raw);
+            let has = |stems: &[&str]| words.iter().any(|w| stems.iter().any(|s| w.starts_with(s)));
+            let is = |forms: &[&str]| words.iter().any(|w| forms.contains(&w.as_str()));
+            let mut found: Vec<&'static str> = Vec::new();
+            if has(&[
+                "debit", "transfer", "swap", "withdraw", "deposit", "borrow", "stake", "unstake",
+                "send", "sent",
+            ]) || is(&[
+                "pay", "pays", "paid", "payment", "payments", "repay", "repays", "repaid", "fee",
+                "fees",
+            ]) {
+                found.extend(["debit", "credit"]);
             }
-            if c.contains("close") || c.contains("closure") {
-                e.close = true;
+            if has(&["credit", "receiv", "reward"]) {
+                found.push("credit");
             }
-            if c.contains("create")
-                || c.contains("initialize")
-                || c.contains("init ")
-                || c.contains("open")
-                || c.contains("allocate")
-                || c.contains("new account")
+            if has(&["clos"]) {
+                found.push("close");
+            }
+            if has(&["creat", "initiali", "allocat"])
+                || is(&["init", "open", "opens", "opened", "opening"])
+                || lower.contains("new account")
             {
-                e.create = true;
+                found.push("create");
             }
-            if c.contains("delegate") || c.contains("approve") {
-                e.delegate = true;
+            if has(&["delegat", "approv"]) {
+                found.push("delegate");
             }
-            if c.contains("authority") || c.contains("assign") || c.contains("owner") {
-                e.authority = true;
+            if has(&["authorit", "assign", "owner"]) {
+                found.push("authority");
             }
-            if c.contains("mint") {
-                e.mint = true;
+            if is(&["mint", "mints", "minted", "minting"]) {
+                found.push("mint");
             }
-            if c.contains("burn") {
-                e.burn = true;
+            if has(&["burn"]) {
+                found.push("burn");
             }
-            if c.contains("freeze") || c.contains("thaw") {
-                e.freeze = true;
+            if has(&["freez", "froze", "thaw"]) {
+                found.push("freeze");
+            }
+            for effect in found {
+                match effect {
+                    "debit" => e.debit = true,
+                    "credit" => e.credit = true,
+                    "close" => e.close = true,
+                    "create" => e.create = true,
+                    "delegate" => e.delegate = true,
+                    "authority" => e.authority = true,
+                    "mint" => e.mint = true,
+                    "burn" => e.burn = true,
+                    _ => e.freeze = true,
+                }
+                let scope = e.scopes.entry(effect).or_default();
+                if named.is_empty() {
+                    scope.anywhere = true;
+                } else {
+                    scope.accounts.extend(named.iter().cloned());
+                }
             }
         }
         // An undescribed instruction is interpretable: it promises nothing.
@@ -1303,6 +1442,36 @@ impl DeclaredEffects {
                 || e.freeze);
         e
     }
+}
+
+/// The account names a declaration line references (`accounts.<name>`) and
+/// its remaining words, lowercased, with every `accounts.<x>`/`data.<x>`
+/// reference removed so a name is never read as a verb.
+fn effect_words(line: &str) -> (Vec<String>, Vec<String>) {
+    let mut named = Vec::new();
+    let mut words = Vec::new();
+    for token in line.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')')) {
+        let t = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '_');
+        if let Some(name) = t.strip_prefix("accounts.") {
+            let name: String = name
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                named.push(name);
+            }
+            continue;
+        }
+        if t.starts_with("data.") {
+            continue;
+        }
+        for w in t.split(|c: char| !c.is_ascii_alphanumeric()) {
+            if !w.is_empty() {
+                words.push(w.to_ascii_lowercase());
+            }
+        }
+    }
+    (named, words)
 }
 
 /// The declared effects of an instruction the manifest does not describe
@@ -1870,12 +2039,11 @@ fn pending_schedule_findings(
     };
     let Some(later) = grosses
         .iter()
-        .map(|g| config.newer.fee(*g))
-        .sum::<Option<u64>>()
+        .try_fold(0u64, |acc, g| acc.checked_add(config.newer.fee(*g)?))
     else {
         return;
     };
-    let gross: u64 = grosses.iter().sum();
+    let gross: u128 = grosses.iter().map(|g| u128::from(*g)).sum();
     if later > fee {
         out.push(StateDiffFinding::warning(
             "Token2022TransferFeeRising",
@@ -1884,8 +2052,8 @@ fn pending_schedule_findings(
                 "the mint's fee schedule changes to [{}] at epoch {}: if this transaction lands in that epoch or later the fee on it is {later}, not {fee}, and {} arrives instead of {} ({why})",
                 config.newer.describe(),
                 config.newer.epoch,
-                gross.saturating_sub(later),
-                gross.saturating_sub(fee)
+                gross.saturating_sub(u128::from(later)),
+                gross.saturating_sub(u128::from(fee))
             ),
         ));
     }
@@ -2274,10 +2442,14 @@ fn replay_findings(
     for (destination, gross, fee, _) in &r.transfers {
         let e = arrivals.entry(destination.as_str()).or_default();
         e.0.push(*gross);
-        e.1 += *fee;
+        // Saturating, and the gross in u128 (A2-10, 2026-09-29 audit): three
+        // transfers of 2^63 between two accounts overflowed the per-
+        // destination sum — a panic in a debug build, a wrapped figure in a
+        // finding's text in release.
+        e.1 = e.1.saturating_add(*fee);
     }
     for (destination, (grosses, fee)) in &arrivals {
-        let gross: u64 = grosses.iter().sum();
+        let gross: u128 = grosses.iter().map(|g| u128::from(*g)).sum();
         if *fee > 0 {
             let what = if grosses.len() == 1 {
                 format!("{gross} was transferred into this account")
@@ -2293,7 +2465,7 @@ fn replay_findings(
                 format!(
                     "{what} and Token-2022 withheld a fee of {fee} under the mint's schedule [{}], so {} arrived; the withheld fee belongs to whoever holds the mint's withdraw authority ({})",
                     schedule.describe(),
-                    gross.saturating_sub(*fee),
+                    gross.saturating_sub(u128::from(*fee)),
                     authority_label(&config.withdraw_withheld_authority)
                 ),
             ));
@@ -2611,8 +2783,35 @@ fn permanent_delegate_exercises(diff: &StateDiff) -> Vec<StateDiffFinding> {
         ) else {
             continue;
         };
-        let Some(Some(delegate)) = mint_snapshot(diff, mint)
-            .and_then(|m| m.token2022_powers.as_ref())
+        let source_before = diff
+            .deltas
+            .iter()
+            .find(|d| &d.pubkey == source)
+            .and_then(|d| d.before.as_ref())
+            .and_then(|s| s.token.as_ref());
+        let Some(mint_state) = mint_snapshot(diff, mint) else {
+            // A2-03 (2026-09-29 audit): an unread mint is not a mint without
+            // a permanent delegate. The movement is the holder's own — its
+            // owner or its ordinary delegate signing — or it could be the
+            // mint's; which, Graphite cannot say, so it is refused.
+            let holders_own = source_before.is_some_and(|t| {
+                &t.owner == authority || t.delegate.as_deref() == Some(authority.as_str())
+            });
+            if !holders_own {
+                out.push(StateDiffFinding::critical(
+                    "Token2022MintUnread",
+                    Some(source.as_str()),
+                    format!(
+                        "{} moves tokens out of this account under authority {authority}, which is not shown to be its owner or delegate, and mint {mint} could not be read — a permanent delegate cannot be ruled out",
+                        ix.position
+                    ),
+                ));
+            }
+            continue;
+        };
+        let Some(Some(delegate)) = mint_state
+            .token2022_powers
+            .as_ref()
             .and_then(|p| p.permanent_delegate.clone())
         else {
             continue;
@@ -2976,8 +3175,25 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     let mut net_lamport_out: i128 = 0;
     let mut token_debit = false;
 
+    // The manifest slot names each account holds in this instruction, for
+    // the scoped per-account checks (A2-01): an effect the manifest states
+    // about `accounts.<name>` excuses that account and no other.
+    let mut names_of: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for a in input.resolved_accounts {
+        if !a.name.is_empty() {
+            names_of
+                .entry(a.address.as_str())
+                .or_default()
+                .push(a.name.as_str());
+        }
+    }
     for d in &changed {
         let acct = Some(d.pubkey.as_str());
+        let names: &[&str] = names_of
+            .get(d.pubkey.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let declares = |effect: &str| declared.covers(effect, names);
         let is_fee_payer = input.fee_payer == Some(d.pubkey.as_str());
 
         // A write to an account the transaction did not mark writable is
@@ -3016,7 +3232,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         let left_system = d.after.as_ref().is_some_and(|s| s.owner != SYSTEM_PROGRAM);
         if d.was_created()
             && (gained_data || left_system)
-            && !declared.create
+            && !declares("create")
             && declared.is_interpretable()
         {
             findings.push(StateDiffFinding::warning(
@@ -3042,7 +3258,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             // declares the creation this allocation is part of, or it declares
             // an authority change outright. Neither means the takeover reading
             // stands.
-            let declared_by_manifest = (allocation && declared.create) || declared.authority;
+            let declared_by_manifest = (allocation && declares("create")) || declares("authority");
             if !declared_by_manifest {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredOwnerReassignment",
@@ -3055,7 +3271,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         }
 
         // Closure.
-        if d.was_closed() && !declared.close {
+        if d.was_closed() && !declares("close") {
             findings.push(StateDiffFinding::critical(
                 "UndeclaredAccountClosure",
                 acct,
@@ -3070,7 +3286,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         // permission over the account after this transaction ends, which is
         // why an undeclared one is critical rather than a note.
         if let Some(delegate) = d.delegate_granted() {
-            if !declared.delegate && !declared.authority {
+            if !declares("delegate") && !declares("authority") {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredDelegateGrant",
                     acct,
@@ -3081,7 +3297,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             }
         }
         if let Some(close_authority) = d.close_authority_granted() {
-            if !declared.close && !declared.authority {
+            if !declares("close") && !declares("authority") {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredCloseAuthorityGrant",
                     acct,
@@ -3091,7 +3307,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 ));
             }
         }
-        if d.was_frozen() && !declared.freeze {
+        if d.was_frozen() && !declares("freeze") {
             findings.push(StateDiffFinding::critical(
                 "UndeclaredAccountFreeze",
                 acct,
@@ -3108,7 +3324,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         // Token program still owns the account. The layer reported clean
         // because it was not looking at the field that changed.
         if let Some((from, to)) = d.token_authority_change() {
-            if !declared.authority {
+            if !declares("authority") {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredTokenAuthorityChange",
                     acct,
@@ -3119,7 +3335,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             }
         }
         if let Some((from, to)) = d.mint_authority_change() {
-            if !declared.authority {
+            if !declares("authority") {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredMintAuthorityChange",
                     acct,
@@ -3135,7 +3351,7 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             // A freeze authority change is an authority change; it is also the
             // thing that decides whether a freeze can ever happen, so a
             // manifest that declares freezing has accounted for it too.
-            if !declared.authority && !declared.freeze {
+            if !declares("authority") && !declares("freeze") {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredFreezeAuthorityChange",
                     acct,
@@ -3148,16 +3364,64 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             }
         }
 
+        // A2-05 (2026-09-29 audit): what changes in DATA, not only in the
+        // views decoded above. An executable flag flipping is a program
+        // appearing or being retired; a native account's recorded authority
+        // changing is a takeover no lamport or token field shows; a length
+        // change is a realloc, reported so the reader knows the account grew.
+        if let (Some(b), Some(a)) = (d.before.as_ref(), d.after.as_ref()) {
+            if b.executable != a.executable {
+                findings.push(StateDiffFinding::critical(
+                    "ExecutableChanged",
+                    acct,
+                    format!(
+                        "the account's executable flag changed from {} to {}",
+                        b.executable, a.executable
+                    ),
+                ));
+            }
+            if b.native_authorities != a.native_authorities && !declares("authority") {
+                let changed: Vec<String> = a
+                    .native_authorities
+                    .iter()
+                    .filter(|x| !b.native_authorities.contains(x))
+                    .map(|(what, who)| format!("{what} is now {who}"))
+                    .collect();
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredNativeAuthorityChange",
+                    acct,
+                    format!(
+                        "{}; the manifest declares no authority change. Whoever holds it controls the account after this transaction ends",
+                        if changed.is_empty() {
+                            "the authorities recorded in this account's data changed".to_string()
+                        } else {
+                            changed.join(", ")
+                        }
+                    ),
+                ));
+            }
+            if b.data_len != a.data_len && a.data_len != 0 && b.data_len != 0 {
+                findings.push(StateDiffFinding::warning(
+                    "AccountReallocated",
+                    acct,
+                    format!(
+                        "account data resized from {} to {} bytes",
+                        b.data_len, a.data_len
+                    ),
+                ));
+            }
+        }
+
         // Mint supply.
         match d.supply_delta() {
-            Some(delta) if delta > 0 && !declared.mint => {
+            Some(delta) if delta > 0 && !declares("mint") => {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredMint",
                     acct,
                     format!("mint supply increased by {delta}; the manifest declares no mint"),
                 ));
             }
-            Some(delta) if delta < 0 && !declared.burn => {
+            Some(delta) if delta < 0 && !declares("burn") => {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredBurn",
                     acct,
@@ -3250,6 +3514,7 @@ mod tests {
         ResolvedAccount {
             address: address.to_string(),
             role: "account".to_string(),
+            name: String::new(),
             is_pda: false,
             is_signer: false,
             is_writable: writable,
@@ -3273,6 +3538,9 @@ mod tests {
             transfer_fee_withheld: None,
             transfer_fee_config: None,
             token2022_powers: None,
+            data_sha256: None,
+            executable: false,
+            native_authorities: Vec::new(),
         }
     }
 
@@ -3730,13 +3998,20 @@ mod tests {
             transaction_accounts: None,
             transaction_privileges: None,
         };
-        let accounts = [account(ALICE, true)];
-        let report = check(
-            &diff,
-            &accounts,
-            &["changes authority (owner, mint_authority, freeze_authority) of accounts.account_or_mint".to_string()],
-        );
+        // The declaration is scoped to `accounts.account_or_mint` (A2-01), so
+        // the account must hold that slot, as SetAuthority's resolved account
+        // does. The same change on an account in no named slot stays a
+        // finding, which is the next assertion.
+        let named = ResolvedAccount {
+            name: "account_or_mint".to_string(),
+            ..account(ALICE, true)
+        };
+        let declaration =
+            ["changes authority (owner, mint_authority, freeze_authority) of accounts.account_or_mint".to_string()];
+        let report = check(&diff, &[named], &declaration);
         assert!(!codes(&report).contains(&"UndeclaredTokenAuthorityChange"));
+        let unnamed = check(&diff, &[account(ALICE, true)], &declaration);
+        assert!(codes(&unnamed).contains(&"UndeclaredTokenAuthorityChange"));
     }
 
     /// An ordinary transfer moves the balance and nothing else. The new check
@@ -4478,6 +4753,9 @@ mod tests {
                     transfer_fee_withheld: None,
                     transfer_fee_config: None,
                     token2022_powers: None,
+                    data_sha256: None,
+                    executable: false,
+                    native_authorities: Vec::new(),
                 }),
             }],
             provenance: DiffProvenance::RpcSimulated,

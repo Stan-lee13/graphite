@@ -210,6 +210,10 @@
           "role": {
             "type": "string"
           },
+          "name": {
+            "type": "string",
+            "description": "The account slot's name in the manifest (e.g. source, authority). Omitted when empty: an account past the manifest's declared list, or of an unknown program."
+          },
           "is_pda": {
             "type": "boolean"
           },
@@ -228,9 +232,9 @@
           "identity": {
             "type": "string",
             "enum": [
-              "Pda",
-              "Constant",
-              "Unverified"
+              "pda",
+              "constant",
+              "unverified"
             ],
             "description": "How this account's identity was verified. Unverified means genuinely externally-determined (no PDA formula, no fixed constant) \u2014 disclosed honestly rather than assumed safe."
           },

@@ -395,7 +395,7 @@
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
     "content_hash": "838db01cc56dfba556e26c4170e78d86bedc25be0431b7979ad5bc37aacae934",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -1696,7 +1696,7 @@
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
     "content_hash": "393004a53d95329cee8eae4c3a56acb8c767e7c172a54ce38c5f1514374a6519",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -1964,7 +1964,7 @@
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
     "content_hash": "9ff144b6d50d94c06b8f2a69545f42ac416a5815a29a1ba3f4dd125e87fd8288",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -2029,7 +2029,7 @@
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
     "content_hash": "67f56d9508808b891fb516f80a5a89c0eb7f31bbbd35e52dd11abbe093eb1112",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -2902,7 +2902,7 @@
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
     "content_hash": "8c0b17d72817f55a1d262f856dd4815942ac36a61497035b3e7c2708e2380996",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -3170,7 +3170,7 @@
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
     "content_hash": "23a4b52492c81ea09c4b91e417c84a98b61efab415a8107ee1136df235cae80d",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -3235,7 +3235,7 @@
     "program_id": "BPFLoaderUpgradeab1e11111111111111111111111",
     "version": "1.0.0",
     "content_hash": "4bf4bec74eb88da3fc910844e1296475d0e4dd8b259a9e56dfc789453b2682dd",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {

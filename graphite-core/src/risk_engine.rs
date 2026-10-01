@@ -17,10 +17,13 @@ pub enum RiskError {
     InvalidTransaction { reason: String },
 }
 
-/// Number of distinct risk checks `assess` performs (P0 Check 1..10, with
-/// 1b/3b/6a/6b sub-checks). Kept next to the enum so the L7 layer report's
-/// "patterns checked" string cannot silently drift out of sync.
-pub const CHECKED_PATTERNS: usize = 13;
+/// Number of distinct risk checks `assess` performs: Checks 1, 1b, 2, 2b, 3,
+/// 3b, 4, 5, 6a, 6b, 7, 8, 9, 10 (impersonation), 10b and 10 (high-risk class
+/// with no intent). The L7 layer report states it ("N patterns checked").
+/// It said 13 while `assess` ran 16 (2026-09-29 audit): the comment promised
+/// it could not drift, and nothing checked. `tests::checked_patterns_counts_
+/// the_labelled_checks` now counts the `// P0 Check` labels in `assess`.
+pub const CHECKED_PATTERNS: usize = 16;
 
 /// Adversarial pattern categories that the Risk Engine detects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,6 +179,153 @@ const RISKY_PATTERNS: &[KnownRiskPattern] = &[
         pattern: RiskPattern::PermissionEscalation,
         description: "Token-2022 Approve - grants delegate authority to spend tokens from account",
     },
+    // A3-01 (2026-09-29 audit): the table named ONE selector for each effect,
+    // and every native program has others with the same effect. The rule the
+    // table states is "an instruction that hands control of an account to
+    // someone else is refused whatever the declared intent says" — no intent
+    // in the vocabulary describes a hand-over — so it lists every native
+    // selector that does that, not the first one found. Before this, Stake
+    // Authorize declared as "stake", loader SetAuthority declared as
+    // "transfer" and an unlimited ApproveChecked declared as "revoke" were
+    // each approved on the Gaming profile, while their siblings in this table
+    // were refused.
+    KnownRiskPattern {
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        discriminator: "0d",
+        pattern: RiskPattern::PermissionEscalation,
+        description: "SPL Token ApproveChecked - grants delegate authority to spend tokens from account",
+    },
+    KnownRiskPattern {
+        program_id: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        discriminator: "0d",
+        pattern: RiskPattern::PermissionEscalation,
+        description: "Token-2022 ApproveChecked - grants delegate authority to spend tokens from account",
+    },
+    // A1-04 (2026-09-29 audit): p-token's `batch` (SIMD-0266, leading byte
+    // 255) carries several token instructions in one — a CloseAccount to an
+    // attacker among them — and every check here keys on the LEADING byte,
+    // which for a batch names none of them. Graphite does not decode a batch
+    // into its parts, so it refuses one rather than judge it by `ff`.
+    KnownRiskPattern {
+        program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        discriminator: "ff",
+        pattern: RiskPattern::MaliciousAccountChange,
+        description: "SPL Token batch — several token instructions in one, which Graphite does not decode individually",
+    },
+    KnownRiskPattern {
+        program_id: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        discriminator: "ff",
+        pattern: RiskPattern::MaliciousAccountChange,
+        description: "Token-2022 batch — several token instructions in one, which Graphite does not decode individually",
+    },
+    KnownRiskPattern {
+        program_id: "11111111111111111111111111111111",
+        discriminator: "07000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "System AuthorizeNonceAccount — hands the nonce account's authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "11111111111111111111111111111111",
+        discriminator: "0a000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "System AssignWithSeed — reassigns account ownership to a different program",
+    },
+    KnownRiskPattern {
+        program_id: "Stake11111111111111111111111111111111111111",
+        discriminator: "01000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Stake Authorize — hands the stake or withdraw authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Stake11111111111111111111111111111111111111",
+        discriminator: "06000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Stake SetLockup — changes the lockup and its custodian",
+    },
+    KnownRiskPattern {
+        program_id: "Stake11111111111111111111111111111111111111",
+        discriminator: "08000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Stake AuthorizeWithSeed — hands the stake or withdraw authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Stake11111111111111111111111111111111111111",
+        discriminator: "0a000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Stake AuthorizeChecked — hands the stake or withdraw authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Stake11111111111111111111111111111111111111",
+        discriminator: "0b000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Stake AuthorizeCheckedWithSeed — hands the stake or withdraw authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Stake11111111111111111111111111111111111111",
+        discriminator: "0c000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Stake SetLockupChecked — changes the lockup and its custodian",
+    },
+    KnownRiskPattern {
+        program_id: "BPFLoaderUpgradeab1e11111111111111111111111",
+        discriminator: "03000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "BPF Upgradeable Loader Upgrade — replaces the program's code",
+    },
+    KnownRiskPattern {
+        program_id: "BPFLoaderUpgradeab1e11111111111111111111111",
+        discriminator: "04000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "BPF Upgradeable Loader SetAuthority — hands the program's upgrade authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "BPFLoaderUpgradeab1e11111111111111111111111",
+        discriminator: "05000000",
+        pattern: RiskPattern::Drainer,
+        description: "BPF Upgradeable Loader Close — closes a program or buffer and sends its lamports away",
+    },
+    KnownRiskPattern {
+        program_id: "BPFLoaderUpgradeab1e11111111111111111111111",
+        discriminator: "07000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "BPF Upgradeable Loader SetAuthorityChecked — hands the program's upgrade authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Vote111111111111111111111111111111111111111",
+        discriminator: "01000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Vote Authorize — hands the voter or withdraw authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Vote111111111111111111111111111111111111111",
+        discriminator: "03000000",
+        pattern: RiskPattern::Drainer,
+        description: "Vote Withdraw — moves the vote account's lamports to a recipient",
+    },
+    KnownRiskPattern {
+        program_id: "Vote111111111111111111111111111111111111111",
+        discriminator: "04000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Vote UpdateValidatorIdentity — changes the validator identity",
+    },
+    KnownRiskPattern {
+        program_id: "Vote111111111111111111111111111111111111111",
+        discriminator: "07000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Vote AuthorizeChecked — hands the voter or withdraw authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Vote111111111111111111111111111111111111111",
+        discriminator: "0a000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Vote AuthorizeWithSeed — hands the voter or withdraw authority to another key",
+    },
+    KnownRiskPattern {
+        program_id: "Vote111111111111111111111111111111111111111",
+        discriminator: "0b000000",
+        pattern: RiskPattern::AuthorityHijack,
+        description: "Vote AuthorizeCheckedWithSeed — hands the voter or withdraw authority to another key",
+    },
 ];
 
 /// Programs whose presence in a CPI chain is inherently risky.
@@ -268,6 +418,19 @@ fn is_universal_cpi(cpi_target: &str) -> bool {
 /// (which prefix-matches) while an exact-equality risk check would silently
 /// not fire. The manifest and the risk engine must agree on discriminator
 /// semantics, or the intent-mismatch gates are trivially bypassable.
+/// The first eight characters of an identifier, for a reason string.
+///
+/// By CHARACTER, not byte: `assess` is public, and an identifier a caller
+/// hands it need not be ASCII. Slicing `&id[..8]` panicked on a multi-byte
+/// character (A1-03/A3-09, 2026-09-29 audit) and took the verification down
+/// with no audit row.
+pub(crate) fn short_id(id: &str) -> &str {
+    match id.char_indices().nth(8) {
+        Some((end, _)) => &id[..end],
+        None => id,
+    }
+}
+
 fn disc_matches(selector: &str, input_disc: &str) -> bool {
     let s = selector.to_lowercase();
     let i = input_disc.to_lowercase();
@@ -338,8 +501,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                     pattern: RiskPattern::AuthorityHijack,
                     reason: format!(
                         "CPI target '{}' is a token program from untrusted root '{}' and is NOT declared in the manifest's allowed CPI list — cannot verify instruction inside CPI (possible SetAuthority/CloseAccount via CPI, P12 fail-closed)",
-                        &cpi_target[..8.min(cpi_target.len())],
-                        &input.program_id[..8.min(input.program_id.len())]
+                        short_id(cpi_target),
+                        short_id(&input.program_id)
                     ),
                 });
             }
@@ -416,6 +579,28 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                 }
             }
         }
+    }
+
+    // P0 Check 2b: an instruction whose manifest entry changes who controls
+    // the protocol or an account (A3-01/A3-02, 2026-09-29 audit).
+    //
+    // Check 2 covers the native programs, whose selectors are fixed. For a
+    // manifested program the pipeline derives the class from the manifest
+    // (`InstructionDef::security_class`): `set_admin`, `transferOwnership`,
+    // `updateLendingMarketOwner` and their kind are authority changes
+    // whatever the onboarding tagged them — 106 were tagged `transfer`,
+    // `create` or nothing, so Check 10 never saw them, and a declared intent
+    // switched Check 10 off for the rest. No intent in the vocabulary
+    // declares a hand-over, so no intent can make one consistent: refused,
+    // primary or sibling, with or without an intent.
+    if input.manifest_risk_class == crate::manifest::AUTHORITY_CHANGE_CLASS {
+        return Ok(RiskVerdict::Blocked {
+            pattern: RiskPattern::AuthorityHijack,
+            reason: format!(
+                "the manifest's instruction changes who controls the protocol or an account (declared intent '{}') — no intent declares an authority hand-over, so none can be verified against it",
+                input.proposed_intent_type
+            ),
+        });
     }
 
     // P0 Check 3: Drainer pattern detection (tightened)
@@ -1060,10 +1245,11 @@ pub(crate) fn canonical_intent(intent_type: &str) -> &str {
         "stake" | "delegate" => "stake",
         "close" | "close_account" => "close",
         "create" | "create_account" => "create",
-        // approve/revoke are two directions of the same delegate-authority
-        // capability and are treated as one class by every check that
-        // references them.
-        "approve" | "revoke" => "approve",
+        // approve and revoke are OPPOSITE directions of the delegate
+        // capability, and are kept apart (A3-01, 2026-09-29 audit). Merging
+        // them made "revoke" a valid declaration for an Approve: Check 7 read
+        // a revoke intent as the approve case, and an unlimited
+        // ApproveChecked declared as "revoke" was approved.
         other => other,
     }
 }
@@ -1250,6 +1436,21 @@ fn detect_system_account_impersonation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `CHECKED_PATTERNS` is the number of labelled checks in `assess`, read
+    /// from this file's own source, so adding or removing a check without
+    /// updating the reported count fails here.
+    #[test]
+    fn checked_patterns_counts_the_labelled_checks() {
+        let src = include_str!("risk_engine.rs");
+        let start = src.find("pub fn assess(").expect("assess");
+        let end = start + src[start..].find("\n}\n").expect("end of assess");
+        let labels = src[start..end]
+            .lines()
+            .filter(|l| l.trim_start().starts_with("// P0 Check "))
+            .count();
+        assert_eq!(labels, CHECKED_PATTERNS);
+    }
 
     /// P1 fix (2026-09-05 audit, "CPI-allowlist maintainability"): TRUSTED_CPI_ROOTS
     /// and DEX_PROGRAMS were previously two independently hand-maintained lists

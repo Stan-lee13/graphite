@@ -283,7 +283,7 @@
     "program_id": "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",
     "version": "1.0.0",
     "content_hash": "c4e2b7dfe6b287ed1c13be4e5df9355cb817f86610749ef19f098e8f0740d180",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -614,7 +614,7 @@
     "program_id": "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",
     "version": "1.0.0",
     "content_hash": "cf64e27b4db4715e8e5ffbd7e709308a3ed8012149ce384d3f248508af62a38c",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {
@@ -2542,7 +2542,7 @@
     "program_id": "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",
     "version": "1.0.0",
     "content_hash": "a712f4778954511a11ea9b36f0bcd4f6c58ad826157c5989546985d4741b33aa",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {

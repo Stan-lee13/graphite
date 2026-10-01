@@ -18,6 +18,9 @@
 //! Labeling rules (each is a documented Graphite behavior, not a Graphite
 //! result):
 //!   - Discriminator in the RISKY_PATTERNS policy set → block (unconditional).
+//!   - Instruction NAMED for an authority change (a word of its name is
+//!     authority/admin/owner/ownership/governance) → block under any intent
+//!     (Check 2b, A3-01/A3-02 2026-09-29 audit).
 //!   - Swap intent on a swap program whose manifest state changes cannot
 //!     establish output credit → block (FakeSwap).
 //!   - High-risk manifest class (drain/authority/withdraw/mint/close) with
@@ -25,9 +28,11 @@
 //!   - Intent the program does not support → block (Check 9).
 //!   - Unique account count > manifest expected + 2 on a non-DEX,
 //!     non-variable instruction → block (Check 3b STMT drainer).
-//!   - Unknown instruction on a known protocol → NOT approved end-to-end
-//!     (P12 Response 2 confidence ceiling — pinned by
-//!     `attack_p0_1_unknown_selector_full_pipeline_not_approved`).
+//!   - Unknown instruction on a known protocol → NOT approved: it gets the
+//!     Unknown trust tier, below every profile's floor (A3-04, 2026-09-29
+//!     audit; also `attack_p0_1_unknown_selector_full_pipeline_not_approved`).
+//!   - Intent the instruction's NAME contradicts (approve↔revoke,
+//!     create↔close) → L5 fails, whatever the prose shares (A3-01).
 //!   - Unknown program → fail-closed block (P12).
 //!   - Everything else → approve (established account, matching intent).
 
@@ -132,13 +137,41 @@ const TRUSTED_ROOTS: &[&str] = &[
 const DEX_PROGRAMS: &[&str] = TRUSTED_ROOTS;
 
 /// RISKY_PATTERNS policy set from risk_engine.rs (documented): these
-/// discriminators block unconditionally regardless of intent.
+/// discriminators block unconditionally regardless of intent. Written out
+/// here rather than imported, so a change to the engine's table shows up as
+/// corpus failures to be reviewed, not as silently moved labels.
 fn risky_policy_block(program: &str, disc: &str) -> bool {
-    let token = program == TOKEN || program == TOKEN_2022;
-    if token && (disc.starts_with("06") || disc.starts_with("09") || disc.starts_with("04")) {
-        return true;
-    }
-    program == SYSTEM && disc.starts_with("01000000")
+    const TABLE: &[(&str, &[&str])] = &[
+        // SetAuthority, CloseAccount, Approve, ApproveChecked, batch.
+        (TOKEN, &["06", "09", "04", "0d", "ff"]),
+        (TOKEN_2022, &["06", "09", "04", "0d", "ff"]),
+        // Assign, AuthorizeNonceAccount, AssignWithSeed.
+        (SYSTEM, &["01000000", "07000000", "0a000000"]),
+        // Authorize, SetLockup, AuthorizeWithSeed, AuthorizeChecked,
+        // AuthorizeCheckedWithSeed, SetLockupChecked.
+        (
+            STAKE_PROGRAM,
+            &[
+                "01000000", "06000000", "08000000", "0a000000", "0b000000", "0c000000",
+            ],
+        ),
+        // Upgrade, SetAuthority, Close, SetAuthorityChecked.
+        (
+            "BPFLoaderUpgradeab1e11111111111111111111111",
+            &["03000000", "04000000", "05000000", "07000000"],
+        ),
+        // Authorize, Withdraw, UpdateValidatorIdentity, AuthorizeChecked,
+        // AuthorizeWithSeed, AuthorizeCheckedWithSeed.
+        (
+            "Vote111111111111111111111111111111111111111",
+            &[
+                "01000000", "03000000", "04000000", "07000000", "0a000000", "0b000000",
+            ],
+        ),
+    ];
+    TABLE
+        .iter()
+        .any(|(p, discs)| *p == program && discs.iter().any(|d| disc.starts_with(d)))
 }
 
 // ─────────────────────────── input builders ───────────────────────────────
@@ -361,6 +394,23 @@ fn instruction_accounts(
         changed = false;
         for (i, a) in ins.accounts.iter().enumerate() {
             if !a.pda_seeds.is_empty() && addrs[i].is_none() {
+                // A seed naming another slot waits until that slot is
+                // derived. Deriving now would hash the placeholder text
+                // `{account_N}` itself, and the pipeline — which reads the
+                // real account there — would then (correctly) report a PDA
+                // mismatch on a fixture meant to be honest (hylo's
+                // `lp_token_auth` = [mint_auth, {account_4}] before its own
+                // PDA `lp_token_mint` at slot 4).
+                let waits_on_a_later_slot = a.pda_seeds.iter().any(|s| {
+                    s.strip_prefix("{account_")
+                        .and_then(|r| r.strip_suffix('}'))
+                        .and_then(|r| r.split(':').next())
+                        .and_then(|n| n.parse::<usize>().ok())
+                        .is_some_and(|n| n != i && addrs.get(n).is_some_and(Option::is_none))
+                });
+                if waits_on_a_later_slot {
+                    continue;
+                }
                 let seeds: Vec<Vec<u8>> = a
                     .pda_seeds
                     .iter()
@@ -452,7 +502,8 @@ fn l5_keywords(intent: &str) -> &'static [&'static str] {
         "stake" | "delegate" => &["stake", "delegate", "withdraw", "deactivate", "reward"],
         "close" | "close_account" => &["close", "closure", "shutdown"],
         "create" | "create_account" => &["create", "allocate", "assign", "initialize"],
-        "approve" | "revoke" => &["approve", "revoke", "delegate"],
+        "approve" => &["approve", "delegate"],
+        "revoke" => &["revoke"],
         _ => &[],
     }
 }
@@ -501,6 +552,17 @@ fn l5_matches(intent: &str, name: &str, state_changes: &[String]) -> bool {
         return false; // unknown intent type → L5 fail-closed
     }
     let n = name.to_lowercase();
+    // An instruction named for the opposite effect fails L5 (A3-01).
+    let opposites: &[&str] = match intent {
+        "approve" => &["revoke"],
+        "revoke" => &["approve"],
+        "create" | "create_account" => &["close"],
+        "close" | "close_account" => &["create", "initialize"],
+        _ => &[],
+    };
+    if opposites.iter().any(|o| n.contains(o)) {
+        return false;
+    }
     let changes: Vec<String> = state_changes.iter().map(|c| c.to_lowercase()).collect();
     let ix_matches = kws.iter().any(|kw| n.contains(kw));
     let changes_match = changes.iter().any(|c| kws.iter().any(|kw| c.contains(kw)));
@@ -527,6 +589,9 @@ fn canonical_expected(
 ) -> bool {
     if risky_policy_block(program, disc) {
         return false;
+    }
+    if graphite_core::manifest::names_an_authority_change(name) {
+        return false; // Check 2b: an authority change blocks under any intent
     }
     if intent == "swap" && is_swap_program(program) {
         let has_credit = state_changes
@@ -594,21 +659,18 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
             let accounts = instruction_accounts(program, ins, seed_base, &instruction_data);
             let cpis = ins.allowed_cpis.clone();
             let intent = intent_for(&ins.name, program);
-            // Empty-discriminator manifests (Memo family) resolve as
-            // unknown_instruction on the pipeline → P12 soft path → approved
-            // under the 0.40 floor. The label follows the actual resolution.
-            let expected = if disc.trim().is_empty() {
-                true
-            } else {
-                canonical_expected(
-                    program,
-                    &disc,
-                    &ins.name,
-                    &ins.expected_state_changes,
-                    intent,
-                    &ins.accounts,
-                )
-            };
+            // Empty-discriminator manifests (Memo family) describe ONE
+            // instruction, which answers every call (A3-02: it used to
+            // resolve as unknown_instruction and ride the P12 soft path), so
+            // they are labelled by the same rules as every other instruction.
+            let expected = canonical_expected(
+                program,
+                &disc,
+                &ins.name,
+                &ins.expected_state_changes,
+                intent,
+                &ins.accounts,
+            );
             let instruction_data = Some(instruction_data);
 
             // canonical benign (or policy-blocked) shape
@@ -781,12 +843,12 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
                 );
             }
 
-            // unknown-instruction variant — P12 Response-2 (one per program).
-            // L5 is Inconclusive for a low-risk intent (not a failure, by
-            // design GAP-2026-08-06-3), so confidence stays 0.44 and the
-            // 0.40 operator floor APPROVES. The strict case (Treasury floor)
-            // is pinned in the regression split and in
-            // attack_p0_1_unknown_selector_full_pipeline_not_approved.
+            // unknown-instruction variant (one per program). An instruction
+            // the protocol's manifest does not describe gets the Unknown
+            // trust tier, which fails every profile's tier floor, and its
+            // Inconclusive L5 earns no alignment credit (A3-04/A5-06,
+            // 2026-09-29 audit). It used to ride the P12 soft path to an
+            // approval under the 0.40 floor, scoring like a described one.
             if ii == 0 {
                 // Small fixed account list: an unknown instruction has no
                 // manifest account layout, so a large list would trip the
@@ -804,12 +866,12 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
                     &mut corpus,
                     &mut notes,
                     unknown_input,
-                    true,
+                    false,
                     "dev",
                     "unknown-instruction",
                     "synthetic-manifest",
                     format!(
-                        "{} unknown discriminator — P12 Response 2 (approved under 0.40 floor)",
+                        "{} unknown discriminator — Unknown tier, not approved (A3-04)",
                         m.protocol.name
                     ),
                 );

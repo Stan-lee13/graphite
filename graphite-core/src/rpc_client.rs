@@ -20,6 +20,14 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 
+/// The most instructions the runtime records for one transaction, top-level
+/// and inner together (agave `MAX_INSTRUCTION_TRACE_LENGTH`). An RPC reporting
+/// more inner instructions than this is not describing an execution (A2-11).
+pub const MAX_INSTRUCTION_TRACE_LENGTH: usize = 64;
+/// The deepest instruction stack the runtime allows, with room for SIMD-0268's
+/// raise from 5 to 9 (A2-11). A reported `stackHeight` past it is refused.
+pub const MAX_INSTRUCTION_STACK_HEIGHT: u32 = 9;
+
 #[derive(Debug, Error, Clone)]
 pub enum RpcError {
     #[error("RPC request failed: {0}")]
@@ -337,6 +345,11 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
             let mut out = Vec::new();
             for g in groups {
                 let ixs = g.get("instructions").and_then(|i| i.as_array())?;
+                // Past the runtime's trace limit the report is not an
+                // execution's (A2-11): unknown, never truncated.
+                if out.len() + ixs.len() > MAX_INSTRUCTION_TRACE_LENGTH {
+                    return None;
+                }
                 for ix in ixs {
                     let idx = ix.get("programIdIndex").and_then(|v| v.as_u64())?;
                     out.push(u8::try_from(idx).ok()?);
@@ -350,6 +363,16 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
     // simulator ACTUALLY executed instead of relying on a trace the caller
     // chose whether to send. Same completeness rule as the indexes above: one
     // unreadable instruction makes the whole set unknown.
+    //
+    // A2-11 (2026-09-29 audit): and a report no cluster can produce is not
+    // one. The runtime records at most `MAX_INSTRUCTION_TRACE_LENGTH` (64)
+    // instructions per transaction and nests them at most
+    // `MAX_INSTRUCTION_STACK_HEIGHT` deep; a response past either is a
+    // malicious or broken RPC, and it was trusted — ~200k inner instructions
+    // of rising `stackHeight` fit in the 32 MiB response cap, recursed one
+    // stack frame each while the tree was rebuilt, and aborted the PROCESS:
+    // every in-flight request lost, no audit rows. Such a report makes the
+    // set unknown, like any other unreadable one.
     let inner_instructions: Option<Vec<ObservedInnerInstruction>> = value
         .get("innerInstructions")
         .and_then(|v| v.as_array())
@@ -357,7 +380,11 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
             let mut out = Vec::new();
             for g in groups {
                 let top_level_index = u8::try_from(g.get("index")?.as_u64()?).ok()?;
-                for ix in g.get("instructions")?.as_array()? {
+                let instructions = g.get("instructions")?.as_array()?;
+                if out.len() + instructions.len() > MAX_INSTRUCTION_TRACE_LENGTH {
+                    return None;
+                }
+                for ix in instructions {
                     let program_id_index =
                         u8::try_from(ix.get("programIdIndex")?.as_u64()?).ok()?;
                     let accounts = ix
@@ -369,7 +396,14 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
                     let data = bs58::decode(ix.get("data")?.as_str()?).into_vec().ok()?;
                     let stack_height = match ix.get("stackHeight") {
                         None | Some(serde_json::Value::Null) => None,
-                        Some(h) => Some(u32::try_from(h.as_u64()?).ok()?),
+                        Some(h) => {
+                            let h = u32::try_from(h.as_u64()?).ok()?;
+                            // An inner instruction runs at height 2 or more.
+                            if !(2..=MAX_INSTRUCTION_STACK_HEIGHT).contains(&h) {
+                                return None;
+                            }
+                            Some(h)
+                        }
                     };
                     out.push(ObservedInnerInstruction {
                         top_level_index,

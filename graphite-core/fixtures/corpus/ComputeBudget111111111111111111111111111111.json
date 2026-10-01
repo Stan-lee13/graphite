@@ -378,7 +378,7 @@
     "program_id": "ComputeBudget111111111111111111111111111111",
     "version": "1.0.0",
     "content_hash": "a4c54a92c29db7cc2186ca0f8d8cfc51a0fa0de6d96e7683ef07cfe88d52f26c",
-    "expected_approved": true,
+    "expected_approved": false,
     "source": "synthetic-manifest",
     "deprecated": false,
     "input": {

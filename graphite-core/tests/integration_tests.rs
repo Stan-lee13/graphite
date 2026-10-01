@@ -303,6 +303,7 @@ fn test_fix4_invalid_pubkey_in_transaction_builder_is_hard_error() {
     let bad_account = ResolvedAccount {
         address: "NOT_A_VALID_BASE58_ADDRESS!!!".to_string(),
         role: "signer".to_string(),
+        name: String::new(),
         is_pda: false,
         is_signer: true,
         is_writable: true,
@@ -345,6 +346,7 @@ fn test_fix4_invalid_program_id_is_hard_error() {
     let good_account = ResolvedAccount {
         address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_string(),
         role: "signer".to_string(),
+        name: String::new(),
         is_pda: false,
         is_signer: true,
         is_writable: true,

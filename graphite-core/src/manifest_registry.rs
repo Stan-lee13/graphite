@@ -85,6 +85,8 @@ pub enum RegistryError {
     NoEvidence,
     #[error("invalid manifest: {0}")]
     InvalidManifest(String),
+    #[error("version {0} of this program was already accepted; a registry never re-accepts a version, so an old submission cannot be replayed over a newer one")]
+    VersionAlreadyAccepted(String),
 }
 
 /// Outcome of a registry submission.
@@ -235,6 +237,37 @@ impl ManifestRegistryEngine {
     /// `None`) are skipped. The verification core merges these into its
     /// runtime registry (C53) so community-accepted protocols actually resolve
     /// at verification time, not just in the dashboard.
+    /// The manifests in force (see [`Self::accepted_manifests`]), each
+    /// carrying the tier the registry COMPUTED for it in place of the one
+    /// its document declares (A3-06, 2026-09-29 audit). The runtime reads a
+    /// manifest's `trust_tier` on the verdict path; a submission earning
+    /// HeuristicInferred from one attestation that wrote "OfficialManifest"
+    /// into its own document was verified at OfficialManifest. P7: a tier is
+    /// computed from evidence, never asserted. This is what a verification
+    /// core merges.
+    pub fn manifests_in_force(&self) -> Vec<ProtocolManifest> {
+        let mut order: Vec<&str> = Vec::new();
+        let mut latest: HashMap<&str, (&ProtocolManifest, TrustTier)> = HashMap::new();
+        for record in &self.records {
+            let Some(manifest) = record.manifest.as_ref() else {
+                continue;
+            };
+            let key = record.program_id.as_str();
+            if latest.insert(key, (manifest, record.trust_tier)).is_none() {
+                order.push(key);
+            }
+        }
+        order
+            .into_iter()
+            .filter_map(|k| latest.remove(k))
+            .map(|(m, tier)| {
+                let mut m = m.clone();
+                m.trust_tier = tier.as_str().to_string();
+                m
+            })
+            .collect()
+    }
+
     pub fn accepted_manifests(&self) -> impl Iterator<Item = &ProtocolManifest> {
         let mut order: Vec<&str> = Vec::new();
         let mut latest: HashMap<&str, &ProtocolManifest> = HashMap::new();
@@ -270,6 +303,19 @@ impl ManifestRegistryEngine {
         Self::validate_manifest(&submission.manifest)?;
         let content_hash = submission.content_hash();
         let version_label = submission.manifest.version.label.clone();
+        // A3-07 (2026-09-29 audit): a version is accepted once. Signatures
+        // and attestations cover the manifest alone, so anyone holding an
+        // old accepted submission could hand it in again after a correction;
+        // it verified, it was not a promotion (so no replay gate ran), and as
+        // the newest record it became the manifest in force — the correction
+        // rolled back with no new signature. A label or a content hash the log
+        // already holds for this program is refused.
+        if self.records.iter().any(|r| {
+            r.program_id == program_id
+                && (r.version_label == version_label || r.content_hash == content_hash)
+        }) {
+            return Err(RegistryError::VersionAlreadyAccepted(version_label));
+        }
 
         // Evidence from the submission — P7: tier derived, never asserted.
         let evidence = self.evidence_from_submission(&submission, &content_hash)?;
@@ -1296,7 +1342,23 @@ mod tests {
         engine
             .register_reviewer(&pubkey_b58(&signer), 1000)
             .unwrap();
-        let submission = signed_submission(PROGRAM, "v1.0", &signer);
+        // `TestOp` describes a debit of `accounts.from`, so it declares the
+        // two accounts that description needs; the shared stub manifest
+        // declares none, which L4 rightly refuses as inconsistent.
+        let mut candidate = manifest(PROGRAM, "Test Protocol", "v1.0");
+        candidate.instructions[0].accounts = [("from", true), ("to", false)]
+            .into_iter()
+            .map(|(name, is_signer)| AccountRoleDef {
+                name: name.to_string(),
+                role: "writable".to_string(),
+                is_writable: true,
+                is_signer,
+                pda_seeds: vec![],
+                expected_address: vec![],
+                optional: false,
+            })
+            .collect();
+        let submission = sign_manifest(candidate, &signer);
 
         let mut base = GraphiteCore::new();
         // The program needs an earned tier or the wallet profile's tier floor
@@ -1306,17 +1368,32 @@ mod tests {
         let candidate_core = base
             .with_candidate_manifest(&submission.manifest)
             .expect("candidate core");
-        // A discriminator the candidate manifest does NOT declare. With the
-        // manifest present that is an instruction mismatch; without it the
-        // program is simply unknown, which is a different verdict.
-        let input = make_fixture_input(PROGRAM, "99", "transfer", &[], &[ACCT_A, ACCT_B]);
+        // The instruction the candidate manifest declares (`TestOp`, "01").
+        // Under the candidate it is a described instruction; without the
+        // manifest the program is unknown, which is a different verdict. (An
+        // UNDECLARED discriminator no longer tells the two apart: since the
+        // 2026-09-29 audit (A3-04) an instruction a manifest does not describe
+        // is refused like an unknown program's.)
+        let input = make_fixture_input(PROGRAM, "01", "transfer", &[], &[ACCT_A, ACCT_B]);
 
-        let under_candidate = candidate_core.verify(&input).expect("verify").approved;
-        let under_base = base.verify(&input).expect("verify").approved;
+        let candidate_result = candidate_core.verify(&input).expect("verify");
+        let base_result = base.verify(&input).expect("verify");
+        let under_candidate = candidate_result.approved;
+        let under_base = base_result.approved;
+        let layers = |r: &crate::verification::VerificationResult| {
+            r.layers
+                .iter()
+                .map(|l| format!("{}:{:?}:{}", l.layer, l.status, l.reason))
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        };
         assert_ne!(
-            under_candidate, under_base,
+            under_candidate,
+            under_base,
             "the candidate manifest must change this input's outcome, or the \
-             test cannot tell which core the gate replayed"
+             test cannot tell which core the gate replayed\ncandidate:\n  {}\nbase:\n  {}",
+            layers(&candidate_result),
+            layers(&base_result)
         );
 
         let mut corpus = RegressionCorpus::new();
@@ -1426,8 +1503,7 @@ mod tests {
 
         // What actually reaches verification.
         let mut registry = crate::manifest::load_seed_manifests();
-        let merged =
-            registry.merge_community(&engine.accepted_manifests().cloned().collect::<Vec<_>>());
+        let merged = registry.merge_community(&engine.manifests_in_force());
         assert_eq!(merged, 1, "one program, one current manifest");
         let in_force = registry.get(PROGRAM).expect("merged manifest");
         assert_eq!(
@@ -1518,11 +1594,18 @@ mod tests {
     #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
     #[test]
     fn deterministic_same_submission_same_decision() {
-        let mut engine = ManifestRegistryEngine::new();
+        // Two independent engines: the same submission to the SAME engine is
+        // a replay and is refused (`VersionAlreadyAccepted`, A3-07).
         let signer = key(50);
-        engine
-            .register_reviewer(&pubkey_b58(&signer), 1000)
-            .unwrap();
+        let engine_with_reviewer = || {
+            let mut engine = ManifestRegistryEngine::new();
+            engine
+                .register_reviewer(&pubkey_b58(&signer), 1000)
+                .unwrap();
+            engine
+        };
+        let mut engine = engine_with_reviewer();
+        let mut engine_b = engine_with_reviewer();
         let program = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 
         let mut store_a = SemanticGraphStore::new();
@@ -1536,7 +1619,7 @@ mod tests {
                 Some((&corpus, &core)),
             )
             .unwrap();
-        let d2 = engine
+        let d2 = engine_b
             .submit(
                 &mut store_b,
                 signed_submission(program, "v1.0", &signer),
@@ -1640,8 +1723,7 @@ mod tests {
             .first()
             .map(|i| i.discriminator.clone());
 
-        let merged =
-            registry.merge_community(&engine.accepted_manifests().cloned().collect::<Vec<_>>());
+        let merged = registry.merge_community(&engine.manifests_in_force());
         // Only the brand-new community program merges; the seed program's
         // manifest is untouched (seed-wins).
         assert_eq!(merged, 1);

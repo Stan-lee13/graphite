@@ -394,6 +394,14 @@ pub struct AuditRecord {
     /// L8 execution-verification state (always "inconclusive" until Phase 2
     /// wires post-submission verification) — GAP-2026-08-06-3.
     pub l8_status: String,
+    /// The wallet profile the verdict was judged under, and — when the server
+    /// overrode what the caller asked for — the override (A4-06, 2026-09-29
+    /// audit). A verdict's meaning depends on its thresholds; the override
+    /// was disclosed in the response only, so the trail could not say which
+    /// policy an approval was held to. `None` on rows written before, and on
+    /// rows not produced by `/verify`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallet_profile: Option<String>,
 }
 
 /// A lifecycle event for a stage Graphite does not itself perform.
@@ -1801,6 +1809,7 @@ mod tests {
             policy_verdict: "Approved".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
         }
     }
 
@@ -2071,6 +2080,7 @@ mod tests {
             policy_verdict: "Approved".to_string(),
             l3_status: "inconclusive".to_string(),
             l8_status: "inconclusive".to_string(),
+            wallet_profile: None,
         };
         let json = serde_json::to_string(&record).expect("audit record serializes");
         assert!(
@@ -2127,6 +2137,7 @@ mod tests {
                     },
                     l3_status: "inconclusive".into(),
                     l8_status: "inconclusive".into(),
+                    wallet_profile: None,
                 }));
             }
         }
@@ -2715,10 +2726,9 @@ mod tests {
             0,
             "an indexed lookup must not scan the file"
         );
-        assert!(
-            hit_cost.as_millis() < 1_000 && miss_cost.as_millis() < 1_000,
-            "an indexed lookup took a scan's time: hit {hit_cost:?}, miss {miss_cost:?}"
-        );
+        // No wall-clock bound (2026-09-29 audit, A6-11): the scan counters
+        // above are the witness that the lookups were indexed, and the timings
+        // are printed for the record.
         std::fs::remove_dir_all(&dir).ok();
     }
 
