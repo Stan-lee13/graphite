@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Fetch a REAL Squads V4 devnet transaction and analyze its instruction
 data to ground the dynamic-PDA-seed work in on-chain reality."""
-import base64
 import json
 import urllib.request
 

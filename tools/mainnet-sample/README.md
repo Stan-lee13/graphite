@@ -23,7 +23,8 @@ mainnet endpoint is used, the same default the other live tests take.
 
 **It reads and nothing else.** One request at a time, a pause between blocks,
 and it stops rather than retrying on a 429 — a public endpoint is somebody
-else's infrastructure. No credentials are read, written or needed. Nothing
+else's infrastructure. A stop on a 429 writes no sample and exits non-zero, so
+a script calling it never mistakes an aborted fetch for a sample. No credentials are read, written or needed. Nothing
 here touches a wallet, a key, a fund or a live protocol, and no transaction is
 ever submitted.
 

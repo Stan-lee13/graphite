@@ -68,7 +68,11 @@ services:
         max-file: "5"
 
     # The Dockerfile already declares a HEALTHCHECK; this mirrors it at the
-    # compose level for orchestration visibility.
+    # compose level for orchestration visibility. It passes on any 2xx from
+    # /health, including a node reporting `degraded: true` (such a node
+    # already refuses, with 503, any verdict it cannot record). Use
+    # ["CMD", "graphite", "healthcheck", "--strict"] to mark a degraded
+    # audit trail unhealthy instead.
     healthcheck:
       test: ["CMD", "graphite", "healthcheck"]
       interval: 30s

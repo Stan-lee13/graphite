@@ -1,0 +1,8 @@
+# Known HIGH/CRITICAL npm advisories in dashboard/package-lock.json.
+# Read by gate.mjs in the CI supply-chain job. One GHSA id per line.
+#
+# Recorded 2026-09-30: `npm audit` reports 0 vulnerabilities at any level,
+# dev dependencies included, after moving to vite 8 (the vite 5 dev server
+# carried GHSA-fx2h-pf6j-xcff, GHSA-4w7w-66w2-5vf9 and GHSA-v6wh-96g9-6wx3,
+# and its esbuild GHSA-67mh-4wv8-2f99). The list is empty, so any
+# high/critical advisory fails CI.

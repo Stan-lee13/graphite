@@ -538,15 +538,17 @@ fn same_transaction(
         .iter()
         .find(|k| !parsed.writable.contains(k))
     {
-        return Err(format!(
-            "runtime-writable key {k} is read-only to Graphite"
-        ));
+        return Err(format!("runtime-writable key {k} is read-only to Graphite"));
     }
     let has_lookups = tx
         .message
         .address_table_lookups()
         .is_some_and(|l| !l.is_empty());
-    for k in parsed.writable.iter().filter(|k| !runtime_writable.contains(k)) {
+    for k in parsed
+        .writable
+        .iter()
+        .filter(|k| !runtime_writable.contains(k))
+    {
         let invoked = parsed.instructions.iter().any(|ix| ix.program_id == *k);
         if !(has_lookups && invoked) {
             return Err(format!(

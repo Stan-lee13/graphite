@@ -8,7 +8,6 @@ import base64
 import hashlib
 import json
 import struct
-import sys
 import urllib.request
 
 RPC = "https://api.mainnet-beta.solana.com"

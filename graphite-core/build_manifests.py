@@ -18,8 +18,6 @@ Native programs (Solend): 1-byte tag hex (e.g. "04").
 import hashlib
 import json
 import os
-import re
-import sys
 
 TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 TOKEN2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
@@ -223,8 +221,6 @@ def build_solend():
     shapes = json.load(open("scripts/solend_shapes.json", encoding="utf-8")) if os.path.exists("scripts/solend_shapes.json") else {}
     # tag -> (name, [account names from SDK doc comments], signer_indices)
     sdk = json.load(open("scripts/solend_sdk_layouts.json", encoding="utf-8"))
-    # name -> tag from unpack (authoritative)
-    name_tag = {v["tag"]: k for k, v in sdk.items()}
     # doc-comment account names by name (indices from the SDK comments)
     doc_names = {}
     for name, info in sdk.items():
@@ -271,7 +267,7 @@ def build_solend():
             source_note = "layout captured from live mainnet transactions"
         else:
             # SDK doc-comment layout (partial: doc comments omit sysvars/programs)
-            for idx, flags, desc in doc_names.get(name, []):
+            for _idx, flags, desc in doc_names.get(name, []):
                 is_w = "writable" in flags
                 is_s = "signer" in flags
                 accts.append({

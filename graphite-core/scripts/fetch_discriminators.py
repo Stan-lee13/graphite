@@ -49,7 +49,6 @@ def rpc(method: str, params: list) -> dict:
 
 
 def fetch(program_id_b58: str, n: int = 6) -> None:
-    pid_bytes = b58decode(program_id_b58)
     sigs = rpc("getSignaturesForAddress", [program_id_b58, {"limit": n}])
     seen = set()
     print(f"=== {program_id_b58} ===")

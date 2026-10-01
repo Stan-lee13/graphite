@@ -40,8 +40,12 @@ def rpc(method, params, timeout=120, attempts=4):
                 return json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                print("  429 from the endpoint — stopping rather than retrying", flush=True)
-                raise SystemExit(0)
+                # Stop rather than retry a public endpoint that asked us to
+                # slow down, and say so with a failing status: nothing has
+                # been written, and a caller must not read exit 0 as a sample.
+                raise SystemExit(
+                    "429 from the endpoint — stopped without writing a sample; retry later"
+                ) from None
             raise
         except (http.client.IncompleteRead, ConnectionError, TimeoutError) as e:
             # A whole mainnet block is 5-12 MB and the public endpoint drops

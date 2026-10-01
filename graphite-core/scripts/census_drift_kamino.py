@@ -133,7 +133,7 @@ def main():
     for prog in PROGRAMS:
         dm = derived[prog]
         print(f"--- {prog} ---", flush=True)
-        match = mismatch = unknown = 0
+        match = mismatch = 0
         for key, n in counts.most_common():
             if not key.startswith(prog + ":"):
                 continue

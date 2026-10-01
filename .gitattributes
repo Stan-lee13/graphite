@@ -1,0 +1,7 @@
+# Every text file is LF in the repository, and checked out LF on every OS.
+#
+# Without this, a Windows checkout with core.autocrlf=true turned the Go SDK
+# into CRLF and `gofmt -l` listed five files as unformatted that CI (Linux)
+# saw as clean; byte-exact fixtures read with include_str! differ by platform
+# the same way. Binary files are detected by git (`text=auto`).
+* text=auto eol=lf

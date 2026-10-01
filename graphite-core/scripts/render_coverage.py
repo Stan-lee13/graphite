@@ -12,7 +12,6 @@ AMM V4 the other way round). `tests/docs_match_the_registry.rs` re-runs the
 comparison in CI.
 """
 import json
-import sys
 import time
 from pathlib import Path
 
@@ -129,7 +128,7 @@ def main():
         "`OfficialManifest` unless `protocols/battle_tested_evidence.json` shows all three of:"
     )
     lines.append("")
-    lines.append(f"1. the program account exists on mainnet and is **executable**;")
+    lines.append("1. the program account exists on mainnet and is **executable**;")
     lines.append(
         f"2. at least **{th['min_successful_transactions']:,} successful transactions** carry its "
         "address, counted over a window the record states (the signature index answers for the "

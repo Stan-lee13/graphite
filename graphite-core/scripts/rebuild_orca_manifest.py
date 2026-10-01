@@ -73,7 +73,7 @@ def state_changes(name: str) -> list:
         entity = name[len("initialize_"):].replace("_", " ")
         return [f"initializes the {entity} account for the whirlpool protocol"]
     if name.startswith("set_"):
-        return [f"updates a whirlpool protocol authority or parameter"]
+        return ["updates a whirlpool protocol authority or parameter"]
     if name.startswith("close_"):
         entity = name[len("close_"):].replace("_", " ")
         return [f"closes the {entity} account and reclaims rent"]

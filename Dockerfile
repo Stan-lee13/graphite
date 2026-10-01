@@ -2,7 +2,8 @@
 # Build:  docker build -t graphite-core .
 # Run:    docker run -p 7331:7331 -e GRAPHITE_API_KEY=... graphite-core
 # Constitution P1: Only deterministic Rust core. Python AI Layer runs separately.
-# Manifests are compile-time baked via include_str! (P12 fail-closed).
+# Manifests are compile-time baked via include_str!, so the image serves exactly
+# the manifests the binary was built with; there is nothing to load at runtime.
 
 # Base images are pinned by manifest digest (Round 9, repository integrity):
 # a tag is a mutable pointer and a build that resolves it differently on two
@@ -54,6 +55,17 @@ FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe6
 # rustls needs a trust store). curl is NOT installed: the healthcheck uses the
 # binary's own `healthcheck` subcommand instead, keeping curl and its
 # transitive libraries (libcurl, libssh2, libpsl, …) out of the runtime image.
+#
+# Not pinned, deliberately (A6-14). The base image is pinned by digest, but
+# `apt-get update` resolves ca-certificates from the bookworm archive at build
+# time, so two builds of one commit can carry different versions of that one
+# package. That was accepted rather than pinned: the package is a trust store,
+# and a stale one is the larger risk (a revoked CA stays trusted); the Debian
+# stable archive only ever moves it forward through security/point releases;
+# and a snapshot.debian.org pin would need a timestamp bumped by hand, which
+# in practice means never. If byte-reproducible images become a requirement,
+# replace this with `snapshot.debian.org/archive/debian/<timestamp>` sources
+# and `ca-certificates=<version>`.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -80,6 +92,12 @@ ENV GRAPHITE_DATA_DIR=/data
 
 USER 10001:10001
 EXPOSE 7331
+# The default `graphite healthcheck` passes on any 2xx from /health, including
+# a node that reports `degraded: true` (for example, audit writes failing).
+# That is deliberate here: such a node already refuses (503) any verdict it
+# cannot record, so it fails closed without being marked unhealthy. Use
+# `graphite healthcheck --strict` in an orchestrator that should treat a
+# degraded audit trail as unhealthy.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["graphite", "healthcheck"]
 # 0.0.0.0 is explicit here because the CLI now defaults to loopback (so a bare

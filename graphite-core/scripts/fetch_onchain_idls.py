@@ -25,7 +25,7 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from solana_keys import anchor_idl_address, b58encode, b58decode  # noqa: E402
+from solana_keys import anchor_idl_address, b58encode  # noqa: E402
 
 RPC = "https://api.mainnet-beta.solana.com"
 HERE = Path(__file__).resolve().parent

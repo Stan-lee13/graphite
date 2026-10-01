@@ -9,8 +9,6 @@ address. The winning layout is the evidence-backed pda_seeds template for the
 manifest.
 """
 import json
-import struct
-import sys
 import urllib.request
 
 RPC = "https://api.mainnet-beta.solana.com"
@@ -92,7 +90,6 @@ def main():
             user = b58decode(keys[user_idx])
             print(f"openDca tx {sig[:24]}… ix{i}: data_len={len(raw)}")
             print(f"  data after discriminator: {raw[8:32].hex()}")
-            dca_acct = None
             for aidx in ix.get("accounts", [])[1:]:
                 a = keys[aidx]
                 # the dca PDA is usually the 2nd account; try deriving

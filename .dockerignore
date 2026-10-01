@@ -1,18 +1,15 @@
-# Don't send these to the Docker builder
-.git
-.github
-docs
-*.md
-!graphite-core/README.md
-sdk/
-integrations/
-python-ai-layer/
-schemas/
-examples/
-target/
-node_modules/
-dist/
-__pycache__/
-*.log
-.env*
-.DS_Store
+# An allowlist, not a denylist. The image is built from exactly four paths
+# (Dockerfile: the two COPY lines for graphite-core/Cargo.{toml,lock}, then
+# graphite-core/src and graphite-core/protocols), so the build context is
+# exactly those four paths and nothing else. A denylist has to anticipate every
+# local directory that could appear — nested target/ and node_modules/, local
+# graphite-data/ audit trails, agent session directories, scratch output — and
+# Docker's matcher anchors `target/` at the root, so the old list missed the
+# nested ones (A6-12). Anything not re-included below never reaches the
+# builder. A new COPY in the Dockerfile needs a matching `!` line here, and
+# the CI container job fails loudly if one is missing.
+*
+!graphite-core/Cargo.toml
+!graphite-core/Cargo.lock
+!graphite-core/src
+!graphite-core/protocols

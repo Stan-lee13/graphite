@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/Stan-lee13/graphite/blob/main/SECURITY.md
+    about: Verdict bypasses, auth bypasses and anything else exploitable are reported privately, never as a public issue. SECURITY.md says how.
