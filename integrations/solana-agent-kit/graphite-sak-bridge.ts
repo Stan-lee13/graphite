@@ -46,8 +46,11 @@ export { RpcSimulator, assertEverySignatureSlotEmpty };
 import { VerificationGatedWallet, UngatedSigningRefused, GATED_SIGNING_PATH } from "./gated-wallet.js";
 export { VerificationGatedWallet, UngatedSigningRefused, GATED_SIGNING_PATH };
 // Round 19 (F-19-C5): the AI layer's answer is checked against the user's text.
-import { assertEcho, groundTransferIntent, IntentGroundingError } from "./intent-grounding.js";
-export { assertEcho, groundTransferIntent, IntentGroundingError };
+import { assertEcho, groundSwapIntent, groundTransferIntent, IntentGroundingError } from "./intent-grounding.js";
+export { assertEcho, groundSwapIntent, groundTransferIntent, IntentGroundingError };
+// A5-01: the programs a swap payload may be addressed to.
+import { SWAP_PROGRAM_IDS } from "./swap-programs.js";
+export { SWAP_PROGRAM_IDS };
 
 // AuditBind lives in ./auditbind.ts — a dependency-free module (Node crypto
 // only) so its cross-language pinned-vector tests run without the SAK tree.
@@ -55,7 +58,7 @@ import { AuditBind } from "./auditbind.js";
 export { AuditBind };
 
 // Graphite TS SDK
-import { GraphiteClient } from "../../sdk/typescript/src/client.js";
+import { GraphiteClient, assertSecureBaseUrl } from "../../sdk/typescript/src/client.js";
 import { ResidualPolicy } from "./residual-policy.js";
 import { executeBoundTransaction, type ExecutionLifecycle } from "./execution-lifecycle.js";
 import type {
@@ -134,30 +137,34 @@ export interface ExecutionOutcome {
  */
 export const UNVERIFIED_SWAP_OPT_IN = "I_ACCEPT_UNVERIFIED_SWAP_EXECUTION";
 
-/**
- * Environment variables the bridge reads, and the names an older `.env.example`
- * used for two of them.
- *
- * Round 19 (F-19-C6): the example file said `GRAPHITE_SERVER_URL` and
- * `AI_LAYER_URL` while the code read `GRAPHITE_CORE_URL` and
- * `GRAPHITE_AI_LAYER_URL`. An operator who copied the example pointed the
- * bridge at a Core and an AI layer it never used: both silently defaulted to
- * localhost. A legacy name set without its replacement is now a startup error.
- */
-export const LEGACY_ENV_NAMES: ReadonlyArray<readonly [legacy: string, current: string]> = [
-  ["GRAPHITE_SERVER_URL", "GRAPHITE_CORE_URL"],
-  ["AI_LAYER_URL", "GRAPHITE_AI_LAYER_URL"],
-];
+// Round 19 (F-19-C6) / A5-07: the environment names, and the refusal of the
+// legacy ones, live in a dependency-free module the dev scripts share.
+import { LEGACY_ENV_NAMES, assertNoLegacyEnvNames } from "./env-names.js";
+export { LEGACY_ENV_NAMES, assertNoLegacyEnvNames };
 
-export function assertNoLegacyEnvNames(env: Record<string, string | undefined> = process.env): void {
-  for (const [legacy, current] of LEGACY_ENV_NAMES) {
-    if (env[legacy] !== undefined && env[current] === undefined) {
-      throw new Error(
-        `[Graphite] ${legacy} is set but the bridge reads ${current}. Rename it: without the ` +
-          `current name the bridge would silently fall back to its localhost default and talk to ` +
-          `a service you did not configure (Round 19, F-19-C6). REFUSING TO START.`,
-      );
-    }
+/**
+ * How long `parseIntent` waits for the AI layer (A5-01). The layer is a local
+ * regex labeller that answers in microseconds; one that has not answered in
+ * five seconds is not going to, and without a limit a hung layer hung the
+ * whole call.
+ */
+export const AI_LAYER_TIMEOUT_MS = 5_000;
+
+/**
+ * The AI layer's URL under the same transport rule as the Core's (A5-01):
+ * https://, or http:// only to loopback. The request text and the parsed
+ * intent cross this connection, and an answer rewritten in flight is an
+ * answer the bridge acts on. Returns the URL without a trailing slash.
+ */
+export function assertSecureAiLayerUrl(url: string): string {
+  try {
+    return assertSecureBaseUrl(url);
+  } catch (e) {
+    throw new Error(
+      `[Graphite] GRAPHITE_AI_LAYER_URL is refused: ${(e as Error).message} ` +
+        "The same rule applies to the AI layer, which receives the user's request and whose " +
+        "answer the bridge acts on (A5-01). REFUSING TO START.",
+    );
   }
 }
 
@@ -171,15 +178,6 @@ export function assertNoLegacyEnvNames(env: Record<string, string | undefined> =
  * verified paths included. Loaded here, a broken plugin costs only that
  * plugin's methods — and since Round 19 (F-19-C2) none of them can sign anyway.
  */
-async function loadPlugin(name: string, load: () => Promise<{ default: unknown }>): Promise<unknown | null> {
-  try {
-    return (await load()).default;
-  } catch (err) {
-    console.warn(`[Graphite] SAK plugin ${name} did not load — skipping it:`, (err as Error).message?.slice(0, 120));
-    return null;
-  }
-}
-
 /**
  * Verified SAK Agent — wraps SolanaAgentKit with Graphite verification gate.
  *
@@ -227,6 +225,7 @@ export class VerifiedSakAgent {
   private connection: Connection;
   private walletProfile: WalletProfile;
   private aiLayerUrl: string;
+  private aiLayerTimeoutMs: number;
   private walletPublicKey: string;
   private walletKeypair: Keypair;
   private simulator: RpcSimulator;
@@ -235,10 +234,10 @@ export class VerifiedSakAgent {
   private constructor(
     sakAgent: SolanaAgentKit | null, graphite: GraphiteClient, connection: Connection,
     walletProfile: WalletProfile, aiLayerUrl: string, walletPublicKey: string, walletKeypair: Keypair,
-    residualPolicy: ResidualPolicy,
+    residualPolicy: ResidualPolicy, aiLayerTimeoutMs: number,
   ) {
     this.sakAgent = sakAgent; this.graphite = graphite; this.connection = connection;
-    this.walletProfile = walletProfile; this.aiLayerUrl = aiLayerUrl;
+    this.walletProfile = walletProfile; this.aiLayerUrl = aiLayerUrl; this.aiLayerTimeoutMs = aiLayerTimeoutMs;
     this.walletPublicKey = walletPublicKey; this.walletKeypair = walletKeypair;
     this.simulator = new RpcSimulator(connection.rpcEndpoint);
     this.residualPolicy = residualPolicy;
@@ -261,6 +260,8 @@ export class VerifiedSakAgent {
      * GRAPHITE_ACCEPT_UNOBSERVED. See `residual-policy.ts`.
      */
     acceptUnobserved?: string[];
+    /** How long `parseIntent` waits for the AI layer. Default AI_LAYER_TIMEOUT_MS. */
+    aiLayerTimeoutMs?: number;
   }): Promise<VerifiedSakAgent> {
     // Before any default is applied: a legacy variable name must not quietly
     // become "use localhost" (Round 19, F-19-C6).
@@ -274,7 +275,11 @@ export class VerifiedSakAgent {
     // The Python AI Layer listens on 127.0.0.1:8081 by default (intent_parser.py
     // --serve). An IP literal, not "localhost": since Round 19 (F-19-C5) the
     // layer binds IPv4 loopback only, and "localhost" can resolve to ::1 first.
-    const aiLayerUrl = config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://127.0.0.1:8081";
+    // A5-01: refused here, before any request can carry the user's text.
+    const aiLayerUrl = assertSecureAiLayerUrl(
+      config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://127.0.0.1:8081",
+    );
+    const aiLayerTimeoutMs = config?.aiLayerTimeoutMs ?? AI_LAYER_TIMEOUT_MS;
     // Phase 1 calibration: with the three evidence-derived confidence signals
     // intentionally zeroed (Constitution G4 — request-body evidence is
     // attacker-controlled) and trust tiers capped at OfficialManifest (P7), the
@@ -308,22 +313,16 @@ export class VerifiedSakAgent {
     try {
       if (!openAiApiKey) throw new Error("OPENAI_API_KEY required for SAK");
       const wallet = new VerificationGatedWallet(walletKeypair.publicKey);
-      let agent = new SolanaAgentKit(wallet, rpcUrl, { OPENAI_API_KEY: openAiApiKey });
-      const loaded: string[] = [];
-      for (const [name, load] of [
-        ["TokenPlugin", () => import("@solana-agent-kit/plugin-token")],
-        ["DefiPlugin", () => import("@solana-agent-kit/plugin-defi")],
-      ] as const) {
-        const plugin = await loadPlugin(name, load);
-        if (plugin) {
-          agent = agent.use(plugin);
-          loaded.push(name);
-        }
-      }
-      sakAgent = agent;
-      console.log(
-        `[Graphite] SAK agent initialized (signing refused — gated wallet) with ${loaded.length ? loaded.join(" + ") : "no plugins"}`,
-      );
+      // No SAK plugins are loaded (2026-09-30). The bridge never calls them:
+      // every transaction it signs is built here and verified by the Core.
+      // They existed only for a caller's read-only use of `getSakAgent()`,
+      // yet importing one executes its whole dependency tree in the process
+      // that holds the private key. `@solana-agent-kit/plugin-defi` alone
+      // brought 25 of the tree's 36 high/critical npm advisories, all three
+      // criticals among them (Drift, OKX, Meteora, Orca SDKs). A caller that
+      // needs a plugin's read-only helpers can load it in its own process.
+      sakAgent = new SolanaAgentKit(wallet, rpcUrl, { OPENAI_API_KEY: openAiApiKey });
+      console.log("[Graphite] SAK agent initialized (signing refused — gated wallet), no plugins loaded");
     } catch (err) {
       console.warn("[Graphite] SAK init failed — falling back to raw web3.js:", (err as Error).message?.slice(0, 80));
     }
@@ -344,14 +343,31 @@ export class VerifiedSakAgent {
         : `[Graphite] residual policy: accepting ${accepted.join(", ")} in addition to the inherent residuals`,
     );
 
-    return new VerifiedSakAgent(sakAgent, graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair, residualPolicy);
+    return new VerifiedSakAgent(
+      sakAgent, graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair,
+      residualPolicy, aiLayerTimeoutMs,
+    );
   }
 
   async parseIntent(naturalLanguage: string): Promise<ProposedIntent> {
-    const response = await fetch(`${this.aiLayerUrl}/parse`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: naturalLanguage }),
-    });
+    // A5-01: bounded, and never redirected — a redirect would carry the
+    // request past the transport rule the URL was checked against.
+    let response: Response;
+    try {
+      response = await fetch(`${this.aiLayerUrl}/parse`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: naturalLanguage }),
+        signal: AbortSignal.timeout(this.aiLayerTimeoutMs),
+        redirect: "error",
+      });
+    } catch (e) {
+      const timedOut = e instanceof Error && e.name === "TimeoutError";
+      throw new Error(
+        timedOut
+          ? `[Graphite] the AI layer did not answer within ${this.aiLayerTimeoutMs} ms. ABORTING.`
+          : `[Graphite] the AI layer request failed: ${e instanceof Error ? e.message : String(e)}. ABORTING.`,
+      );
+    }
     if (!response.ok) throw new Error(`AI Layer error: ${response.status}`);
     const result = await response.json() as {
       intent_type: string; raw_natural_language: string; confidence_of_parse: number;
@@ -738,7 +754,6 @@ export class VerifiedSakAgent {
     const params = proposedIntent.extracted_parameters;
     if (!params?.input_token || !params?.output_token || !params?.amount) throw new Error("Swap requires input_token, output_token, amount");
 
-    const JUPITER_V6_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
     // Deployed Jupiter V6 swap entrypoint: route_v2 = bb64facc31c4af14,
     // CONFIRMED on-chain (C22.3, base58-decoded live mainnet txs 2026-08-09 +
     // pinned fixture sig 57TAjPZXt49F9rSVZNEu… slot 438012579, SUCCESS). The
@@ -767,6 +782,18 @@ export class VerifiedSakAgent {
           "ABORTING."
       );
     }
+    // A5-01: the class of this request is a swap because this is the swap
+    // method and the user's text asks for one — not because the AI layer said
+    // so. Its label used to go to the Core unchanged, and the Core's
+    // intent-mismatch checks compare the transaction against that label: an
+    // AI answering "approve" switched off the Approve check for an Approve
+    // payload. The payload must also be addressed to a swap program. All of
+    // it is decided here, before a blockhash is fetched or the Core is asked.
+    const swapIntent: ProposedIntent = {
+      ...proposedIntent,
+      intent_type: groundSwapIntent(naturalLanguage, proposedIntent.intent_type, payload.programId),
+      raw_natural_language: naturalLanguage,
+    };
     const accountAddresses = payload.accounts.map((a) => a.pubkey);
     // P1 fix (2026-09-05 audit): the bound payload already carries the REAL
     // per-account isSigner/isWritable flags (that's what buildInstructionFromPayload
@@ -800,9 +827,11 @@ export class VerifiedSakAgent {
       ...(tableAddresses.length > 0 ? { version: 0 as const, addressLookupTables } : {}),
     });
     const verification = await this.verifyTransaction({
-      programId: payload.programId ?? JUPITER_V6_PROGRAM,
+      // No Jupiter default: groundSwapIntent has already refused a payload
+      // without a swap program.
+      programId: payload.programId,
       instructionDiscriminator: payload.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
-      accountAddresses, proposedIntent,
+      accountAddresses, proposedIntent: swapIntent,
       instructionData: payload.instructionData,
       realAccountMetas,
       // The transaction that will be signed, not a copy of its instructions.

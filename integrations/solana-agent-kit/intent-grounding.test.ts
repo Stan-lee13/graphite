@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assertEcho,
+  groundSwapIntent,
   groundTransferIntent,
   IntentGroundingError,
   solLiteralToLamports,
@@ -106,4 +107,89 @@ test("the AI layer's echo must be the text that was sent", () => {
   assert.throws(() => assertEcho("Transfer 1 SOL", "Transfer 10 SOL"), IntentGroundingError);
   assert.throws(() => assertEcho("Transfer 1 SOL", undefined), IntentGroundingError);
   assert.throws(() => assertEcho("Transfer 1 SOL", " Transfer 1 SOL"), IntentGroundingError);
+});
+
+// A5-02 (2026-09-30 audit): a non-base58 character inside or at the end of a
+// typed address split it into base58 runs, and the address-shaped prefix was
+// taken as "the one address in the request". The Python parser stopped at the
+// same character, so both sides agreed on an address the user never wrote.
+const FULL = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+
+test("A5-02: an address with a stray character is refused, never grounded to its prefix", () => {
+  assert.equal(FULL.length, 44);
+  const cases: Array<[typed: string, prefixTheParserSaw: string]> = [
+    [FULL.slice(0, 43) + "0", FULL.slice(0, 43)], // digit zero for the letter o
+    [FULL.slice(0, 43) + "А", FULL.slice(0, 43)], // Cyrillic A
+    [FULL.slice(0, 43) + "-", FULL.slice(0, 43)],
+    [FULL.slice(0, 40) + "." + FULL.slice(40), FULL.slice(0, 40)],
+    [FULL.slice(0, 40) + "_" + FULL.slice(40), FULL.slice(0, 40)],
+    [FULL.slice(0, 43) + "0.", FULL.slice(0, 43)], // a full stop after the typo changes nothing
+  ];
+  for (const [typed, prefix] of cases) {
+    assert.throws(
+      () =>
+        groundTransferIntent(`Send 1 SOL to ${typed}`, {
+          amount: "1",
+          destination: prefix,
+          input_token: "SOL",
+        }),
+      (e: unknown) => e instanceof IntentGroundingError && /not an address as written/.test(e.message),
+      `${JSON.stringify(typed)} must be refused, not grounded to ${prefix}`,
+    );
+  }
+});
+
+test("A5-02: trailing sentence punctuation after an address is still just punctuation", () => {
+  for (const tail of [".", ",", "!", "?", ";", ":", ")", "]", '"', "'", ").", '".']) {
+    const g = groundTransferIntent(`Send 1 SOL to ${FULL}${tail}`, {
+      amount: "1",
+      destination: FULL,
+      input_token: "SOL",
+    });
+    assert.equal(g.destination, FULL, `tail ${JSON.stringify(tail)}`);
+  }
+});
+
+// A5-01 (2026-09-30 audit): the swap path forwarded the AI layer's label to
+// the Core unchanged, and the Core's intent-mismatch checks are keyed on it.
+const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+test("A5-01: a swap's class comes from the method and the user's text, not the AI label", () => {
+  for (const text of ["Swap 1 SOL for USDC", "trade 5 USDC to SOL", "Exchange 1 SOL into BONK",
+    "convert 2 SOL to USDC", "Sell 3 JUP for USDC", "buy 1 SOL with USDC"]) {
+    for (const label of ["swap", "trade", "exchange", undefined, null, ""]) {
+      assert.equal(groundSwapIntent(text, label, JUPITER_V6), "swap", `${text} / ${label}`);
+    }
+  }
+});
+
+test("A5-01: an AI label outside the swap class is refused", () => {
+  for (const label of ["approve", "close", "create", "transfer", "revoke", "stake", "unknown", "Swap", 7, {}]) {
+    assert.throws(
+      () => groundSwapIntent("Swap 1 SOL for USDC", label, JUPITER_V6),
+      (e: unknown) => e instanceof IntentGroundingError && /labelled a swap request/.test(e.message),
+      JSON.stringify(label),
+    );
+  }
+});
+
+test("A5-01: a request that does not ask for a swap is refused, whatever the AI says", () => {
+  for (const text of ["Send 1 SOL for USDC", "Approve USDC", "Swapping is fun", "Close my account"]) {
+    assert.throws(
+      () => groundSwapIntent(text, "swap", JUPITER_V6),
+      (e: unknown) => e instanceof IntentGroundingError && /does not ask for a swap/.test(e.message),
+      text,
+    );
+  }
+});
+
+test("A5-01: a swap payload for a program that does not swap is refused", () => {
+  for (const programId of [SPL_TOKEN, "11111111111111111111111111111111", "", undefined, 42]) {
+    assert.throws(
+      () => groundSwapIntent("Swap 1 SOL for USDC", "swap", programId),
+      (e: unknown) => e instanceof IntentGroundingError && /no seed manifest tags as a swap program/.test(e.message),
+      String(programId),
+    );
+  }
 });

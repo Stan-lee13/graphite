@@ -27,19 +27,30 @@ import { BoundTransaction, declareSiblings, findPrimaryIndex } from "./artifact.
 import { executeBoundTransaction } from "./execution-lifecycle.js";
 import { ResidualPolicy } from "./residual-policy.js";
 import { GraphiteClient } from "../../sdk/typescript/src/client.js";
+import type { VerificationInput } from "../../sdk/typescript/src/types.js";
+import { assertNoLegacyEnvNames, rpcHostForLog } from "./env-names.js";
 
-const GRAPHITE_URL = process.env.GRAPHITE_URL ?? "http://localhost:7331";
-
-async function verifyThroughGraphite(payload: any): Promise<any> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (process.env.GRAPHITE_API_KEY) headers.authorization = `Bearer ${process.env.GRAPHITE_API_KEY}`;
-  const res = await fetch(`${GRAPHITE_URL}/verify`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
+/**
+ * The Core, through the SDK client and nowhere else.
+ *
+ * A5-07 (2026-09-30 audit): this script verified with a raw `fetch` carrying
+ * `Bearer $GRAPHITE_API_KEY` to `GRAPHITE_URL` — a name nothing else reads,
+ * no transport rule, no shape check on the verdict — and built the
+ * `GraphiteClient` that would have refused an http:// non-loopback URL only
+ * after the key had already been sent. The client is built first now, from
+ * `GRAPHITE_CORE_URL`, so every request, verification included, goes out
+ * under its transport rule and every verdict passes its shape check.
+ */
+function graphiteFromEnv(): GraphiteClient {
+  assertNoLegacyEnvNames();
+  return new GraphiteClient({
+    baseUrl: process.env.GRAPHITE_CORE_URL ?? "http://localhost:7331",
+    apiKey: process.env.GRAPHITE_API_KEY,
   });
-  if (!res.ok) throw new Error(`Graphite HTTP ${res.status}: ${await res.text()}`);
-  return res.json();
+}
+
+async function verifyThroughGraphite(graphite: GraphiteClient, payload: Record<string, unknown>): Promise<any> {
+  return graphite.verify(payload as unknown as VerificationInput);
 }
 
 function printVerification(label: string, v: any) {
@@ -80,6 +91,7 @@ async function main() {
   const rpcUrl = process.env.SOLANA_RPC_URL!;
   if (!privateKey) throw new Error("SOLANA_PRIVATE_KEY is required");
   if (!rpcUrl) throw new Error("SOLANA_RPC_URL is required");
+  const graphite = graphiteFromEnv();
 
   // Initialize wallet
   const keyPair = Keypair.fromSecretKey(bs58.decode(privateKey));
@@ -89,11 +101,11 @@ async function main() {
 
   console.log(`Wallet:   ${walletPubkey}`);
   console.log(`Balance:  ${balance / LAMPORTS_PER_SOL} SOL`);
-  console.log(`RPC:      ${rpcUrl.substring(0, 45)}...`);
+  // The host only: a provider URL can carry its API key in the query.
+  console.log(`RPC:      ${rpcHostForLog(rpcUrl)}`);
 
   // Check Graphite Core
-  const healthRes = await fetch(`${GRAPHITE_URL}/health`);
-  const health = await healthRes.json() as any;
+  const health = await graphite.health();
   console.log(`Graphite: ${health.status} v${health.version}\n`);
 
   const SYSTEM_PROGRAM = "11111111111111111111111111111111";
@@ -126,7 +138,7 @@ async function main() {
   console.log("  TEST 1: TradingBot Profile (min_conf: 0.80)");
   console.log("═══════════════════════════════════════════════════");
 
-  const tbVerification = await verifyThroughGraphite({
+  const tbVerification = await verifyThroughGraphite(graphite, {
     ...basePayload,
     wallet_profile: "TradingBot",
   });
@@ -144,7 +156,7 @@ async function main() {
   console.log("  TEST 2: Gaming Profile (min_conf: 0.55, devnet test)");
   console.log("═══════════════════════════════════════════════════");
 
-  const unVerification = await verifyThroughGraphite({
+  const unVerification = await verifyThroughGraphite(graphite, {
     ...basePayload,
     wallet_profile: "Gaming",
   });
@@ -191,7 +203,7 @@ Transferring ${transferAmount} SOL to ${destination} on devnet...`);
     instructionDiscriminator: "02000000",
     accountAddresses: [keyPair.publicKey.toBase58(), destination],
   };
-  const boundVerification = await verifyThroughGraphite({
+  const boundVerification = await verifyThroughGraphite(graphite, {
     ...basePayload,
     wallet_profile: "Gaming",
     instruction_data: Array.from(transferIx.data),
@@ -235,10 +247,6 @@ Transferring ${transferAmount} SOL to ${destination} on devnet...`);
   //     audit_trail_id, and the verdict on record must be `approved`.
   //   sendRawTransaction, submission event (retried), confirmation, L8.
   console.log("\nExecuting through the bridge's own path (executeBoundTransaction)...");
-  const graphite = new GraphiteClient({
-    baseUrl: GRAPHITE_URL,
-    apiKey: process.env.GRAPHITE_API_KEY,
-  });
   const lifecycle = await executeBoundTransaction({
     bound,
     verification: boundVerification,

@@ -2,7 +2,10 @@
  * Real Mainnet Benchmark Harness — Tests Graphite against REAL Solana mainnet transactions.
  *
  * Usage:
- *   npx tsx mainnet-benchmark.ts --rpc <RPC_URL> --graphite <GRAPHITE_URL> [--json out.json]
+ *   npx tsx mainnet-benchmark.ts --rpc <RPC_URL> --graphite <GRAPHITE_CORE_URL> [--json out.json]
+ *
+ * The Core defaults to GRAPHITE_CORE_URL (then localhost) and is reached through
+ * the SDK's GraphiteClient, with GRAPHITE_API_KEY if set.
  *
  * What it does:
  *   1. LEGITIMATE: fetches REAL mainnet transactions from known protocols
@@ -27,6 +30,9 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
 import fs from "fs";
+import { GraphiteClient } from "../../sdk/typescript/src/client.js";
+import type { VerificationInput } from "../../sdk/typescript/src/types.js";
+import { assertNoLegacyEnvNames, rpcHostForLog } from "./env-names.js";
 
 // Robust arg parsing — handles --rpc <url> --graphite <url> in any order
 const args = process.argv.slice(2);
@@ -34,7 +40,7 @@ function getArg(name: string, fallback: string): string {
   const idx = args.indexOf(name);
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : fallback;
 }
-const GRAPHITE_URL = getArg("--graphite", "http://localhost:7331");
+const GRAPHITE_CORE_URL = getArg("--graphite", process.env.GRAPHITE_CORE_URL ?? "http://localhost:7331");
 const RPC_URL = getArg("--rpc", process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com");
 const JSON_OUT = getArg("--json", "");
 
@@ -218,36 +224,30 @@ function loadExploitCorpus(): BenchmarkCase[] {
   return cases;
 }
 
-async function verifyThroughGraphite(case_: BenchmarkCase): Promise<{ approved: boolean; confidence: number; risk: string; latencyMs: number; httpError: boolean }> {
+// A5-07 (2026-09-30 audit): verification went out as a raw `fetch`, outside
+// the SDK's transport rule and verdict shape check. It goes through
+// GraphiteClient now; any failure it raises is counted as an HTTP error.
+async function verifyThroughGraphite(graphite: GraphiteClient, case_: BenchmarkCase): Promise<{ approved: boolean; confidence: number; risk: string; latencyMs: number; httpError: boolean }> {
   const start = Date.now();
   try {
-    const res = await fetch(`${GRAPHITE_URL}/verify`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        proposed_intent: {
-          intent_type: case_.intent,
-          raw_natural_language: "mainnet benchmark test",
-          confidence_of_parse: 0.5,
-          extracted_parameters: {},
-        },
-        program_id: case_.programId,
-        instruction_discriminator: case_.instructionDiscriminator,
-        account_addresses: case_.accountAddresses,
-        cpi_targets: [],
-        wallet_profile: "TradingBot",
-        compute_units: 150,
-        account_writes: 2,
-        cpi_hops: 0,
-      }),
-    });
+    const v = await graphite.verify({
+      proposed_intent: {
+        intent_type: case_.intent,
+        raw_natural_language: "mainnet benchmark test",
+        confidence_of_parse: 0.5,
+        extracted_parameters: {},
+      },
+      program_id: case_.programId,
+      instruction_discriminator: case_.instructionDiscriminator,
+      account_addresses: case_.accountAddresses,
+      cpi_targets: [],
+      wallet_profile: "TradingBot",
+      compute_units: 150,
+      account_writes: 2,
+      cpi_hops: 0,
+    } as unknown as VerificationInput);
 
     const latencyMs = Date.now() - start;
-    if (!res.ok) {
-      const errBody = await res.text();
-      return { approved: false, confidence: 0, risk: `HTTP ${res.status}: ${errBody.slice(0, 60)}`, latencyMs, httpError: true };
-    }
-    const v = await res.json();
     return { approved: v.approved, confidence: v.confidence, risk: v.risk_verdict?.status ?? "unknown", latencyMs, httpError: false };
   } catch (err) {
     return { approved: false, confidence: 0, risk: `error: ${(err as Error).message?.slice(0, 50)}`, latencyMs: Date.now() - start, httpError: true };
@@ -255,9 +255,13 @@ async function verifyThroughGraphite(case_: BenchmarkCase): Promise<{ approved: 
 }
 
 async function main() {
+  assertNoLegacyEnvNames();
+  // Built before any request: an http:// non-loopback Core is refused here.
+  const graphite = new GraphiteClient({ baseUrl: GRAPHITE_CORE_URL, apiKey: process.env.GRAPHITE_API_KEY });
   console.log("=== Graphite Real Mainnet Benchmark ===");
-  console.log(`RPC: ${RPC_URL.slice(0, 50)}...`);
-  console.log(`Graphite: ${GRAPHITE_URL}`);
+  // The host only: a provider URL can carry its API key in the query.
+  console.log(`RPC: ${rpcHostForLog(RPC_URL)}`);
+  console.log(`Graphite: ${GRAPHITE_CORE_URL}`);
   console.log("");
 
   const connection = new Connection(RPC_URL, "confirmed");
@@ -290,7 +294,7 @@ async function main() {
   const results: BenchmarkResult[] = [];
   for (const case_ of allCases) {
     process.stdout.write(`  ${case_.name}... `);
-    const verdict = await verifyThroughGraphite(case_);
+    const verdict = await verifyThroughGraphite(graphite, case_);
     const correct = (verdict.approved && case_.expected === "approve") || (!verdict.approved && case_.expected === "block");
     results.push({ case: case_, graphiteVerdict: verdict.approved, graphiteConfidence: verdict.confidence, graphiteRisk: verdict.risk, latencyMs: verdict.latencyMs, httpError: verdict.httpError, correct });
     console.log(`${correct ? "PASS" : "FAIL"} | approved=${verdict.approved} conf=${verdict.confidence} risk=${verdict.risk} (${verdict.latencyMs}ms)${verdict.httpError ? " [HTTP ERROR]" : ""}`);
@@ -333,7 +337,7 @@ async function main() {
   if (JSON_OUT) {
     fs.writeFileSync(JSON_OUT, JSON.stringify({
       generated: new Date().toISOString(),
-      graphite: GRAPHITE_URL,
+      graphite: GRAPHITE_CORE_URL,
       summary: { total: results.length, correct: results.filter(r => r.correct).length, accuracy, precision, recall, avgLatency, tp, fp, fn, tn },
       results: results.map(r => ({
         name: r.case.name, expected: r.case.expected, got: r.graphiteVerdict ? "approve" : "block",

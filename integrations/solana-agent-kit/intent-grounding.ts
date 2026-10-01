@@ -31,10 +31,17 @@
  * address cannot be taken back.
  */
 
-/** Base58 alphabet runs: the only characters a Solana address can contain. */
-const BASE58_RUN = /[1-9A-HJ-NP-Za-km-z]+/g;
+import { SWAP_PROGRAM_IDS } from "./swap-programs.js";
+
 /** An ed25519 public key is 32 bytes: 32–44 base58 characters. */
 const ADDRESS_SHAPE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+/** A run of base58 long enough to be taken for an address. */
+const ADDRESS_LENGTH_RUN = /[1-9A-HJ-NP-Za-km-z]{32,}/;
+/**
+ * Sentence punctuation a word may end with. Only this is stripped, and only
+ * from the end: "to <address>." is an address followed by a full stop.
+ */
+const TRAILING_PUNCTUATION = /[.,;:!?)\]"']+$/;
 /**
  * A number standing on its own: not glued to letters or digits on either
  * side (so the digits inside an address never count), with an optional
@@ -75,6 +82,36 @@ export function assertEcho(sent: string, echoed: unknown): void {
   }
 }
 
+/**
+ * The address-shaped words of the input, exactly as written.
+ *
+ * A5-02 (2026-09-30 audit): this used to collect base58 RUNS, so any
+ * non-base58 character split a word — the digit 0, a Cyrillic homoglyph, a
+ * '-', '.' or '_'. Typed as the last character of a 44-character address it
+ * left a 43-character run, which was then "the one address in the request",
+ * and a 43-character prefix of a key usually decodes to a valid key nobody
+ * holds. The Python parser stopped at the same character, so the two agreed.
+ *
+ * Words are split on whitespace instead, and only trailing sentence
+ * punctuation is stripped. A word that carries an address-length base58 run
+ * but is not itself address-shaped is refused, not trimmed into one.
+ */
+function addressTokens(input: string): string[] {
+  const addresses: string[] = [];
+  for (const word of input.split(/\s+/)) {
+    const token = word.replace(TRAILING_PUNCTUATION, "");
+    if (ADDRESS_SHAPE.test(token)) {
+      addresses.push(token);
+    } else if (ADDRESS_LENGTH_RUN.test(token)) {
+      throw new IntentGroundingError(
+        `${JSON.stringify(word)} contains an address-length base58 run but is not an address as ` +
+          "written; a part of it is a different address.",
+      );
+    }
+  }
+  return addresses;
+}
+
 /** Parse a decimal SOL literal into lamports, exactly. */
 export function solLiteralToLamports(text: string): bigint {
   const m = /^(\d+)(?:\.(\d+))?$/.exec(text);
@@ -111,7 +148,7 @@ export function groundTransferIntent(
   if (typeof destination !== "string" || !ADDRESS_SHAPE.test(destination)) {
     throw new IntentGroundingError("The transfer has no well-formed destination address.");
   }
-  const addresses = (input.match(BASE58_RUN) ?? []).filter((t) => ADDRESS_SHAPE.test(t));
+  const addresses = addressTokens(input);
   const distinct = [...new Set(addresses)];
   if (distinct.length !== 1) {
     throw new IntentGroundingError(
@@ -156,4 +193,48 @@ export function groundTransferIntent(
   }
 
   return { destination, amountText, lamports };
+}
+
+/** A verb that asks for a swap, as a whole word (the AI layer's own vocabulary). */
+const SWAP_VERB = /(?<![0-9A-Za-z])(?:swap|trade|exchange|convert|sell|buy)(?![0-9A-Za-z])/i;
+/** The labels the Core reads as the swap class (`risk_engine::canonical_intent`). */
+const SWAP_CLASS_LABELS: ReadonlySet<string> = new Set(["swap", "trade", "exchange"]);
+
+/**
+ * Decide the intent class of a swap from the method and the user's text, never
+ * from the AI layer's label, and refuse a payload for a program that does not
+ * swap. Returns the `intent_type` to send: always `"swap"`.
+ *
+ * A5-01 (2026-09-30 audit): `executeSwap` forwarded the AI layer's
+ * `intent_type` to the Core unchanged. The Core's intent-mismatch checks
+ * (CloseAccount, Create/Allocate, Approve, and the program-supports-intent
+ * check) fire when the transaction does something other than the declared
+ * intent — so the untrusted label decided whether they fired. An AI layer
+ * answering `approve` to "Swap 1 SOL for USDC" switched off the Approve check
+ * for an Approve payload. The method defines the class; the text must ask for
+ * it; the AI's label, when it gives one, must agree; and the program must be
+ * one the Core treats as a swap program (`swap-programs.ts`).
+ */
+export function groundSwapIntent(input: string, aiIntentType: unknown, programId: unknown): "swap" {
+  if (!SWAP_VERB.test(input)) {
+    throw new IntentGroundingError(
+      "The request does not ask for a swap: none of swap / trade / exchange / convert / sell / " +
+        "buy appears in it as a word.",
+    );
+  }
+  if (aiIntentType !== undefined && aiIntentType !== null && aiIntentType !== "") {
+    if (typeof aiIntentType !== "string" || !SWAP_CLASS_LABELS.has(aiIntentType)) {
+      throw new IntentGroundingError(
+        `The AI layer labelled a swap request as ${JSON.stringify(aiIntentType)}; a swap is only ` +
+          "built when every reading of the request agrees it is one.",
+      );
+    }
+  }
+  if (typeof programId !== "string" || !SWAP_PROGRAM_IDS.has(programId)) {
+    throw new IntentGroundingError(
+      `The swap payload is addressed to ${JSON.stringify(programId ?? null)}, which no seed ` +
+        "manifest tags as a swap program; a swap is only built against a program that swaps.",
+    );
+  }
+  return "swap";
 }

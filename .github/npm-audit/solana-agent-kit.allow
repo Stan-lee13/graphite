@@ -1,0 +1,27 @@
+# Known HIGH/CRITICAL npm advisories in integrations/solana-agent-kit/package-lock.json.
+# Read by gate.mjs in the CI supply-chain job. One GHSA id per line; the rest
+# of the line is a note. A new advisory fails CI; so does a listed one that is
+# no longer reported (prune it in the change that fixes it).
+#
+# Recorded 2026-09-30. At 3327fcf this tree carried 36 distinct high/critical
+# advisories (3 critical). 35 are gone:
+#   - The bridge no longer loads @solana-agent-kit/plugin-defi or plugin-token
+#     (it never called them; importing one ran its whole dependency tree in
+#     the process holding the private key). That removed the Drift, OKX,
+#     Meteora, Orca, Pyth and Switchboard trees: 25 advisories, all three
+#     criticals.
+#   - package.json `overrides` force patched versions inside the same major
+#     line where the parent had not moved: fast-uri 3.1.8, nanoid 3.3.19,
+#     jsondiffpatch 0.7.6, langsmith 0.6.3, hono 4.13.12, ip-address 10.7.2,
+#     qs 6.16.0. Typecheck and all 145 bridge tests pass on them.
+#
+# What remains has no fix that can be applied from here:
+GHSA-3gc7-fjrx-p6mg  # high  bigint-buffer <=1.1.5 (no patched release exists): @solana/web3.js 1.x -> @solana/buffer-layout-utils -> bigint-buffer. The overflow is in the package's NATIVE addon (toBigIntLE). Every install of this tree runs with --ignore-scripts, so the addon is never built and bigint-buffer runs its pure-JS fallback. Removed only by the @solana/kit migration (roadmap gap R-P8).
+#
+# Below the gate's threshold, recorded for completeness:
+#   - stream-json (moderate) and uuid (moderate) come through jayson, web3.js
+#     1.x's own HTTP RPC client. The uuid advisory needs a caller-supplied
+#     output buffer, which jayson never passes. Forcing uuid across three
+#     majors into web3.js was judged riskier than the advisory.
+#   - ai <5.0.52 and @ai-sdk/provider-utils <3.0.28 (low): fixed only in the
+#     ai 5 line, which solana-agent-kit 2.x does not use.

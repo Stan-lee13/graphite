@@ -1,6 +1,6 @@
 # Graphite + Solana Agent Kit Integration
 
-Real, production-ready integration that verifies every SAK transaction through Graphite Core before execution.
+Reference integration (alpha): verifies every SAK transaction through Graphite Core before signing. Status is the project's: security-hardened alpha, no independent third-party audit yet ([docs/CURRENT.md](../../docs/CURRENT.md)).
 
 ## Architecture
 
@@ -173,7 +173,7 @@ npm test                 # 119 tests: BoundTransaction gate, execution-boundary 
                          # residual policy, execution lifecycle (incl. the Round 12
                          # submission-report retry)
 npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json
-                         # (12 shapes + 1,647 byte-level mutations); CI fails on drift
+                         # (12 shapes + 1,659 byte-level mutations); CI fails on drift
 npm run emit:artifact-fixture
 ```
 

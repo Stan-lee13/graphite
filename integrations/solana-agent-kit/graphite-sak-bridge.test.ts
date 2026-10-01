@@ -7,10 +7,14 @@
  *   F-19-C2  the SolanaAgentKit agent the bridge exposes cannot sign
  *   F-19-C5  destination and amount come from the user's text, not the AI's
  *   F-19-C6  a legacy env var name refuses to start instead of defaulting
+ *   A5-01    a swap's class is the method's, grounded in the user's text; the
+ *            AI layer's URL obeys the Core's transport rule and is bounded
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Keypair } from "@solana/web3.js";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { Keypair, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { VerifiedSakAgent, UngatedSigningRefused, IntentGroundingError } from "./graphite-sak-bridge.js";
 import { BLOCKED_VERDICT, mockRpc, mockService, type Loopback, type MockService } from "./loopback-mocks.js";
@@ -38,7 +42,7 @@ interface Harness {
   close(): Promise<void>;
 }
 
-async function harness(opts: { withSak?: boolean } = {}): Promise<Harness> {
+async function harness(opts: { withSak?: boolean; aiLayerTimeoutMs?: number } = {}): Promise<Harness> {
   const rpc = await mockRpc();
   const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
@@ -53,6 +57,7 @@ async function harness(opts: { withSak?: boolean } = {}): Promise<Harness> {
     // SAK is only constructed with this set. It is never sent anywhere: no
     // code path in these tests calls a model.
     openAiApiKey: opts.withSak ? "loopback-test-placeholder-not-a-key" : undefined,
+    aiLayerTimeoutMs: opts.aiLayerTimeoutMs,
   });
   return {
     agent,
@@ -165,8 +170,8 @@ test("F-19-C2: the SolanaAgentKit agent the bridge exposes cannot sign, and the 
     const sak = h.agent.getSakAgent();
     assert.ok(sak, "with an OpenAI key configured the agent exists (read-only use)");
     assert.equal((sak.wallet.publicKey as { toBase58(): string }).toBase58(), h.wallet.publicKey.toBase58());
-    await assert.rejects(sak.wallet.signTransaction({}), UngatedSigningRefused);
-    await assert.rejects(sak.wallet.signAndSendTransaction({}), UngatedSigningRefused);
+    await assert.rejects(sak.wallet.signTransaction(new Transaction()), UngatedSigningRefused);
+    await assert.rejects(sak.wallet.signAndSendTransaction(new Transaction()), UngatedSigningRefused);
     await assert.rejects(sak.wallet.signMessage(new Uint8Array([1])), UngatedSigningRefused);
 
     // Walk everything reachable from the agent: the wallet's 64-byte secret
@@ -217,5 +222,154 @@ test("F-19-C6: a legacy env var name without its replacement refuses to start", 
   } finally {
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
     Object.assign(process.env, saved);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// A5-01 (2026-09-30 audit): executeSwap forwarded the AI layer's intent_type
+// to the Core unchanged and accepted a payload for any program. The Core's
+// intent-mismatch checks are keyed on that label, so an AI answering
+// "approve" to "Swap 1 SOL for USDC" switched off the Approve check for an
+// SPL Token Approve of u64::MAX to an attacker delegate.
+
+const SWAP_REQUEST = "Swap 1 SOL for USDC";
+const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+function swapParse(intent_type: string, text = SWAP_REQUEST) {
+  return {
+    intent_type,
+    raw_natural_language: text,
+    confidence_of_parse: 0.99,
+    extracted_parameters: { input_token: "SOL", output_token: "USDC", amount: "1" },
+  };
+}
+
+/** The attacker's "route": SPL Token Approve (0x04) of u64::MAX to ATTACKER. */
+function approvePayload(wallet: Keypair) {
+  return {
+    programId: SPL_TOKEN,
+    discriminator: "04",
+    accounts: [
+      { pubkey: DEST, isSigner: false, isWritable: true },
+      { pubkey: ATTACKER, isSigner: false, isWritable: false },
+      { pubkey: wallet.publicKey.toBase58(), isSigner: true, isWritable: false },
+    ],
+    instructionData: [4, 255, 255, 255, 255, 255, 255, 255, 255],
+  };
+}
+
+/** A payload addressed to Jupiter V6 (its contents are the Core's to judge). */
+function jupiterPayload(wallet: Keypair) {
+  return {
+    programId: JUPITER_V6,
+    discriminator: "bb64facc31c4af14",
+    accounts: [
+      { pubkey: wallet.publicKey.toBase58(), isSigner: true, isWritable: true },
+      { pubkey: DEST, isSigner: false, isWritable: true },
+    ],
+    instructionData: [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14],
+  };
+}
+
+test("A5-01: executeSwap refuses an AI label outside the swap class before the Core is asked", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("approve") });
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, approvePayload(h.wallet)), IntentGroundingError);
+    // Even addressed to a swap program, the label is not the AI's to choose.
+    await assert.rejects(
+      h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)),
+      /labelled a swap request as "approve"/,
+    );
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
+    assert.equal(h.rpc.calls.length, 0, "nothing reached the RPC");
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: executeSwap refuses a payload for a program that does not swap, honest label or not", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("swap") });
+    await assert.rejects(
+      h.agent.executeSwap(SWAP_REQUEST, approvePayload(h.wallet)),
+      /no seed manifest tags as a swap program/,
+    );
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+    assert.equal(h.rpc.calls.length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: executeSwap refuses a request whose text does not ask for a swap", async () => {
+  const h = await harness();
+  try {
+    const text = "Send 1 SOL for USDC";
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("swap", text) });
+    await assert.rejects(h.agent.executeSwap(text, jupiterPayload(h.wallet)), /does not ask for a swap/);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: the Core is told swap, not the AI layer's wording of it", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("exchange") });
+    const outcome = await h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet));
+    assert.equal(outcome.executed, false, "the loopback Core blocked");
+    const verify = h.core.calls.find((c) => c.method === "POST /verify");
+    const body = verify!.params as {
+      proposed_intent: { intent_type: string; raw_natural_language: string };
+      program_id: string;
+    };
+    assert.equal(body.proposed_intent.intent_type, "swap");
+    assert.equal(body.proposed_intent.raw_natural_language, SWAP_REQUEST);
+    assert.equal(body.program_id, JUPITER_V6);
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: a hung AI layer times out instead of hanging the call", async () => {
+  const hung = createServer(() => {
+    /* never answers */
+  });
+  await new Promise<void>((resolve) => hung.listen(0, "127.0.0.1", resolve));
+  const rpc = await mockRpc();
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
+  try {
+    const agent = await VerifiedSakAgent.create({
+      privateKey: bs58.encode(Keypair.generate().secretKey),
+      rpcUrl: rpc.url,
+      graphiteCoreUrl: core.url,
+      aiLayerUrl: `http://127.0.0.1:${(hung.address() as AddressInfo).port}`,
+      aiLayerTimeoutMs: 200,
+    });
+    const started = Date.now();
+    await assert.rejects(agent.executeTransfer(REQUEST), /the AI layer did not answer within 200 ms/);
+    assert.ok(Date.now() - started < 5_000, "the call was bounded by the configured timeout");
+    assert.equal(core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    hung.closeAllConnections();
+    await new Promise<void>((resolve) => hung.close(() => resolve()));
+    await Promise.all([rpc.close(), core.close()]);
+  }
+});
+
+test("A5-01: the AI layer URL follows the Core's transport rule: https://, or http:// to loopback", async () => {
+  const create = (aiLayerUrl: string) =>
+    VerifiedSakAgent.create({
+      privateKey: bs58.encode(Keypair.generate().secretKey),
+      rpcUrl: "http://127.0.0.1:1",
+      graphiteCoreUrl: "http://127.0.0.1:1",
+      aiLayerUrl,
+    });
+  for (const url of ["http://ai.internal:8081", "http://10.0.0.5:8081", "ftp://127.0.0.1:8081", "not a url"]) {
+    await assert.rejects(create(url), /GRAPHITE_AI_LAYER_URL is refused/, url);
   }
 });
