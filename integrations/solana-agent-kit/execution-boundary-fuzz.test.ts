@@ -36,17 +36,11 @@ import {
 import { BoundTransaction, MAX_TRANSACTION_BYTES, messageOf, readSignatureCount } from "./artifact.js";
 
 /**
- * Reach the private transaction the way a hostile in-process actor would.
- *
- * TypeScript `private` is a compile-time promise. Code that ignores it — a
- * malicious plugin, a monkey-patch, a debugger — is the threat the digest check
- * exists for, so the mutation tests below go through this rather than through
- * an API that no longer exists. A caller that respects the type system has no
- * route to the object at all; see the alias tests for that half.
+ * The bound transaction is an ES private field (R-P8, phase 1), so nothing can
+ * change it after approval. The mutation tests below therefore build the
+ * transaction Graphite APPROVED and, separately, the one being signed, and
+ * require the signing to be refused: the digest check is what they pin.
  */
-function hostile(b: BoundTransaction): Transaction {
-  return (b as unknown as { tx: Transaction }).tx;
-}
 
 const payer = Keypair.generate();
 const destination = Keypair.generate().publicKey;
@@ -80,7 +74,7 @@ function frame(encoded: number[], sigs: number, body = [1, 2, 3, 4]): Uint8Array
 
 // ── 1. messageOf: the acceptance language ──────────────────────────────────
 
-test("messageOf accepts every legal signature count at the boundaries", () => {
+test("messageOf accepts every legal signature count at the boundaries", async () => {
   const body = [9, 9, 9];
   // Single byte: 0..127. Two bytes: 128..16383. Three: 16384..65535.
   for (const count of [0, 1, 2, 3, 19]) {
@@ -119,7 +113,7 @@ test("messageOf accepts every legal signature count at the boundaries", () => {
   assert.throws(() => messageOf(frame([19], 19, new Array(16).fill(9))), /at most 1232/);
 });
 
-test("messageOf accepts 65535 and refuses 65536", () => {
+test("messageOf accepts 65535 and refuses 65536", async () => {
   // 65535 is the largest legal value and its canonical encoding looks like an
   // overflow vector. Refusing it would refuse legal wire format.
   const legal = Uint8Array.from([0xff, 0xff, 0x03, ...new Uint8Array(4)]);
@@ -135,7 +129,7 @@ test("messageOf accepts 65535 and refuses 65536", () => {
   );
 });
 
-test("messageOf refuses the maximal three-byte encoding", () => {
+test("messageOf refuses the maximal three-byte encoding", async () => {
   assert.throws(
     () => messageOf(Uint8Array.from([0xff, 0xff, 0x7f, ...new Uint8Array(4)])),
     /does not fit the u16/,
@@ -143,7 +137,7 @@ test("messageOf refuses the maximal three-byte encoding", () => {
   );
 });
 
-test("messageOf refuses a count that never terminates", () => {
+test("messageOf refuses a count that never terminates", async () => {
   // Continuation bit still set on the third byte. The earlier implementation
   // fell out of the loop here and carried on with a truncated count, reaching
   // the bounds check by luck rather than by rule.
@@ -157,7 +151,7 @@ test("messageOf refuses a count that never terminates", () => {
   );
 });
 
-test("messageOf refuses non-minimal encodings", () => {
+test("messageOf refuses non-minimal encodings", async () => {
   for (const encoded of [
     [0x80, 0x00], // 0 in two bytes
     [0x81, 0x00], // 1 in two bytes
@@ -171,7 +165,7 @@ test("messageOf refuses non-minimal encodings", () => {
   }
 });
 
-test("messageOf refuses truncated and empty input", () => {
+test("messageOf refuses truncated and empty input", async () => {
   assert.throws(() => messageOf(Uint8Array.from([])), /truncated signature count/);
   assert.throws(() => messageOf(Uint8Array.from([0x80])), /truncated signature count/);
   assert.throws(
@@ -180,7 +174,7 @@ test("messageOf refuses truncated and empty input", () => {
   );
 });
 
-test("messageOf handles the exact boundary between signatures and message", () => {
+test("messageOf handles the exact boundary between signatures and message", async () => {
   // Signature array exactly fills the input: a zero-length message, which is
   // legal framing and must not be confused with an error.
   assert.deepEqual(Array.from(messageOf(frame([1], 1, []))), []);
@@ -189,7 +183,7 @@ test("messageOf handles the exact boundary between signatures and message", () =
   assert.throws(() => messageOf(short), /runs past the transaction/);
 });
 
-test("no malformed count ever produces a plausible slice", () => {
+test("no malformed count ever produces a plausible slice", async () => {
   // The dangerous failure is not an exception, it is a WRONG answer. Sweep
   // every one-, two- and three-byte prefix over a fixed body and require that
   // anything accepted slices at an offset the encoding actually implies.
@@ -224,32 +218,32 @@ test("no malformed count ever produces a plausible slice", () => {
 
 // ── 2. Signer misuse ───────────────────────────────────────────────────────
 
-test("signing with the wrong key is refused", () => {
+test("signing with the wrong key is refused", async () => {
   const bound = build();
   const digest = digestOf(bound.artifactBytes);
-  assert.throws(
+  await assert.rejects(
     () => bound.signApproved(digest, [Keypair.generate()]),
     /signer set does not match/,
   );
 });
 
-test("signing with an extra signer is refused", () => {
+test("signing with an extra signer is refused", async () => {
   const bound = build();
   const digest = digestOf(bound.artifactBytes);
-  assert.throws(
+  await assert.rejects(
     () => bound.signApproved(digest, [payer, Keypair.generate()]),
     /signer set does not match/,
     "an unexpected signer changes who authorized this",
   );
 });
 
-test("signing with no signers is refused", () => {
+test("signing with no signers is refused", async () => {
   const bound = build();
   const digest = digestOf(bound.artifactBytes);
-  assert.throws(() => bound.signApproved(digest, []), /signer set does not match/);
+  await assert.rejects(() => bound.signApproved(digest, []), /signer set does not match/);
 });
 
-test("a transaction requiring two signers refuses a partial set", () => {
+test("a transaction requiring two signers refuses a partial set", async () => {
   const cosigner = Keypair.generate();
   const twoSigners = new TransactionInstruction({
     programId: SystemProgram.programId,
@@ -263,19 +257,19 @@ test("a transaction requiring two signers refuses a partial set", () => {
   const bound = build([twoSigners]);
   const digest = digestOf(bound.artifactBytes);
 
-  assert.throws(
+  await assert.rejects(
     () => bound.signApproved(digest, [payer]),
     /signer set does not match/,
     "one of two required signatures is not the approved transaction",
   );
   // The complete set, in either order, is accepted.
-  const raw = bound.signApproved(digest, [cosigner, payer]);
+  const raw = await bound.signApproved(digest, [cosigner, payer]);
   assert.deepEqual(Array.from(messageOf(raw)), Array.from(bound.messageBytes));
 });
 
 // ── 3. Property-based mutation ─────────────────────────────────────────────
 
-test("no byte-level mutation of the approved artifact survives the digest", () => {
+test("no byte-level mutation of the approved artifact survives the digest", async () => {
   // Not a claim about the transaction object — a claim about SHA-256 — but it
   // is the property the whole gate rests on, and it costs little to pin.
   const bound = build([transfer(), transfer(3)]);
@@ -293,51 +287,44 @@ test("no byte-level mutation of the approved artifact survives the digest", () =
   console.log(`  ${checked} single-bit mutations, none collided`);
 });
 
-test("structural mutations of the live object are all refused", () => {
-  // Each entry mutates the approved transaction through a reference an attacker
-  // with any foothold would hold, then requires the gate to refuse.
-  const mutations: [string, (b: BoundTransaction) => void][] = [
-    ["blockhash", (b) => { hostile(b).recentBlockhash = "So11111111111111111111111111111111111111112"; }],
-    ["fee payer", (b) => { hostile(b).feePayer = Keypair.generate().publicKey; }],
-    ["append instruction", (b) => { hostile(b).add(transfer(1)); }],
-    ["drop instruction", (b) => { hostile(b).instructions.pop(); }],
-    ["reorder instructions", (b) => { hostile(b).instructions.reverse(); }],
-    ["instruction data", (b) => { hostile(b).instructions[0].data[4] ^= 0xff; }],
-    ["program id", (b) => { hostile(b).instructions[0].programId = Keypair.generate().publicKey; }],
-    ["account pubkey", (b) => { hostile(b).instructions[0].keys[1].pubkey = Keypair.generate().publicKey; }],
-
-    ["swap account order", (b) => { hostile(b).instructions[0].keys.reverse(); }],
-    ["append account", (b) => {
-      hostile(b).instructions[0].keys.push({
-        pubkey: Keypair.generate().publicKey,
-        isSigner: false,
-        isWritable: true,
-      });
+test("an approval of any structurally different transaction does not sign this one", async () => {
+  interface Spec { instructions: TransactionInstruction[]; feePayer: PublicKey; recentBlockhash: string }
+  const two = (): Spec => ({ instructions: [transfer(), transfer(3)], feePayer: payer.publicKey, recentBlockhash: BLOCKHASH });
+  const one = (): Spec => ({ instructions: [transfer()], feePayer: payer.publicKey, recentBlockhash: BLOCKHASH });
+  const ix = (base: TransactionInstruction, change: (k: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[]) => void, data?: Buffer, programId?: PublicKey) => {
+    const keys = base.keys.map((k) => ({ ...k }));
+    change(keys);
+    return new TransactionInstruction({ programId: programId ?? base.programId, keys, data: data ?? Buffer.from(base.data) });
+  };
+  const mutations: [string, () => Spec, () => Spec][] = [
+    ["blockhash", two, () => ({ ...two(), recentBlockhash: "So11111111111111111111111111111111111111112" })],
+    ["fee payer", two, () => ({ ...two(), feePayer: Keypair.generate().publicKey })],
+    ["append instruction", two, () => ({ ...two(), instructions: [transfer(), transfer(3), transfer(1)] })],
+    ["drop instruction", two, () => ({ ...two(), instructions: [transfer()] })],
+    ["reorder instructions", two, () => ({ ...two(), instructions: [transfer(3), transfer()] })],
+    ["instruction data", two, () => {
+      const d = Buffer.from(transfer().data);
+      d[4] ^= 0xff;
+      return { ...two(), instructions: [ix(transfer(), () => {}, d), transfer(3)] };
     }],
+    ["program id", two, () => ({ ...two(), instructions: [ix(transfer(), () => {}, undefined, Keypair.generate().publicKey), transfer(3)] })],
+    ["account pubkey", two, () => ({ ...two(), instructions: [ix(transfer(), (k) => { k[1].pubkey = Keypair.generate().publicKey; }), transfer(3)] })],
+    ["swap account order", two, () => ({ ...two(), instructions: [ix(transfer(), (k) => { k.reverse(); }), transfer(3)] })],
+    ["append account", two, () => ({ ...two(), instructions: [ix(transfer(), (k) => { k.push({ pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: true }); }), transfer(3)] })],
+    // Privilege flags on a single instruction: with two instructions touching
+    // the same account, flags are unioned per message (see
+    // `per_instruction_privilege_flags_are_compilation_inputs`).
+    ["isWritable (single instruction)", one, () => ({ ...one(), instructions: [ix(transfer(), (k) => { k[1].isWritable = false; })] })],
+    ["isSigner (single instruction)", one, () => ({ ...one(), instructions: [ix(transfer(), (k) => { k[1].isSigner = true; })] })],
   ];
-
-  // Privilege flags get their own single-instruction cases below: with two
-  // instructions touching the same account, web3.js UNIONS the metas at compile
-  // time, so lowering one instruction's flag changes nothing about the compiled
-  // message. See `per_instruction_privilege_flags_are_compilation_inputs`.
-  mutations.push([
-    "isWritable (single instruction)",
-    (b) => { hostile(b).instructions[0].keys[1].isWritable = false; },
-  ]);
-  mutations.push([
-    "isSigner (single instruction)",
-    (b) => { hostile(b).instructions[0].keys[1].isSigner = true; },
-  ]);
-
-  for (const [label, mutate] of mutations) {
-    const single = label.includes("single instruction");
-    const bound = single ? build([transfer()]) : build([transfer(), transfer(3)]);
-    const digest = digestOf(bound.artifactBytes);
-    mutate(bound);
-    assert.throws(
-      () => bound.signApproved(digest, [payer]),
+  for (const [label, original, mutated] of mutations) {
+    const bound = BoundTransaction.build({ ...original(), lastValidBlockHeight: 1 });
+    const approved = BoundTransaction.build({ ...mutated(), lastValidBlockHeight: 1 });
+    assert.notEqual(digestOf(approved.artifactBytes), digestOf(bound.artifactBytes), `${label}: the mutation changes the bytes`);
+    await assert.rejects(
+      () => bound.signApproved(digestOf(approved.artifactBytes), [payer]),
       /changed between approval and signing|signer set does not match/,
-      `${label}: an execution-affecting mutation reached the signature`,
+      `${label}: an approval of a different transaction signed this one`,
     );
   }
   console.log(`  ${mutations.length} structural mutations, all refused`);
@@ -362,7 +349,7 @@ test("structural mutations of the live object are all refused", () => {
  * from the message HEADER, which is the compiled view, not from per-instruction
  * flags.
  */
-test("per_instruction_privilege_flags_are_compilation_inputs", () => {
+test("per_instruction_privilege_flags_are_compilation_inputs", async () => {
   const shared = destination;
   const readonlyFirst = new TransactionInstruction({
     programId: SystemProgram.programId,
@@ -384,24 +371,20 @@ test("per_instruction_privilege_flags_are_compilation_inputs", () => {
   const bound = build([readonlyFirst, writableSecond]);
   const digest = digestOf(bound.artifactBytes);
 
-  // The union already happened: the account is writable in the compiled
-  // message despite instruction 0 asking for read-only.
-  const compiled = hostile(bound).compileMessage();
-  const index = compiled.accountKeys.findIndex((k) => k.equals(shared));
-  assert.ok(compiled.isAccountWritable(index), "the union makes it writable");
+  // Privileges are per message: the account is writable because instruction 1
+  // asks for it, whatever instruction 0 says. Lowering instruction 0's flag
+  // therefore compiles to the same bytes, and that approval signs this one.
+  const lowerFirst = build([new TransactionInstruction({ programId: readonlyFirst.programId, data: Buffer.from(readonlyFirst.data), keys: readonlyFirst.keys.map((k, i) => (i === 1 ? { ...k, isWritable: false } : { ...k })) }), writableSecond]);
+  assert.equal(digestOf(lowerFirst.artifactBytes), digest, "instruction 0's flag changes nothing that executes");
+  await assert.doesNotReject(() => bound.signApproved(digestOf(lowerFirst.artifactBytes), [payer]));
 
-  // So lowering instruction 0's flag changes nothing that executes, and the
-  // gate correctly does not refuse it.
-  hostile(bound).instructions[0].keys[1].isWritable = false;
-  assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
-
-  // Lowering it on the instruction that actually determines the union DOES
-  // change the message, and is refused.
+  // Lowering it on the instruction that determines the union DOES change the
+  // message, and an approval of that does not sign this one.
   const other = build([readonlyFirst, writableSecond]);
-  const otherDigest = digestOf(other.artifactBytes);
-  hostile(other).instructions[1].keys[1].isWritable = false;
-  assert.throws(
-    () => other.signApproved(otherDigest, [payer]),
+  const lowerSecond = build([readonlyFirst, new TransactionInstruction({ programId: writableSecond.programId, data: Buffer.from(writableSecond.data), keys: writableSecond.keys.map((k, i) => (i === 1 ? { ...k, isWritable: false } : { ...k })) })]);
+  assert.notEqual(digestOf(lowerSecond.artifactBytes), digest);
+  await assert.rejects(
+    () => other.signApproved(digestOf(lowerSecond.artifactBytes), [payer]),
     /changed between approval and signing/,
   );
 });
@@ -414,13 +397,13 @@ test("per_instruction_privilege_flags_are_compilation_inputs", () => {
 // honest path signs, the digest still matches, and what was signed is what was
 // approved — the alias mutated an object the transaction no longer shares.
 
-test("a caller-retained instruction alias no longer reaches the transaction", () => {
+test("a caller-retained instruction alias no longer reaches the transaction", async () => {
   const ix = transfer();
   const bound = build([ix]);
   const digest = digestOf(bound.artifactBytes);
 
   ix.data.writeBigUInt64LE(900_000_000n, 4); // the alias is drained...
-  const raw = bound.signApproved(digest, [payer]); // ...and the transaction is not
+  const raw = await bound.signApproved(digest, [payer]); // ...and the transaction is not
   assert.deepEqual(
     Array.from(messageOf(raw)),
     Array.from(bound.messageBytes),
@@ -430,7 +413,7 @@ test("a caller-retained instruction alias no longer reaches the transaction", ()
   assert.equal(bound.instructions()[0].data.readBigUInt64LE(4), 2_000_000n);
 });
 
-test("a caller-retained AccountMeta alias no longer reaches the transaction", () => {
+test("a caller-retained AccountMeta alias no longer reaches the transaction", async () => {
   const ix = transfer();
   const keys = ix.keys;
   const bound = build([ix]);
@@ -438,14 +421,14 @@ test("a caller-retained AccountMeta alias no longer reaches the transaction", ()
 
   keys[1].pubkey = Keypair.generate().publicKey;
   keys[1].isWritable = false;
-  assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
+  await assert.doesNotReject(() => bound.signApproved(digest, [payer]));
   assert.ok(
     bound.instructions()[0].keys[1].pubkey.equals(destination),
     "the destination inside the transaction is the one that was approved",
   );
 });
 
-test("a caller-retained data Buffer alias no longer reaches the transaction", () => {
+test("a caller-retained data Buffer alias no longer reaches the transaction", async () => {
   // The sharpest alias: the Buffer itself. `new TransactionInstruction` does
   // not copy `data`, so without isolation the caller and the transaction
   // literally share bytes.
@@ -462,34 +445,35 @@ test("a caller-retained data Buffer alias no longer reaches the transaction", ()
   const digest = digestOf(bound.artifactBytes);
 
   data.fill(0xff, 4); // rewrite the shared buffer
-  assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
+  await assert.doesNotReject(() => bound.signApproved(digest, [payer]));
 });
 
-test("the accessor returns copies, so a projection cannot reach the transaction", () => {
+test("the accessor returns copies, so a projection cannot reach the transaction", async () => {
   const bound = build();
   const digest = digestOf(bound.artifactBytes);
   const projected = bound.instructions();
   projected[0].data.fill(0xff);
   projected[0].keys[1].pubkey = Keypair.generate().publicKey;
-  assert.doesNotThrow(() => bound.signApproved(digest, [payer]));
+  await assert.doesNotReject(() => bound.signApproved(digest, [payer]));
 });
 
-test("a hostile actor reaching past `private` is still detected", () => {
-  // The backstop the isolation sits on top of. Reaching the transaction
-  // requires ignoring the type system, and doing so still changes the digest.
+test("the bound transaction is out of reach, and a different approval still does not sign it", async () => {
+  // The backstop under the isolation. The transaction is an ES private field,
+  // so there is no route to it to mutate; and an approval of a transaction
+  // with a drained amount does not sign the approved one.
   const bound = build();
-  const digest = digestOf(bound.artifactBytes);
-  hostile(bound).instructions[0].data.writeBigUInt64LE(900_000_000n, 4);
-  assert.throws(
-    () => bound.signApproved(digest, [payer]),
+  assert.deepEqual(Reflect.ownKeys(bound).map(String).sort(), ["lastValidBlockHeight", "lookupTableCount", "version"]);
+  const drained = build([transfer(900_000_000)]);
+  await assert.rejects(
+    () => bound.signApproved(digestOf(drained.artifactBytes), [payer]),
     /changed between approval and signing/,
   );
 });
 
-test("the honest control still passes after all of that", () => {
+test("the honest control still passes after all of that", async () => {
   // Anti-vacuity for every refusal above: if the gate refused everything, each
   // of those assertions would hold for the wrong reason.
   const bound = build([transfer(), transfer(3)]);
-  const raw = bound.signApproved(digestOf(bound.artifactBytes), [payer]);
+  const raw = await bound.signApproved(digestOf(bound.artifactBytes), [payer]);
   assert.deepEqual(Array.from(messageOf(raw)), Array.from(bound.messageBytes));
 });

@@ -32,7 +32,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { MAX_TRANSACTION_BYTES, messageOf } from "./artifact.js";
+import { BoundTransaction, MAX_TRANSACTION_BYTES, messageOf } from "./artifact.js";
 
 const SYSTEM = SystemProgram.programId;
 const COMPUTE_BUDGET = new PublicKey("ComputeBudget111111111111111111111111111111");
@@ -153,6 +153,75 @@ function v0WithRealTable(): Entry {
   };
 }
 
+/**
+ * A v0 transaction compiled by the BRIDGE (`BoundTransaction.build`, which
+ * compiles through @solana/kit since R-P8 phase 1), with two read-only
+ * accounts given in the reverse of their sorted order. web3.js's v0 compiler
+ * keeps first-appearance order and kit sorts, so these bytes are what the
+ * bridge produces and NOT what web3.js would: the Rust Core is held to the
+ * bytes the bridge actually signs.
+ */
+function v0BridgeKitOrder(): Entry {
+  const alt = JSON.parse(
+    readFileSync(new URL("../../graphite-core/fixtures/artifacts/mainnet_v0_alt.json", import.meta.url), "utf8"),
+  );
+  const [tableAddress, table] = Object.entries(alt.lookup_tables)[0] as [string, { data_base64: string }];
+  const lookup = new AddressLookupTableAccount({
+    key: new PublicKey(tableAddress),
+    state: AddressLookupTableAccount.deserialize(Buffer.from(table.data_base64, "base64")),
+  });
+  // Two fixed read-only accounts, given in DESCENDING base58 order.
+  const pair = [Keypair.fromSeed(new Uint8Array(32).fill(41)).publicKey, Keypair.fromSeed(new Uint8Array(32).fill(42)).publicKey]
+    .sort((a, b) => b.toBase58().localeCompare(a.toBase58()));
+  const ix = new TransactionInstruction({
+    programId: MEMO,
+    keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
+      { pubkey: lookup.state.addresses[5], isSigner: false, isWritable: true },
+      { pubkey: pair[0], isSigner: false, isWritable: false },
+      { pubkey: pair[1], isSigner: false, isWritable: false },
+      { pubkey: lookup.state.addresses[9], isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from("graphite corpus v0, kit order", "utf8"),
+  });
+  const bound = BoundTransaction.build({
+    instructions: [computeLimit(), ix],
+    feePayer: payer.publicKey,
+    recentBlockhash: BLOCKHASH,
+    lastValidBlockHeight: 1,
+    version: 0,
+    addressLookupTables: [lookup],
+  });
+  const raw = bound.artifactBytes;
+  const message = VersionedTransaction.deserialize(raw).message;
+  const web3Order = new TransactionMessage({
+    payerKey: payer.publicKey,
+    recentBlockhash: BLOCKHASH,
+    instructions: [computeLimit(), ix],
+  }).compileToV0Message([lookup]).serialize();
+  if (Buffer.from(web3Order).equals(Buffer.from(messageOf(raw)))) {
+    throw new Error("v0_bridge_kit_order: kit and web3.js produced the same bytes; the entry would not test the bridge's order");
+  }
+  return {
+    name: "v0_bridge_kit_order",
+    what: "a v0 message compiled by the bridge itself (kit), whose account order differs from web3.js's",
+    version: 0,
+    raw: Array.from(raw),
+    transaction_sha256: createHash("sha256").update(raw).digest("hex"),
+    message: Array.from(messageOf(raw)),
+    required_signers: message.staticAccountKeys
+      .slice(0, message.header.numRequiredSignatures)
+      .map((k) => k.toBase58()),
+    instruction_count: 2,
+    static_keys: message.staticAccountKeys.map((k) => k.toBase58()),
+    lookups: message.addressTableLookups.map((l) => ({
+      table: l.accountKey.toBase58(),
+      writable: Array.from(l.writableIndexes),
+      readonly: Array.from(l.readonlyIndexes),
+    })),
+  };
+}
+
 const corpus: Entry[] = [
   legacy("legacy_single_transfer", "one System transfer", [transfer(payer.publicKey, destination, 2_000_000n)]),
   legacy(
@@ -236,6 +305,7 @@ const corpus: Entry[] = [
     ],
   ),
   v0WithRealTable(),
+  v0BridgeKitOrder(),
 ];
 
 // ─── Byte-level mutations ─────────────────────────────────────────────────────

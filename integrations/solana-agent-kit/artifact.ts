@@ -29,15 +29,21 @@
 
 import { createHash } from "node:crypto";
 import {
+  createKeyPairFromBytes,
+  getTransactionEncoder,
+  signTransaction,
+  type Transaction as KitTransaction,
+} from "@solana/kit";
+import {
   AddressLookupTableAccount,
   Keypair,
   PublicKey,
   SystemProgram,
   Transaction,
   TransactionInstruction,
-  TransactionMessage,
-  VersionedTransaction,
 } from "@solana/web3.js";
+import bs58 from "bs58";
+import { compileWithKit } from "./kit-artifact.js";
 
 /** One entry of the Core's `transaction_instructions`. */
 export interface DeclaredInstruction {
@@ -183,56 +189,66 @@ export function realAccountMetas(
  *
  * So the guarantee is: the message inside the bytes submitted to the network is
  * byte-identical to the message inside the bytes Graphite approved. The digest
- * comparison before signing proves nothing mutated the object in between; the
+ * comparison before signing proves the transaction is the approved one; the
  * message slice after signing proves signing itself changed nothing but the
  * signatures.
+ *
+ * Compiled and signed by `@solana/kit` (roadmap gap R-P8, phase 1). The
+ * transaction lives in an ES private field: unlike TypeScript `private`, which
+ * any code holding this object could read and mutate at runtime (the old
+ * design relied on the digest check to catch exactly that), nothing outside
+ * the class can reach it. The digest is still re-checked before signing. The
+ * bytes exposed on the object are copies, so changing them changes nothing
+ * that is signed. Legacy messages compile to the bytes web3.js produced; v0
+ * messages to the same transaction with accounts sorted within each privilege
+ * class (`kit-artifact.test.ts`).
  */
 export class BoundTransaction {
+  /** The single compiled transaction that is verified, signed and submitted. */
+  #tx: KitTransaction;
+  /** Copies of the caller's instructions, isolated from anything it holds. */
+  #source: TransactionInstruction[];
+  /** The unsigned serialization handed to Graphite. */
+  #artifact: Uint8Array;
+  /** The message, captured at build. */
+  #message: Uint8Array;
+  #blockhash: string;
+  /** Set, synchronously, by the first signApproved that passes its checks. */
+  #consumed = false;
+
   private constructor(
-    /**
-     * The single object that is verified, signed and submitted.
-     *
-     * Private, and built from COPIES of the caller's instructions. Both matter
-     * and they close different holes. `readonly` on a public field prevented
-     * reassignment and nothing else: a caller who kept its own reference to an
-     * instruction, an AccountMeta array, or a data Buffer could mutate the
-     * transaction through that alias, because JavaScript shares those by
-     * reference. The digest check caught every such mutation — but catching a
-     * mutation is detection, and this is structure: there is no longer a
-     * reference outside this object through which the transaction can be
-     * reached at all.
-     *
-     * TypeScript `private` is compile-time only. Code that reaches in with
-     * `as any` is a hostile in-process actor, and the digest check remains for
-     * exactly that case. The two together are the design.
-     */
-    private readonly tx: Transaction | VersionedTransaction,
-    /**
-     * The instructions the message was compiled from, isolated. A v0 message
-     * stores lookup-table indexes rather than instructions, so they are kept
-     * rather than decompiled back out of it.
-     */
-    private readonly source: TransactionInstruction[],
+    tx: KitTransaction,
+    source: TransactionInstruction[],
     /** `"legacy"`, or `0` for a v0 message (Round 22). */
     readonly version: "legacy" | 0,
     /** How many address lookup tables the v0 message reads; 0 for legacy. */
     readonly lookupTableCount: number,
-    /** The unsigned serialization handed to Graphite. */
-    readonly artifactBytes: Uint8Array,
-    /** The message, captured before verification. */
-    readonly messageBytes: Uint8Array,
+    artifact: Uint8Array,
+    blockhash: string,
     /** Needed to confirm the submission against the blockhash it was built on. */
     readonly lastValidBlockHeight: number,
-  ) {}
+  ) {
+    this.#tx = tx;
+    this.#source = source;
+    this.#artifact = artifact;
+    this.#message = Uint8Array.from(tx.messageBytes);
+    this.#blockhash = blockhash;
+  }
+
+  /** The unsigned serialization handed to Graphite (a copy). */
+  get artifactBytes(): Uint8Array {
+    return Uint8Array.from(this.#artifact);
+  }
+
+  /** The message, captured at build (a copy). */
+  get messageBytes(): Uint8Array {
+    return Uint8Array.from(this.#message);
+  }
 
   /**
    * Deep-copy an instruction so nothing the caller holds reaches the bound
-   * transaction.
-   *
-   * Every field is copied by value: the program id and each pubkey through
-   * their bytes, the data through a fresh Buffer, the meta flags as primitives.
-   * `data` in particular is a Buffer the caller may still hold — a shared
-   * buffer is a shared transaction.
+   * transaction. Every field is copied by value; `data` in particular is a
+   * Buffer the caller may still hold — a shared buffer is a shared transaction.
    */
   private static isolate(ix: TransactionInstruction): TransactionInstruction {
     return new TransactionInstruction({
@@ -267,16 +283,10 @@ export class BoundTransaction {
    * Build the one transaction that is verified, signed and submitted.
    *
    * `version: 0` compiles a v0 message, reading accounts through
-   * `addressLookupTables` where they hold them (Round 22). Until then the
-   * bridge built legacy messages only, so a route too large for 1,232 bytes
-   * without lookup tables — most aggregator swaps — could not be bound at
-   * all. Everything below holds for both: the same object is verified,
-   * signed and submitted, the digest is checked before signing, and the
-   * signed bytes must carry the verified message. Lookup tables are given
-   * as ACCOUNTS, already fetched: a table that could not be read is the
-   * caller's refusal, never a quietly smaller message. Version 1 is not
-   * built — web3.js 1.x cannot compile it — and is verified by the Core from
-   * any builder that can.
+   * `addressLookupTables` where they hold them (Round 22). Lookup tables are
+   * given as ACCOUNTS, already fetched: a table that could not be read is the
+   * caller's refusal, never a quietly smaller message. Version 1 is not built
+   * here yet (R-P8, phase 2).
    */
   static build(params: {
     instructions: TransactionInstruction[];
@@ -293,142 +303,99 @@ export class BoundTransaction {
       );
     }
     const version = params.version ?? "legacy";
-    const tables = params.addressLookupTables ?? [];
-    const source = params.instructions.map(BoundTransaction.isolate);
-    if (version === "legacy") {
-      if (tables.length > 0) {
-        throw new Error(
-          "BoundTransaction: address lookup tables were given for a legacy message, which cannot read them. " +
-            "Build with version: 0, or without the tables.",
-        );
-      }
-      const tx = new Transaction({
-        feePayer: new PublicKey(params.feePayer.toBytes()),
-        recentBlockhash: params.recentBlockhash,
-      });
-      tx.add(...source.map(BoundTransaction.isolate));
-      const artifactBytes = Uint8Array.from(
-        tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
-      );
-      return new BoundTransaction(
-        tx,
-        source,
-        "legacy",
-        0,
-        artifactBytes,
-        Uint8Array.from(tx.serializeMessage()),
-        params.lastValidBlockHeight,
-      );
-    }
-    if (version !== 0) {
+    if (version !== "legacy" && version !== 0) {
       throw new Error(`BoundTransaction: unsupported message version ${String(version)}`);
     }
-    const message = new TransactionMessage({
-      payerKey: new PublicKey(params.feePayer.toBytes()),
-      recentBlockhash: params.recentBlockhash,
-      instructions: source.map(BoundTransaction.isolate),
-    }).compileToV0Message(tables);
-    const tx = new VersionedTransaction(message);
-    // Unsigned: every signature slot is 64 zero bytes, exactly the shape the
-    // legacy path produces with requireAllSignatures: false.
-    const artifactBytes = Uint8Array.from(tx.serialize());
-    if (artifactBytes.length > MAX_TRANSACTION_BYTES) {
+    const tables = params.addressLookupTables ?? [];
+    if (version === "legacy" && tables.length > 0) {
       throw new Error(
-        `BoundTransaction: the v0 transaction is ${artifactBytes.length} bytes; the network accepts at most ${MAX_TRANSACTION_BYTES}`,
+        "BoundTransaction: address lookup tables were given for a legacy message, which cannot read them. " +
+          "Build with version: 0, or without the tables.",
+      );
+    }
+    const source = params.instructions.map(BoundTransaction.isolate);
+    const tx = compileWithKit({
+      instructions: source.map(BoundTransaction.isolate),
+      feePayer: new PublicKey(params.feePayer.toBytes()),
+      recentBlockhash: params.recentBlockhash,
+      lastValidBlockHeight: params.lastValidBlockHeight,
+      version,
+      addressLookupTables: tables,
+    });
+    const artifact = Uint8Array.from(getTransactionEncoder().encode(tx));
+    if (artifact.length > MAX_TRANSACTION_BYTES) {
+      throw new Error(
+        `BoundTransaction: the ${version === "legacy" ? "legacy" : "v0"} transaction is ${artifact.length} bytes; the network accepts at most ${MAX_TRANSACTION_BYTES}`,
       );
     }
     return new BoundTransaction(
       tx,
       source,
-      0,
-      message.addressTableLookups.length,
-      artifactBytes,
-      Uint8Array.from(message.serialize()),
+      version,
+      version === 0 ? lookupTableCountOf(Uint8Array.from(tx.messageBytes)) : 0,
+      artifact,
+      params.recentBlockhash,
       params.lastValidBlockHeight,
     );
   }
 
   /** The bytes to send as `signed_transaction`. */
   artifact(): number[] {
-    return Array.from(this.artifactBytes);
+    return Array.from(this.#artifact);
   }
 
   /**
-   * The instructions, as fresh copies.
-   *
-   * A caller that needs to project them (AuditBind does) gets objects it can do
-   * anything to without touching the transaction. Returning the internal ones
-   * would hand back the alias `isolate` exists to remove.
+   * The instructions, as fresh copies. A caller that needs to project them
+   * (AuditBind does) gets objects it can do anything to without touching the
+   * transaction.
    */
   instructions(): TransactionInstruction[] {
-    return this.source.map(BoundTransaction.isolate);
+    return this.#source.map(BoundTransaction.isolate);
   }
 
   /** The blockhash this transaction was built on. */
   get recentBlockhash(): string {
-    // Set in `build`; a Transaction constructed with one always has one.
-    return this.tx instanceof VersionedTransaction
-      ? this.tx.message.recentBlockhash
-      : (this.tx.recentBlockhash as string);
-  }
-
-  /** The serialization now: unsigned before signing, signed after. */
-  private serializeNow(): Uint8Array {
-    return this.tx instanceof VersionedTransaction
-      ? Uint8Array.from(this.tx.serialize())
-      : Uint8Array.from(
-          this.tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
-        );
+    return this.#blockhash;
   }
 
   /**
-   * Check the digest and sign, as one indivisible step.
-   *
-   * The two used to be separate calls, adjacent in the bridge. That is safe in
-   * JavaScript — nothing can run between two synchronous statements with no
-   * await between them — but it was safe by arrangement rather than by
-   * construction, and an arrangement is one refactor away from a window. There
-   * is now no API through which this object can be signed without its digest
-   * being checked first, because signing is not separately reachable.
+   * Check the digest and sign, as one indivisible step: there is no API
+   * through which this object can be signed without its digest being checked
+   * first, because signing is not separately reachable. Asynchronous because
+   * kit signs through WebCrypto; the digest and signer checks run before any
+   * await, so nothing can interleave between them and the decision to sign.
    *
    * Returns the exact bytes to submit. Nothing else may be submitted: they are
    * the only thing here that has been checked end to end.
    */
-  signApproved(approvedSha256: string, signers: Keypair[]): Uint8Array {
+  async signApproved(approvedSha256: string, signers: Keypair[]): Promise<Uint8Array> {
     this.assertApproved(approvedSha256);
     this.assertSignersMatchTheMessage(signers);
+    // Kit signs asynchronously, so two calls could both pass the checks above
+    // before either has signed. The first to get here claims the transaction
+    // before its first await; any other is refused.
+    if (this.#consumed) {
+      throw new Error(
+        "[Graphite] This bound transaction is already being signed. One verified transaction is " +
+          "signed once. ABORTING.",
+      );
+    }
+    this.#consumed = true;
     return this.signAndFreeze(signers);
   }
 
   /**
-   * The signers must be exactly the ones this message requires.
-   *
-   * Graphite is a pre-signature gate and does not verify signatures, so nothing
-   * downstream of it would notice a transaction signed by the wrong key, or one
-   * short of a required signature — the network would reject it, which is a
-   * failed transaction rather than a wrong one, but it is also the shape in
-   * which an extra unexpected signer would slip through unremarked.
-   *
-   * The requirement is read out of the message rather than taken from the
-   * caller: `numRequiredSignatures` over the compiled account keys is what
-   * Solana itself will demand.
+   * The signers must be exactly the ones this message requires, read out of
+   * the message itself: `numRequiredSignatures` over the static account keys
+   * is what Solana will demand. Graphite does not verify signatures, so
+   * nothing downstream would notice a transaction signed by the wrong key or
+   * one short of a required signature.
    */
   private assertSignersMatchTheMessage(signers: Keypair[]): void {
-    const [keys, header] =
-      this.tx instanceof VersionedTransaction
-        ? [this.tx.message.staticAccountKeys, this.tx.message.header]
-        : (() => {
-            const m = this.tx.compileMessage();
-            return [m.accountKeys, m.header] as const;
-          })();
-    const required = keys
-      .slice(0, header.numRequiredSignatures)
-      .map((k) => k.toBase58())
-      .sort();
+    const required = requiredSigners(this.#message).sort();
     const supplied = signers.map((s) => s.publicKey.toBase58()).sort();
     const same =
-      required.length === supplied.length &&
-      required.every((k, i) => k === supplied[i]);
+      required.length === supplied.length && required.every((k, i) => k === supplied[i]);
     if (!same) {
       throw new Error(
         `[Graphite] The signer set does not match the transaction. This message requires ` +
@@ -440,14 +407,12 @@ export class BoundTransaction {
   }
 
   /**
-   * Re-serialize now and require the digest Graphite approved.
-   *
-   * Private: reachable only through `signApproved`, so it cannot be called and
-   * then forgotten. Recomputing rather than comparing a stored value is the
-   * point — a stored digest would still match after the object moved on.
+   * Re-serialize now and require the digest Graphite approved. Recomputing
+   * rather than comparing a stored value is the point — a stored digest would
+   * still match after the object moved on.
    */
   private assertApproved(approvedSha256: string): void {
-    const now = this.serializeNow();
+    const now = Uint8Array.from(getTransactionEncoder().encode(this.#tx));
     const digest = createHash("sha256").update(now).digest("hex");
     if (digest !== approvedSha256) {
       throw new Error(
@@ -461,21 +426,21 @@ export class BoundTransaction {
 
   /**
    * Sign, then prove the submitted bytes carry the message that was approved.
-   *
    * The message is read back out of the signed bytes by slicing off the
-   * signature array rather than by re-compiling the transaction object: a
-   * recompile would be asking the same code that built it whether it built it,
-   * and would hide exactly the mutation this is looking for.
+   * signature array rather than by re-compiling: a recompile would be asking
+   * the same code that built it whether it built it.
    */
-  private signAndFreeze(signers: Keypair[]): Uint8Array {
-    if (this.tx instanceof VersionedTransaction) {
-      this.tx.sign(signers);
-    } else {
-      this.tx.sign(...signers);
-    }
-    const raw = Uint8Array.from(this.tx.serialize());
+  private async signAndFreeze(signers: Keypair[]): Promise<Uint8Array> {
+    const keyPairs = await Promise.all(signers.map((s) => createKeyPairFromBytes(s.secretKey)));
+    const signed = await signTransaction(keyPairs, this.#tx);
+    // The object moves on to the signed transaction, as the web3.js one did:
+    // a second signApproved re-encodes it, finds signatures where the approved
+    // artifact had empty slots, and is refused by the digest check. One bound
+    // transaction is signed once.
+    this.#tx = signed;
+    const raw = Uint8Array.from(getTransactionEncoder().encode(signed));
     const submitted = messageOf(raw);
-    if (!equalBytes(submitted, this.messageBytes)) {
+    if (!equalBytes(submitted, this.#message)) {
       throw new Error(
         "[Graphite] The message inside the signed transaction is not the message that was " +
           "verified. Signing must change only the signatures. ABORTING.",
@@ -483,6 +448,57 @@ export class BoundTransaction {
     }
     return raw;
   }
+}
+
+/** Version byte, header and static keys of a legacy or v0 message. */
+function messageKeys(message: Uint8Array): { v0: boolean; header: number[]; keys: string[]; after: number } {
+  let i = 0;
+  const v0 = (message[0] & 0x80) !== 0;
+  if (v0) i++;
+  const header = [message[i], message[i + 1], message[i + 2]];
+  i += 3;
+  const { value: count, next } = readShortU16At(message, i);
+  i = next;
+  const keys: string[] = [];
+  for (let k = 0; k < count; k++, i += 32) {
+    keys.push(bs58.encode(message.subarray(i, i + 32)));
+  }
+  return { v0, header, keys, after: i };
+}
+
+/** The addresses whose signatures this message requires. */
+function requiredSigners(message: Uint8Array): string[] {
+  const { header, keys } = messageKeys(message);
+  return keys.slice(0, header[0]);
+}
+
+/** How many lookup tables a v0 message reads. */
+function lookupTableCountOf(message: Uint8Array): number {
+  let { after: i } = messageKeys(message);
+  i += 32; // blockhash
+  let r = readShortU16At(message, i);
+  i = r.next;
+  for (let x = 0; x < r.value; x++) {
+    i += 1; // program index
+    const accounts = readShortU16At(message, i);
+    i = accounts.next + accounts.value;
+    const data = readShortU16At(message, i);
+    i = data.next + data.value;
+  }
+  r = readShortU16At(message, i);
+  return r.value;
+}
+
+function readShortU16At(b: Uint8Array, at: number): { value: number; next: number } {
+  let value = 0;
+  let i = at;
+  for (let g = 0; g < 3; g++) {
+    const x = b[i++];
+    if (x === undefined) throw new Error("[Graphite] truncated message");
+    value |= (x & 0x7f) << (7 * g);
+    if ((x & 0x80) === 0) break;
+  }
+  return { value, next: i };
 }
 
 /**

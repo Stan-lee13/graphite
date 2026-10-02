@@ -27,6 +27,7 @@ import {
   type Address,
   type Blockhash,
   type Instruction,
+  type Transaction,
 } from "@solana/kit";
 import type { AddressLookupTableAccount, PublicKey, TransactionInstruction } from "@solana/web3.js";
 
@@ -52,14 +53,19 @@ export function toKitInstruction(ix: TransactionInstruction): Instruction {
  * The unsigned wire bytes of a legacy or v0 transaction, compiled by kit:
  * every signature slot is 64 zero bytes, as the web3.js path produces.
  */
-export function compileUnsignedWithKit(params: {
+export function compileUnsignedWithKit(params: Parameters<typeof compileWithKit>[0]): Uint8Array {
+  return Uint8Array.from(getTransactionEncoder().encode(compileWithKit(params)));
+}
+
+/** The compiled (unsigned) kit transaction of a legacy or v0 message. */
+export function compileWithKit(params: {
   instructions: TransactionInstruction[];
   feePayer: PublicKey;
   recentBlockhash: string;
   lastValidBlockHeight: number;
   version: "legacy" | 0;
   addressLookupTables?: AddressLookupTableAccount[];
-}): Uint8Array {
+}): Transaction {
   const tables = params.addressLookupTables ?? [];
   if (params.version === "legacy" && tables.length > 0) {
     throw new Error("kit-artifact: lookup tables were given for a legacy message, which cannot read them");
@@ -77,7 +83,7 @@ export function compileUnsignedWithKit(params: {
       (m) => setTransactionMessageLifetimeUsingBlockhash(lifetime, m),
       (m) => appendTransactionMessageInstructions(instructions, m),
     );
-    return Uint8Array.from(getTransactionEncoder().encode(compileTransaction(message)));
+    return compileTransaction(message);
   }
   const base = pipe(
     createTransactionMessage({ version: 0 }),
@@ -97,6 +103,5 @@ export function compileUnsignedWithKit(params: {
           ),
         )
       : base;
-  const tx = compileTransaction(message);
-  return Uint8Array.from(getTransactionEncoder().encode(tx));
+  return compileTransaction(message);
 }

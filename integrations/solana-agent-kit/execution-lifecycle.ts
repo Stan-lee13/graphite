@@ -143,7 +143,7 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
 
   // 2. The one signing path: digest and signer set re-derived over this
   //    object, compared against what Graphite hashed.
-  const raw = p.bound.signApproved(scope.transaction_sha256, p.signers);
+  const raw = await p.bound.signApproved(scope.transaction_sha256, p.signers);
   log(
     `[Graphite] ${label}: transaction matches the approved digest ` +
       `${scope.transaction_sha256.slice(0, 16)}… — signed those exact bytes.`,

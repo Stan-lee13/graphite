@@ -4,7 +4,8 @@
  *
  * The Core's verdict is bound to bytes. Before kit may compile anything the
  * bridge submits, it has to be shown equivalent to the bridge's production
- * path (`BoundTransaction.build`, web3.js), and the comparison is as strict as
+ * path as it was before the switch (`web3Compile` below: the web3.js
+ * compilation `BoundTransaction.build` used), and the comparison is as strict as
  * the two encodings allow:
  *
  *   - LEGACY: byte for byte. Both compilers sort the accounts within each
@@ -35,10 +36,13 @@ import {
   Keypair,
   PublicKey,
   SystemProgram,
+  Transaction,
   TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
-import { BoundTransaction } from "./artifact.js";
+import { MAX_TRANSACTION_BYTES } from "./artifact.js";
 import { compileUnsignedWithKit } from "./kit-artifact.js";
 
 /** A small deterministic generator (xorshift32). */
@@ -212,25 +216,44 @@ function meaning(raw: Uint8Array, tables: AddressLookupTableAccount[]) {
   };
 }
 
+/**
+ * The bridge's compilation before R-P8 phase 1, kept as the reference kit is
+ * held to: `BoundTransaction.build` compiled legacy with `Transaction` and v0
+ * with `TransactionMessage.compileToV0Message`, and refused anything over the
+ * packet size. (BoundTransaction now compiles with kit, so comparing kit
+ * against it would compare kit with itself.)
+ */
+function web3Compile(c: Case, version: "legacy" | 0): Uint8Array | null {
+  let raw: Uint8Array;
+  if (version === "legacy") {
+    const tx = new Transaction({ feePayer: c.feePayer, recentBlockhash: c.recentBlockhash });
+    tx.add(...c.instructions);
+    try {
+      raw = Uint8Array.from(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));
+    } catch {
+      return null; // web3.js refuses an oversized legacy transaction
+    }
+  } else {
+    const message = new TransactionMessage({
+      payerKey: c.feePayer,
+      recentBlockhash: c.recentBlockhash,
+      instructions: c.instructions,
+    }).compileToV0Message(c.tables);
+    raw = Uint8Array.from(new VersionedTransaction(message).serialize());
+  }
+  return raw.length > MAX_TRANSACTION_BYTES ? null : raw;
+}
+
 /** Compare the two compilers on `count` seeded cases of one shape. */
 function differential(label: string, version: "legacy" | 0, withTables: boolean, count: number) {
   let compared = 0;
   let skipped = 0;
   for (let seed = 1; seed <= count; seed++) {
     const c = generate(seed * 7919 + (withTables ? 13 : 0) + (version === 0 ? 1 : 0), withTables);
-    let web3: Uint8Array;
-    try {
-      web3 = BoundTransaction.build({
-        instructions: c.instructions,
-        feePayer: c.feePayer,
-        recentBlockhash: c.recentBlockhash,
-        lastValidBlockHeight: c.lastValidBlockHeight,
-        version,
-        addressLookupTables: c.tables,
-      }).artifactBytes;
-    } catch {
-      // The production path refuses this case (too large, durable nonce):
-      // nothing it would submit to compare.
+    const web3 = web3Compile(c, version);
+    if (web3 === null) {
+      // The old path refused this case (too large): nothing it would have
+      // submitted to compare.
       skipped++;
       continue;
     }
