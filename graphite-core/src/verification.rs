@@ -31,17 +31,18 @@ use serde::{Deserialize, Serialize};
 pub struct ProposedIntent {
     pub intent_type: String,
     pub raw_natural_language: String,
-    /// The AI layer's confidence in its OWN parse. Accepted, recorded, and
-    /// deliberately never read by any scoring path.
+    /// The AI layer's confidence in its OWN parse. Accepted, bounded to
+    /// [0, 1] at the door, and deliberately never read by any scoring path.
+    /// It is NOT written to the audit trail (`AuditRecord` has no such field;
+    /// an earlier version of this comment and the schema said it was — R6 of
+    /// the external review of the 2026-09-29 audit).
     ///
     /// It is the advisory layer's assessment of its own reliability, which is
     /// the last thing that should move a verdict: an AI that is confidently
     /// wrong would be worth more than one that is honestly unsure. Graphite
     /// scores what it can check itself, and it cannot check this. The field
-    /// stays because callers legitimately want it on the audit trail — what the
-    /// parser believed at the time is useful when reconstructing why a
-    /// transaction was proposed — and because removing it is a breaking schema
-    /// change for no benefit (P13).
+    /// stays because removing it is a breaking schema change for no benefit
+    /// (P13).
     ///
     /// `tests/campaign_invariants.rs` asserts that 0.0 and 1.0 produce
     /// bit-identical verdicts and scores.
@@ -62,7 +63,13 @@ pub struct ExtractedParameters {
     pub slippage_bps: Option<i64>,
 }
 
+/// A field this request does not have is refused, not ignored (R6, external
+/// review of the 2026-09-29 audit): a misspelled `signedTransaction` was
+/// silently dropped, and the verdict silently became `descriptive` instead of
+/// bound to the bytes the caller meant to send. Both SDKs send exactly these
+/// fields.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct VerificationInput {
     pub proposed_intent: ProposedIntent,
     pub program_id: String,
@@ -620,6 +627,23 @@ fn validate_identifiers(input: &VerificationInput) -> Result<(), VerificationErr
         "instruction_discriminator",
         &input.instruction_discriminator,
         MAX_DISC,
+    )?;
+    // R6 (external review of the 2026-09-29 audit): the published schema
+    // bounds `confidence_of_parse` to [0, 1] and names `intent_type` from a
+    // short vocabulary. Neither moves a verdict (the confidence is never read;
+    // an intent outside the vocabulary fails L5), but a request that breaks
+    // the schema it was written against — -5, NaN, a NUL in the intent — is
+    // refused at the door rather than verified.
+    let parse_confidence = input.proposed_intent.confidence_of_parse;
+    if !parse_confidence.is_finite() || !(0.0..=1.0).contains(&parse_confidence) {
+        return Err(VerificationError::InvalidInput(format!(
+            "proposed_intent.confidence_of_parse is {parse_confidence}; it must be a number from 0 to 1"
+        )));
+    }
+    check(
+        "proposed_intent.intent_type",
+        &input.proposed_intent.intent_type,
+        32,
     )?;
     for (i, a) in input.account_addresses.iter().enumerate() {
         check(&format!("account_addresses[{i}]"), a, MAX_ID)?;
@@ -8814,6 +8838,39 @@ mod tests {
         input.transaction_instructions =
             vec![sibling(crate::tx_artifact::MAX_V1_TRANSACTION_BYTES + 1)];
         assert!(validate_identifiers(&input).is_err());
+    }
+
+    /// R6 (external review of the 2026-09-29 audit): a request that breaks the
+    /// schema it was written against is refused at the door. The parse
+    /// confidence must be a number from 0 to 1, the intent printable and
+    /// short, and a field the request does not have is an error, not a silent
+    /// drop that turns a bound verdict into a descriptive one.
+    #[test]
+    fn a_request_outside_its_schema_is_refused_at_the_door() {
+        let example: VerificationInput =
+            serde_json::from_str(include_str!("../../examples/verify-input.json"))
+                .expect("the committed example parses");
+        assert!(validate_identifiers(&example).is_ok());
+        for bad in [-5.0, 1.5, f64::NAN, f64::INFINITY] {
+            let mut input = example.clone();
+            input.proposed_intent.confidence_of_parse = bad;
+            assert!(validate_identifiers(&input).is_err(), "{bad} accepted");
+        }
+        for edge in [0.0, 1.0] {
+            let mut input = example.clone();
+            input.proposed_intent.confidence_of_parse = edge;
+            assert!(validate_identifiers(&input).is_ok(), "{edge} refused");
+        }
+        let mut input = example.clone();
+        input.proposed_intent.intent_type = "transfer\u{0}".to_string();
+        assert!(validate_identifiers(&input).is_err(), "a NUL in the intent");
+
+        let mut body: serde_json::Value =
+            serde_json::from_str(include_str!("../../examples/verify-input.json")).unwrap();
+        body["signedTransaction"] = serde_json::json!([1, 2, 3]);
+        let err = serde_json::from_value::<VerificationInput>(body)
+            .expect_err("a misspelled field must not be dropped silently");
+        assert!(err.to_string().contains("signedTransaction"), "{err}");
     }
 
     /// A2-09 (2026-09-29 audit): an RPC diff without the simulator's balance
