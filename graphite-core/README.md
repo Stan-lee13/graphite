@@ -35,7 +35,7 @@ The Rust verification engine — the heart of Graphite.
 
 ```bash
 cargo build --release    # 3.1MB binary
-cargo test --release     # 1,844 tests (0 failures, 15 network- or sample-dependent ignored)
+cargo test --release     # 1,849 tests (0 failures, 15 network- or sample-dependent ignored)
 cargo test --release --no-default-features --lib            # 341 — the featureless library
 cargo test --release --no-default-features --features cli   # 1,594 — cli without the server
 cargo clippy --release -- -D warnings  # 0 warnings

@@ -31,7 +31,7 @@ Graphite is a transaction-intent verification layer for Solana. An agent (or wal
 | Runtime oracle | `tools/runtime-oracle/` | Rust + agave 5.0 | — | Parser never looser than agave; 2×300k generated frames in CI |
 | Mainnet sampler | `tools/mainnet-sample/` | Python | — | Paced public-RPC block fetch for conformance runs |
 | TypeScript SDK | `sdk/typescript/` | TS | — | Thin client, AuditBind, content_hash parity |
-| Go SDK | `sdk/go/` | Go 1.22 | — | Thin client, VerificationResult parity |
+| Go SDK | `sdk/go/` | Go 1.26 (`go.mod`; CI tests 1.26.8 and 1.27.1) | — | Thin client, VerificationResult parity |
 | SAK integration | `integrations/solana-agent-kit/` | TS | — | Bridge: BoundTransaction, signs only after an approved artifact-bound verdict |
 | Python AI layer | `python-ai-layer/` | Python 3.11 | — | Advisory intent parsing, separate process |
 | Dashboard | `dashboard/` | React / Vite | — | Read-only views over `/api/*` |

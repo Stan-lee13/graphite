@@ -368,15 +368,8 @@ How each was fixed:
     - any allowlisted advisory that is no longer reported;
     - an npm error or an empty report.
   - `.github/dependabot.yml` covers actions, cargo ×2, npm ×3, gomod and pip, weekly and grouped.
-  - **Open, and not claimed as fixed:**
-    - The SAK bridge's dependency tree carries 36 distinct high/critical npm advisories, all in runtime dependencies:
-      - `@solana/web3.js` 1.x (`bigint-buffer`, `node-fetch`);
-      - the `plugin-defi` and `plugin-token` trees the bridge loads (`form-data` and `protobufjs` are critical);
-      - the agent frameworks.
-    - None has a non-breaking fix. `npm audit fix` without `--force` cleared none of the criticals.
-    - They are allowlisted one by one with their dependency paths, so any new advisory fails CI.
-    - Removing them needs the `@solana/kit` migration (roadmap gap R-P8) and upstream releases.
-    - The dashboard's `vite` 5 has one high advisory affecting only the dev server; the fix is a major upgrade.
+  - **At the audit (`3327fcf`):** the SAK bridge's tree carried 36 distinct high/critical npm advisories (`@solana/web3.js` 1.x through `bigint-buffer` and `node-fetch`, the `plugin-defi` and `plugin-token` trees, the agent frameworks), and the dashboard's `vite` 5 one dev-server advisory.
+  - **Now (`dd85f62` onward):** the bridge no longer loads the plugin trees and pins patched transitive versions, leaving **one** gated advisory: `GHSA-3gc7-fjrx-p6mg` in `bigint-buffer`, through `@solana/web3.js` 1.x, allowlisted as `GHSA-3gc7-fjrx-p6mg@bigint-buffer` (package-scoped since F14). Its native addon is never built, because every install runs with `--ignore-scripts`. Removing it needs the `@solana/kit` migration (roadmap gap R-P8). The dashboard is on `vite` 8 with no advisories. Verified by `npm audit` through the gate on all three lockfiles (2026-10-01).
 - **A6-06.** Clippy `-D warnings` now runs on all three feature legs, and the oracle has `cargo fmt --check` and clippy.
 - **A6-07.** The input is deleted; `workflow_dispatch` itself stays.
 - **A6-08.** All jobs use `ubuntu-24.04`. Every Node job is on Node 22.23.3, the current LTS; Node 20 is past end of life.
@@ -439,6 +432,78 @@ An independent read-only review of `3327fcf..HEAD` hunted for defects the fixes 
 | F17 | Test fixture | Three Round 22 transfer-hook tests (`round22_remaining.rs`) declared "debits accounts.source" but gave every resolved account an empty slot name, so F2 could not see that the debited account was `source` and refused it. | The fixture names `source` and `destination` as Token-2022's `TransferChecked` layout does, which is what the resolver hands L4 in the pipeline. F2 is unchanged. |
 | F18 | P3 (pre-existing; fails closed) | `GRAPHITE_ALLOW_DURABLE_NONCE=1` could never produce an approval. A durable-nonce transaction opens with System `AdvanceNonceAccount`, which the pipeline judges like every instruction after the primary, and the System manifest tagged it `authority`: refused by Check 10 (empty intent) before F3 and as a hand-over after it. The existing opt-in test checked only that L2 passed. Found while auditing every native manifest's `authority` tags after F16. | Advancing a nonce moves no value and changes no control; L2 already verifies the nonce account on-chain before it passes. `AdvanceNonceAccount` is retagged with no class; `AuthorizeNonceAccount`, which does hand the nonce over, stays `authority`. Test: `durable_nonce_rpc::a_permitted_nonce_advance_is_not_refused_as_a_hand_over`. The stale-nonce, wrong-authority, missing-account, unreachable-RPC and no-opt-in refusals are unchanged and still tested. |
 
+## External review (2026-10-01)
+
+A second, external review of `0921647` listed further items (R1–R26). Each is re-verified here before anything is changed; this section records only what has been verified.
+
+| ID | Class | Finding | Fix |
+|---|---|---|---|
+| R1 | P2 | L8 reported `ApprovedAndExecuted` for an approved record found by a key the caller supplied (`audit_trail_id`, `transaction_sha256` or `content_hash`) when `getTransaction` returned no bytes, so a random successful signature presented with the key of any approval reconciled as "the approved transaction executed". Confirmed by code read; three existing tests asserted that answer as correct. Not an approval bypass: L8 runs after execution and moves no funds; it is the audit attestation that could be manufactured. | A positive conclusion about an approved record (executed, or failed on chain) needs `attribution == Chain`, the chain's own bytes bound to the signature; otherwise `Unavailable`, naming the caller key. A blocked record still alarms on any sighting. Tests: `tests/audit_review_r1_l8_needs_chain_bytes.rs`; the three pinned tests updated; break B59 caught. |
+
 ## Break log
 
-In progress. B01–B19 (A1-01 through A3-01) have run: each fix reverted, its test re-run, and all 19 caught. B20–B58 run after this commit; the results replace this paragraph.
+Every fix was reverted once, alone, with the tree otherwise unchanged, and its named test re-run; the fix was then restored and the tree checked clean. The harness is `graphite-audit-work/audit_breaks.py` (outside the repository): each break is an exact text edit validated against the current sources before it runs, and a break whose test still passes is reported MISSED.
+
+**59 breaks, 59 caught.** One test was vacuous on its first run and is recorded as such: B54 (A4-11) still passed with the lock removed, because the audit log's own file mutex makes the race need microsecond timing. The test now holds the window between the history read and the append open for one dedicated trail id (`cfg(test)` only), and fails without the lock. B15 is caught by the test process aborting (a stack overflow prints no FAILED line), which the harness counts only when the test was running.
+
+| Break | Finding | What was reverted | Test | Result |
+|---|---|---|---|---|
+| B01 | A1-01 | a close with a trailing byte is not counted as a close | `audit_a1_close_trailing_byte::a_draining_sibling_close_with_a_trailing_byte_is_still_blocked` | caught |
+| B02 | A1-02 | a Compute Budget instruction with trailing bytes is refused as undecodable | `audit_a1_compute_budget_trailing::a_price_with_a_trailing_byte_is_the_price_the_runtime_charges` | caught |
+| B03 | A1-03/A3-09 | non-ASCII ids pass the door and short_id byte-slices | `audit_a1_sibling_program_id_utf8_panic::a_non_ascii_sibling_program_id_is_refused_not_a_panic` | caught |
+| B04 | A1-04 | the SPL Token batch (ff) entry removed from RISKY_PATTERNS | `audit_a1_token_batch_sibling::a_token_batch_sibling_wrapping_a_draining_close_is_blocked` | caught |
+| B05 | A2-01 | the 'modifies writable accounts' name list is read as effects | `audit_a2_declared_effects_account_names::a_writable_account_named_owner_does_not_declare_an_authority_change` | caught |
+| B06 | A2-01 | an effect declared about accounts.<name> excuses every account | `audit_a2_declared_effects_account_names::a_declared_owner_on_one_account_does_not_excuse_a_takeover_of_another` | caught |
+| B07 | A2-02 | a raised allowance to an existing delegate is not a grant | `audit_a2_delegate_allowance_increase::raising_an_existing_delegates_allowance_is_an_undeclared_delegate_grant` | caught |
+| B08 | A2-03 | a transfer under an unread Token-2022 mint is certified | `audit_a2_permanent_delegate_unread_mint::a_token2022_transfer_under_an_unread_mint_is_not_certified` | caught |
+| B09 | A2-04 | a caller-supplied diff displaces the structural L4 failure | `audit_a2_caller_diff_displaces_structural_gate::an_empty_caller_diff_does_not_lift_a_structural_l4_failure` | caught |
+| B10 | A2-05 | the snapshot drops the data hash and native authorities | `audit_a2_data_only_change_is_not_noop::a_rewritten_account_is_not_a_noop` | caught |
+| B11 | A2-06 | mature baselines record edge observations unclamped | `audit_a2_baseline_variance_ratchet::accepted_observations_cannot_widen_the_band_eightfold` | caught |
+| B12 | A2-07 | refused, flagged requests train the promotable shadow | `audit_a2_shadow_takes_refused_requests::refused_requests_do_not_fill_the_promotable_shadow` | caught |
+| B13 | A2-09 | an RPC diff without balance arrays is Passed | `lib::verification::tests::an_rpc_diff_without_balance_arrays_is_not_a_pass` | caught |
+| B14 | A2-10 | the replay gross is summed in u64 | `audit_a2_fee_replay_gross_sum_overflow::a_gross_above_u64_into_one_account_does_not_panic_the_diff_check` | caught |
+| B15 | A2-11 | the instruction-trace and stack-height bounds lifted | `audit_a2_deep_inner_instructions_abort::a_deep_inner_instruction_report_does_not_abort_the_verifier` | caught (abort) |
+| B16 | A3-01 | Stake Authorize removed from RISKY_PATTERNS | `audit_a3_authority_handover_primary::attack_stake_authorize_withdrawer_under_stake_intent_is_blocked` | caught |
+| B17 | A3-01 | SPL Token ApproveChecked removed from RISKY_PATTERNS | `audit_a3_authority_handover_primary::attack_approve_checked_under_approve_intent_is_blocked_like_approve` | caught |
+| B18 | A3-01 | loader SetAuthority unlisted and Check 2b off | `audit_a3_authority_handover_primary::attack_loader_set_authority_under_transfer_intent_is_blocked` | caught |
+| B19 | A3-01 | Check 2b (derived authority_change) off | `audit_a3_authority_handover_sibling::attack_squads_set_config_authority_sibling_is_blocked` | caught |
+| B20 | A3-01 | an instruction named Revoke no longer contradicts an approve intent | `audit_a3_authority_handover_primary::revoke_and_approve_are_opposite_declarations` | caught |
+| B21 | A3-02 | siblings judged by the raw risk_class, not security_class() | `audit_a3_authority_handover_sibling::attack_squads_set_config_authority_sibling_is_blocked` | caught |
+| B22 | A3-02 | the loader accepts an unknown risk_class | `audit_a3_manifest_lint::the_loader_refuses_an_unknown_risk_class` | caught |
+| B23 | A3-02 | the loader accepts a self-referencing PDA seed | `audit_a3_manifest_lint::the_loader_refuses_a_seed_that_reads_its_own_slot` | caught |
+| B24 | A3-02 | the loader accepts an empty discriminator beside others | `audit_a3_manifest_lint::an_empty_discriminator_describes_a_single_instruction_program_only` | caught |
+| B25 | A3-03 | the quarantine gate does not see declared siblings | `audit_a3_quarantine_primary_only::attack_a_quarantined_program_as_a_sibling_is_blocked` | caught |
+| B26 | A3-04 | an uncompared intent earns full alignment credit | `audit_a3_unknown_instruction_confidence::a_semantic_check_that_did_not_run_earns_no_alignment_credit` | caught |
+| B27 | A3-05 | plugin rules reach the Risk Engine | `audit_a3_protocol_plugin_disarms_drainer::attack_a_protocol_plugin_rule_removes_a_risk_block` | caught |
+| B28 | A3-06 | manifests_in_force keeps the document's own trust_tier | `audit_a3_community_tier_self_asserted::attack_a_self_declared_tier_outranks_the_computed_one` | caught |
+| B29 | A3-07 | an accepted version can be resubmitted | `audit_a3_registry_replay_rollback::replaying_a_superseded_submission_does_not_roll_the_manifest_back` | caught |
+| B30 | A3-10 | L1 is Passed with a failed identity check | `audit_a3_l1_report_truthfulness::l1_does_not_certify_an_identity_that_failed` | caught |
+| B31 | A4-01 | a down primary suppresses the witness alarm | `audit_a4_l8_witness_alarm_primary_unavailable::a_witness_sighting_of_a_blocked_transaction_alarms_even_when_the_primary_is_down` | caught |
+| B32 | A4-02 | only the first X-Forwarded-For line is read | `lib::server::tests::a_second_xff_line_does_not_choose_the_bucket` | caught |
+| B33 | A4-02 | an XFF entry with a port is not parsed | `lib::server::tests::an_xff_entry_with_a_port_keys_its_client` | caught |
+| B34 | A4-03 | the request-head read timeout is an hour | `audit_a4_slow_headers_hold_connections::a_client_that_never_finishes_its_request_head_is_disconnected` | caught |
+| B35 | A4-04 | dashboard scans run on the async workers | `audit_a4_dashboard_scan_blocks_runtime::dashboard_reads_do_not_stall_the_rest_of_the_server` | caught |
+| B36 | A4-05 | L8 runs without an effective RPC deadline | `audit_a4_l8_no_deadline::l8_reconciliation_finishes_inside_the_request_timeout` | caught |
+| B37 | A4-06 | the audit record omits the wallet profile | `audit_a4_profile_override_not_on_trail::an_overridden_wallet_profile_is_on_the_audit_record` | caught |
+| B38 | A4-07 | a wallet-profile 400 leaves no audit row | `audit_a4_profile_400_not_audited::a_refused_wallet_profile_leaves_a_trail_like_every_other_refusal` | caught |
+| B39 | A4-08 | a processed-only witness counts as agreeing | `audit_a4_l8_witness_processed_agrees::a_witness_at_processed_is_not_a_second_source_of_inclusion` | caught |
+| B40 | A4-12 | log lines are not escaped | `lib::server::tests::log_lines_escape_control_characters` | caught |
+| B41 | A4 | same_endpoint compares trimmed strings | `lib::verification::tests::the_same_endpoint_written_differently_is_the_same_endpoint` | caught |
+| B42 | A2-06 | the robust window learns the winsorized value | `lib::simulation_integrity::tests::test_window_ages_out_poison_and_recovers` | caught |
+| B43 | CHECKED_PATTERNS | drifts from the labelled checks | `lib::risk_engine::tests::checked_patterns_counts_the_labelled_checks` | caught |
+| B44 | F1 | name lists alone count as unrecognised | `lib::state_diff::tests::a_name_list_alone_declares_nothing_and_a_debit_under_it_is_critical` | caught |
+| B45 | F2 | a named debit excuses a signer's other account | `lib::state_diff::tests::a_named_debit_does_not_excuse_draining_a_signers_other_account` | caught |
+| B46 | F3 | the authority tag does not raise the security class | `lib::manifest::tests::the_authority_tag_raises_the_security_class` | caught |
+| B47 | F3 | the verb + power rule is gone | `lib::manifest::tests::authority_change_names_are_recognised` | caught |
+| B48 | F4 | sibling data bounded at 128 hex characters | `lib::verification::tests::a_sibling_with_long_data_is_not_refused_at_the_door` | caught |
+| B49 | F5 | the winsorizing clamp is unguarded | `lib::simulation_integrity::tests::a_broken_baseline_does_not_panic_the_update` | caught |
+| B50 | F7 | creator reads as creation | `lib::state_diff::tests::creator_does_not_declare_creation` | caught |
+| B51 | F8 | no per-peer connection limit | `lib::server::tests::one_peer_cannot_hold_every_connection` | caught |
+| B52 | F11 | the head resubmitted with nothing new is accepted | `lib::manifest_registry::tests::the_head_may_be_resubmitted_only_to_raise_its_tier` | caught |
+| B53 | A4-09 | the verdict is counted before it is recorded | `lib::server::tests::a_verdict_that_could_not_be_recorded_is_not_counted` | caught |
+| B54 | A4-11 | lifecycle reports are not taken one at a time | `lib::server::tests::concurrent_reports_of_two_signatures_cannot_both_miss_the_conflict` | caught; first run MISSED — test strengthened, re-run |
+| B55 | F10 | the status calls may take the whole L8 budget | `audit_review_f10_l8_bytes_keep_their_budget::a_silent_witness_does_not_starve_the_bytes_fetch` | caught |
+| B56 | F9 | dashboard scans are not bounded | `lib::server::tests::dashboard_scans_run_a_bounded_number_at_a_time` | caught |
+| B57 | F16 | DelegateStake tagged authority again | `hell_mode_tests::h12_stake_delegate_stake_not_blocked` | caught |
+| B58 | F18 | the nonce advance tagged authority again | `durable_nonce_rpc::a_permitted_nonce_advance_is_not_refused_as_a_hand_over` | caught |
+| B59 | R1 | an approval named by a caller key is an execution of it | `audit_review_r1_l8_needs_chain_bytes::an_approval_named_only_by_a_caller_key_is_not_an_execution_of_it` | caught |

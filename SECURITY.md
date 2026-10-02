@@ -220,6 +220,20 @@ applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 Mi
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
 
+## The Audit, Closed at the Root (2026-09-29 → 2026-10-01; Round 23)
+
+A six-area audit of the whole repository at `3327fcf`, the fixes, a review of the fixes, and the
+first item of an external review. Internal engineering work, not an independent audit. Findings
+with their class, root cause, fix and test: `AUDIT/01-findings.md`; verdict and what is still
+open: `AUDIT/FINAL.md`; report: `docs/round23-the-audit-closed-at-the-root-2026-09-30.md`.
+
+- **Four P1s, each shown approving or clearing a harmful transaction on `3327fcf`:** a token-account close with one trailing data byte escaped both close checks (A1-01); an authority or delegate hand-over passed as the primary when its intent keyword appeared in the manifest's prose (A3-01), and as a declared sibling unless its manifest tagged it (A3-02); quarantine blocked only the primary instruction's program (A3-03). No P0.
+- **Hand-overs are judged by the instruction, not the label (A3-01/A3-02, F3).** A manifest's `authority` tag, or a name that hands over control, is an authority change that blocks under any intent, primary or sibling. Routine stake operations and the durable-nonce advance were mis-tagged as hand-overs by hand-written native manifests and are corrected (F16, F18).
+- **The state diff reads declarations by account (A2-01, F1, F2).** An effect declared about one named account excuses that account only, a list of account names declares nothing, and a debit declared for named accounts does not excuse debiting another token account a signer owns.
+- **The server holds its properties under load and cancellation (A4-03, A4-04, F8, F9).** A slow request head is cut off, dashboard scans run off the async runtime and four at a time, one peer cannot hold every connection, and a lifecycle report's history read and append are one critical section that a timed-out request cannot release early.
+- **L8 does not attest what it cannot prove (R1).** An approved record found by a key the caller supplied is never reported as executed; only the chain's own bytes, bound to the signature, support that. A blocked record still alarms on any sighting.
+- **Every fix was reverted once and its test shown to fail (59 of 59).**
+
 ## The Rest of the List (2026-09-27; Round 22)
 
 Round 21's open items, each measured before it was touched. Report:
