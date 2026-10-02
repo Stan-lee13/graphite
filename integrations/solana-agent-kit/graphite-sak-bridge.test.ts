@@ -373,3 +373,38 @@ test("A5-01: the AI layer URL follows the Core's transport rule: https://, or ht
     await assert.rejects(create(url), /GRAPHITE_AI_LAYER_URL is refused/, url);
   }
 });
+
+test("R8: the wallet's secret key is not reachable through the bridge object or SAK at runtime", async () => {
+  // TypeScript `private` is a compile-time label: at runtime it is an
+  // ordinary property any code holding the object can read. The gated wallet
+  // promises that no SAK code, plugin or tool adapter can sign by reaching
+  // past the refusal; this pins it for everything reachable from the bridge
+  // object itself, walking its properties (and SAK's) for the secret key.
+  const h = await harness({ withSak: true });
+  try {
+    const secret = Buffer.from(h.wallet.secretKey).toString("hex");
+    const seen = new Set<unknown>();
+    const found: string[] = [];
+    const walk = (value: unknown, path: string, depth: number): void => {
+      if (value === null || typeof value !== "object" || seen.has(value) || depth > 6) return;
+      seen.add(value);
+      if (value instanceof Keypair) found.push(`${path} is a Keypair`);
+      if (value instanceof Uint8Array && Buffer.from(value).toString("hex").includes(secret)) {
+        found.push(`${path} holds the secret key bytes`);
+      }
+      for (const key of Reflect.ownKeys(value)) {
+        let child: unknown;
+        try {
+          child = (value as Record<PropertyKey, unknown>)[key];
+        } catch {
+          continue;
+        }
+        walk(child, `${path}.${String(key)}`, depth + 1);
+      }
+    };
+    walk(h.agent, "agent", 0);
+    assert.deepEqual(found, [], `the secret key is reachable: ${found.join("; ")}`);
+  } finally {
+    await h.close();
+  }
+});

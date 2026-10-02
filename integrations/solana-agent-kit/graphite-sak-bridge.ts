@@ -13,8 +13,10 @@
  *      intentionally zeroes the SimulationMatch/HistoricalVolume/CommunityVerification signal
  *      values (Constitution G4: request-body evidence is attacker-controlled) and caps trust
  *      tiers at the manifest's declared tier (P7). The achievable Phase 1 confidence for a
- *      known, clean, intent-aligned protocol is ~0.44, which is why the default wallet profile
- *      below is a Custom profile calibrated to that ceiling.
+ *      known, clean, intent-aligned protocol is ~0.44. The default wallet profile below asks
+ *      for 0.40, but the Core clamps every Custom profile to the weakest built-in (Gaming:
+ *      0.55, HeuristicInferred), so it approves nothing until a protocol's evidence has been
+ *      earned — it fails closed, it is not calibrated to pass.
  *   2. AUDITBIND MIDDLEWARE — after Graphite approves, re-computes the SAME deterministic
  *      content_hash the Rust Core produces (byte-for-byte: SHA-256 over programId, discriminator,
  *      account addresses, raw instruction-data bytes, and CPI targets, truncated to 16 hex chars)
@@ -227,7 +229,11 @@ export class VerifiedSakAgent {
   private aiLayerUrl: string;
   private aiLayerTimeoutMs: number;
   private walletPublicKey: string;
-  private walletKeypair: Keypair;
+  // An ES private field, not TypeScript `private`: TypeScript's is a
+  // compile-time label, and the key was readable as `agent.walletKeypair` by
+  // any code holding this object (review of the 2026-09-29 audit, R8). A `#`
+  // field cannot be read from outside the class at runtime.
+  #walletKeypair: Keypair;
   private simulator: RpcSimulator;
   private residualPolicy: ResidualPolicy;
 
@@ -238,7 +244,7 @@ export class VerifiedSakAgent {
   ) {
     this.sakAgent = sakAgent; this.graphite = graphite; this.connection = connection;
     this.walletProfile = walletProfile; this.aiLayerUrl = aiLayerUrl; this.aiLayerTimeoutMs = aiLayerTimeoutMs;
-    this.walletPublicKey = walletPublicKey; this.walletKeypair = walletKeypair;
+    this.walletPublicKey = walletPublicKey; this.#walletKeypair = walletKeypair;
     this.simulator = new RpcSimulator(connection.rpcEndpoint);
     this.residualPolicy = residualPolicy;
   }
@@ -284,11 +290,13 @@ export class VerifiedSakAgent {
     // intentionally zeroed (Constitution G4 — request-body evidence is
     // attacker-controlled) and trust tiers capped at OfficialManifest (P7), the
     // achievable confidence for a known, clean, intent-aligned protocol is
-    // ~0.44. The built-in profiles (TradingBot 0.80, etc.) were tuned for the
-    // Phase 2 signal set and would block EVERYTHING in Phase 1 — so the demo
-    // default is a Custom profile that a genuinely-known protocol can satisfy.
-    // Override with GRAPHITE_WALLET_PROFILE (or config.walletProfile) for a
-    // stricter operator policy.
+    // ~0.44. The default below asks for 0.40, but the Core clamps every Custom
+    // profile to the weakest built-in (Gaming: 0.55, HeuristicInferred), so in
+    // practice it is Gaming and approves nothing until a protocol's evidence
+    // has been earned (review of the 2026-09-29 audit, R7: the old comment said
+    // a genuinely-known protocol could satisfy it, which is false — it fails
+    // closed). Override with GRAPHITE_WALLET_PROFILE (or config.walletProfile)
+    // for a stricter operator policy.
     const walletProfile: WalletProfile = config?.walletProfile
       ?? (process.env.GRAPHITE_WALLET_PROFILE as WalletProfile)
       ?? { Custom: { min_confidence: 0.40, min_trust_tier: "OfficialManifest" } };
@@ -421,10 +429,10 @@ export class VerifiedSakAgent {
     if (params.instructions && params.instructions.length > 0) {
       console.log("[Graphite] Running RPC simulation to feed the Simulation Integrity check...");
       // Round 19 (F-19-C1): the fee payer's PUBLIC key, never the keypair.
-      // This used to pass `signers: [this.walletKeypair]`, which made web3.js
+      // This used to pass `signers: [this.#walletKeypair]`, which made web3.js
       // sign the transfer on a live blockhash and send the signed bytes to the
       // RPC before Graphite had decided anything.
-      const sim = await this.simulator.simulate({ instructions: params.instructions, feePayer: this.walletKeypair.publicKey });
+      const sim = await this.simulator.simulate({ instructions: params.instructions, feePayer: this.#walletKeypair.publicKey });
       computeUnits = sim.computeUnits; accountWrites = sim.accountWrites; cpiHops = sim.cpiHops;
       console.log(`[Graphite] Simulation: CU=${computeUnits}, writes=${accountWrites}, CPI=${cpiHops}, success=${sim.success}`);
     }
@@ -468,7 +476,7 @@ export class VerifiedSakAgent {
           params.bound?.artifact() ??
           serializeUnsignedArtifact({
             instructions: artifactInstructions,
-            feePayer: this.walletKeypair.publicKey,
+            feePayer: this.#walletKeypair.publicKey,
             recentBlockhash: (await this.connection.getLatestBlockhash()).blockhash,
           });
         const primary = findPrimaryIndex(artifactInstructions, {
@@ -543,7 +551,7 @@ export class VerifiedSakAgent {
     return executeBoundTransaction({
       bound,
       verification,
-      signers: [this.walletKeypair],
+      signers: [this.#walletKeypair],
       connection: this.connection,
       graphite: this.graphite,
       policy: this.residualPolicy,
@@ -582,7 +590,7 @@ export class VerifiedSakAgent {
 
     const destPubkey = new PublicKey(destination);
     const transferIx = SystemProgram.transfer({
-      fromPubkey: this.walletKeypair.publicKey,
+      fromPubkey: this.#walletKeypair.publicKey,
       toPubkey: destPubkey,
       lamports: grounded.lamports,
     });
@@ -609,7 +617,7 @@ export class VerifiedSakAgent {
       await this.connection.getLatestBlockhash();
     const bound = BoundTransaction.build({
       instructions: [transferIx],
-      feePayer: this.walletKeypair.publicKey,
+      feePayer: this.#walletKeypair.publicKey,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
     });
@@ -821,7 +829,7 @@ export class VerifiedSakAgent {
     }
     const boundSwap = BoundTransaction.build({
       instructions: [buildInstructionFromPayload(payload)],
-      feePayer: this.walletKeypair.publicKey,
+      feePayer: this.#walletKeypair.publicKey,
       recentBlockhash: blockhash,
       lastValidBlockHeight,
       ...(tableAddresses.length > 0 ? { version: 0 as const, addressLookupTables } : {}),

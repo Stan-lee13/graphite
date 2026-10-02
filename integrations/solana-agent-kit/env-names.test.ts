@@ -3,7 +3,8 @@
  * printed part of the RPC URL.
  *
  *   - `devnet-test.ts` verified with a raw `fetch` carrying the API key to
- *     `GRAPHITE_URL`, a name nothing else reads (the F-19-C6 pattern again),
+ *     `GRAPHITE_URL`, a name the bridge does not read (only the SDKs' live
+ *     tests do; the F-19-C6 pattern again),
  *     with no transport rule and no shape check on the verdict.
  *   - both scripts printed the first 45 / 50 characters of the RPC URL, which
  *     for a `…/?api-key=` provider URL includes part of the key.

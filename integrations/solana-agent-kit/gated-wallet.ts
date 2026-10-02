@@ -12,8 +12,8 @@
  *
  * This wallet holds only the public key. Every signing entry point in SAK's
  * `BaseWallet` interface refuses with an error naming the one gated path, so
- * the only code in the process that can produce a signature with the wallet
- * key is `BoundTransaction.signApproved` — reached through `executeTransfer`
+ * the only path the bridge, SAK or its tools offer to a signature with the
+ * wallet key is `BoundTransaction.signApproved` — reached through `executeTransfer`
  * or `executeSwap(payload)` after an artifact-bound approval, a digest
  * re-check and the residual policy. Read-only SAK use (balances, prices,
  * account lookups) needs `publicKey` and the connection, and keeps working.
@@ -21,6 +21,16 @@
  * Refusing is structural, not a check on the way to signing: there is no
  * secret key in this object, so no bug in SAK, a plugin or a tool adapter can
  * sign with it by reaching past the refusal.
+ *
+ * What that does and does not cover (review of the 2026-09-29 audit, R8).
+ * The bridge holds the key in an ES private field (`#walletKeypair`), so
+ * nothing reachable from the bridge object or from SAK exposes it at runtime;
+ * `graphite-sak-bridge.test.ts` walks both to pin that. The key still enters
+ * this process, through `SOLANA_PRIVATE_KEY` or the caller's config, so code
+ * running in the same process that can read the environment or that config
+ * can read the key. Keeping it from such code needs a separate signing
+ * process; this wallet is the boundary for SAK and its tools, not for every
+ * module the host loads.
  */
 import { PublicKey } from "@solana/web3.js";
 
