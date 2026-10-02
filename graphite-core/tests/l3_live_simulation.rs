@@ -54,9 +54,12 @@ async fn l3_simulate_real_transaction_bytes() {
         .unwrap();
     let sig = resp["result"][0]["signature"].as_str().unwrap().to_string();
 
+    // Version 1 (R9, external review of the 2026-09-29 audit): the Core reads
+    // v1 frames, and an RPC asked for version 0 refuses a v1 transaction
+    // outright, so this live check would have skipped v1 traffic unseen.
     let tx_body = serde_json::json!({
         "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
-        "params": [sig, {"encoding": "base64", "maxSupportedTransactionVersion": 0}]
+        "params": [sig, {"encoding": "base64", "maxSupportedTransactionVersion": 1}]
     });
     let resp: serde_json::Value = http
         .post(&endpoint)
