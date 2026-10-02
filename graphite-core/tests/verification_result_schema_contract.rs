@@ -36,6 +36,7 @@ fn schema() -> Value {
 /// listed so that they are recognised, not so that they are checked.
 const KEYWORDS: &[&str] = &[
     "$schema",
+    "$id",
     "title",
     "description",
     "type",
@@ -405,4 +406,35 @@ fn the_validator_rejects_what_it_should() {
     let mut bad_enum = good.clone();
     bad_enum["trust_tier"] = Value::from("Omnipotent");
     assert!(!errors_of(&bad_enum).is_empty());
+}
+
+/// R5 (external review of the 2026-09-29 audit): both schemas named
+/// `https://graphite.dev/...` as their `$schema`. That keyword names the
+/// METASCHEMA a validator must use, and that domain is not the project's:
+/// Ajv refused to compile either schema and Python's jsonschema warned. Each
+/// schema now declares JSON Schema 2020-12 and identifies itself with an `$id`
+/// on the repository's own host.
+#[test]
+fn the_schemas_name_a_real_metaschema_and_their_own_id() {
+    for (name, text) in [
+        (
+            "verification-result-v1.json",
+            include_str!("../../schemas/verification-result-v1.json"),
+        ),
+        (
+            "proposed-intent-v1.json",
+            include_str!("../../schemas/proposed-intent-v1.json"),
+        ),
+    ] {
+        let doc: Value = serde_json::from_str(text).expect("valid JSON");
+        assert_eq!(
+            doc["$schema"], "https://json-schema.org/draft/2020-12/schema",
+            "{name}: $schema must name the metaschema"
+        );
+        assert_eq!(
+            doc["$id"],
+            format!("https://raw.githubusercontent.com/Stan-lee13/graphite/main/schemas/{name}"),
+            "{name}: $id must be on the project's own host"
+        );
+    }
 }

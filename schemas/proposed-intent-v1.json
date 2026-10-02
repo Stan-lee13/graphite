@@ -1,5 +1,6 @@
 {
-  "$schema": "https://graphite.dev/schemas/proposed-intent-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Stan-lee13/graphite/main/schemas/proposed-intent-v1.json",
   "type": "object",
   "required": ["intent_type", "raw_natural_language", "confidence_of_parse"],
   "properties": {
