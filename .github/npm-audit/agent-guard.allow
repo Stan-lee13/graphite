@@ -1,0 +1,14 @@
+# Known HIGH/CRITICAL npm advisories in integrations/agent-guard/package-lock.json.
+# Read by gate.mjs in the CI supply-chain job. One `GHSA-id@package` per line.
+#
+# Recorded 2026-10-02 (R-P8 phase 3): `npm audit` reports 0 critical and
+# 0 high, so the list is empty and any high/critical advisory fails CI. This
+# is the package that holds the signing key in every integration; it does not
+# depend on solana-agent-kit, so the bigint-buffer advisory is not in it.
+#
+# Below the gate's threshold, recorded for completeness:
+#   - stream-json (moderate) and uuid (moderate) come through jayson, web3.js
+#     1.x's own HTTP RPC client. The uuid advisory needs a caller-supplied
+#     output buffer, which jayson never passes. They go when the guard stops
+#     using @solana/web3.js 1.x (its transactions are already compiled and
+#     signed by @solana/kit; the Connection and the public types remain).

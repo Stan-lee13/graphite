@@ -1,5 +1,5 @@
 {
-  "_": "Emitted by integrations/solana-agent-kit/emit-corpus.ts. Each entry is what the TypeScript side believes about its own bytes; tests/sak_bridge_corpus.rs requires the Rust parser to agree from the bytes alone. The v0 entry uses a real mainnet lookup table; the v1 entries are compiled by the bridge through @solana/kit and recorded as kit decodes them. Unsigned throughout.",
+  "_": "Emitted by integrations/agent-guard/emit-corpus.ts. Each entry is what the TypeScript side believes about its own bytes; tests/sak_bridge_corpus.rs requires the Rust parser to agree from the bytes alone. The v0 entry uses a real mainnet lookup table; the v1 entries are compiled by the bridge through @solana/kit and recorded as kit decodes them. Unsigned throughout.",
   "entries": [
     {
       "name": "legacy_single_transfer",
@@ -14448,7 +14448,7 @@
       },
       "ts_message_len": null,
       "ts_message_sha256": null,
-      "sdk_accepts": true
+      "sdk_accepts": false
     },
     {
       "base": "legacy_single_transfer",
@@ -26612,7 +26612,7 @@
       },
       "ts_message_len": null,
       "ts_message_sha256": null,
-      "sdk_accepts": true
+      "sdk_accepts": false
     },
     {
       "base": "v0_real_lookup_table",

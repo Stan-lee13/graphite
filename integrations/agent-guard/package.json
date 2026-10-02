@@ -1,0 +1,26 @@
+{
+  "name": "@graphite/agent-guard",
+  "version": "0.1.0",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "description": "Graphite's verification gate between an AI agent and a Solana signing key, independent of any agent framework: one transaction verified, signed and submitted, legacy, v0 or v1.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test *.test.ts",
+    "emit:artifact-fixture": "tsx emit-artifact-fixture.ts",
+    "emit:corpus": "tsx emit-corpus.ts"
+  },
+  "dependencies": {
+    "@solana/kit": "^8.4.0",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0"
+  }
+}

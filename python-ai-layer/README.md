@@ -90,7 +90,7 @@ confidence score. Conflating these two numbers is a Constitution P1 violation.
   a client that declares a body and never sends it cannot stall every other
   caller. The bridge no longer trusts this service's parse for a transfer: it
   re-derives amount and destination from the user's own text and refuses a
-  parse that disagrees (`integrations/solana-agent-kit/intent-grounding.ts`).
+  parse that disagrees (`integrations/agent-guard/intent-grounding.ts`).
 
 ## Tests
 

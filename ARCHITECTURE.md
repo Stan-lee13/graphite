@@ -307,9 +307,11 @@ reconciliation), `POST /audit/event` (caller-reported lifecycle events, P9),
 - Does NOT work on chains other than Solana (SVM-specific, complete rewrite needed)
 - Does NOT hold wallet private keys — the Rust core never receives signing material; keys live at the wallet boundary (the integration bridge holds them and signs only through `signApproved`; SolanaAgentKit itself is given a wallet that cannot sign, Round 19)
 
-## The Execution Boundary (SAK bridge)
+## The Execution Boundary (the agent guard)
 
-The integration under `integrations/solana-agent-kit/` is the reference for how a
+The guard under `integrations/agent-guard/` (since R-P8 phase 3; it was the SAK
+bridge until then, and the SAK adapter in `integrations/solana-agent-kit/` is now a
+thin layer over it) is the reference for how a
 verdict reaches a signer. Its invariant, established 2026-09-11 and attacked in Rounds
 6–8: **for every executable `artifact_bound` approval, the exact Solana message
 Graphite approved is the exact message contained in the bytes signed and submitted.**
@@ -395,7 +397,8 @@ graphite/
 │   ├── typescript/         # TypeScript SDK (GraphiteClient)
 │   └── go/                 # Go SDK (19-field VerificationResult parity)
 ├── integrations/
-│   └── solana-agent-kit/   # SAK v2 integration (verified execution gate)
+│   ├── agent-guard/        # The verification gate every integration signs through
+│   └── solana-agent-kit/   # SAK adapter over the guard (SAK's wallet cannot sign)
 ├── python-ai-layer/        # Advisory intent parser (separate process, P1)
 ├── schemas/                # JSON schemas (proposed-intent, verification-result)
 ├── examples/               # Sample verification inputs/outputs

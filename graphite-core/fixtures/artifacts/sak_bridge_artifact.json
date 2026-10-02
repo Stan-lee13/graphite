@@ -1,5 +1,5 @@
 {
-  "_": "Emitted by integrations/solana-agent-kit/emit-artifact-fixture.ts. The artifact and declarations the SAK bridge really sends, so the Rust Core can assert the two sides agree. Unsigned: Graphite verifies before signing.",
+  "_": "Emitted by integrations/agent-guard/emit-artifact-fixture.ts. The artifact and declarations the SAK bridge really sends, so the Rust Core can assert the two sides agree. Unsigned: Graphite verifies before signing.",
   "primary": {
     "program_id": "11111111111111111111111111111111",
     "instruction_discriminator": "02000000",

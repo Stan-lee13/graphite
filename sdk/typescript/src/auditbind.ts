@@ -19,7 +19,7 @@
  * framework, and its cross-language parity tests must run standalone.
  *
  * WHY THIS LIVES HERE (2026-09-05 SDK audit): this logic previously existed
- * only inside `integrations/solana-agent-kit/auditbind.ts`, so every developer
+ * only inside `integrations/agent-guard/auditbind.ts`, so every developer
  * NOT using SolanaAgentKit either shipped an open TOCTOU window or reinvented
  * the hash themselves. That reinvention is exactly where it went wrong before:
  * an earlier `"|"`-joined encoding never matched the Rust byte stream, so the

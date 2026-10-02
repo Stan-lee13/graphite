@@ -1,0 +1,260 @@
+# Graphite Agent Guard
+
+The verification gate between an AI agent and a Solana signing key, independent of any
+agent framework. Every integration in this repository signs only through
+`GraphiteGuard`; the [Solana Agent Kit adapter](../solana-agent-kit/README.md) is a thin
+layer over it. Status is the project's:
+security-hardened alpha, no independent third-party audit yet
+([docs/CURRENT.md](../../docs/CURRENT.md)).
+
+It depends on `@solana/kit`, `@solana/web3.js` and `bs58` only. It does not depend on
+`solana-agent-kit` (R-P8 phase 3, 2026-10-02), so the gated `bigint-buffer` advisory
+that package's `@solana/spl-token` 0.4 tree carries is not in it; its lockfile has no
+high or critical npm advisory, and CI fails if one appears
+(`.github/npm-audit/agent-guard.allow`).
+
+## Architecture
+
+```
+user's request ─▶ AI layer (advisory parse) ─▶ grounding in the user's own text
+               ─▶ ONE transaction built (legacy, v0 or v1) ─▶ RPC simulation, unsigned
+               ─▶ Graphite Core verifies those exact bytes ─▶ residual policy
+               ─▶ the approved bytes signed ─▶ signing on the audit trail ─▶ submitted
+               ─▶ submission on the trail ─▶ confirmed ─▶ L8 reconciles what landed
+```
+
+Constitution P1 (AI assists, never decides): the AI layer only proposes a reading of
+the request, and the guard accepts it only where it matches the user's own words.
+Graphite Core's deterministic engine makes every security decision; the guard signs
+only on its approval.
+
+## Prerequisites
+
+1. **Graphite Core** running:
+   ```bash
+   cd graphite-core
+   GRAPHITE_API_KEY=$(openssl rand -hex 32) cargo run --release -- server
+   # or GRAPHITE_DEV_MODE=1 for an unauthenticated loopback-only instance
+   ```
+
+2. **Python AI layer** running:
+   ```bash
+   cd python-ai-layer
+   python3 intent_parser.py --serve
+   ```
+
+3. **Environment** (or the same fields in `GraphiteGuard.create({...})`):
+   ```bash
+   export SOLANA_PRIVATE_KEY="<base58 secret key of the agent's wallet>"
+   export SOLANA_RPC_URL="https://api.devnet.solana.com"
+   export GRAPHITE_CORE_URL="http://127.0.0.1:7331"
+   export GRAPHITE_API_KEY="<the Core's key>"
+   ```
+
+## Installation
+
+```bash
+cd integrations/agent-guard
+npm ci --ignore-scripts
+```
+
+## What the guard guarantees
+
+The guard is the reference execution boundary for Graphite. Its invariant, attacked in
+Rounds 6–9 (`docs/round6-execution-boundary-2026-09-11.md` onward): **the exact
+message Graphite approved is the exact message in the bytes that are signed and
+submitted — and nothing is signed under a residual the operator has not accepted.**
+
+- Both `executeTransfer` and `executeSwap` build **one** `BoundTransaction`
+  (`artifact.ts`) *before* verification, from deep-copied instructions, and send its
+  bytes as `signed_transaction`. No alias to the transaction exists outside it.
+- Execution requires `scope.kind === "artifact_bound"`. A descriptive verdict never
+  executes.
+- **Residual policy (Round 9).** Every verdict names what Graphite did not observe as
+  codes (`scope.unobserved_codes`). Two are inherent to every artifact-bound verdict
+  (`program_semantics`, `inner_instructions`). Every other code — `no_state_diff`,
+  `simulation_failed`, `not_simulated`, `privileges_from_caller`, `privileges_absent`,
+  `lookup_tables_unresolved`, `artifact_unparsed`, `account_identity_unparsed`,
+  `instruction_not_located` — **refuses execution** unless the operator names it in
+  `GRAPHITE_ACCEPT_UNOBSERVED` (comma-separated) or `create({ acceptUnobserved })`. A
+  typo in that list is a startup error; a Core that reports no codes (pre-Round-9) is
+  refused. The codes accepted for an execution are recorded on
+  `outcome.lifecycle.acceptedUnobserved`. See `residual-policy.ts`.
+- **The lifecycle is on Graphite's trail, in order, under the exact keys (Rounds 9–10).**
+  `execution-lifecycle.ts` is the only path from verdict to network: policy →
+  `signApproved` → `POST /audit/event` `signing` → submit → `POST /audit/event`
+  `submission` → confirm → `POST /verify/execution` (L8). Every call carries
+  `audit_trail_id` and `transaction_sha256` with the `content_hash`. A signing that
+  cannot be recorded, whose `verdict_on_record` is not `approved`, or that the server
+  resolved by any key other than `audit_trail_id`, aborts *before* submission; after
+  submission every failure is reported on `outcome.lifecycle` and none is hidden. L8's
+  `reconciliation` comes with `attribution` (`chain` when Graphite joined on the bytes
+  behind the signature itself, checked to be that signature's) and
+  `caller_keys_disagree`; a `chain_bytes_rejected` answer is logged as `L8 REFUSED`
+  and is never read as a pass.
+- `bound.signApproved(scope.transaction_sha256, [wallet])` is the only signing path: it
+  recomputes the digest of the exact bytes, derives the required signer set from the
+  compiled message, refuses any mismatch, and returns the only bytes that go to
+  `sendRawTransaction`. A refreshed blockhash, changed fee payer, appended instruction,
+  rewritten amount or flipped flag after approval is refused.
+- `executeSwap` requires the built payload (program id, discriminator, accounts with
+  real flags, data). Without it there is nothing to bind and the bridge aborts. The
+  unverified-swap opt-out (`GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION`) was **retired in
+  Round 19** (F-19-C2): it executed through SAK's own builder with the key SAK held, and
+  SAK no longer holds a key that can sign. Setting it now changes nothing, and the
+  abort message says so by name.
+- **SolanaAgentKit never holds a signing key (Round 19, F-19-C2).** SAK is constructed
+  with `VerificationGatedWallet` (`gated-wallet.ts`): the public key, and every signing
+  method (`signTransaction`, `signAllTransactions`, `signAndSendTransaction`,
+  `signMessage`) throws `UngatedSigningRefused` naming the verified path. SAK's read-only
+  tools keep working; anything that would sign outside `signApproved` cannot.
+- **Nothing is signed before the verdict (Round 19, F-19-C1).** The pre-verdict RPC
+  simulation (`rpc-simulator.ts`) compiles an unsigned `VersionedTransaction` from the
+  fee payer's PUBLIC key and simulates it with `sigVerify: false` and
+  `replaceRecentBlockhash: true`; every signature slot is read back from the serialized
+  bytes and must be zero, or nothing is sent. Before Round 19 web3.js's
+  `simulateTransaction(tx, [keypair])` signed the transfer on a live blockhash and handed
+  a broadcastable transaction to the RPC before Graphite had answered.
+- **The intent check is grounded in the user's words (Round 19, F-19-C5).** The AI layer
+  is advisory; `intent-grounding.ts` re-derives the amount and destination of a transfer
+  deterministically from the natural-language text and refuses a parse that disagrees
+  (`IntentGroundingError`), and the parse must echo the text it was given. The intent
+  sent to the Core is the grounded one, so the Core's transaction-versus-intent check no
+  longer compares the AI's output with itself.
+- Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
+- **Version 0 through lookup tables (Round 22).** `BoundTransaction.build({ version: 0,
+  addressLookupTables })` compiles a v0 message reading accounts through tables the
+  caller has already fetched; `executeSwap` does so when the payload names
+  `addressLookupTableAddresses`, and aborts if any table cannot be read. Every
+  guarantee above holds for it — one object verified, signed and submitted, the digest
+  checked before signing, the signed bytes carrying the verified message — and the
+  verification request declares `uses_versioned_transaction` / `lookup_table_count`
+  from the bytes. Tables given for a legacy message are refused, not ignored. The bridge's
+  v0 bytes are pinned byte-for-byte to the cross-language corpus entry the Rust parser
+  reads (`bound-transaction.test.ts`).
+- **Version 1 (SIMD-0385; R-P8 phase 2).** Set `transactionVersion: 1` (or
+  `GRAPHITE_TRANSACTION_VERSION=1`; anything but `legacy` or `1` refuses to start) and
+  the bridge builds v1 messages through `@solana/kit`. In v1 an unset compute or
+  loaded-data limit is ZERO, so the bridge first measures both with an UNSIGNED v1 draft
+  at the runtime maxima (`RpcSimulator.estimateV1Limits`: base64, `sigVerify: false`,
+  placeholder blockhash) and builds the verified message with the measurement plus 20%
+  compute headroom and the next 32 KiB data page. Refused at build: a v1 message without
+  limits, out-of-range limits or heap, any ComputeBudget instruction (a no-op in v1),
+  lookup tables (v1 carries up to 64 addresses inline in 4,096 bytes), and anything
+  `messageOf` refuses — a port of the Core's `parse_v1`, rule for rule. Signatures trail a
+  v1 message; every helper that slices a frame dispatches on the leading `0x81`. The two
+  v1 shapes the bridge builds are in the cross-language corpus, read by the Rust Core.
+- **The transaction id is read from the signed bytes.** The submission, the audit trail
+  and L8 use the fee payer's signature as this process signed it; an RPC answering
+  `sendTransaction` with another id is logged and kept as `lifecycle.rpcReportedSignature`,
+  never used.
+- `scope.unobserved` is printed for every verdict; which residuals a deployment
+  accepts is the deployment's decision, made in configuration and enforced by the
+  residual policy above.
+- `content_hash` / AuditBind (`auditbind.ts`) remains as a secondary instruction-level
+  check and the audit/L8 join key; the digest is the authoritative binding.
+
+## Usage
+
+### Run one request from a terminal
+
+```bash
+npx tsx cli.ts transfer "Transfer 0.05 SOL to <address>"
+npx tsx cli.ts swap "Swap 0.1 SOL for USDC" route.json   # route.json: the exact route instruction
+```
+
+This is the guard's real path: when the Core approves, the transaction is signed and
+submitted on whatever cluster `SOLANA_RPC_URL` names. Exit status 0 is a verified
+execution, 2 a refusal by Graphite, 1 an error or a refusal before the Core was asked.
+
+### Use the guard in your own code
+
+```typescript
+import { GraphiteGuard } from "./guard.js";
+
+const guard = await GraphiteGuard.create({
+  // or SOLANA_PRIVATE_KEY / SOLANA_RPC_URL / GRAPHITE_CORE_URL / GRAPHITE_API_KEY /
+  // GRAPHITE_AI_LAYER_URL / GRAPHITE_WALLET_PROFILE / GRAPHITE_TRANSACTION_VERSION
+  graphiteCoreUrl: "http://127.0.0.1:7331",
+  graphiteApiKey: process.env.GRAPHITE_API_KEY,
+  transactionVersion: 1, // or "legacy" (the default)
+});
+
+// The transaction is built once, verified as those exact bytes, and signed only on an
+// artifact_bound approval whose digest matches.
+const outcome = await guard.executeTransfer("Transfer 0.05 SOL to <address>");
+
+if (!outcome.verifiedExecution) {
+  console.log("Blocked by Graphite:", outcome.verification.risk_verdict.findings);
+} else {
+  console.log("Verified execution:", outcome.signature);
+}
+```
+
+A swap is `guard.executeSwap(request, payload)`, where `payload` is the exact route
+instruction (program, accounts with their signer/writable flags, data, and any lookup
+tables); without a payload a swap is refused.
+
+`ExecutionOutcome` is `{ executed, verifiedExecution, verification, signature?,
+unverifiedReason?, lifecycle? }`. Gate on `verifiedExecution`. Since Round 19 there is no
+unverified path, so `executed` and `verifiedExecution` agree and `unverifiedReason` is
+never set; both stay on the type so existing callers compile. `lifecycle` (every
+verified execution) is
+`{ signature, rpcReportedSignature?, acceptedUnobserved, signingRecorded, verdictOnRecordAtSigning,
+submissionRecorded, submissionRecordError?, confirmed, confirmationError?,
+reconciliation?, reconciliationError? }` — read `reconciliation.discrepancy` for L8's
+verdict on what actually landed.
+
+### Tests and the cross-language corpus
+
+```bash
+npm run typecheck
+npm test                 # 170 tests: the guard end to end, its CLI, BoundTransaction gate (legacy, v0, v1), execution-boundary fuzz,
+                         # TOCTOU signing boundary, AuditBind, artifact, nonces,
+                         # residual policy, execution lifecycle (incl. the Round 12
+                         # submission-report retry)
+npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json
+                         # (15 shapes incl. two v1 + 2,897 byte-level mutations); CI fails on drift
+npm run emit:artifact-fixture
+```
+
+## What Graphite Verifies
+
+Before the guard signs anything, Graphite checks:
+
+- **L1 Account Resolution**: accounts, PDAs and fixed constants; signer/writable privileges read from the transaction's own header and resolved lookup tables
+- **L2 Instruction Verification**: the described instruction is in the bytes, positionally, every sibling is declared, and the transaction is not durable-nonce based
+- **L3 Simulation Integrity**: the Core's own simulation of the exact bytes, against earned baselines (live with `GRAPHITE_RPC_URL`; `Inconclusive` without). A baseline is earned only by distinct transactions: the same message under a fresh blockhash is one observation (Round 19)
+- **L4 State Verification**: Graphite's own pre/post diff against the manifest; Token-2022 extensions classified
+- **L5 Semantic Verification**: intent ↔ instruction alignment
+- **L6 Policy Verification**: confidence against the wallet profile threshold
+- **L7 Risk Verification**: drainers, authority hijacks, fake swaps, impersonation, multi-instruction patterns, and CPI-trace patterns run on the call tree the simulator actually executed (Round 19), not only on one the caller declares
+
+If any hard gate fails, the transaction is NOT signed. After submission, `POST
+/verify/execution` reconciles the signature against the recorded verdict (L8).
+
+## Wallet Profiles
+
+Graphite enforces different confidence thresholds per wallet profile:
+
+| Profile | Min Confidence | Min Trust Tier |
+|---------|---------------|----------------|
+| Treasury | 95% | CommunityVerified |
+| TradingBot | 80% | SimulationValidated |
+| Gaming | 55% | HeuristicInferred |
+| Enterprise | 99% | BattleTested |
+
+Set via `GRAPHITE_WALLET_PROFILE` (or `config.walletProfile`). When the Core pins a
+profile server-side with its own `GRAPHITE_WALLET_PROFILE`, the request's profile is
+ignored — the operator's policy wins over the agent's.
+
+**Fresh-core calibration:** the evidence-derived confidence signals read the Core's
+semantic graph, so on a fresh core (no earned evidence, no RPC) the highest reachable
+confidence for a known, clean, intent-aligned protocol is **~0.44** and every built-in
+profile blocks. The guard defaults to `Custom { min_confidence: 0.40, min_trust_tier:
+OfficialManifest }`, and the Core clamps any `Custom` profile weaker than the weakest
+built-in up to Gaming's (0.55, HeuristicInferred) and says so in the verdict — so the
+default approves nothing until evidence is earned. Only an operator can lower the bar,
+with `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` on the Core. The
+engine's confidence score is always the honest number; the profile is the operator's
+policy choice.

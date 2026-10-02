@@ -1835,7 +1835,7 @@ pub struct ExecutionKeys<'a> {
 /// artifact-bound verdict regardless of what it had not observed, because
 /// "not observed" was prose. The bridge now refuses any residual that is not
 /// inherent and not explicitly accepted by the operator (`ResidualPolicy` in
-/// `integrations/solana-agent-kit/residual-policy.ts`).
+/// `integrations/agent-guard/residual-policy.ts`).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum UnobservedCode {
@@ -8597,7 +8597,7 @@ fn build_signals(
 
 /// Domain tag for the framed `content_hash` (Round 17, F-16-09). Changing the
 /// encoding means changing this tag, and re-pinning the vectors in
-/// `sdk/typescript/src/auditbind.test.ts`, `integrations/solana-agent-kit/
+/// `sdk/typescript/src/auditbind.test.ts`, `integrations/agent-guard/
 /// auditbind.test.ts` and `sdk/go/auditbind_test.go` together.
 pub const CONTENT_HASH_DOMAIN: &[u8] = b"graphite-content-hash-v2\0";
 
@@ -9603,7 +9603,7 @@ mod tests {
     #[test]
     fn test_content_hash_matches_ts_auditbind_reference_vector() {
         // Cross-language contract lock: the TS AuditBind tests
-        // (integrations/solana-agent-kit/auditbind.test.ts, sdk/typescript) and
+        // (integrations/agent-guard/auditbind.test.ts, sdk/typescript) and
         // the Go SDK pin the same value — the Round 17 framed encoding
         // (domain tag, u32 LE length prefixes, list counts) of
         // program, disc, [from, to], no data, no CPI = "48c65c638aceb5de".

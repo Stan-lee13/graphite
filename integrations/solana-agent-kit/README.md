@@ -1,232 +1,64 @@
-# Graphite + Solana Agent Kit Integration
+# Graphite for Solana Agent Kit
 
-Reference integration (alpha): verifies every SAK transaction through Graphite Core before signing. Status is the project's: security-hardened alpha, no independent third-party audit yet ([docs/CURRENT.md](../../docs/CURRENT.md)).
+The Solana Agent Kit adapter. Status is the project's: security-hardened alpha, no
+independent third-party audit yet ([docs/CURRENT.md](../../docs/CURRENT.md)).
 
-## Architecture
+`VerifiedSakAgent` is a thin layer over [`GraphiteGuard`](../agent-guard/README.md):
+`executeTransfer`, `executeSwap`, `parseIntent` and `verifyTransaction` are the
+guard's, and every guarantee in the guard's README holds for them. What the adapter adds
+is SAK's own agent, for a caller's **read-only** use (balances, prices, lookups):
 
-```
-Natural Language → Python AI Layer (parse intent) → SAK (construct tx) → Graphite Core (verify) → SAK (execute if approved)
-```
+- **SAK never holds the key (Round 19, F-19-C2).** `SolanaAgentKit` is built on
+  `VerificationGatedWallet` (`gated-wallet.ts`): a public key whose every signing method
+  (`signTransaction`, `signAllTransactions`, `sendTransaction`,
+  `signAndSendTransaction`, `signMessage`) throws `UngatedSigningRefused`, naming the
+  verified path. Every SAK plugin method and LLM-driven SAK tool that would sign is
+  refused; funds move only through the guard.
+- **No SAK plugins are loaded.** Importing one runs its whole dependency tree in the
+  process that holds the key; `@solana-agent-kit/plugin-defi` alone brought 25 of the
+  tree's 36 high/critical npm advisories (2026-09-30).
+- **The key is not reachable** through the adapter, the guard or the SAK agent at
+  runtime: the tests walk all three for the secret key's bytes.
+- The audit trail's `reported_by` names this adapter (`sak-bridge:<key prefix>`).
 
-Constitution P1 (AI assists, never decides): The AI Layer only parses intent — it does not verify or approve. Graphite Core's deterministic verification engine makes all security decisions. SAK only executes if Graphite approves.
-
-## Prerequisites
-
-1. **Graphite Core** running:
-   ```bash
-   cd graphite-core
-   GRAPHITE_API_KEY=$(openssl rand -hex 32) cargo run --release -- server
-   # or GRAPHITE_DEV_MODE=1 for an unauthenticated loopback-only instance
-   ```
-
-2. **Python AI Layer** running:
-   ```bash
-   cd python-ai-layer
-   python3 intent_parser.py --serve
-   ```
-
-3. **Environment variables**:
-   ```bash
-   export SOLANA_PRIVATE_KEY="your_base58_private_key"
-   export SOLANA_RPC_URL="https://api.devnet.solana.com"
-   export OPENAI_API_KEY="your_openai_api_key"
-   ```
+This is the only package in the repository that depends on the `solana-agent-kit` npm
+package, and so the only one carrying its gated `bigint-buffer` advisory (through
+`@solana/spl-token` 0.4; the native addon is never built, every install runs with
+`--ignore-scripts`). See `.github/npm-audit/solana-agent-kit.allow`.
 
 ## Installation
 
+The adapter imports the guard's sources, so install both:
+
 ```bash
-cd integrations/solana-agent-kit
-npm install
+(cd integrations/agent-guard && npm ci --ignore-scripts)
+(cd integrations/solana-agent-kit && npm ci --ignore-scripts)
 ```
-
-## What the bridge guarantees
-
-The bridge is the reference execution boundary for Graphite. Its invariant, attacked in
-Rounds 6–9 (`docs/round6-execution-boundary-2026-09-11.md` onward): **the exact
-message Graphite approved is the exact message in the bytes that are signed and
-submitted — and nothing is signed under a residual the operator has not accepted.**
-
-- Both `executeTransfer` and `executeSwap` build **one** `BoundTransaction`
-  (`artifact.ts`) *before* verification, from deep-copied instructions, and send its
-  bytes as `signed_transaction`. No alias to the transaction exists outside it.
-- Execution requires `scope.kind === "artifact_bound"`. A descriptive verdict never
-  executes.
-- **Residual policy (Round 9).** Every verdict names what Graphite did not observe as
-  codes (`scope.unobserved_codes`). Two are inherent to every artifact-bound verdict
-  (`program_semantics`, `inner_instructions`). Every other code — `no_state_diff`,
-  `simulation_failed`, `not_simulated`, `privileges_from_caller`, `privileges_absent`,
-  `lookup_tables_unresolved`, `artifact_unparsed`, `account_identity_unparsed`,
-  `instruction_not_located` — **refuses execution** unless the operator names it in
-  `GRAPHITE_ACCEPT_UNOBSERVED` (comma-separated) or `create({ acceptUnobserved })`. A
-  typo in that list is a startup error; a Core that reports no codes (pre-Round-9) is
-  refused. The codes accepted for an execution are recorded on
-  `outcome.lifecycle.acceptedUnobserved`. See `residual-policy.ts`.
-- **The lifecycle is on Graphite's trail, in order, under the exact keys (Rounds 9–10).**
-  `execution-lifecycle.ts` is the only path from verdict to network: policy →
-  `signApproved` → `POST /audit/event` `signing` → submit → `POST /audit/event`
-  `submission` → confirm → `POST /verify/execution` (L8). Every call carries
-  `audit_trail_id` and `transaction_sha256` with the `content_hash`. A signing that
-  cannot be recorded, whose `verdict_on_record` is not `approved`, or that the server
-  resolved by any key other than `audit_trail_id`, aborts *before* submission; after
-  submission every failure is reported on `outcome.lifecycle` and none is hidden. L8's
-  `reconciliation` comes with `attribution` (`chain` when Graphite joined on the bytes
-  behind the signature itself, checked to be that signature's) and
-  `caller_keys_disagree`; a `chain_bytes_rejected` answer is logged as `L8 REFUSED`
-  and is never read as a pass.
-- `bound.signApproved(scope.transaction_sha256, [wallet])` is the only signing path: it
-  recomputes the digest of the exact bytes, derives the required signer set from the
-  compiled message, refuses any mismatch, and returns the only bytes that go to
-  `sendRawTransaction`. A refreshed blockhash, changed fee payer, appended instruction,
-  rewritten amount or flipped flag after approval is refused.
-- `executeSwap` requires the built payload (program id, discriminator, accounts with
-  real flags, data). Without it there is nothing to bind and the bridge aborts. The
-  unverified-swap opt-out (`GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION`) was **retired in
-  Round 19** (F-19-C2): it executed through SAK's own builder with the key SAK held, and
-  SAK no longer holds a key that can sign. Setting it now changes nothing, and the
-  abort message says so by name.
-- **SolanaAgentKit never holds a signing key (Round 19, F-19-C2).** SAK is constructed
-  with `VerificationGatedWallet` (`gated-wallet.ts`): the public key, and every signing
-  method (`signTransaction`, `signAllTransactions`, `signAndSendTransaction`,
-  `signMessage`) throws `UngatedSigningRefused` naming the verified path. SAK's read-only
-  tools keep working; anything that would sign outside `signApproved` cannot.
-- **Nothing is signed before the verdict (Round 19, F-19-C1).** The pre-verdict RPC
-  simulation (`rpc-simulator.ts`) compiles an unsigned `VersionedTransaction` from the
-  fee payer's PUBLIC key and simulates it with `sigVerify: false` and
-  `replaceRecentBlockhash: true`; every signature slot is read back from the serialized
-  bytes and must be zero, or nothing is sent. Before Round 19 web3.js's
-  `simulateTransaction(tx, [keypair])` signed the transfer on a live blockhash and handed
-  a broadcastable transaction to the RPC before Graphite had answered.
-- **The intent check is grounded in the user's words (Round 19, F-19-C5).** The AI layer
-  is advisory; `intent-grounding.ts` re-derives the amount and destination of a transfer
-  deterministically from the natural-language text and refuses a parse that disagrees
-  (`IntentGroundingError`), and the parse must echo the text it was given. The intent
-  sent to the Core is the grounded one, so the Core's transaction-versus-intent check no
-  longer compares the AI's output with itself.
-- Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
-- **Version 0 through lookup tables (Round 22).** `BoundTransaction.build({ version: 0,
-  addressLookupTables })` compiles a v0 message reading accounts through tables the
-  caller has already fetched; `executeSwap` does so when the payload names
-  `addressLookupTableAddresses`, and aborts if any table cannot be read. Every
-  guarantee above holds for it — one object verified, signed and submitted, the digest
-  checked before signing, the signed bytes carrying the verified message — and the
-  verification request declares `uses_versioned_transaction` / `lookup_table_count`
-  from the bytes. Tables given for a legacy message are refused, not ignored. The bridge's
-  v0 bytes are pinned byte-for-byte to the cross-language corpus entry the Rust parser
-  reads (`bound-transaction.test.ts`).
-- **Version 1 (SIMD-0385; R-P8 phase 2).** Set `transactionVersion: 1` (or
-  `GRAPHITE_TRANSACTION_VERSION=1`; anything but `legacy` or `1` refuses to start) and
-  the bridge builds v1 messages through `@solana/kit`. In v1 an unset compute or
-  loaded-data limit is ZERO, so the bridge first measures both with an UNSIGNED v1 draft
-  at the runtime maxima (`RpcSimulator.estimateV1Limits`: base64, `sigVerify: false`,
-  placeholder blockhash) and builds the verified message with the measurement plus 20%
-  compute headroom and the next 32 KiB data page. Refused at build: a v1 message without
-  limits, out-of-range limits or heap, any ComputeBudget instruction (a no-op in v1),
-  lookup tables (v1 carries up to 64 addresses inline in 4,096 bytes), and anything
-  `messageOf` refuses — a port of the Core's `parse_v1`, rule for rule. Signatures trail a
-  v1 message; every helper that slices a frame dispatches on the leading `0x81`. The two
-  v1 shapes the bridge builds are in the cross-language corpus, read by the Rust Core.
-- **The transaction id is read from the signed bytes.** The submission, the audit trail
-  and L8 use the fee payer's signature as this process signed it; an RPC answering
-  `sendTransaction` with another id is logged and kept as `lifecycle.rpcReportedSignature`,
-  never used.
-- `scope.unobserved` is printed for every verdict; which residuals a deployment
-  accepts is the deployment's decision, made in configuration and enforced by the
-  residual policy above.
-- `content_hash` / AuditBind (`auditbind.ts`) remains as a secondary instruction-level
-  check and the audit/L8 join key; the digest is the authoritative binding.
 
 ## Usage
-
-### Run the end-to-end demo:
-
-```bash
-# Swap demo
-npx tsx demo.ts "Swap 0.1 SOL for USDC"
-
-# Transfer demo
-npx tsx demo.ts "Transfer 0.05 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
-```
-
-### Use the bridge in your own code:
 
 ```typescript
 import { VerifiedSakAgent } from "./graphite-sak-bridge.js";
 
 const agent = await VerifiedSakAgent.create({
-  // or GRAPHITE_CORE_URL / GRAPHITE_API_KEY / GRAPHITE_AI_LAYER_URL / GRAPHITE_WALLET_PROFILE
-  graphiteCoreUrl: "http://localhost:7331",
-  graphiteApiKey: process.env.GRAPHITE_API_KEY,
+  // every GraphiteGuard option, plus the key SAK itself needs:
+  openAiApiKey: process.env.OPENAI_API_KEY,
 });
 
-// Every transaction is built once, verified as those exact bytes, and signed only on
-// an artifact_bound approval whose digest matches.
 const outcome = await agent.executeTransfer("Transfer 0.05 SOL to <address>");
-
-if (!outcome.verifiedExecution) {
-  console.log("Blocked by Graphite:", outcome.verification.risk_verdict.findings);
-} else {
-  console.log("Verified execution:", outcome.signature);
-}
+const sak = agent.getSakAgent(); // read-only; it cannot sign
 ```
 
-`ExecutionOutcome` is `{ executed, verifiedExecution, verification, signature?,
-unverifiedReason?, lifecycle? }`. Gate on `verifiedExecution`. Since Round 19 there is no
-unverified path, so `executed` and `verifiedExecution` agree and `unverifiedReason` is
-never set; both stay on the type so existing callers compile. `lifecycle` (every
-verified execution) is
-`{ signature, rpcReportedSignature?, acceptedUnobserved, signingRecorded, verdictOnRecordAtSigning,
-submissionRecorded, submissionRecordError?, confirmed, confirmationError?,
-reconciliation?, reconciliationError? }` — read `reconciliation.discrepancy` for L8's
-verdict on what actually landed.
+To run one request from a terminal, use the guard's runner
+(`../agent-guard/cli.ts`); it moves real funds when the Core approves, on whatever
+cluster `SOLANA_RPC_URL` names.
 
-### Tests and the cross-language corpus
+## Tests
 
 ```bash
 npm run typecheck
-npm test                 # 170 tests: BoundTransaction gate (legacy, v0, v1), execution-boundary fuzz,
-                         # TOCTOU signing boundary, AuditBind, artifact, nonces,
-                         # residual policy, execution lifecycle (incl. the Round 12
-                         # submission-report retry)
-npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json
-                         # (15 shapes incl. two v1 + 2,897 byte-level mutations); CI fails on drift
-npm run emit:artifact-fixture
+npm test                 # the SAK-specific tests: the gated wallet, the SAK agent and
+                         # the key's reachability, delegation to the guard
 ```
 
-## What Graphite Verifies
-
-Before the bridge signs anything, Graphite checks:
-
-- **L1 Account Resolution**: accounts, PDAs and fixed constants; signer/writable privileges read from the transaction's own header and resolved lookup tables
-- **L2 Instruction Verification**: the described instruction is in the bytes, positionally, every sibling is declared, and the transaction is not durable-nonce based
-- **L3 Simulation Integrity**: the Core's own simulation of the exact bytes, against earned baselines (live with `GRAPHITE_RPC_URL`; `Inconclusive` without). A baseline is earned only by distinct transactions: the same message under a fresh blockhash is one observation (Round 19)
-- **L4 State Verification**: Graphite's own pre/post diff against the manifest; Token-2022 extensions classified
-- **L5 Semantic Verification**: intent ↔ instruction alignment
-- **L6 Policy Verification**: confidence against the wallet profile threshold
-- **L7 Risk Verification**: drainers, authority hijacks, fake swaps, impersonation, multi-instruction patterns, and CPI-trace patterns run on the call tree the simulator actually executed (Round 19), not only on one the caller declares
-
-If any hard gate fails, the transaction is NOT signed. After submission, `POST
-/verify/execution` reconciles the signature against the recorded verdict (L8).
-
-## Wallet Profiles
-
-Graphite enforces different confidence thresholds per wallet profile:
-
-| Profile | Min Confidence | Min Trust Tier |
-|---------|---------------|----------------|
-| Treasury | 95% | CommunityVerified |
-| TradingBot | 80% | SimulationValidated |
-| Gaming | 55% | HeuristicInferred |
-| Enterprise | 99% | BattleTested |
-
-Set via `GRAPHITE_WALLET_PROFILE` (or `config.walletProfile`). When the Core pins a
-profile server-side with its own `GRAPHITE_WALLET_PROFILE`, the request's profile is
-ignored — the operator's policy wins over the agent's.
-
-**Fresh-core calibration:** the evidence-derived confidence signals read the Core's
-semantic graph, so on a fresh core (no earned evidence, no RPC) the highest reachable
-confidence for a known, clean, intent-aligned protocol is **~0.44** and every built-in
-profile blocks. The bridge defaults to `Custom { min_confidence: 0.40, min_trust_tier:
-OfficialManifest }` so known transactions can be approved for development; a `Custom`
-profile below 0.55 requires `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` on the Core. The
-engine's confidence score is always the honest number; the profile is the operator's
-policy choice.
+The verified paths are tested in the guard (`../agent-guard`).

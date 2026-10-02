@@ -24,6 +24,7 @@ const LIVE: &[&str] = &[
     "graphite-core/scripts/README.md",
     "sdk/typescript/README.md",
     "integrations/solana-agent-kit/README.md",
+    "integrations/agent-guard/README.md",
     "python-ai-layer/README.md",
     "dashboard/README.md",
     "AUDIT/00-map.md",
@@ -49,6 +50,7 @@ const BASES: &[&str] = &[
     "",
     "graphite-core",
     "integrations/solana-agent-kit",
+    "integrations/agent-guard",
     ".github",
 ];
 

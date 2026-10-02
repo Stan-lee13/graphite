@@ -5,7 +5,7 @@
 //! instructions, and the Core reads both and decides whether they agree. Tests
 //! on either side alone prove only that each is self-consistent with itself.
 //!
-//! `integrations/solana-agent-kit/emit-artifact-fixture.ts` writes the
+//! `integrations/agent-guard/emit-artifact-fixture.ts` writes the
 //! TypeScript side's actual output — `@solana/web3.js` doing the serialization,
 //! `artifact.ts` doing the declarations — and this file consumes it. A change
 //! to either side that breaks the agreement fails here rather than in an

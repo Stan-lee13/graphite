@@ -36,8 +36,8 @@ This is **not** a "0 issues" verdict.
 
 ## Evidence
 
-- **Tests:** 1,849 Rust tests in the default leg (341 featureless, 1,594 CLI-only), 170 in the SAK
-  bridge, 37 TypeScript SDK, 44 Go, 35 Python, 7 dashboard, all passing on the local mirror of CI;
+- **Tests:** 1,849 Rust tests in the default leg (341 featureless, 1,594 CLI-only), 170 in the agent guard and 6 in the SAK
+  adapter (R-P8 phase 3), 37 TypeScript SDK, 44 Go, 35 Python, 7 dashboard, all passing on the local mirror of CI;
   every fixed finding has a named test that fails before the fix (`01-findings.md`).
 - **Deliberate breaks:** 59 of 59 caught — each fix reverted once and its test re-run. One test
   (B54, A4-11) was vacuous on its first run and was strengthened until it failed without the fix.

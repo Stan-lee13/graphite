@@ -10,6 +10,7 @@
  * the observable the Round 19 F-19-C1 tests are about: a signed transaction
  * reaching an RPC before a verdict exists.
  */
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import bs58 from "bs58";
@@ -191,12 +192,13 @@ export async function mockService(initial: Record<string, unknown> = {}): Promis
   return { url, calls, answer, close: closer(server) };
 }
 
-/** A verdict that passes the SDK's shape guard: BLOCKED, descriptive. */
-export const BLOCKED_VERDICT = {
-  approved: false,
-  confidence: 0.1,
-  audit_trail_id: "gr-test-0001",
-  content_hash: "0000000000000000",
-  risk_verdict: { status: "Blocked", reasons: ["loopback test verdict"] },
-  layers: [],
-};
+/**
+ * A verdict that does not approve, exactly as the Core emits one: the
+ * repository's `examples/sample-verification-result.json`, which
+ * `graphite-core/tests/verification_result_schema_contract.rs` holds to
+ * `schemas/verification-result-v1.json`. A stand-in that answered with a shape
+ * the Core never sends would let the code under test depend on that shape.
+ */
+export const BLOCKED_VERDICT: Record<string, unknown> = JSON.parse(
+  readFileSync(new URL("../../examples/sample-verification-result.json", import.meta.url), "utf8"),
+);

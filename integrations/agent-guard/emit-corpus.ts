@@ -566,7 +566,7 @@ writeFileSync(
   new URL(out, import.meta.url),
   JSON.stringify(
     {
-      _: "Emitted by integrations/solana-agent-kit/emit-corpus.ts. Each entry is what the TypeScript side believes about its own bytes; tests/sak_bridge_corpus.rs requires the Rust parser to agree from the bytes alone. The v0 entry uses a real mainnet lookup table; the v1 entries are compiled by the bridge through @solana/kit and recorded as kit decodes them. Unsigned throughout.",
+      _: "Emitted by integrations/agent-guard/emit-corpus.ts. Each entry is what the TypeScript side believes about its own bytes; tests/sak_bridge_corpus.rs requires the Rust parser to agree from the bytes alone. The v0 entry uses a real mainnet lookup table; the v1 entries are compiled by the bridge through @solana/kit and recorded as kit decodes them. Unsigned throughout.",
       entries: corpus,
       mutations,
     },

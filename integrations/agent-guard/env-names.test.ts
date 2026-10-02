@@ -60,3 +60,12 @@ test("A5-07: the dev scripts reach the Core only through GraphiteClient and neve
     assert.match(src, /rpcHostForLog\(/, `${script}: must log the RPC host only`);
   }
 });
+
+test("R9 / R-P8 phase 4: every mainnet tool reads version 1, so v1 traffic is in the sample", () => {
+  for (const script of ["mainnet-benchmark.ts", "build_exploit_corpus.mts"]) {
+    const src = readFileSync(new URL(script, import.meta.url), "utf8");
+    assert.doesNotMatch(src, /maxSupportedTransactionVersion:\s*0\b/, `${script}: reads at version 0 and drops v1`);
+    assert.match(src, /maxSupportedTransactionVersion:\s*1\b/, `${script}: must request version 1`);
+    assert.match(src, /v1Read/, `${script}: must report how many v1 transactions it read`);
+  }
+});

@@ -92,7 +92,7 @@ const artifactBytes = serializeUnsignedArtifact({
 });
 
 const fixture = {
-  _: "Emitted by integrations/solana-agent-kit/emit-artifact-fixture.ts. The " +
+  _: "Emitted by integrations/agent-guard/emit-artifact-fixture.ts. The " +
     "artifact and declarations the SAK bridge really sends, so the Rust Core " +
     "can assert the two sides agree. Unsigned: Graphite verifies before signing.",
   primary: {

@@ -127,7 +127,7 @@ committed as a test and the fix reverted once to show the test fails without it:
   share one acceptance language, asserted equal on 15 shapes (two of them v1, built
   by the bridge) and 2,897 byte-level mutations; CI regenerates the corpus and fails
   on drift. Graphite is stricter than the SDK that reads each base (`@solana/web3.js`
-  for legacy and v0, `@solana/kit` for v1) on 94 mutations (non-minimal shortvec,
+  for legacy and v0, `@solana/kit` for v1) on 92 mutations (non-minimal shortvec,
   over-long declared lengths, trailing bytes, impossible headers, out-of-range
   indexes, v1 rules, and anything over the 1232-byte packet or 4,096-byte v1 frame —
   all things the runtime refuses) and looser on none.

@@ -24,6 +24,7 @@ const ARCHITECTURE: &str = include_str!("../../ARCHITECTURE.md");
 const CURRENT: &str = include_str!("../../docs/CURRENT.md");
 const CORE_README: &str = include_str!("../README.md");
 const SAK_README: &str = include_str!("../../integrations/solana-agent-kit/README.md");
+const GUARD_README: &str = include_str!("../../integrations/agent-guard/README.md");
 
 const LIVE_DOCS: &[(&str, &str)] = &[
     ("README.md", README),
@@ -31,6 +32,7 @@ const LIVE_DOCS: &[(&str, &str)] = &[
     ("docs/CURRENT.md", CURRENT),
     ("graphite-core/README.md", CORE_README),
     ("integrations/solana-agent-kit/README.md", SAK_README),
+    ("integrations/agent-guard/README.md", GUARD_README),
 ];
 
 /// Every number written immediately before one of `words` (optionally joined

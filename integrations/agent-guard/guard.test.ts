@@ -1,0 +1,430 @@
+/**
+ * The guard end to end, against loopback stand-ins for the RPC, the Graphite
+ * Core and the AI layer (loopback-mocks.ts). A throwaway keypair generated per
+ * test; no public RPC, no funds. These were the SAK bridge's tests until the
+ * guard moved out of it (R-P8 phase 3); every framework adapter inherits them.
+ *
+ *   F-19-C1  nothing signed reaches the RPC before (or without) a verdict
+ *   F-19-C5  destination and amount come from the user's text, not the AI's
+ *   F-19-C6  a legacy env var name refuses to start instead of defaulting
+ *   A5-01    a swap's class is the method's, grounded in the user's text; the
+ *            AI layer's URL obeys the Core's transport rule and is bounded
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { Keypair } from "@solana/web3.js";
+import bs58 from "bs58";
+import { GraphiteGuard, IntentGroundingError, parseTransactionVersion } from "./guard.js";
+import { BLOCKED_VERDICT, mockRpc, mockService, type Loopback, type MockService } from "./loopback-mocks.js";
+
+const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
+const ATTACKER = "6bSsP4p6wXqFJdD2TkYgNcVmLzHfWq7pRyA8tCzE5nBj";
+const REQUEST = `Transfer 1.5 SOL to ${DEST}`;
+
+/** What the real AI layer answers for REQUEST (intent_parser.py). */
+function honestParse(text = REQUEST) {
+  return {
+    intent_type: "transfer",
+    raw_natural_language: text,
+    confidence_of_parse: 0.9,
+    extracted_parameters: { amount: "1.5", input_token: "SOL", destination: DEST },
+  };
+}
+
+interface Harness {
+  agent: GraphiteGuard;
+  wallet: Keypair;
+  rpc: Loopback;
+  core: MockService;
+  ai: MockService;
+  close(): Promise<void>;
+}
+
+async function harness(
+  opts: { aiLayerTimeoutMs?: number; transactionVersion?: "legacy" | 1 } = {},
+): Promise<Harness> {
+  const rpc = await mockRpc();
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
+  core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
+  const ai = await mockService();
+  ai.answer.set("POST /parse", { status: 200, body: honestParse() });
+  const wallet = Keypair.generate();
+  const agent = await GraphiteGuard.create({
+    privateKey: bs58.encode(wallet.secretKey),
+    rpcUrl: rpc.url,
+    graphiteCoreUrl: core.url,
+    aiLayerUrl: ai.url,
+    aiLayerTimeoutMs: opts.aiLayerTimeoutMs,
+    transactionVersion: opts.transactionVersion,
+  });
+  return {
+    agent,
+    wallet,
+    rpc,
+    core,
+    ai,
+    close: async () => {
+      await Promise.all([rpc.close(), core.close(), ai.close()]);
+    },
+  };
+}
+
+test("F-19-C1: executeTransfer puts no signed transaction on the wire before the verdict, and none after a block", async () => {
+  const h = await harness();
+  try {
+    const outcome = await h.agent.executeTransfer(REQUEST);
+    assert.equal(outcome.executed, false, "the loopback Core blocked; nothing may execute");
+
+    const verify = h.core.calls.find((c) => c.method === "POST /verify");
+    assert.ok(verify, "the bridge must have asked the Core");
+    const sims = h.rpc.calls.filter((c) => c.method === "simulateTransaction");
+    assert.equal(sims.length, 1, "the pre-verdict simulation must still run");
+    assert.ok(sims[0].seq < verify!.seq, "the simulation is the pre-verdict step");
+    for (const call of h.rpc.calls) {
+      assert.notEqual(
+        call.signed,
+        true,
+        `${call.method} carried a signed transaction — the RPC held a broadcastable transfer ` +
+          "Graphite had not approved",
+      );
+    }
+    assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
+    // The artifact Graphite was shown is unsigned too.
+    const body = verify!.params as { signed_transaction?: number[] };
+    assert.ok(Array.isArray(body.signed_transaction));
+    assert.ok(body.signed_transaction!.slice(1, 65).every((b) => b === 0));
+  } finally {
+    await h.close();
+  }
+});
+
+test("F-19-C5: an AI-layer destination the user never wrote is refused before anything is built or sent", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", {
+      status: 200,
+      body: { ...honestParse(), extracted_parameters: { amount: "1.5", input_token: "SOL", destination: ATTACKER } },
+    });
+    await assert.rejects(h.agent.executeTransfer(REQUEST), IntentGroundingError);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
+    assert.equal(h.rpc.calls.length, 0, "nothing reached the RPC");
+  } finally {
+    await h.close();
+  }
+});
+
+test("F-19-C5: an AI-layer amount the user never wrote is refused", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", {
+      status: 200,
+      body: { ...honestParse(), extracted_parameters: { amount: "150", input_token: "SOL", destination: DEST } },
+    });
+    await assert.rejects(h.agent.executeTransfer(REQUEST), IntentGroundingError);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("F-19-C5: an AI-layer answer to a different request is refused", async () => {
+  const h = await harness();
+  try {
+    const other = `Transfer 1.5 SOL to ${ATTACKER}`;
+    h.ai.answer.set("POST /parse", { status: 200, body: honestParse(other) });
+    await assert.rejects(h.agent.executeTransfer(REQUEST), /raw_natural_language is not the text that was sent/);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("F-19-C5: the Core is shown the user's text and a transaction built from it", async () => {
+  const h = await harness();
+  try {
+    await h.agent.executeTransfer(REQUEST);
+    const verify = h.core.calls.find((c) => c.method === "POST /verify");
+    const body = verify!.params as {
+      proposed_intent: { raw_natural_language: string; extracted_parameters: Record<string, unknown> };
+      account_addresses: string[];
+      instruction_data: number[];
+    };
+    assert.equal(body.proposed_intent.raw_natural_language, REQUEST);
+    assert.equal(body.proposed_intent.extracted_parameters.destination, DEST);
+    assert.equal(body.proposed_intent.extracted_parameters.amount, "1.5");
+    assert.deepEqual(body.account_addresses, [h.wallet.publicKey.toBase58(), DEST]);
+    // System transfer: u32 LE 2, then u64 LE 1_500_000_000 lamports.
+    const data = Buffer.from(body.instruction_data);
+    assert.equal(data.readUInt32LE(0), 2);
+    assert.equal(data.readBigUInt64LE(4), 1_500_000_000n);
+  } finally {
+    await h.close();
+  }
+});
+
+test("F-19-C6: a legacy env var name without its replacement refuses to start", async () => {
+  const saved = { ...process.env };
+  try {
+    delete process.env.GRAPHITE_CORE_URL;
+    process.env.GRAPHITE_SERVER_URL = "http://127.0.0.1:1";
+    await assert.rejects(
+      GraphiteGuard.create({ privateKey: bs58.encode(Keypair.generate().secretKey), rpcUrl: "http://127.0.0.1:1" }),
+      /GRAPHITE_SERVER_URL is set but the bridge reads GRAPHITE_CORE_URL/,
+    );
+    delete process.env.GRAPHITE_SERVER_URL;
+    delete process.env.GRAPHITE_AI_LAYER_URL;
+    process.env.AI_LAYER_URL = "http://127.0.0.1:1";
+    await assert.rejects(
+      GraphiteGuard.create({ privateKey: bs58.encode(Keypair.generate().secretKey), rpcUrl: "http://127.0.0.1:1" }),
+      /AI_LAYER_URL is set but the bridge reads GRAPHITE_AI_LAYER_URL/,
+    );
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// A5-01 (2026-09-29 audit): executeSwap forwarded the AI layer's intent_type
+// to the Core unchanged and accepted a payload for any program. The Core's
+// intent-mismatch checks are keyed on that label, so an AI answering
+// "approve" to "Swap 1 SOL for USDC" switched off the Approve check for an
+// SPL Token Approve of u64::MAX to an attacker delegate.
+
+const SWAP_REQUEST = "Swap 1 SOL for USDC";
+const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+const SPL_TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+function swapParse(intent_type: string, text = SWAP_REQUEST) {
+  return {
+    intent_type,
+    raw_natural_language: text,
+    confidence_of_parse: 0.99,
+    extracted_parameters: { input_token: "SOL", output_token: "USDC", amount: "1" },
+  };
+}
+
+/** The attacker's "route": SPL Token Approve (0x04) of u64::MAX to ATTACKER. */
+function approvePayload(wallet: Keypair) {
+  return {
+    programId: SPL_TOKEN,
+    discriminator: "04",
+    accounts: [
+      { pubkey: DEST, isSigner: false, isWritable: true },
+      { pubkey: ATTACKER, isSigner: false, isWritable: false },
+      { pubkey: wallet.publicKey.toBase58(), isSigner: true, isWritable: false },
+    ],
+    instructionData: [4, 255, 255, 255, 255, 255, 255, 255, 255],
+  };
+}
+
+/** A payload addressed to Jupiter V6 (its contents are the Core's to judge). */
+function jupiterPayload(wallet: Keypair) {
+  return {
+    programId: JUPITER_V6,
+    discriminator: "bb64facc31c4af14",
+    accounts: [
+      { pubkey: wallet.publicKey.toBase58(), isSigner: true, isWritable: true },
+      { pubkey: DEST, isSigner: false, isWritable: true },
+    ],
+    instructionData: [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14],
+  };
+}
+
+test("A5-01: executeSwap refuses an AI label outside the swap class before the Core is asked", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("approve") });
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, approvePayload(h.wallet)), IntentGroundingError);
+    // Even addressed to a swap program, the label is not the AI's to choose.
+    await assert.rejects(
+      h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)),
+      /labelled a swap request as "approve"/,
+    );
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
+    assert.equal(h.rpc.calls.length, 0, "nothing reached the RPC");
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: executeSwap refuses a payload for a program that does not swap, honest label or not", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("swap") });
+    await assert.rejects(
+      h.agent.executeSwap(SWAP_REQUEST, approvePayload(h.wallet)),
+      /no seed manifest tags as a swap program/,
+    );
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+    assert.equal(h.rpc.calls.length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: executeSwap refuses a request whose text does not ask for a swap", async () => {
+  const h = await harness();
+  try {
+    const text = "Send 1 SOL for USDC";
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("swap", text) });
+    await assert.rejects(h.agent.executeSwap(text, jupiterPayload(h.wallet)), /does not ask for a swap/);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: the Core is told swap, not the AI layer's wording of it", async () => {
+  const h = await harness();
+  try {
+    h.ai.answer.set("POST /parse", { status: 200, body: swapParse("exchange") });
+    const outcome = await h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet));
+    assert.equal(outcome.executed, false, "the loopback Core blocked");
+    const verify = h.core.calls.find((c) => c.method === "POST /verify");
+    const body = verify!.params as {
+      proposed_intent: { intent_type: string; raw_natural_language: string };
+      program_id: string;
+    };
+    assert.equal(body.proposed_intent.intent_type, "swap");
+    assert.equal(body.proposed_intent.raw_natural_language, SWAP_REQUEST);
+    assert.equal(body.program_id, JUPITER_V6);
+  } finally {
+    await h.close();
+  }
+});
+
+test("A5-01: a hung AI layer times out instead of hanging the call", async () => {
+  const hung = createServer(() => {
+    /* never answers */
+  });
+  await new Promise<void>((resolve) => hung.listen(0, "127.0.0.1", resolve));
+  const rpc = await mockRpc();
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
+  try {
+    const agent = await GraphiteGuard.create({
+      privateKey: bs58.encode(Keypair.generate().secretKey),
+      rpcUrl: rpc.url,
+      graphiteCoreUrl: core.url,
+      aiLayerUrl: `http://127.0.0.1:${(hung.address() as AddressInfo).port}`,
+      aiLayerTimeoutMs: 200,
+    });
+    const started = Date.now();
+    await assert.rejects(agent.executeTransfer(REQUEST), /the AI layer did not answer within 200 ms/);
+    assert.ok(Date.now() - started < 5_000, "the call was bounded by the configured timeout");
+    assert.equal(core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    hung.closeAllConnections();
+    await new Promise<void>((resolve) => hung.close(() => resolve()));
+    await Promise.all([rpc.close(), core.close()]);
+  }
+});
+
+test("A5-01: the AI layer URL follows the Core's transport rule: https://, or http:// to loopback", async () => {
+  const create = (aiLayerUrl: string) =>
+    GraphiteGuard.create({
+      privateKey: bs58.encode(Keypair.generate().secretKey),
+      rpcUrl: "http://127.0.0.1:1",
+      graphiteCoreUrl: "http://127.0.0.1:1",
+      aiLayerUrl,
+    });
+  for (const url of ["http://ai.internal:8081", "http://10.0.0.5:8081", "ftp://127.0.0.1:8081", "not a url"]) {
+    await assert.rejects(create(url), /GRAPHITE_AI_LAYER_URL is refused/, url);
+  }
+});
+
+test("R8: the wallet's secret key is not reachable through the guard object at runtime", async () => {
+  // TypeScript `private` is a compile-time label: at runtime it is an
+  // ordinary property any code holding the object can read. Every framework
+  // adapter hands this object to code it does not control (an LLM tool, an
+  // MCP request handler); this walks everything reachable from it for the
+  // secret key.
+  const h = await harness();
+  try {
+    const secret = Buffer.from(h.wallet.secretKey).toString("hex");
+    const seen = new Set<unknown>();
+    const found: string[] = [];
+    const walk = (value: unknown, path: string, depth: number): void => {
+      if (value === null || typeof value !== "object" || seen.has(value) || depth > 6) return;
+      seen.add(value);
+      if (value instanceof Keypair) found.push(`${path} is a Keypair`);
+      if (value instanceof Uint8Array && Buffer.from(value).toString("hex").includes(secret)) {
+        found.push(`${path} holds the secret key bytes`);
+      }
+      for (const key of Reflect.ownKeys(value)) {
+        let child: unknown;
+        try {
+          child = (value as Record<PropertyKey, unknown>)[key];
+        } catch {
+          continue;
+        }
+        walk(child, `${path}.${String(key)}`, depth + 1);
+      }
+      // Accessors live on the prototype, not the instance: a getter that
+      // returns the key is as reachable as a field holding it. Every getter
+      // on the chain up to Object.prototype is called on this object.
+      for (let proto = Object.getPrototypeOf(value); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+        for (const key of Reflect.ownKeys(proto)) {
+          const desc = Object.getOwnPropertyDescriptor(proto, key);
+          if (!desc?.get) continue;
+          let child: unknown;
+          try {
+            child = desc.get.call(value);
+          } catch {
+            continue;
+          }
+          walk(child, `${path}.${String(key)} (getter)`, depth + 1);
+        }
+      }
+    };
+    walk(h.agent, "agent", 0);
+    assert.ok(seen.size > 1, "the walk reached past the guard object itself");
+    assert.deepEqual(found, [], `the secret key is reachable: ${found.join("; ")}`);
+  } finally {
+    await h.close();
+  }
+});
+
+test("R-P8 phase 2: with transactionVersion 1 the Core is shown an unsigned v1 transfer, budget measured first", async () => {
+  const h = await harness({ transactionVersion: 1 });
+  try {
+    const outcome = await h.agent.executeTransfer(REQUEST);
+    assert.equal(outcome.executed, false, "the loopback Core blocked; nothing may execute");
+    const sims = h.rpc.calls.filter((c) => c.method === "simulateTransaction");
+    // The advisory pre-verdict simulation and the v1 sizing simulation.
+    assert.equal(sims.length, 2);
+    for (const call of h.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
+    assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
+    const verify = h.core.calls.find((c) => c.method === "POST /verify")!;
+    const body = verify.params as { signed_transaction: number[]; uses_versioned_transaction: boolean; lookup_table_count: number };
+    const wire = Buffer.from(body.signed_transaction);
+    assert.equal(wire[0], 0x81, "a v1 frame");
+    assert.equal(body.uses_versioned_transaction, true, "the declaration describes v1 bytes as versioned");
+    assert.equal(body.lookup_table_count, 0);
+    // The loopback RPC measured 150 CU and 2,048 bytes: the message carries
+    // 180 CU (20% headroom) and one 32 KiB page, in mask order.
+    assert.equal(wire.readUInt32LE(4), 0b1100, "compute and loaded-data limits, nothing else");
+    assert.ok(wire.subarray(wire.length - 64).every((b) => b === 0), "the trailing slot is empty");
+    const keys = 3 * 32;
+    const valuesAt = 1 + 3 + 4 + 32 + 2 + keys;
+    assert.equal(wire.readUInt32LE(valuesAt), 180);
+    assert.equal(wire.readUInt32LE(valuesAt + 4), 32 * 1024);
+    // The sizing simulation ran before the Core was asked: the limits are
+    // part of the verified bytes.
+    assert.ok(sims.every((s) => s.seq < verify.seq));
+  } finally {
+    await h.close();
+  }
+});
+
+test("GRAPHITE_TRANSACTION_VERSION: legacy and 1 are read, anything else refuses to start", () => {
+  assert.equal(parseTransactionVersion(undefined), "legacy");
+  assert.equal(parseTransactionVersion(""), "legacy");
+  assert.equal(parseTransactionVersion("legacy"), "legacy");
+  assert.equal(parseTransactionVersion("1"), 1);
+  for (const bad of ["v1", "0", "2", " 1", "LEGACY"]) {
+    assert.throws(() => parseTransactionVersion(bad), /REFUSING TO START/, bad);
+  }
+});

@@ -180,13 +180,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.23.3"
-      - name: npm advisories — SAK bridge, TypeScript SDK, dashboard
+      - name: npm advisories — agent guard, SAK adapter, TypeScript SDK, dashboard
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
           status=0
-          for pkg in integrations/solana-agent-kit:solana-agent-kit \
+          for pkg in integrations/agent-guard:agent-guard \
+                     integrations/solana-agent-kit:solana-agent-kit \
                      sdk/typescript:sdk-typescript \
                      dashboard:dashboard; do
             dir=${pkg%%:*}; list=${pkg##*:}
@@ -424,10 +425,10 @@ jobs:
         run: docker rm -f graphite-ci graphite-keyless || true
 
   typescript:
-    name: TypeScript SDK + SAK integration
+    name: TypeScript SDK, agent guard + SAK adapter
     runs-on: ubuntu-24.04
-    # ~1 min warm; the SAK tree is 1,334 packages, so a cold install is the
-    # long pole. 20 is generous.
+    # ~1 min warm; the SAK adapter's tree is ~1,300 packages, so a cold
+    # install is the long pole. 20 is generous.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -457,38 +458,46 @@ jobs:
           # test file — dist/ is gitignored, so a broken build config would
           # otherwise only surface at publish time.
           npm run build
-      - name: SAK integration typecheck + AuditBind cross-language tests
+      - name: Agent guard typecheck, tests, and the cross-language corpus
+        working-directory: integrations/agent-guard
+        run: |
+          # The framework-independent guard (R-P8 phase 3): the one package
+          # that holds the signing key in every integration. `npm ci` for the
+          # lockfile, `npm run` for the binaries: `npx tsc` and `npx tsx`
+          # would fetch whatever version resolves at job time.
+          # `--ignore-scripts` (A6-09): nothing here needs an install script.
+          npm ci --ignore-scripts
+          npm run typecheck
+          # Every *.test.ts in the directory, so a test file cannot sit in
+          # the repository looking like a gate without ever running.
+          npm test
+          # The guard and the Rust Core are two implementations of one
+          # agreement: the guard serializes a transaction and describes its
+          # instructions, the Core reads both and decides whether they agree.
+          # `sak_bridge_artifact.json` and `sak_bridge_corpus.json` are the
+          # TypeScript side's real output and the Rust suite asserts against
+          # them, so they are regenerated from the code rather than kept in
+          # step by hand. Any drift shows up as a diff here instead of as a
+          # blocked transaction in production.
+          npm run emit:artifact-fixture
+          npm run emit:corpus
+          git diff --exit-code -- \
+            ../../graphite-core/fixtures/artifacts/sak_bridge_artifact.json \
+            ../../graphite-core/fixtures/artifacts/sak_bridge_corpus.json
+      - name: SAK adapter typecheck + tests
         working-directory: integrations/solana-agent-kit
         run: |
-          # `npm ci` for the lockfile, `npm run` for the binaries. `npx tsc`
-          # and `npx tsx` fetch whatever version resolves at job time, which
-          # puts an unpinned download inside the build of the thing that is
-          # supposed to be the trustworthy part of the stack.
+          # The adapter imports the guard's sources from ../agent-guard, which
+          # resolve their dependencies from the guard's own node_modules
+          # (installed in the step above).
           #
           # `--ignore-scripts` (A6-09): this tree has lifecycle scripts in
           # usb, node-hid, secp256k1, keccak, bufferutil, protobufjs, esbuild
-          # and more, and they would run on the same runner that regenerates
-          # the SAK fixtures diffed below. None is needed: the native ones
-          # fall back to pure JS or are never loaded by the tests. The bridge
-          # has no postinstall of its own any more: its rpc-websockets patch
-          # existed for old web3.js copies inside the plugin trees the bridge
-          # stopped loading (2026-09-30), so no script runs at all.
+          # and more. None is needed: the native ones fall back to pure JS or
+          # are never loaded by the tests.
           npm ci --ignore-scripts
           npm run typecheck
-          # `npm test` runs every *.test.ts in the directory. The previous
-          # invocation named two files, so a third test file could sit in the
-          # repository looking like a gate without ever running.
           npm test
-          # The bridge and the Rust Core are two implementations of one
-          # agreement: the bridge serializes a transaction and describes its
-          # instructions, the Core reads both and decides whether they agree.
-          # `sak_bridge_artifact.json` is the TypeScript side's real output and
-          # the Rust suite asserts against it, so it has to be regenerated from
-          # the code rather than kept in step by hand. Any drift shows up as a
-          # diff here instead of as a blocked transaction in production.
-          npm run emit:artifact-fixture
-          npm run emit:corpus
-          git diff --exit-code --             ../../graphite-core/fixtures/artifacts/sak_bridge_artifact.json             ../../graphite-core/fixtures/artifacts/sak_bridge_corpus.json
 
   go:
     name: Go SDK — fmt, vet, tests

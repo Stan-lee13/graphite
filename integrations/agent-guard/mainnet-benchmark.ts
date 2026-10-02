@@ -83,20 +83,16 @@ interface BenchmarkResult {
 }
 
 /**
- * Transactions the benchmark could not include because they are version 1.
- * The fetch asks for version 0 at most because `@solana/web3.js` 1.x, which
- * this tool parses with, cannot decode a v1 message; the RPC answers a v1
- * transaction with an error instead. Those used to be skipped silently, so a
- * benchmark run said nothing about v1 traffic (review of the 2026-09-29 audit,
- * R9). They are counted and reported until the `@solana/kit` migration
- * (roadmap gap R-P8) lets this tool read them.
+ * Version-1 transactions the benchmark read (SIMD-0385). Until R-P8 phase 4
+ * the fetch asked for version 0 at most, because `@solana/web3.js` before
+ * 1.99 could not decode a v1 message, and the RPC refused every v1
+ * transaction with -32015; those were counted as excluded (review of the
+ * 2026-09-29 audit, R9). The tool now requests version 1 (web3.js 1.99 reads
+ * `MessageV1`), so v1 traffic is in the sample, and this counts how much.
  */
-let v1Excluded = 0;
-
-function isVersionRefusal(err: unknown): boolean {
-  const m = String((err as Error)?.message ?? err);
-  return m.includes("-32015") || /transaction version \(\d+\) is not supported/i.test(m);
-}
+let v1Read = 0;
+/** Fetches that failed for any reason; reported, never silently dropped. */
+let fetchFailed = 0;
 
 async function fetchRealTransactions(connection: Connection, address: string, limit: number = 3): Promise<any[]> {
   try {
@@ -105,12 +101,14 @@ async function fetchRealTransactions(connection: Connection, address: string, li
     for (const sig of signatures.slice(0, limit)) {
       try {
         const tx = await connection.getParsedTransaction(sig.signature, {
-          maxSupportedTransactionVersion: 0,
+          maxSupportedTransactionVersion: 1,
         });
-        if (tx) txs.push(tx);
-      } catch (e) {
-        if (isVersionRefusal(e)) v1Excluded++;
-        // any other failed fetch is skipped as before
+        if (tx) {
+          if (tx.version === 1) v1Read++;
+          txs.push(tx);
+        }
+      } catch {
+        fetchFailed++;
       }
       await new Promise(r => setTimeout(r, 250)); // rate limit courtesy
     }
@@ -334,7 +332,7 @@ async function main() {
   const avgLatency = results.length > 0 ? (results.reduce((s, r) => s + r.latencyMs, 0) / results.length).toFixed(0) : "N/A";
 
   console.log(`Total cases: ${results.length}`);
-  console.log(`v1 transactions excluded (web3.js 1.x cannot parse v1; R-P8): ${v1Excluded}`);
+  console.log(`v1 transactions read: ${v1Read}; fetches failed: ${fetchFailed}`);
   console.log(`Correct: ${results.filter(r => r.correct).length}/${results.length}`);
   console.log(`Accuracy: ${accuracy}%`);
   console.log(`Precision: ${precision}% (TP=${tp}, FP=${fp})`);

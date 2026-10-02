@@ -51,6 +51,21 @@ updates:
         update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
+    directory: /integrations/agent-guard
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    ignore:
+      # @types/node follows the Node major CI and the docs run (22 LTS): types
+      # from a later major would typecheck APIs the runtime does not have.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      agent-guard:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
     directory: /integrations/solana-agent-kit
     schedule:
       interval: weekly

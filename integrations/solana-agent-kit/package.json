@@ -4,18 +4,13 @@
   "engines": {
     "node": ">=22"
   },
-  "description": "Graphite-verified Solana Agent Kit integration — every SAK transaction is verified by Graphite Core before execution.",
+  "description": "Solana Agent Kit adapter for Graphite: the verified paths are @graphite/agent-guard's; SAK gets a wallet that cannot sign.",
   "type": "module",
   "scripts": {
-    "demo": "tsx demo.ts",
     "typecheck": "tsc --noEmit",
-    "test:auditbind": "tsx --test auditbind.test.ts",
-    "test": "tsx --test *.test.ts",
-    "emit:artifact-fixture": "tsx emit-artifact-fixture.ts",
-    "emit:corpus": "tsx emit-corpus.ts"
+    "test": "tsx --test *.test.ts"
   },
   "dependencies": {
-    "@solana/kit": "^8.4.0",
     "@solana/web3.js": "^1.95.0",
     "bs58": "^6.0.0",
     "solana-agent-kit": "^2.0.10"
@@ -33,5 +28,6 @@
     "hono": "4.13.12",
     "ip-address": "10.7.2",
     "qs": "6.16.0"
-  }
+  },
+  "license": "MIT"
 }

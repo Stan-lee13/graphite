@@ -33,7 +33,7 @@ whose verdict L8 could never join to the chain's bytes. With it, the verdict's `
 `descriptive` and constrains nothing about what is signed. An executor must require
 `artifact_bound`, sign exactly the bytes it sent, and recompute the digest before
 signing — the reference implementation is `BoundTransaction.signApproved` in
-`integrations/solana-agent-kit/artifact.ts`.
+`integrations/agent-guard/artifact.ts`.
 
 **`verifyTransactionDigest(bytes, result)` (Round 19)** is that check for any executor
 that is not the reference bridge: it throws unless `result` is an approval, its scope is
@@ -63,7 +63,7 @@ than 2026-09-12, which is unknown, not clear). `INHERENT_UNOBSERVED` holds the t
 every artifact-bound verdict carries; every other code names an observation that was
 possible and did not happen, and an executor must refuse it unless the operator has
 accepted it by name — the reference is `ResidualPolicy` in
-`integrations/solana-agent-kit/residual-policy.ts`.
+`integrations/agent-guard/residual-policy.ts`.
 
 ## Send the bytes you sent to the trail, too
 
@@ -95,4 +95,4 @@ different signature is already on record for that transaction. From
 `submission` onward, `transaction_signature` is required and must be a real
 signature. The
 reference sequence is `executeBoundTransaction` in
-`integrations/solana-agent-kit/execution-lifecycle.ts`.
+`integrations/agent-guard/execution-lifecycle.ts`.

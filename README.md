@@ -202,17 +202,19 @@ graphite/
 │   └── go/                        ← Go SDK (same client + AuditBind, 19-field parity)
 │
 ├── integrations/
-│   └── solana-agent-kit/          ← SAK v2 integration (verified execution gate)
-│       ├── graphite-sak-bridge.ts ← Builds ONE BoundTransaction, verifies it, signs only on artifact_bound approval
-│       ├── artifact.ts            ← BoundTransaction: deep-copied, digest-rechecked, signer-set-checked signing gate; messageOf
-│       ├── auditbind.ts           ← Secondary instruction-level binding (content_hash); the digest is authoritative
-│       ├── bound-instruction.ts   ← Builds the swap instruction from the verified payload, never from SAK's builder
-│       ├── emit-corpus.ts         ← Cross-language corpus: 15 shapes + 2,897 byte-level mutations, diffed in CI
-│       ├── residual-policy.ts     ← Which unobserved residuals a deployment accepts; refuses the rest before signing
-│       ├── execution-lifecycle.ts ← The one path from verdict to network: policy → sign → record → submit → record → confirm → L8
-│       ├── demo.ts               ← End-to-end demo
-│       ├── devnet-test.ts         ← Live devnet test (BoundTransaction → signApproved → sendRawTransaction)
-│       └── mainnet-benchmark.ts   ← Real mainnet exploit benchmark runner
+│   ├── agent-guard/               ← The verification gate every integration signs through (no framework dependency)
+│   │   ├── guard.ts               ← GraphiteGuard: builds ONE BoundTransaction, verifies it, signs only on artifact_bound approval
+│   │   ├── cli.ts                 ← Runs one request through the guard from a terminal (real path; exit 0/2/1)
+│   │   ├── artifact.ts            ← BoundTransaction: deep-copied, digest-rechecked, signer-set-checked signing gate; messageOf
+│   │   ├── kit-artifact.ts        ← Compiles legacy, v0 and v1 (SIMD-0385) messages through @solana/kit
+│   │   ├── auditbind.ts           ← Secondary instruction-level binding (content_hash); the digest is authoritative
+│   │   ├── bound-instruction.ts   ← Builds the swap instruction from the verified payload, never from a framework's builder
+│   │   ├── emit-corpus.ts         ← Cross-language corpus: 15 shapes + 2,897 byte-level mutations, diffed in CI
+│   │   ├── residual-policy.ts     ← Which unobserved residuals a deployment accepts; refuses the rest before signing
+│   │   ├── execution-lifecycle.ts ← The one path from verdict to network: policy → sign → record → submit → record → confirm → L8
+│   │   ├── devnet-test.ts         ← Live devnet test (BoundTransaction → signApproved → sendRawTransaction)
+│   │   └── mainnet-benchmark.ts   ← Real mainnet exploit benchmark runner
+│   └── solana-agent-kit/          ← SAK adapter: VerifiedSakAgent over the guard; SAK gets a wallet that cannot sign
 │
 ├── python-ai-layer/               ← Advisory intent parser (P1: AI never decides)
 │   ├── intent_parser.py
@@ -372,7 +374,7 @@ A rebuilt or refreshed transaction is a different digest and is refused.
 
 ```ts
 import { GraphiteClient, isArtifactBound } from "@graphite/sdk";
-import { BoundTransaction } from "./artifact.js"; // integrations/solana-agent-kit
+import { BoundTransaction } from "./artifact.js"; // integrations/agent-guard
 import { ResidualPolicy } from "./residual-policy.js";
 
 const graphite = new GraphiteClient({ baseUrl, apiKey });
@@ -431,7 +433,7 @@ audit_trail_id })` for L8. `content_hash` alone names every transaction
 carrying that instruction; the exact keys name yours. L8 itself joins on the
 chain's bytes when it can fetch them and reports which key it used
 (`attribution`). The reference sequence is `executeBoundTransaction` in
-`integrations/solana-agent-kit/execution-lifecycle.ts`; no irreversible step
+`integrations/agent-guard/execution-lifecycle.ts`; no irreversible step
 proceeds unless the step before it is on the trail.
 
 **`content_hash` is the audit key, not the binding.** `content_hash` is a
@@ -595,23 +597,27 @@ graphite registry submit --manifest ./candidate.json   --signer-key-file ./key.h
 
 There is deliberately no `build --simulate`. `verify` already simulates when an RPC client is attached, and a separate build-and-simulate command would need its own transaction-plan input format — inventing one to round out a list is the kind of surface that exists to be listed rather than used.
 
-### 3. Run the SAK integration demo
+### 3. Run one request through the guard
 
 ```bash
-# Start AI Layer (separate process, P1 compliance)
+# Start the AI layer (separate process, P1 compliance)
 cd python-ai-layer
 python3 intent_parser.py --serve --port 8081
 
-# Run the demo
-cd ../integrations/solana-agent-kit
-npx tsx demo.ts "Swap 0.5 SOL for USDC"
+# One transfer, end to end (SOLANA_PRIVATE_KEY, SOLANA_RPC_URL, GRAPHITE_CORE_URL set)
+cd ../integrations/agent-guard
+npm ci --ignore-scripts
+npx tsx cli.ts transfer "Transfer 0.05 SOL to <address>"
 ```
 
-The demo shows the full flow:
-1. AI Layer parses "Swap 0.5 SOL for USDC" → `ProposedIntent`
-2. SAK constructs the Jupiter V6 swap transaction
-3. Graphite verifies the transaction → `VerificationResult`
-4. If approved → SAK executes. If blocked → transaction is NOT submitted.
+The flow:
+1. The AI layer parses the request → `ProposedIntent` (advisory)
+2. The guard re-derives amount and destination from the user's own text and refuses a parse that disagrees
+3. The guard builds ONE transaction and Graphite verifies those exact bytes → `VerificationResult`
+4. Approved and artifact-bound → the guard signs those bytes and submits them. Blocked → nothing is signed (exit status 2).
+
+This is the real path: an approval moves funds on whatever cluster `SOLANA_RPC_URL`
+names. A swap needs the exact route instruction (`cli.ts swap "<request>" route.json`).
 
 ---
 
@@ -679,7 +685,7 @@ What we **do not** claim:
 
 What we **do** claim:
 
-- **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`, counting DISTINCT sound transactions: the same bytes re-verified are one observation, and a request refused at L2 or by the Risk Engine is none) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and SAK demo default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile; `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
+- **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`, counting DISTINCT sound transactions: the same bytes re-verified are one observation, and a request refused at L2 or by the Risk Engine is none) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and the agent guard default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile (which the Core clamps to Gaming unless the operator allows permissive profiles); `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
 - 1,849 Rust tests passing (1,864 total; 15 network- or sample-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
 - 12 detection patterns (13 `RiskPattern` variants counting the `PluginBlock` plugin veto) and the Risk Engine's 16 checks, plus the priority-fee bound, are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
 - 129 protocol manifests / 3,195 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20; Stake and the BPF Upgradeable Loader rebuilt from their interfaces in Round 22), program IDs verified against on-chain sources and pinned both ways by test; 96 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
