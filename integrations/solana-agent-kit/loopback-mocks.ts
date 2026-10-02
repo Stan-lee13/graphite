@@ -76,12 +76,16 @@ function closer(server: Server): () => Promise<void> {
 }
 
 /**
- * Every signature slot of a base64 wire transaction, checked with a reader
- * independent of the code under test: compact-u16 count (at most 3 bytes),
- * then `count` 64-byte slots.
+ * The signature slots of a wire transaction, read independently of the code
+ * under test. Legacy and v0: a compact-u16 count (at most 3 bytes), then
+ * `count` 64-byte slots. v1 (first byte 0x81): the header's first byte is the
+ * signer count, and the slots are the frame's last `count × 64` bytes.
  */
-export function wireHasAnySignature(base64: string): boolean {
-  const wire = Buffer.from(base64, "base64");
+function signatureSlots(wire: Buffer): Buffer {
+  if (wire[0] === 0x81) {
+    const count = wire[1];
+    return wire.subarray(wire.length - count * 64);
+  }
   let count = 0;
   let offset = 0;
   for (let shift = 0; shift < 21; shift += 7) {
@@ -89,14 +93,31 @@ export function wireHasAnySignature(base64: string): boolean {
     count |= (b & 0x7f) << shift;
     if ((b & 0x80) === 0) break;
   }
-  const slots = wire.subarray(offset, offset + count * 64);
-  return slots.some((b) => b !== 0);
+  return wire.subarray(offset, offset + count * 64);
+}
+
+/** Every signature slot of a base64 wire transaction: is any of them filled? */
+export function wireHasAnySignature(base64: string): boolean {
+  return signatureSlots(Buffer.from(base64, "base64")).some((b) => b !== 0);
+}
+
+/** What an RPC answers to sendTransaction: the transaction's id, its first signature. */
+export function wireTransactionId(base64: string): string {
+  return bs58.encode(signatureSlots(Buffer.from(base64, "base64")).subarray(0, 64));
 }
 
 /** A blockhash the stand-in hands out — 32 bytes of 0x07, base58. */
 export const MOCK_BLOCKHASH = bs58.encode(new Uint8Array(32).fill(7));
 
-export async function mockRpc(opts: { unitsConsumed?: number } = {}): Promise<Loopback> {
+export async function mockRpc(
+  opts: {
+    unitsConsumed?: number;
+    /** What simulateTransaction reports as `loadedAccountsDataSize`; null leaves the field out. */
+    loadedAccountsDataSize?: number | null;
+    /** A simulation error to report instead of success. */
+    simulationErr?: unknown;
+  } = {},
+): Promise<Loopback> {
   const calls: RecordedCall[] = [];
   const { server, url } = await listen(
     (_m, _p, body) => {
@@ -112,7 +133,7 @@ export async function mockRpc(opts: { unitsConsumed?: number } = {}): Promise<Lo
           return ok({
             context: { slot: 1 },
             value: {
-              err: null,
+              err: opts.simulationErr ?? null,
               logs: [
                 "Program 11111111111111111111111111111111 invoke [1]",
                 `Program 11111111111111111111111111111111 consumed ${opts.unitsConsumed ?? 150} of 200000 compute units`,
@@ -120,10 +141,16 @@ export async function mockRpc(opts: { unitsConsumed?: number } = {}): Promise<Lo
               ],
               accounts: null,
               unitsConsumed: opts.unitsConsumed ?? 150,
+              ...(opts.loadedAccountsDataSize === null
+                ? {}
+                : { loadedAccountsDataSize: opts.loadedAccountsDataSize ?? 2_048 }),
             },
           });
-        case "sendTransaction":
-          return ok("1111111111111111111111111111111111111111111111111111111111111111");
+        case "sendTransaction": {
+          // A real RPC answers with the id the bytes carry.
+          const wire = (req as { params?: unknown[] }).params?.[0];
+          return ok(typeof wire === "string" ? wireTransactionId(wire) : null);
+        }
         default:
           return {
             status: 200,

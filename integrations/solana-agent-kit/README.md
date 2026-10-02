@@ -112,8 +112,23 @@ submitted — and nothing is signed under a residual the operator has not accept
   verification request declares `uses_versioned_transaction` / `lookup_table_count`
   from the bytes. Tables given for a legacy message are refused, not ignored. The bridge's
   v0 bytes are pinned byte-for-byte to the cross-language corpus entry the Rust parser
-  reads (`bound-transaction.test.ts`). Version 1 is not built: web3.js 1.x cannot compile
-  it; the Core verifies v1 bytes from any builder that can.
+  reads (`bound-transaction.test.ts`).
+- **Version 1 (SIMD-0385; R-P8 phase 2).** Set `transactionVersion: 1` (or
+  `GRAPHITE_TRANSACTION_VERSION=1`; anything but `legacy` or `1` refuses to start) and
+  the bridge builds v1 messages through `@solana/kit`. In v1 an unset compute or
+  loaded-data limit is ZERO, so the bridge first measures both with an UNSIGNED v1 draft
+  at the runtime maxima (`RpcSimulator.estimateV1Limits`: base64, `sigVerify: false`,
+  placeholder blockhash) and builds the verified message with the measurement plus 20%
+  compute headroom and the next 32 KiB data page. Refused at build: a v1 message without
+  limits, out-of-range limits or heap, any ComputeBudget instruction (a no-op in v1),
+  lookup tables (v1 carries up to 64 addresses inline in 4,096 bytes), and anything
+  `messageOf` refuses — a port of the Core's `parse_v1`, rule for rule. Signatures trail a
+  v1 message; every helper that slices a frame dispatches on the leading `0x81`. The two
+  v1 shapes the bridge builds are in the cross-language corpus, read by the Rust Core.
+- **The transaction id is read from the signed bytes.** The submission, the audit trail
+  and L8 use the fee payer's signature as this process signed it; an RPC answering
+  `sendTransaction` with another id is logged and kept as `lifecycle.rpcReportedSignature`,
+  never used.
 - `scope.unobserved` is printed for every verdict; which residuals a deployment
   accepts is the deployment's decision, made in configuration and enforced by the
   residual policy above.
@@ -159,7 +174,7 @@ unverifiedReason?, lifecycle? }`. Gate on `verifiedExecution`. Since Round 19 th
 unverified path, so `executed` and `verifiedExecution` agree and `unverifiedReason` is
 never set; both stay on the type so existing callers compile. `lifecycle` (every
 verified execution) is
-`{ signature, acceptedUnobserved, signingRecorded, verdictOnRecordAtSigning,
+`{ signature, rpcReportedSignature?, acceptedUnobserved, signingRecorded, verdictOnRecordAtSigning,
 submissionRecorded, submissionRecordError?, confirmed, confirmationError?,
 reconciliation?, reconciliationError? }` — read `reconciliation.discrepancy` for L8's
 verdict on what actually landed.
@@ -168,12 +183,12 @@ verdict on what actually landed.
 
 ```bash
 npm run typecheck
-npm test                 # 153 tests: BoundTransaction gate, execution-boundary fuzz,
+npm test                 # 170 tests: BoundTransaction gate (legacy, v0, v1), execution-boundary fuzz,
                          # TOCTOU signing boundary, AuditBind, artifact, nonces,
                          # residual policy, execution lifecycle (incl. the Round 12
                          # submission-report retry)
 npm run emit:corpus      # regenerates graphite-core/fixtures/artifacts/sak_bridge_corpus.json
-                         # (12 shapes + 1,659 byte-level mutations); CI fails on drift
+                         # (15 shapes incl. two v1 + 2,897 byte-level mutations); CI fails on drift
 npm run emit:artifact-fixture
 ```
 

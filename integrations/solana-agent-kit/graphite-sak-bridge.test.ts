@@ -16,7 +16,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Keypair, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
-import { VerifiedSakAgent, UngatedSigningRefused, IntentGroundingError } from "./graphite-sak-bridge.js";
+import {
+  VerifiedSakAgent,
+  UngatedSigningRefused,
+  IntentGroundingError,
+  parseTransactionVersion,
+} from "./graphite-sak-bridge.js";
 import { BLOCKED_VERDICT, mockRpc, mockService, type Loopback, type MockService } from "./loopback-mocks.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
@@ -42,7 +47,9 @@ interface Harness {
   close(): Promise<void>;
 }
 
-async function harness(opts: { withSak?: boolean; aiLayerTimeoutMs?: number } = {}): Promise<Harness> {
+async function harness(
+  opts: { withSak?: boolean; aiLayerTimeoutMs?: number; transactionVersion?: "legacy" | 1 } = {},
+): Promise<Harness> {
   const rpc = await mockRpc();
   const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
@@ -58,6 +65,7 @@ async function harness(opts: { withSak?: boolean; aiLayerTimeoutMs?: number } = 
     // code path in these tests calls a model.
     openAiApiKey: opts.withSak ? "loopback-test-placeholder-not-a-key" : undefined,
     aiLayerTimeoutMs: opts.aiLayerTimeoutMs,
+    transactionVersion: opts.transactionVersion,
   });
   return {
     agent,
@@ -406,5 +414,47 @@ test("R8: the wallet's secret key is not reachable through the bridge object or 
     assert.deepEqual(found, [], `the secret key is reachable: ${found.join("; ")}`);
   } finally {
     await h.close();
+  }
+});
+
+test("R-P8 phase 2: with transactionVersion 1 the Core is shown an unsigned v1 transfer, budget measured first", async () => {
+  const h = await harness({ transactionVersion: 1 });
+  try {
+    const outcome = await h.agent.executeTransfer(REQUEST);
+    assert.equal(outcome.executed, false, "the loopback Core blocked; nothing may execute");
+    const sims = h.rpc.calls.filter((c) => c.method === "simulateTransaction");
+    // The advisory pre-verdict simulation and the v1 sizing simulation.
+    assert.equal(sims.length, 2);
+    for (const call of h.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
+    assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
+    const verify = h.core.calls.find((c) => c.method === "POST /verify")!;
+    const body = verify.params as { signed_transaction: number[]; uses_versioned_transaction: boolean; lookup_table_count: number };
+    const wire = Buffer.from(body.signed_transaction);
+    assert.equal(wire[0], 0x81, "a v1 frame");
+    assert.equal(body.uses_versioned_transaction, true, "the declaration describes v1 bytes as versioned");
+    assert.equal(body.lookup_table_count, 0);
+    // The loopback RPC measured 150 CU and 2,048 bytes: the message carries
+    // 180 CU (20% headroom) and one 32 KiB page, in mask order.
+    assert.equal(wire.readUInt32LE(4), 0b1100, "compute and loaded-data limits, nothing else");
+    assert.ok(wire.subarray(wire.length - 64).every((b) => b === 0), "the trailing slot is empty");
+    const keys = 3 * 32;
+    const valuesAt = 1 + 3 + 4 + 32 + 2 + keys;
+    assert.equal(wire.readUInt32LE(valuesAt), 180);
+    assert.equal(wire.readUInt32LE(valuesAt + 4), 32 * 1024);
+    // The sizing simulation ran before the Core was asked: the limits are
+    // part of the verified bytes.
+    assert.ok(sims.every((s) => s.seq < verify.seq));
+  } finally {
+    await h.close();
+  }
+});
+
+test("GRAPHITE_TRANSACTION_VERSION: legacy and 1 are read, anything else refuses to start", () => {
+  assert.equal(parseTransactionVersion(undefined), "legacy");
+  assert.equal(parseTransactionVersion(""), "legacy");
+  assert.equal(parseTransactionVersion("legacy"), "legacy");
+  assert.equal(parseTransactionVersion("1"), 1);
+  for (const bad of ["v1", "0", "2", " 1", "LEGACY"]) {
+    assert.throws(() => parseTransactionVersion(bad), /REFUSING TO START/, bad);
   }
 });

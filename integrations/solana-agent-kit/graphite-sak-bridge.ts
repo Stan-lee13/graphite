@@ -139,6 +139,23 @@ export interface ExecutionOutcome {
  */
 export const UNVERIFIED_SWAP_OPT_IN = "I_ACCEPT_UNVERIFIED_SWAP_EXECUTION";
 
+/** The message formats the bridge can be configured to build. */
+export type BridgeTransactionVersion = "legacy" | 1;
+
+/**
+ * `GRAPHITE_TRANSACTION_VERSION`: unset or `legacy` builds legacy (v0 for a
+ * route with lookup tables), `1` builds v1 (SIMD-0385, live on mainnet since
+ * epoch 1035). Anything else is refused at startup rather than read as the
+ * default: an operator who asked for v1 and got legacy would not know.
+ */
+export function parseTransactionVersion(value: string | undefined): BridgeTransactionVersion {
+  if (value === undefined || value === "" || value === "legacy") return "legacy";
+  if (value === "1") return 1;
+  throw new Error(
+    `[Graphite] GRAPHITE_TRANSACTION_VERSION=${JSON.stringify(value)} is not "legacy" or "1". REFUSING TO START.`,
+  );
+}
+
 // Round 19 (F-19-C6) / A5-07: the environment names, and the refusal of the
 // legacy ones, live in a dependency-free module the dev scripts share.
 import { LEGACY_ENV_NAMES, assertNoLegacyEnvNames } from "./env-names.js";
@@ -236,17 +253,19 @@ export class VerifiedSakAgent {
   #walletKeypair: Keypair;
   private simulator: RpcSimulator;
   private residualPolicy: ResidualPolicy;
+  private transactionVersion: BridgeTransactionVersion;
 
   private constructor(
     sakAgent: SolanaAgentKit | null, graphite: GraphiteClient, connection: Connection,
     walletProfile: WalletProfile, aiLayerUrl: string, walletPublicKey: string, walletKeypair: Keypair,
-    residualPolicy: ResidualPolicy, aiLayerTimeoutMs: number,
+    residualPolicy: ResidualPolicy, aiLayerTimeoutMs: number, transactionVersion: BridgeTransactionVersion,
   ) {
     this.sakAgent = sakAgent; this.graphite = graphite; this.connection = connection;
     this.walletProfile = walletProfile; this.aiLayerUrl = aiLayerUrl; this.aiLayerTimeoutMs = aiLayerTimeoutMs;
     this.walletPublicKey = walletPublicKey; this.#walletKeypair = walletKeypair;
     this.simulator = new RpcSimulator(connection.rpcEndpoint);
     this.residualPolicy = residualPolicy;
+    this.transactionVersion = transactionVersion;
   }
 
   /** The `reported_by` on every lifecycle row this bridge writes. */
@@ -268,6 +287,12 @@ export class VerifiedSakAgent {
     acceptUnobserved?: string[];
     /** How long `parseIntent` waits for the AI layer. Default AI_LAYER_TIMEOUT_MS. */
     aiLayerTimeoutMs?: number;
+    /**
+     * The message format the bridge builds: `"legacy"` (the default, with v0
+     * when a swap route names lookup tables) or `1` (SIMD-0385). Overrides
+     * GRAPHITE_TRANSACTION_VERSION. See `parseTransactionVersion`.
+     */
+    transactionVersion?: BridgeTransactionVersion;
   }): Promise<VerifiedSakAgent> {
     // Before any default is applied: a legacy variable name must not quietly
     // become "use localhost" (Round 19, F-19-C6).
@@ -286,6 +311,9 @@ export class VerifiedSakAgent {
       config?.aiLayerUrl ?? process.env.GRAPHITE_AI_LAYER_URL ?? "http://127.0.0.1:8081",
     );
     const aiLayerTimeoutMs = config?.aiLayerTimeoutMs ?? AI_LAYER_TIMEOUT_MS;
+    // A misspelt version is a startup error, never a silent legacy build.
+    const transactionVersion =
+      config?.transactionVersion ?? parseTransactionVersion(process.env.GRAPHITE_TRANSACTION_VERSION);
     // Phase 1 calibration: with the three evidence-derived confidence signals
     // intentionally zeroed (Constitution G4 — request-body evidence is
     // attacker-controlled) and trust tiers capped at OfficialManifest (P7), the
@@ -353,7 +381,7 @@ export class VerifiedSakAgent {
 
     return new VerifiedSakAgent(
       sakAgent, graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair,
-      residualPolicy, aiLayerTimeoutMs,
+      residualPolicy, aiLayerTimeoutMs, transactionVersion,
     );
   }
 
@@ -514,8 +542,9 @@ export class VerifiedSakAgent {
       account_writes: accountWrites, cpi_hops: cpiHops,
       behavior_evidence, real_account_metas: params.realAccountMetas,
       signed_transaction, transaction_instructions,
-      // Round 22: what the bytes are, so the declaration describes them.
-      uses_versioned_transaction: params.bound?.version === 0,
+      // Round 22: what the bytes are, so the declaration describes them. v0
+      // and v1 are both versioned (the Core reads the prefix the same way).
+      uses_versioned_transaction: params.bound !== undefined && params.bound.version !== "legacy",
       lookup_table_count: params.bound?.lookupTableCount ?? 0,
     } as any;
     return this.graphite.verify(input);
@@ -557,6 +586,66 @@ export class VerifiedSakAgent {
       policy: this.residualPolicy,
       reportedBy: this.reporter(),
       label,
+    });
+  }
+
+  /**
+   * Build the one transaction that will be verified, signed and submitted,
+   * in the configured message format.
+   *
+   * Legacy (the default): a legacy message, or v0 reading through the lookup
+   * tables a swap route names (Round 22). Every table must be readable; one
+   * that is not is a refusal, never a smaller transaction than the route
+   * asked for.
+   *
+   * Version 1 (R-P8 phase 2): v1 has no lookup tables and up to 64 inline
+   * addresses in 4,096 bytes, so a route's accounts are carried inline and
+   * its tables are not read; a route too large for that is refused by
+   * `BoundTransaction.build`. The limits are measured by an unsigned
+   * simulation first (`RpcSimulator.estimateV1Limits`): in v1 an unset limit
+   * is zero, and the limits are part of the bytes Graphite verifies.
+   */
+  private async buildBound(
+    instructions: TransactionInstruction[],
+    tableAddresses: string[] = [],
+  ): Promise<BoundTransaction> {
+    const feePayer = this.#walletKeypair.publicKey;
+    if (this.transactionVersion === 1) {
+      const limits = await this.simulator.estimateV1Limits({ instructions, feePayer });
+      console.log(
+        `[Graphite] v1 budget measured: ${limits.unitsConsumed} CU used -> limit ${limits.computeUnitLimit}; ` +
+          `${limits.loadedAccountsDataSize} bytes loaded -> limit ${limits.loadedAccountsDataSizeLimit}`,
+      );
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+      return BoundTransaction.build({
+        instructions,
+        feePayer,
+        recentBlockhash: blockhash,
+        lastValidBlockHeight,
+        version: 1,
+        v1Limits: {
+          computeUnitLimit: limits.computeUnitLimit,
+          loadedAccountsDataSizeLimit: limits.loadedAccountsDataSizeLimit,
+        },
+      });
+    }
+    const addressLookupTables: AddressLookupTableAccount[] = [];
+    for (const address of tableAddresses) {
+      const table = (await this.connection.getAddressLookupTable(new PublicKey(address))).value;
+      if (!table) {
+        throw new Error(
+          `[Graphite] address lookup table ${address} named by the swap payload could not be read. ABORTING.`,
+        );
+      }
+      addressLookupTables.push(table);
+    }
+    const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+    return BoundTransaction.build({
+      instructions,
+      feePayer,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+      ...(addressLookupTables.length > 0 ? { version: 0 as const, addressLookupTables } : {}),
     });
   }
 
@@ -613,14 +702,7 @@ export class VerifiedSakAgent {
     // Graphite verifies come out of it, the digest is re-checked against it
     // immediately before signing, and the signed bytes come from it. There is
     // no second transaction for the two to drift apart.
-    const { blockhash, lastValidBlockHeight } =
-      await this.connection.getLatestBlockhash();
-    const bound = BoundTransaction.build({
-      instructions: [transferIx],
-      feePayer: this.#walletKeypair.publicKey,
-      recentBlockhash: blockhash,
-      lastValidBlockHeight,
-    });
+    const bound = await this.buildBound([transferIx]);
     const verification = await this.verifyTransaction({
       programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
       accountAddresses: [this.walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
@@ -811,29 +893,10 @@ export class VerifiedSakAgent {
     const realAccountMetas = payload.accounts.map((a) => ({ is_signer: a.isSigner, is_writable: a.isWritable }));
     // Built once, from the payload, before verification — the same construction
     // that used to happen after approval.
-    const { blockhash, lastValidBlockHeight } =
-      await this.connection.getLatestBlockhash();
-    // Round 22: a route that names lookup tables is built as a v0 message
-    // reading through them. Every table must be readable; one that is not is
-    // a refusal, never a smaller transaction than the route asked for.
-    const tableAddresses = payload.addressLookupTableAddresses ?? [];
-    const addressLookupTables: AddressLookupTableAccount[] = [];
-    for (const address of tableAddresses) {
-      const table = (await this.connection.getAddressLookupTable(new PublicKey(address))).value;
-      if (!table) {
-        throw new Error(
-          `[Graphite] address lookup table ${address} named by the swap payload could not be read. ABORTING.`,
-        );
-      }
-      addressLookupTables.push(table);
-    }
-    const boundSwap = BoundTransaction.build({
-      instructions: [buildInstructionFromPayload(payload)],
-      feePayer: this.#walletKeypair.publicKey,
-      recentBlockhash: blockhash,
-      lastValidBlockHeight,
-      ...(tableAddresses.length > 0 ? { version: 0 as const, addressLookupTables } : {}),
-    });
+    const boundSwap = await this.buildBound(
+      [buildInstructionFromPayload(payload)],
+      payload.addressLookupTableAddresses ?? [],
+    );
     const verification = await this.verifyTransaction({
       // No Jupiter default: groundSwapIntent has already refused a payload
       // without a swap program.

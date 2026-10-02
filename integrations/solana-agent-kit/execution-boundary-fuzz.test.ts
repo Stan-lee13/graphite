@@ -102,7 +102,15 @@ test("messageOf accepts every legal signature count at the boundaries", async ()
   ] as [number, number[]][]) {
     const raw = frame(encoded, count, body);
     assert.ok(raw.length > MAX_TRANSACTION_BYTES);
-    assert.throws(() => messageOf(raw), /at most 1232/, `count=${count}`);
+    // A first byte of exactly 0x81 is not a signature count to the runtime:
+    // it is the v1 frame discriminator (SIMD-0385), and `messageOf` reads it
+    // as one, as the Core's `message_bytes` does (R-P8 phase 2). Either way
+    // the frame is refused; the reader underneath still decodes the count.
+    assert.throws(
+      () => messageOf(raw),
+      encoded[0] === 0x81 ? /v1 transaction is at most 4096/ : /at most 1232/,
+      `count=${count}`,
+    );
     assert.deepEqual(readSignatureCount(raw), { count, offset: encoded.length + 64 * count });
   }
   // The most signatures a packet can carry: 19 (19 × 64 = 1216, plus the
@@ -157,10 +165,19 @@ test("messageOf refuses non-minimal encodings", async () => {
     [0x81, 0x00], // 1 in two bytes
     [0xff, 0x80, 0x00], // 127 in three bytes
   ]) {
+    // The count reader refuses every one as a second spelling.
     assert.throws(
-      () => messageOf(frame(encoded, 0)),
+      () => readSignatureCount(frame(encoded, 0)),
       /not minimally encoded/,
       `${JSON.stringify(encoded)} is a second spelling of a shorter number`,
+    );
+    // `messageOf` refuses every one too; one that starts 0x81 is refused as
+    // the v1 frame the runtime would take it for (R-P8 phase 2), never read
+    // as a legacy count.
+    assert.throws(
+      () => messageOf(frame(encoded, 0)),
+      encoded[0] === 0x81 ? /v1 frame truncated/ : /not minimally encoded/,
+      `${JSON.stringify(encoded)}`,
     );
   }
 });

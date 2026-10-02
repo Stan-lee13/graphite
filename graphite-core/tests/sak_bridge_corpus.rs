@@ -44,10 +44,16 @@ fn strings(v: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-/// The message half: everything after the compact-u16 signature array. The
-/// Rust twin of the TypeScript `messageOf`, written independently so the two
-/// agreeing is evidence rather than tautology.
+/// The message half: everything after the compact-u16 signature array, or
+/// for a v1 frame (`0x81` first) everything before its trailing
+/// `num_required_signatures × 64` bytes. The Rust twin of the TypeScript
+/// `messageOf`, written independently so the two agreeing is evidence rather
+/// than tautology.
 fn message_of(raw: &[u8]) -> &[u8] {
+    if raw[0] == 0x81 {
+        let signatures = raw[1] as usize * 64;
+        return &raw[..raw.len() - signatures];
+    }
     let mut offset = 0usize;
     let mut count = 0usize;
     for group in 0..3 {
@@ -76,6 +82,17 @@ fn the_corpus_is_not_trivial() {
     assert!(
         entries.iter().any(|e| e["version"].is_null()),
         "a legacy entry is required"
+    );
+    // R-P8 phase 2: the bridge builds v1, so the Core is held to its bytes.
+    assert!(
+        entries.iter().any(|e| e["version"] == 1),
+        "a v1 entry is required"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["version"] == 1 && strings(&e["required_signers"]).len() >= 2),
+        "a multi-signer v1 entry is required: its signatures trail the message with no count"
     );
     assert!(
         entries
@@ -154,8 +171,40 @@ fn rust_reaches_every_conclusion_the_typescript_side_recorded() {
         } else {
             assert!(
                 m.lookups.is_empty(),
-                "{name}: a legacy entry has no lookups"
+                "{name}: a legacy or v1 entry has no lookups"
             );
+        }
+
+        // The v1 config, as kit's decoder read it (R-P8 phase 2). A v1
+        // message's budget is here and in no instruction, so a Core that
+        // read it differently would judge a different transaction.
+        if let Some(want) = e.get("v1_config") {
+            let got = m
+                .v1_config
+                .unwrap_or_else(|| panic!("{name}: no v1 config parsed"));
+            let field = |k: &str| want[k].as_u64();
+            assert_eq!(
+                got.priority_fee,
+                field("priority_fee"),
+                "{name}: priority fee"
+            );
+            assert_eq!(
+                got.compute_unit_limit.map(u64::from),
+                field("compute_unit_limit"),
+                "{name}: compute unit limit"
+            );
+            assert_eq!(
+                got.loaded_accounts_data_size_limit.map(u64::from),
+                field("loaded_accounts_data_size_limit"),
+                "{name}: loaded accounts data size limit"
+            );
+            assert_eq!(
+                got.heap_size.map(u64::from),
+                field("heap_size"),
+                "{name}: heap size"
+            );
+        } else {
+            assert!(m.v1_config.is_none(), "{name}: config on a non-v1 entry");
         }
         println!(
             "{name}: agreed on version, digest, message, signers, keys, instructions, lookups"
@@ -313,7 +362,9 @@ fn mutations() -> Vec<serde_json::Value> {
     raw["mutations"].as_array().expect("mutations").clone()
 }
 
-/// The same 1,647 damaged transactions, read by both sides.
+/// The same damaged transactions (2,897 since the v1 bases, R-P8 phase 2),
+/// read by both sides. For a v1 base the SDK side is `@solana/kit`'s
+/// decoders: `@solana/web3.js` 1.x never decodes v1.
 ///
 /// Three things are required, and one is measured.
 ///

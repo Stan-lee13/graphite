@@ -229,7 +229,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       # The runtime is the authority on what a transaction is, not web3.js.
-      # This decodes the recorded corpus, its 1,659 mutations and 300,000
+      # This decodes the recorded corpus, its 2,897 mutations and 300,000
       # generated frames with the agave crates exactly as a validator's
       # packet path does, and fails on any byte string Graphite parses that
       # the runtime refuses, or reads differently (Round 12). Its own

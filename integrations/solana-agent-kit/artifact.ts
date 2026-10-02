@@ -43,7 +43,8 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
-import { compileWithKit } from "./kit-artifact.js";
+import { compileWithKit, type MessageVersion, type V1Limits } from "./kit-artifact.js";
+export type { MessageVersion, V1Limits };
 
 /** One entry of the Core's `transaction_instructions`. */
 export interface DeclaredInstruction {
@@ -201,7 +202,9 @@ export function realAccountMetas(
  * bytes exposed on the object are copies, so changing them changes nothing
  * that is signed. Legacy messages compile to the bytes web3.js produced; v0
  * messages to the same transaction with accounts sorted within each privilege
- * class (`kit-artifact.test.ts`).
+ * class (`kit-artifact.test.ts`). Version 1 (SIMD-0385, phase 2) carries its
+ * budget in the message config and its signatures at the END of the frame;
+ * every helper below that slices a frame dispatches on the leading `0x81`.
  */
 export class BoundTransaction {
   /** The single compiled transaction that is verified, signed and submitted. */
@@ -219,8 +222,8 @@ export class BoundTransaction {
   private constructor(
     tx: KitTransaction,
     source: TransactionInstruction[],
-    /** `"legacy"`, or `0` for a v0 message (Round 22). */
-    readonly version: "legacy" | 0,
+    /** `"legacy"`, `0` for a v0 message (Round 22) or `1` for a v1 message (R-P8 phase 2). */
+    readonly version: MessageVersion,
     /** How many address lookup tables the v0 message reads; 0 for legacy. */
     readonly lookupTableCount: number,
     artifact: Uint8Array,
@@ -285,16 +288,21 @@ export class BoundTransaction {
    * `version: 0` compiles a v0 message, reading accounts through
    * `addressLookupTables` where they hold them (Round 22). Lookup tables are
    * given as ACCOUNTS, already fetched: a table that could not be read is the
-   * caller's refusal, never a quietly smaller message. Version 1 is not built
-   * here yet (R-P8, phase 2).
+   * caller's refusal, never a quietly smaller message.
+   *
+   * `version: 1` compiles a v1 message (SIMD-0385) and requires `v1Limits`:
+   * in v1 an unset compute-unit or loaded-data limit is zero, not a default.
+   * A v1 message reads no lookup tables, carries no ComputeBudget instruction
+   * (a no-op there) and may be up to 4,096 bytes.
    */
   static build(params: {
     instructions: TransactionInstruction[];
     feePayer: PublicKey;
     recentBlockhash: string;
     lastValidBlockHeight: number;
-    version?: "legacy" | 0;
+    version?: MessageVersion;
     addressLookupTables?: AddressLookupTableAccount[];
+    v1Limits?: V1Limits;
   }): BoundTransaction {
     if (BoundTransaction.isDurableNonce(params.instructions)) {
       throw new Error(
@@ -303,13 +311,13 @@ export class BoundTransaction {
       );
     }
     const version = params.version ?? "legacy";
-    if (version !== "legacy" && version !== 0) {
+    if (version !== "legacy" && version !== 0 && version !== 1) {
       throw new Error(`BoundTransaction: unsupported message version ${String(version)}`);
     }
     const tables = params.addressLookupTables ?? [];
-    if (version === "legacy" && tables.length > 0) {
+    if (version !== 0 && tables.length > 0) {
       throw new Error(
-        "BoundTransaction: address lookup tables were given for a legacy message, which cannot read them. " +
+        `BoundTransaction: address lookup tables were given for a ${version === 1 ? "v1" : "legacy"} message, which cannot read them. ` +
           "Build with version: 0, or without the tables.",
       );
     }
@@ -321,12 +329,21 @@ export class BoundTransaction {
       lastValidBlockHeight: params.lastValidBlockHeight,
       version,
       addressLookupTables: tables,
+      ...(params.v1Limits !== undefined ? { v1Limits: { ...params.v1Limits } } : {}),
     });
     const artifact = Uint8Array.from(getTransactionEncoder().encode(tx));
-    if (artifact.length > MAX_TRANSACTION_BYTES) {
+    const max = version === 1 ? MAX_V1_TRANSACTION_BYTES : MAX_TRANSACTION_BYTES;
+    if (artifact.length > max) {
       throw new Error(
-        `BoundTransaction: the ${version === "legacy" ? "legacy" : "v0"} transaction is ${artifact.length} bytes; the network accepts at most ${MAX_TRANSACTION_BYTES}`,
+        `BoundTransaction: the ${version === "legacy" ? "legacy" : `v${version}`} transaction is ${artifact.length} bytes; the network accepts at most ${max}`,
       );
+    }
+    // The bytes must be a frame both this module and the Core accept. For v1
+    // this applies the runtime's own limits (12 signers, 64 addresses, 64
+    // instructions, no duplicate address, program not the fee payer), which
+    // kit does not check when it compiles.
+    if (!equalBytes(messageOf(artifact), Uint8Array.from(tx.messageBytes))) {
+      throw new Error("BoundTransaction: the compiled frame does not slice back to its own message");
     }
     return new BoundTransaction(
       tx,
@@ -450,8 +467,23 @@ export class BoundTransaction {
   }
 }
 
-/** Version byte, header and static keys of a legacy or v0 message. */
+/** Version byte, header and static keys of a legacy, v0 or v1 message. */
 function messageKeys(message: Uint8Array): { v0: boolean; header: number[]; keys: string[]; after: number } {
+  if (message[0] === V1_PREFIX) {
+    // 0x81, header (3), config mask (u32), lifetime (32), instruction count
+    // (u8), address count (u8), then the addresses.
+    const header = [message[1], message[2], message[3]];
+    const count = message[V1_LIFETIME_OFFSET + 32 + 1];
+    if (count === undefined) throw new Error("[Graphite] truncated message");
+    const start = V1_LIFETIME_OFFSET + 32 + 2;
+    const keys: string[] = [];
+    for (let k = 0; k < count; k++) {
+      const key = message.subarray(start + 32 * k, start + 32 * (k + 1));
+      if (key.length !== 32) throw new Error("[Graphite] truncated message");
+      keys.push(bs58.encode(key));
+    }
+    return { v0: false, header, keys, after: start + 32 * count };
+  }
   let i = 0;
   const v0 = (message[0] & 0x80) !== 0;
   if (v0) i++;
@@ -502,11 +534,129 @@ function readShortU16At(b: Uint8Array, at: number): { value: number; next: numbe
 }
 
 /**
- * The largest serialized transaction the network accepts: `PACKET_DATA_SIZE`
- * = 1280 − 40 − 8 = 1232 bytes. Mirrors `MAX_TRANSACTION_BYTES` in
- * `graphite-core/src/tx_artifact.rs`; the corpus pins both sides to it.
+ * The largest serialized legacy or v0 transaction the network accepts:
+ * `PACKET_DATA_SIZE` = 1280 − 40 − 8 = 1232 bytes. Mirrors
+ * `MAX_TRANSACTION_BYTES` in `graphite-core/src/tx_artifact.rs`; the corpus
+ * pins both sides to it.
  */
 export const MAX_TRANSACTION_BYTES = 1232;
+
+/** The largest v1 transaction (SIMD-0296/0385). Mirrors `MAX_V1_TRANSACTION_BYTES`. */
+export const MAX_V1_TRANSACTION_BYTES = 4096;
+
+/** The first byte of a v1 frame. Legacy and v0 frames start with a signature count below 0x80. */
+export const V1_PREFIX = 0x81;
+
+/** Offset of a v1 message's lifetime specifier: prefix, header, config mask. */
+const V1_LIFETIME_OFFSET = 1 + 3 + 4;
+
+const V1_MASK_PRIORITY_FEE = 0b11;
+const V1_MASK_COMPUTE_UNIT_LIMIT = 0b100;
+const V1_MASK_LOADED_ACCOUNTS_DATA_SIZE = 0b1000;
+const V1_MASK_HEAP_SIZE = 0b1_0000;
+const V1_MASK_KNOWN_BITS =
+  V1_MASK_PRIORITY_FEE | V1_MASK_COMPUTE_UNIT_LIMIT | V1_MASK_LOADED_ACCOUNTS_DATA_SIZE | V1_MASK_HEAP_SIZE;
+
+/**
+ * Where a v1 frame's message ends: the offset of its trailing signature array.
+ *
+ * A port of `parse_v1` in `graphite-core/src/tx_artifact.rs`, refusal for
+ * refusal, because the message of a v1 frame is "everything before the
+ * signatures" and only a full parse knows where that is. The two must accept
+ * exactly the same frames (the cross-language corpus holds them to it): the
+ * decoder's rules (a mask with unknown bits or half the priority-fee pair,
+ * anything short, any trailing byte) and `v1::Message::validate`'s (at most 12
+ * signatures, 64 instructions and 64 addresses, a header the addresses can
+ * hold with a writable fee payer, no duplicate address, a heap size that is a
+ * multiple of 1024 in [32 KiB, 256 KiB], every program index in range and not
+ * the fee payer, every account index in range).
+ */
+function v1MessageEnd(raw: Uint8Array): number {
+  let i = 0;
+  const take = (n: number, what: string): Uint8Array => {
+    if (i + n > raw.length) throw new Error(`[Graphite] v1 frame truncated at ${what}`);
+    const out = raw.subarray(i, i + n);
+    i += n;
+    return out;
+  };
+  const u8 = (what: string) => take(1, what)[0];
+  const u32 = (what: string) => {
+    const b = take(4, what);
+    return (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0;
+  };
+  if (u8("message version") !== V1_PREFIX) throw new Error("[Graphite] not a v1 frame");
+  const signers = u8("num_required_signatures");
+  const readonlySigned = u8("num_readonly_signed_accounts");
+  const readonlyUnsigned = u8("num_readonly_unsigned_accounts");
+  const mask = u32("v1 config mask");
+  if ((mask & ~V1_MASK_KNOWN_BITS) >>> 0 !== 0) {
+    throw new Error(`[Graphite] v1 config mask ${mask} sets an unknown bit`);
+  }
+  const feeBits = mask & V1_MASK_PRIORITY_FEE;
+  if (feeBits !== 0 && feeBits !== V1_MASK_PRIORITY_FEE) {
+    throw new Error(`[Graphite] v1 config mask ${mask} sets half of the priority-fee pair`);
+  }
+  take(32, "lifetime specifier");
+  const instructionCount = u8("instruction count");
+  const keyCount = u8("account address count");
+  const keys: string[] = [];
+  for (let k = 0; k < keyCount; k++) keys.push(bs58.encode(take(32, "account address")));
+  if (feeBits === V1_MASK_PRIORITY_FEE) take(8, "v1 priority fee");
+  if (mask & V1_MASK_COMPUTE_UNIT_LIMIT) u32("v1 compute unit limit");
+  if (mask & V1_MASK_LOADED_ACCOUNTS_DATA_SIZE) u32("v1 loaded accounts data size limit");
+  const heap = mask & V1_MASK_HEAP_SIZE ? u32("v1 heap size") : undefined;
+  const headers: { program: number; accounts: number; data: number }[] = [];
+  for (let x = 0; x < instructionCount; x++) {
+    const program = u8("instruction program index");
+    const accounts = u8("instruction account count");
+    const len = take(2, "instruction data length");
+    headers.push({ program, accounts, data: len[0] | (len[1] << 8) });
+  }
+  const accountIndexes: Uint8Array[] = [];
+  for (const h of headers) {
+    accountIndexes.push(take(h.accounts, "instruction accounts"));
+    take(h.data, "instruction data");
+  }
+  const messageEnd = i;
+  take(signers * 64, "signatures");
+  if (i !== raw.length) throw new Error(`[Graphite] ${raw.length - i} trailing byte(s) after the v1 frame`);
+
+  if (signers > 12) throw new Error(`[Graphite] v1 frame requires ${signers} signatures; at most 12`);
+  if (instructionCount > 64) throw new Error(`[Graphite] v1 frame has ${instructionCount} instructions; at most 64`);
+  if (keyCount > 64) throw new Error(`[Graphite] v1 frame has ${keyCount} addresses; at most 64`);
+  if (keyCount < signers + readonlyUnsigned || readonlySigned >= signers) {
+    throw new Error("[Graphite] v1 header is impossible for its addresses");
+  }
+  if (new Set(keys).size !== keys.length) throw new Error("[Graphite] v1 frame loads an address twice");
+  if (heap !== undefined && (heap % 1024 !== 0 || heap < 32 * 1024 || heap > 256 * 1024)) {
+    throw new Error(`[Graphite] v1 heap size ${heap} is out of bounds`);
+  }
+  headers.forEach((h, x) => {
+    if (h.program >= keyCount) throw new Error(`[Graphite] v1 instruction ${x} program index out of range`);
+    if (h.program === 0) throw new Error(`[Graphite] v1 instruction ${x} names the fee payer as its program`);
+    if (accountIndexes[x].some((a) => a >= keyCount)) {
+      throw new Error(`[Graphite] v1 instruction ${x} account index out of range`);
+    }
+  });
+  return messageEnd;
+}
+
+/**
+ * The transaction id: the fee payer's signature, base58. The first slot after
+ * the count in legacy and v0, the first of the trailing array in v1. Read
+ * from the bytes this process signed, so the id an RPC reports back can be
+ * checked against it rather than believed.
+ */
+export function firstSignatureOf(raw: Uint8Array): string {
+  if (raw[0] === V1_PREFIX) {
+    const end = v1MessageEnd(raw);
+    return bs58.encode(raw.subarray(end, end + 64));
+  }
+  const { count, offset } = readSignatureCount(raw);
+  if (count < 1 || offset > raw.length) throw new Error("[Graphite] the transaction has no signature slot");
+  const first = offset - count * 64;
+  return bs58.encode(raw.subarray(first, first + 64));
+}
 
 /**
  * The message half of a serialized transaction: everything after the signatures.
@@ -527,8 +677,21 @@ export const MAX_TRANSACTION_BYTES = 1232;
  * would not read out of bounds — the bounds check below catches that — it would
  * silently compare the WRONG range of one transaction against the right range
  * of another, which is worse.
+ *
+ * A v1 frame (first byte `0x81`) is the other way round: the message comes
+ * first, `0x81` included, and the signatures follow with no count. Its
+ * message is everything before them, and the frame is parsed in full to find
+ * where that is (`v1MessageEnd`), as the Core's `message_bytes` does.
  */
 export function messageOf(raw: Uint8Array): Uint8Array {
+  if (raw[0] === V1_PREFIX) {
+    if (raw.length > MAX_V1_TRANSACTION_BYTES) {
+      throw new Error(
+        `[Graphite] transaction is ${raw.length} bytes; a v1 transaction is at most ${MAX_V1_TRANSACTION_BYTES}`,
+      );
+    }
+    return raw.subarray(0, v1MessageEnd(raw));
+  }
   if (raw.length > MAX_TRANSACTION_BYTES) {
     throw new Error(
       `[Graphite] transaction is ${raw.length} bytes; a Solana transaction is at most ` +

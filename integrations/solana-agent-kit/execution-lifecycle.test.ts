@@ -13,8 +13,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import bs58 from "bs58";
 import { Keypair, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
-import { BoundTransaction } from "./artifact.js";
+import { BoundTransaction, firstSignatureOf } from "./artifact.js";
 import { ResidualPolicy } from "./residual-policy.js";
 import {
   executeBoundTransaction,
@@ -91,11 +92,17 @@ class Fakes implements SubmitConnection, LifecycleReporter {
   failReconcile = false;
   discrepancy = false;
   chainBytesRejected: string | null = null;
+  /** What the RPC answers to sendTransaction; null = the honest answer, the bytes' own id. */
+  rpcAnswer: string | null = null;
 
   async sendRawTransaction(raw: Uint8Array): Promise<string> {
     this.calls.push("send");
     this.submitted.push(raw);
-    return "5xSignature";
+    return this.rpcAnswer ?? firstSignatureOf(raw);
+  }
+  /** The id the submitted bytes carry: the fee payer's signature. */
+  get signature(): string {
+    return firstSignatureOf(this.submitted[0]);
   }
   async confirmTransaction(s: { signature: string; blockhash: string; lastValidBlockHeight: number }): Promise<unknown> {
     this.calls.push(`confirm:${s.blockhash}:${s.lastValidBlockHeight}`);
@@ -189,9 +196,10 @@ test("the honest path: policy, sign, record signing, send, record submission, co
     "send",
     "record:submission",
     `confirm:${BLOCKHASH}:42`,
-    "l8:5xSignature",
+    `l8:${fakes.signature}`,
   ]);
-  assert.equal(lc.signature, "5xSignature");
+  assert.equal(lc.signature, fakes.signature);
+  assert.equal(lc.rpcReportedSignature, undefined, "an honest RPC's answer agrees and is not recorded");
   assert.equal(lc.signingRecorded, true);
   assert.equal(lc.verdictOnRecordAtSigning, "approved");
   assert.equal(lc.submissionRecorded, true);
@@ -208,7 +216,7 @@ test("the honest path: policy, sign, record signing, send, record submission, co
   assert.equal(fakes.l8Inputs[0].audit_trail_id, "gr-test");
   assert.equal(fakes.l8Inputs[0].transaction_sha256, digest);
   assert.equal(fakes.events[0].reported_by, "test-bridge");
-  assert.equal(fakes.events[1].transaction_signature, "5xSignature");
+  assert.equal(fakes.events[1].transaction_signature, fakes.signature);
   // And what went out is the signed bound transaction — one submission.
   assert.equal(fakes.submitted.length, 1);
   const tx = Transaction.from(fakes.submitted[0]);
@@ -220,6 +228,33 @@ test("the honest path: policy, sign, record signing, send, record submission, co
   zeroed.fill(0, 1, 65);
   assert.deepEqual(Array.from(zeroed), Array.from(bound.artifactBytes));
   assert.equal(createHash("sha256").update(zeroed).digest("hex"), digest);
+});
+
+test("the honest path for a v1 transaction: the id comes from the trailing slot, and zeroing it gives back the artifact", async () => {
+  const fakes = new Fakes();
+  const bound = BoundTransaction.build({
+    instructions: [transfer()],
+    feePayer: payer.publicKey,
+    recentBlockhash: BLOCKHASH,
+    lastValidBlockHeight: 42,
+    version: 1,
+    v1Limits: { computeUnitLimit: 450, loadedAccountsDataSizeLimit: 32 * 1024 },
+  });
+  const v = verdict(bound);
+  const lc = await run(fakes, bound, v);
+  const raw = fakes.submitted[0];
+  assert.equal(raw[0], 0x81);
+  const slot = raw.subarray(raw.length - 64);
+  assert.equal(lc.signature, bs58.encode(slot), "the v1 id is the first TRAILING slot");
+  assert.equal(lc.rpcReportedSignature, undefined);
+  assert.deepEqual(fakes.calls.at(-1), `l8:${bs58.encode(slot)}`);
+  const zeroed = Uint8Array.from(raw);
+  zeroed.fill(0, raw.length - 64);
+  assert.equal(
+    createHash("sha256").update(zeroed).digest("hex"),
+    (v.scope as { transaction_sha256: string }).transaction_sha256,
+    "the chain's bytes with the slot zeroed are the verified artifact (the Core's unsigned_artifact)",
+  );
 });
 
 test("a non-inherent residual refuses BEFORE anything is signed or recorded", async () => {
@@ -349,7 +384,7 @@ test("a confirmation that does not complete still runs L8, and says so", async (
   const lc = await run(fakes, bound, verdict(bound));
   assert.equal(lc.confirmed, false);
   assert.match(lc.confirmationError ?? "", /block height exceeded/);
-  assert.equal(fakes.calls.at(-1), "l8:5xSignature");
+  assert.equal(fakes.calls.at(-1), `l8:${fakes.signature}`);
   assert.ok(lc.reconciliation);
 });
 
@@ -375,7 +410,7 @@ test("an L8 discrepancy is carried through verbatim", async () => {
 test("an L8 refusal of the RPC's bytes is carried through and named, never read as a pass", async () => {
   const fakes = new Fakes();
   fakes.chainBytesRejected =
-    "the RPC returned bytes for 5xSignature that are not bound to it: the first signature slot holds a different signature";
+    "the RPC returned bytes for the signature that are not bound to it: the first signature slot holds a different signature";
   const bound = build();
   const logs: string[] = [];
   const lc = await executeBoundTransaction({
@@ -396,6 +431,36 @@ test("an L8 refusal of the RPC's bytes is carried through and named, never read 
     Unavailable: { reason: fakes.chainBytesRejected },
   });
   assert.ok(logs.some((l) => l.includes("L8 REFUSED") && l.includes("not bound to it")), logs.join(" / "));
+});
+
+test("an RPC that reports another transaction id does not steer the trail or L8", async () => {
+  // The signature IS the transaction id, and this process made it. An RPC
+  // answering sendTransaction with some other id would, if believed, have the
+  // submission recorded and L8 reconcile a transaction of its choosing.
+  const fakes = new Fakes();
+  fakes.rpcAnswer = "1111111111111111111111111111111111111111111111111111111111111111";
+  const bound = build();
+  const logs: string[] = [];
+  const lc = await executeBoundTransaction({
+    bound,
+    verification: verdict(bound),
+    signers: [payer],
+    connection: fakes,
+    graphite: fakes,
+    policy: new ResidualPolicy(),
+    reportedBy: "test-bridge",
+    label: "t",
+    log: (m) => logs.push(m),
+    submissionRecordBackoffMs: 0,
+  });
+  const real = fakes.signature;
+  assert.notEqual(real, fakes.rpcAnswer);
+  assert.equal(lc.signature, real, "the id is read from the signed bytes");
+  assert.equal(lc.rpcReportedSignature, fakes.rpcAnswer, "the RPC's answer is kept as evidence");
+  const submission = fakes.events.find((e) => e.event_type === "submission");
+  assert.equal(submission?.transaction_signature, real, "the trail records the real id");
+  assert.equal(fakes.l8Inputs[0].signature, real, "L8 reconciles the real id");
+  assert.ok(logs.some((l) => l.includes("WARNING") && l.includes(fakes.rpcAnswer!)), logs.join(" / "));
 });
 
 test("a server without residual codes is refused before signing", async () => {

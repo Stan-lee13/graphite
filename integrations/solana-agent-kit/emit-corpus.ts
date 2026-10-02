@@ -14,8 +14,10 @@
  * requires the Rust parser to reach the same conclusions from the bytes alone.
  *
  * The v0 entry uses a REAL mainnet lookup table, decoded by `@solana/web3.js`
- * from the bytes captured read-only in `mainnet_v0_alt.json`. Nothing here
- * signs, sends, or contacts a network.
+ * from the bytes captured read-only in `mainnet_v0_alt.json`. The v1 entries
+ * (R-P8 phase 2) are built by the bridge through `@solana/kit`, and what they
+ * record is what kit's own decoders read from them. Nothing here signs, sends,
+ * or contacts a network.
  *
  * Run: npm run emit:corpus   (regenerates the committed corpus; CI diffs it)
  */
@@ -32,7 +34,8 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { BoundTransaction, MAX_TRANSACTION_BYTES, messageOf } from "./artifact.js";
+import { getCompiledTransactionMessageDecoder, getTransactionDecoder } from "@solana/kit";
+import { BoundTransaction, MAX_TRANSACTION_BYTES, MAX_V1_TRANSACTION_BYTES, messageOf } from "./artifact.js";
 
 const SYSTEM = SystemProgram.programId;
 const COMPUTE_BUDGET = new PublicKey("ComputeBudget111111111111111111111111111111");
@@ -82,6 +85,15 @@ interface Entry {
   instruction_count: number;
   static_keys: string[];
   lookups?: { table: string; writable: number[]; readonly: number[] }[];
+  /** For a v1 entry: the config values the message carries, null when unset. */
+  v1_config?: V1ConfigEntry;
+}
+
+interface V1ConfigEntry {
+  priority_fee: number | null;
+  compute_unit_limit: number | null;
+  loaded_accounts_data_size_limit: number | null;
+  heap_size: number | null;
 }
 
 function legacy(name: string, what: string, ixs: TransactionInstruction[], blockhash = BLOCKHASH): Entry {
@@ -222,6 +234,84 @@ function v0BridgeKitOrder(): Entry {
   };
 }
 
+/**
+ * What @solana/kit's own decoders read out of a v1 frame: the second SDK, not
+ * the bridge's `messageOf`, so the recorded beliefs are not the bridge
+ * agreeing with itself. Returns null when kit refuses the bytes.
+ */
+function kitReadsV1(raw: Uint8Array):
+  | { signers: string[]; staticKeys: string[]; instructionCount: number; config: V1ConfigEntry; messageBytes: Uint8Array }
+  | null {
+  try {
+    const tx = getTransactionDecoder().decode(raw);
+    const m = getCompiledTransactionMessageDecoder().decode(tx.messageBytes);
+    if (m.version !== 1) return null;
+    // Config values arrive in mask-bit order: fee (bits 0-1), compute limit
+    // (bit 2), loaded-data limit (bit 3), heap (bit 4).
+    const values = [...m.configValues];
+    const config: V1ConfigEntry = {
+      priority_fee: null,
+      compute_unit_limit: null,
+      loaded_accounts_data_size_limit: null,
+      heap_size: null,
+    };
+    if ((m.configMask & 0b11) === 0b11) config.priority_fee = Number(values.shift()!.value);
+    if (m.configMask & 0b100) config.compute_unit_limit = Number(values.shift()!.value);
+    if (m.configMask & 0b1000) config.loaded_accounts_data_size_limit = Number(values.shift()!.value);
+    if (m.configMask & 0b1_0000) config.heap_size = Number(values.shift()!.value);
+    return {
+      signers: Object.keys(tx.signatures),
+      staticKeys: m.staticAccounts.map(String),
+      instructionCount: m.numInstructions,
+      config,
+      messageBytes: Uint8Array.from(tx.messageBytes),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A version-1 transaction (SIMD-0385) compiled by the bridge itself
+ * (`BoundTransaction.build({ version: 1 })`). The budget is in the message
+ * config, not in ComputeBudget instructions, and the signatures trail the
+ * message. The beliefs recorded are kit's decoders', and the Rust Core must
+ * reach each from the bytes alone.
+ */
+function v1Bridge(
+  name: string,
+  what: string,
+  ixs: TransactionInstruction[],
+  v1Limits: Parameters<typeof BoundTransaction.build>[0]["v1Limits"],
+): Entry {
+  const bound = BoundTransaction.build({
+    instructions: ixs,
+    feePayer: payer.publicKey,
+    recentBlockhash: BLOCKHASH,
+    lastValidBlockHeight: 1,
+    version: 1,
+    v1Limits,
+  });
+  const raw = bound.artifactBytes;
+  const read = kitReadsV1(raw);
+  if (!read) throw new Error(`${name}: kit refuses the bridge's own v1 bytes`);
+  if (!Buffer.from(read.messageBytes).equals(Buffer.from(messageOf(raw)))) {
+    throw new Error(`${name}: kit and messageOf disagree about where the v1 message ends`);
+  }
+  return {
+    name,
+    what,
+    version: 1,
+    raw: Array.from(raw),
+    transaction_sha256: createHash("sha256").update(raw).digest("hex"),
+    message: Array.from(messageOf(raw)),
+    required_signers: read.signers,
+    instruction_count: read.instructionCount,
+    static_keys: read.staticKeys,
+    v1_config: read.config,
+  };
+}
+
 const corpus: Entry[] = [
   legacy("legacy_single_transfer", "one System transfer", [transfer(payer.publicKey, destination, 2_000_000n)]),
   legacy(
@@ -306,6 +396,18 @@ const corpus: Entry[] = [
   ),
   v0WithRealTable(),
   v0BridgeKitOrder(),
+  v1Bridge(
+    "v1_bridge_transfer_full_config",
+    "a v1 transfer built by the bridge, every config field set: priority fee, compute limit, loaded-data limit, heap",
+    [transfer(payer.publicKey, destination, 3_000_000n)],
+    { computeUnitLimit: 450, loadedAccountsDataSizeLimit: 32 * 1024, priorityFeeLamports: 5_000n, heapSize: 64 * 1024 },
+  ),
+  v1Bridge(
+    "v1_bridge_two_signers_limits_only",
+    "a v1 message with two signers (signatures trailing, no count) and only the two limits v1 requires",
+    [transfer(payer.publicKey, destination, 1_000n), transfer(cosigner.publicKey, other, 2_000n)],
+    { computeUnitLimit: 900, loadedAccountsDataSizeLimit: 64 * 1024 },
+  ),
 ];
 
 // ─── Byte-level mutations ─────────────────────────────────────────────────────
@@ -386,12 +488,18 @@ function observe(base: string, raw: Uint8Array, m: MutationOp): Mutation {
   } catch {
     /* rejected */
   }
+  // The SDK that reads the base: web3.js for legacy and v0, kit for v1
+  // (web3.js 1.x never decodes v1). Graphite must be at least as strict.
   let sdk_accepts = false;
-  try {
-    VersionedTransaction.deserialize(bytes);
-    sdk_accepts = true;
-  } catch {
-    /* rejected */
+  if (raw[0] === 0x81) {
+    sdk_accepts = kitReadsV1(bytes) !== null;
+  } else {
+    try {
+      VersionedTransaction.deserialize(bytes);
+      sdk_accepts = true;
+    } catch {
+      /* rejected */
+    }
   }
   return { base, mutation: m, ts_message_len, ts_message_sha256, sdk_accepts };
 }
@@ -429,6 +537,21 @@ for (const baseName of ["legacy_single_transfer", "legacy_two_signers", "v0_real
   // more, and (for the two-signer base) exactly right.
   for (const count of [0, 1, 2, 3]) mutations.push(observe(baseName, raw, { op: "slots", count }));
 }
+// The v1 bases (R-P8 phase 2): every truncation (the trailing signature array
+// has no count, so a short one is a truncated frame), every single-byte flip
+// (the config mask, the header the trailing array is sized by, the
+// instruction headers that precede all payloads), trailing bytes, and the
+// 4,096-byte bound from both sides. Prefix and slot mutations are legacy/v0
+// shapes and do not apply.
+for (const baseName of ["v1_bridge_transfer_full_config", "v1_bridge_two_signers_limits_only"]) {
+  const base = corpus.find((e) => e.name === baseName)!;
+  const raw = Uint8Array.from(base.raw);
+  if (raw[0] !== 0x81) throw new Error(`${baseName}: a v1 base must start with 0x81`);
+  for (let at = 0; at < raw.length; at++) mutations.push(observe(baseName, raw, { op: "truncate", at }));
+  for (let at = 0; at < raw.length; at++) mutations.push(observe(baseName, raw, { op: "flip", at }));
+  for (const bytes of [[0x00], [0xff], [0x01, 0x02, 0x03]]) mutations.push(observe(baseName, raw, { op: "append", bytes }));
+  for (const to of [MAX_V1_TRANSACTION_BYTES, MAX_V1_TRANSACTION_BYTES + 1]) mutations.push(observe(baseName, raw, { op: "pad", to }));
+}
 
 // Digests must be pairwise distinct: the corpus exists partly to show that the
 // "different" variants really are different transactions.
@@ -443,7 +566,7 @@ writeFileSync(
   new URL(out, import.meta.url),
   JSON.stringify(
     {
-      _: "Emitted by integrations/solana-agent-kit/emit-corpus.ts. Each entry is what the TypeScript side believes about its own bytes; tests/sak_bridge_corpus.rs requires the Rust parser to agree from the bytes alone. The v0 entry uses a real mainnet lookup table. Unsigned throughout.",
+      _: "Emitted by integrations/solana-agent-kit/emit-corpus.ts. Each entry is what the TypeScript side believes about its own bytes; tests/sak_bridge_corpus.rs requires the Rust parser to agree from the bytes alone. The v0 entry uses a real mainnet lookup table; the v1 entries are compiled by the bridge through @solana/kit and recorded as kit decodes them. Unsigned throughout.",
       entries: corpus,
       mutations,
     },

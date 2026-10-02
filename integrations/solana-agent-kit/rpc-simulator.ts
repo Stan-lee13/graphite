@@ -40,7 +40,58 @@ import {
   VersionedTransaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
-import { readSignatureCount } from "./artifact.js";
+import { messageOf, readSignatureCount, V1_PREFIX } from "./artifact.js";
+import {
+  compileUnsignedWithKit,
+  MAX_COMPUTE_UNIT_LIMIT,
+  MAX_LOADED_ACCOUNTS_DATA_SIZE_BYTES,
+  type V1Limits,
+} from "./kit-artifact.js";
+
+/** The block cost model charges loaded account data in 32 KiB pages. */
+export const LOADED_DATA_PAGE_BYTES = 32 * 1024;
+
+/**
+ * Compute headroom over the simulated figure, in percent. The simulation is
+ * one run against one state; a route whose path depends on pool state can
+ * cost more when it lands, and a v1 transaction that runs out of its budget
+ * fails. Twenty percent is what kit's guidance leaves to the caller to add.
+ */
+export const V1_COMPUTE_HEADROOM_PERCENT = 20;
+
+/**
+ * The v1 limits to put in a message, from one simulation's measurements.
+ *
+ * Compute: the units consumed plus `V1_COMPUTE_HEADROOM_PERCENT`, at least
+ * one more than consumed, at most the runtime's ceiling. Loaded data: the
+ * next 32 KiB page strictly above what was loaded — the cost model charges by
+ * page, so headroom below the boundary is free, and an account created
+ * between simulation and landing (64 bytes of metadata where there were none)
+ * fits in it.
+ */
+export function v1LimitsFromMeasurement(unitsConsumed: number, loadedAccountsDataSize: number): V1Limits {
+  if (!Number.isSafeInteger(unitsConsumed) || unitsConsumed < 0) {
+    throw new Error(`[RpcSimulator] unitsConsumed ${String(unitsConsumed)} is not a measurement`);
+  }
+  if (!Number.isSafeInteger(loadedAccountsDataSize) || loadedAccountsDataSize < 0) {
+    throw new Error(`[RpcSimulator] loadedAccountsDataSize ${String(loadedAccountsDataSize)} is not a measurement`);
+  }
+  const computeUnitLimit = Math.min(
+    MAX_COMPUTE_UNIT_LIMIT,
+    Math.max(unitsConsumed + 1, Math.ceil((unitsConsumed * (100 + V1_COMPUTE_HEADROOM_PERCENT)) / 100)),
+  );
+  const loadedAccountsDataSizeLimit = Math.min(
+    MAX_LOADED_ACCOUNTS_DATA_SIZE_BYTES,
+    (Math.floor(loadedAccountsDataSize / LOADED_DATA_PAGE_BYTES) + 1) * LOADED_DATA_PAGE_BYTES,
+  );
+  if (unitsConsumed >= MAX_COMPUTE_UNIT_LIMIT) {
+    throw new Error(`[RpcSimulator] the simulation consumed ${unitsConsumed} compute units, the whole budget`);
+  }
+  if (loadedAccountsDataSize >= MAX_LOADED_ACCOUNTS_DATA_SIZE_BYTES) {
+    throw new Error(`[RpcSimulator] the simulation loaded ${loadedAccountsDataSize} bytes, the whole budget`);
+  }
+  return { computeUnitLimit, loadedAccountsDataSizeLimit };
+}
 
 export interface SimulationSummary {
   computeUnits: number;
@@ -66,11 +117,21 @@ export const PLACEHOLDER_BLOCKHASH = new PublicKey(new Uint8Array(32)).toBase58(
  * so a malformed count cannot make this look at the wrong range.
  */
 export function assertEverySignatureSlotEmpty(wire: Uint8Array): void {
-  const { count, offset } = readSignatureCount(wire);
-  if (offset > wire.length) {
-    throw new Error("[RpcSimulator] signature array runs past the transaction");
+  let start: number;
+  let offset: number;
+  if (wire[0] === V1_PREFIX) {
+    // A v1 frame's slots trail the message; `messageOf` parses the frame in
+    // full (the Core's own rules) to find where they begin.
+    start = messageOf(wire).length;
+    offset = wire.length;
+  } else {
+    const read = readSignatureCount(wire);
+    if (read.offset > wire.length) {
+      throw new Error("[RpcSimulator] signature array runs past the transaction");
+    }
+    offset = read.offset;
+    start = offset - read.count * 64;
   }
-  const start = offset - count * 64;
   for (let i = start; i < offset; i++) {
     if (wire[i] !== 0) {
       throw new Error(
@@ -84,8 +145,88 @@ export function assertEverySignatureSlotEmpty(wire: Uint8Array): void {
 
 export class RpcSimulator {
   private connection: Connection;
+  private rpcUrl: string;
   constructor(rpcUrl: string) {
+    this.rpcUrl = rpcUrl;
     this.connection = new Connection(rpcUrl, "confirmed");
+  }
+
+  /**
+   * Measure what a v1 message needs, before it is built for verification.
+   *
+   * In v1 an unset compute or loaded-data limit is ZERO, so the limits must
+   * be in the message Graphite verifies. They are measured, not guessed: the
+   * instructions are compiled as an UNSIGNED v1 draft carrying the runtime's
+   * maximum limits (so the measurement cannot fail for want of what it is
+   * measuring), on the all-zero placeholder blockhash, and simulated with
+   * `sigVerify: false` and `replaceRecentBlockhash: true` — the same
+   * nothing-can-be-signed construction as `simulate`. web3.js 1.x cannot
+   * serialize a v1 transaction, so the request is plain JSON-RPC over base64.
+   *
+   * Refuses rather than estimating when the simulation errors or the RPC
+   * withholds `unitsConsumed` or `loadedAccountsDataSize`: a v1 budget sized
+   * on a missing number would be a transaction that cannot execute.
+   */
+  async estimateV1Limits(params: {
+    instructions: TransactionInstruction[];
+    feePayer: PublicKey;
+  }): Promise<V1Limits & { unitsConsumed: number; loadedAccountsDataSize: number }> {
+    const draft = compileUnsignedWithKit({
+      instructions: params.instructions,
+      feePayer: params.feePayer,
+      recentBlockhash: PLACEHOLDER_BLOCKHASH,
+      lastValidBlockHeight: 0,
+      version: 1,
+      v1Limits: {
+        computeUnitLimit: MAX_COMPUTE_UNIT_LIMIT,
+        loadedAccountsDataSizeLimit: MAX_LOADED_ACCOUNTS_DATA_SIZE_BYTES,
+      },
+    });
+    assertEverySignatureSlotEmpty(draft);
+    const response = await fetch(this.rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "simulateTransaction",
+        params: [
+          Buffer.from(draft).toString("base64"),
+          { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" },
+        ],
+      }),
+      redirect: "error",
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) {
+      throw new Error(`[RpcSimulator] v1 sizing simulation: HTTP ${response.status}`);
+    }
+    const body = (await response.json()) as {
+      error?: { message?: string };
+      result?: { value?: { err?: unknown; unitsConsumed?: unknown; loadedAccountsDataSize?: unknown } };
+    };
+    if (body.error) {
+      throw new Error(`[RpcSimulator] v1 sizing simulation refused by the RPC: ${body.error.message ?? "error"}`);
+    }
+    const value = body.result?.value;
+    if (!value) throw new Error("[RpcSimulator] v1 sizing simulation: no result");
+    if (value.err !== null && value.err !== undefined) {
+      throw new Error(
+        `[RpcSimulator] v1 sizing simulation failed: ${JSON.stringify(value.err).slice(0, 160)}. ` +
+          "A transaction that fails here cannot be given a budget.",
+      );
+    }
+    if (typeof value.unitsConsumed !== "number" || typeof value.loadedAccountsDataSize !== "number") {
+      throw new Error(
+        "[RpcSimulator] the RPC did not report unitsConsumed and loadedAccountsDataSize; a v1 budget " +
+          "cannot be sized without both (an RPC on Agave 4.2 or later reports them). REFUSING.",
+      );
+    }
+    return {
+      ...v1LimitsFromMeasurement(value.unitsConsumed, value.loadedAccountsDataSize),
+      unitsConsumed: value.unitsConsumed,
+      loadedAccountsDataSize: value.loadedAccountsDataSize,
+    };
   }
 
   async simulate(params: {

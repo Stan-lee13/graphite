@@ -170,8 +170,8 @@ instruction with its program, account indexes and raw data, and the address-tabl
 lookups with their indexes. A parse failure never yields a partial answer.
 `message_bytes` — the same signature skip the parser uses — is exported so the
 TypeScript bridge's `messageOf` and Graphite's acceptance language can be asserted equal:
-`tests/sak_bridge_corpus.rs` replays 12 transaction shapes and 1,659 byte-level
-mutations emitted by `@solana/web3.js` and requires exact agreement on every one.
+`tests/sak_bridge_corpus.rs` replays 15 transaction shapes and 2,897 byte-level
+mutations (emitted by `@solana/web3.js`, and by `@solana/kit` for the v1 shapes) and requires exact agreement on every one.
 An artifact larger than its format's bound — `PACKET_DATA_SIZE` (1232 bytes) for legacy
 and v0, 4,096 bytes for v1 (`tx_artifact::max_frame_bytes`) — is refused before a byte is
 read — on both sides, and at the `/verify` entry — because the network refuses it too,
@@ -373,7 +373,7 @@ Graphite approved is the exact message contained in the bytes signed and submitt
   transaction's identity and is not what the signing gate checks.
 - **Durable-nonce shapes are refused at build.** `lastValidBlockHeight` does not bound them.
 - **Cross-language agreement is asserted, not assumed.** `emit-corpus.ts` records what
-  `@solana/web3.js` and `messageOf` conclude about 12 shapes and 1,659 mutations
+  `@solana/web3.js` and `messageOf` conclude about 15 shapes and 2,897 mutations
   (including pads to exactly 1232 and 1233 bytes); `tests/sak_bridge_corpus.rs` requires
   Graphite to agree; CI regenerates the corpus and fails on drift.
 

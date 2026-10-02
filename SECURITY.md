@@ -124,12 +124,13 @@ committed as a test and the fix reverted once to show the test fails without it:
   entry returned an empty extension list, indistinguishable from "no extensions", so a
   hidden TransferHook could vanish. `ExtensionScan.malformed` now blocks.
 - **Wire-format bounds on both sides.** Rust `compact_u16` and TypeScript `messageOf`
-  share one acceptance language, asserted equal on 12 shapes and 1,647 byte-level
-  mutations emitted by `@solana/web3.js`; CI regenerates the corpus and fails on
-  drift. Graphite is stricter than `web3.js` on 51 mutations (non-minimal shortvec,
+  share one acceptance language, asserted equal on 15 shapes (two of them v1, built
+  by the bridge) and 2,897 byte-level mutations; CI regenerates the corpus and fails
+  on drift. Graphite is stricter than the SDK that reads each base (`@solana/web3.js`
+  for legacy and v0, `@solana/kit` for v1) on 94 mutations (non-minimal shortvec,
   over-long declared lengths, trailing bytes, impossible headers, out-of-range
-  indexes, and anything over the 1232-byte packet — all things the runtime refuses)
-  and looser on none.
+  indexes, v1 rules, and anything over the 1232-byte packet or 4,096-byte v1 frame —
+  all things the runtime refuses) and looser on none.
 - **Audit durability (Round 8).** `File::flush()` is a no-op for an unbuffered file and
   was the primitive behind "durably on disk"; now `sync_data` per record, measured at
   1.2 ms on NTFS. The read path saw only the active file, so after a rotation L8

@@ -33,7 +33,7 @@ import type {
   VerdictOnRecord,
   VerificationResult,
 } from "../../sdk/typescript/src/types.js";
-import type { BoundTransaction } from "./artifact.js";
+import { firstSignatureOf, type BoundTransaction } from "./artifact.js";
 import type { ResidualPolicy } from "./residual-policy.js";
 
 /** The two Connection calls this path makes, so a test can stand in a fake. */
@@ -60,7 +60,14 @@ export interface LifecycleReporter {
 
 /** What happened, stage by stage. Every field is a fact about this execution. */
 export interface ExecutionLifecycle {
+  /** The transaction id: the fee payer's signature, read from the signed bytes. */
   signature: string;
+  /**
+   * Present only when the RPC's `sendTransaction` answer named a different
+   * id than the signed bytes carry. The RPC's answer is not used for
+   * anything; it is kept here as the evidence that the RPC misreported.
+   */
+  rpcReportedSignature?: string;
   /** Non-inherent residuals the policy accepted for this execution (P14). */
   acceptedUnobserved: UnobservedCode[];
   /** The `signing` event reached the trail before submission (always true on a returned lifecycle). */
@@ -190,11 +197,26 @@ export async function executeBoundTransaction(p: ExecuteParams): Promise<Executi
 
   // 4. Submission. From here nothing can be undone; every failure below is
   //    reported, none is a reason to pretend this did not happen.
-  const signature = await p.connection.sendRawTransaction(raw);
+  //
+  //    The transaction's id is its fee payer's signature, which this process
+  //    just made: it is read from the signed bytes (after the count for
+  //    legacy and v0, first of the trailing array for v1), not taken from the
+  //    RPC. An RPC that answered with some other id would otherwise steer the
+  //    audit trail and L8 to a transaction of its choosing; its answer is
+  //    compared and a disagreement is recorded, but the id used is ours.
+  const signature = firstSignatureOf(raw);
+  const reported = await p.connection.sendRawTransaction(raw);
   log(`[Graphite] ${label}: submitted ${signature}`);
+  if (reported !== signature) {
+    log(
+      `[Graphite] ${label}: WARNING — the RPC reported the submission as ${reported}, but the signed ` +
+        `bytes carry ${signature}. Using the signed bytes' id; the RPC's answer is not the transaction submitted.`,
+    );
+  }
 
   const lifecycle: ExecutionLifecycle = {
     signature,
+    ...(reported !== signature ? { rpcReportedSignature: reported } : {}),
     acceptedUnobserved: decision.accepted,
     signingRecorded: true,
     verdictOnRecordAtSigning: signing.verdict_on_record,
