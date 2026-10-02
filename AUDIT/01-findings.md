@@ -440,6 +440,36 @@ A second, external review of `0921647` listed further items (R1–R26). Each is 
 |---|---|---|---|
 | R1 | P2 | L8 reported `ApprovedAndExecuted` for an approved record found by a key the caller supplied (`audit_trail_id`, `transaction_sha256` or `content_hash`) when `getTransaction` returned no bytes, so a random successful signature presented with the key of any approval reconciled as "the approved transaction executed". Confirmed by code read; three existing tests asserted that answer as correct. Not an approval bypass: L8 runs after execution and moves no funds; it is the audit attestation that could be manufactured. | A positive conclusion about an approved record (executed, or failed on chain) needs `attribution == Chain`, the chain's own bytes bound to the signature; otherwise `Unavailable`, naming the caller key. A blocked record still alarms on any sighting. Tests: `tests/audit_review_r1_l8_needs_chain_bytes.rs`; the three pinned tests updated; break B59 caught. |
 
+### Status of every item (verified 2026-10-01 → 2026-10-02)
+
+"Verified" means re-checked in the code or by a test here, not taken from the review's text.
+
+| Item | Status | Evidence / where |
+|---|---|---|
+| R1 | **FIXED** (P2) | above; `tests/audit_review_r1_l8_needs_chain_bytes.rs`; break B59 caught |
+| R2 | **NOT VERIFIED** | not examined to a conclusion in this round; treated as open and unresolved, and `FINAL.md` withholds the claim it bears on |
+| R3 | **NOT VERIFIED** | as R2 |
+| R4 | **FIXED** (docs integrity) | the cited files exist; break log complete (59/59); A6-05 advisory count and the Go version corrected; `tests/docs_paths_resolve.rs` fails when a live document names a missing file (shown failing with `AUDIT/FINAL.md` moved aside) |
+| R5 | **FIXED** | both schemas declare JSON Schema 2020-12 and an `$id` on the repository's host; they compile with jsonschema's `Draft202012Validator`, the committed examples validate; `the_schemas_name_a_real_metaschema_and_their_own_id` |
+| R6 | **FIXED** | `confidence_of_parse` is not recorded and now says so (code and schema); it is refused outside [0, 1] or non-finite; `intent_type` is bounded and printable; `VerificationInput` refuses unknown fields (both SDKs send exactly its fields); `a_request_outside_its_schema_is_refused_at_the_door` |
+| R7 | **FIXED** (comments only) | the bridge's default profile fails closed (the Core clamps Custom to Gaming's 0.55) and now says so; `GRAPHITE_URL` documented as the SDK live tests' variable in CONTRIBUTING |
+| R8 | **CONFIRMED at runtime, FIXED** | a test walking the bridge object found `walletKeypair` with the secret key bytes; the key is now an ES `#private` field and the test passes; the gated wallet's claim is narrowed (the key still enters the process through its environment or config) |
+| R9 | **FIXED** | the live L3 test requests version 1; the two web3.js tools keep version 0 (web3.js 1.x cannot decode v1) and count and report every v1 transaction they skip; `graphite-core/scripts/README.md` records which tools see v1 |
+| R10 | **CONFIRMED, OPEN** | the bridge has `@solana/web3.js` 1.98.4 and no `@solana/kit`: it builds legacy and v0 only. Roadmap R-P8 |
+| R11 | **CONFIRMED, OPEN** | no ProgramData-slot or upgrade-authority watch in the Core. Roadmap R-M1 |
+| R12 | **PARTLY ADDRESSED** | R1 is now pinned by tests; R2/R3 are not |
+| W1 | covered by R1 | the `Confirmed` arm was the only path from RPC or witness output to an approval-flavoured L8 answer found by reading `audit_execution`; lifecycle `verdict_on_record` is resolved and recorded with its key, never as an execution |
+| W2, W3, W4 | **OPEN** | R10, R9 and the single gated advisory (`bigint-buffer`, native addon never built with `--ignore-scripts`); all three resolve with the `@solana/kit` migration (R-P8) |
+| W5, W6 | **OPEN** | R11 / roadmap R-M1; manifest lineage is recorded as `manifest_version` on each audit row |
+| W7 | **OPEN** | roadmap R-M13 (measured cost: 9 of 48,855 executed transactions) |
+| W8 | **OPEN** | A2-08 (documented limitation) |
+| W9 | **OWNER** | R-M9 |
+| W10 | **OPEN** | R-M11 |
+| W13 | **OPEN** | R-M10 |
+| W20 | **VERIFIED SOUND** for profile thresholds | Custom `min_confidence` that is NaN, infinite or outside [0, 1] is refused in both `server.rs` and `policy_engine.rs` |
+| W26 | **FIXED** (one example) | `examples/verify-input.json` carried 50,000 "battle tested" transactions in `behavior_evidence`, which the Core ignores by design; the example no longer suggests it matters |
+| W11, W12, W14–W19, W21–W25 | **NOT RE-VERIFIED in this round** | each overlaps an area this audit already covered (A1–A6, F1–F18); they were not re-run against the review's specific scenarios, so nothing here claims them as sound |
+
 ## Break log
 
 Every fix was reverted once, alone, with the tree otherwise unchanged, and its named test re-run; the fix was then restored and the tree checked clean. The harness is `graphite-audit-work/audit_breaks.py` (outside the repository): each break is an exact text edit validated against the current sources before it runs, and a break whose test still passes is reported MISSED.
