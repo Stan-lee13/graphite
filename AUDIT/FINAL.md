@@ -95,7 +95,9 @@ dangerous instructions) are the ones that bear most directly on this verdict.
   refused; they are counted as false refusals until examined.
 
 **Planned engineering:**
-- the SAK bridge's migration to `@solana/kit` (R-P8), which also removes its last npm advisory;
+- the SAK bridge's migration to `@solana/kit` (R-P8), which lets it build v1; the last npm advisory
+  (`bigint-buffer`) goes only when the bridge drops its `solana-agent-kit` dependency, which brings
+  it in through `@solana/spl-token` 0.4;
 - a persisted archive index for L8 lookups into rotated archives (R-M11);
 - a committed mainnet subset gated in CI (R-P2/R-P3) and the release-evaluation report (R-P1);
 - protocol upgrade detection (R-M1) and per-instruction L3 baselines (A2-08);

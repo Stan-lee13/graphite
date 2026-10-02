@@ -13,10 +13,10 @@
 #   - package.json `overrides` force patched versions inside the same major
 #     line where the parent had not moved: fast-uri 3.1.8, nanoid 3.3.19,
 #     jsondiffpatch 0.7.6, langsmith 0.6.3, hono 4.13.12, ip-address 10.7.2,
-#     qs 6.16.0. Typecheck and all 145 bridge tests pass on them.
+#     qs 6.16.0. Typecheck and all bridge tests pass on them.
 #
 # What remains has no fix that can be applied from here:
-GHSA-3gc7-fjrx-p6mg@bigint-buffer  # high  bigint-buffer <=1.1.5 (no patched release exists): @solana/web3.js 1.x -> @solana/buffer-layout-utils -> bigint-buffer. The overflow is in the package's NATIVE addon (toBigIntLE). Every install of this tree runs with --ignore-scripts, so the addon is never built and bigint-buffer runs its pure-JS fallback. Removed only by the @solana/kit migration (roadmap gap R-P8).
+GHSA-3gc7-fjrx-p6mg@bigint-buffer  # high  bigint-buffer <=1.1.5 (no patched release exists): solana-agent-kit 2.0.10 -> @solana/spl-token 0.4.15 -> @solana/buffer-layout-utils 0.3.0 -> bigint-buffer 1.1.5 (npm ls, 2026-10-02). The overflow is in the package's NATIVE addon (toBigIntLE). Every install of this tree runs with --ignore-scripts, so the addon is never built and bigint-buffer runs its pure-JS fallback. Moving the bridge's own code to @solana/kit does not remove it; dropping the solana-agent-kit dependency does (roadmap gap R-P8, phase 3).
 #
 # Below the gate's threshold, recorded for completeness:
 #   - stream-json (moderate) and uuid (moderate) come through jayson, web3.js
