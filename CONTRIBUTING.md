@@ -68,7 +68,7 @@ Every commit to `main` must pass the full CI gate (`.github/workflows/ci.yml`), 
 - [ ] `cargo test --release --no-default-features --lib` (341) and `--no-default-features --features cli` (1,594) pass — the feature matrix is tested, not just checked
 - [ ] `cargo audit --deny warnings` clean
 - [ ] Container builds, boots, `/health` answers, `/data` is writable, unauthenticated `/verify` is `401`, and a keyless container refuses to start
-- [ ] TypeScript SDK `npm run build` + `npm test`; SAK integration `npm run typecheck` + `npm test` (146) and the regenerated artifact fixture + corpus show no diff
+- [ ] TypeScript SDK `npm run build` + `npm test`; SAK integration `npm run typecheck` + `npm test` (151) and the regenerated artifact fixture + corpus show no diff
 - [ ] Go SDK `gofmt` / `go vet` / `go test ./...` pass
 - [ ] SDK live-server suites against a running Core: `GRAPHITE_URL=http://127.0.0.1:7331 GRAPHITE_API_KEY=… npm test` in `sdk/typescript`, and `go test -tags liveserver ./...` in `sdk/go` with the same two variables. They are SKIPPED when `GRAPHITE_URL` is unset, so a green offline run says nothing about them; CI sets it in the container job. (`GRAPHITE_URL` is the SDK tests' variable only: the SAK bridge reads `GRAPHITE_CORE_URL` and refuses `GRAPHITE_URL` on its own.)
 - [ ] Python AI layer `pytest` passes (35)
