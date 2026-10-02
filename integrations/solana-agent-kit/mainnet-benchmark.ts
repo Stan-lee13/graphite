@@ -82,6 +82,22 @@ interface BenchmarkResult {
   httpError: boolean;
 }
 
+/**
+ * Transactions the benchmark could not include because they are version 1.
+ * The fetch asks for version 0 at most because `@solana/web3.js` 1.x, which
+ * this tool parses with, cannot decode a v1 message; the RPC answers a v1
+ * transaction with an error instead. Those used to be skipped silently, so a
+ * benchmark run said nothing about v1 traffic (review of the 2026-09-29 audit,
+ * R9). They are counted and reported until the `@solana/kit` migration
+ * (roadmap gap R-P8) lets this tool read them.
+ */
+let v1Excluded = 0;
+
+function isVersionRefusal(err: unknown): boolean {
+  const m = String((err as Error)?.message ?? err);
+  return m.includes("-32015") || /transaction version \(\d+\) is not supported/i.test(m);
+}
+
 async function fetchRealTransactions(connection: Connection, address: string, limit: number = 3): Promise<any[]> {
   try {
     const signatures = await connection.getSignaturesForAddress(new PublicKey(address), { limit });
@@ -92,7 +108,10 @@ async function fetchRealTransactions(connection: Connection, address: string, li
           maxSupportedTransactionVersion: 0,
         });
         if (tx) txs.push(tx);
-      } catch (e) { /* skip failed fetch */ }
+      } catch (e) {
+        if (isVersionRefusal(e)) v1Excluded++;
+        // any other failed fetch is skipped as before
+      }
       await new Promise(r => setTimeout(r, 250)); // rate limit courtesy
     }
     return txs;
@@ -315,6 +334,7 @@ async function main() {
   const avgLatency = results.length > 0 ? (results.reduce((s, r) => s + r.latencyMs, 0) / results.length).toFixed(0) : "N/A";
 
   console.log(`Total cases: ${results.length}`);
+  console.log(`v1 transactions excluded (web3.js 1.x cannot parse v1; R-P8): ${v1Excluded}`);
   console.log(`Correct: ${results.filter(r => r.correct).length}/${results.length}`);
   console.log(`Accuracy: ${accuracy}%`);
   console.log(`Precision: ${precision}% (TP=${tp}, FP=${fp})`);
