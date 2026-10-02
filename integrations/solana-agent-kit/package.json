@@ -11,13 +11,13 @@
     "test": "tsx --test *.test.ts"
   },
   "dependencies": {
-    "@solana/web3.js": "^1.95.0",
+    "@solana/web3.js": "^1.99.0",
     "bs58": "^6.0.0",
     "solana-agent-kit": "^2.0.10"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.0.0",
+    "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
     "typescript": "^5.5.0"
   },
   "overrides": {
