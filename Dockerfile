@@ -50,7 +50,7 @@ COPY graphite-core/protocols ./graphite-core/protocols
 RUN touch graphite-core/src/lib.rs \
     && cargo build --manifest-path graphite-core/Cargo.toml --locked --release --features server,cli
 
-FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 # ca-certificates is required for outbound TLS to GRAPHITE_RPC_URL (reqwest +
 # rustls needs a trust store). curl is NOT installed: the healthcheck uses the
 # binary's own `healthcheck` subcommand instead, keeping curl and its
