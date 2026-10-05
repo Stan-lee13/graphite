@@ -83,6 +83,7 @@ pub fn run_benchmark() {
     let mut true_negatives = 0; // safe correctly approved
     let mut false_positives = 0; // safe incorrectly blocked
     let mut false_negatives = 0; // malicious incorrectly approved
+    let mut errors = 0; // did not verify: not scored
     let mut total_latency_us: u128 = 0;
     // Per-case latencies, kept for the p50/p95/p99 distribution.
     let mut latencies_us: Vec<u128> = Vec::with_capacity(cases.len());
@@ -95,55 +96,16 @@ pub fn run_benchmark() {
 
     for case in &cases {
         let start = Instant::now();
-        let result = core.verify(&case.input).unwrap_or_else(|_| {
-            // Verification error = fail-closed (blocked)
-            crate::verification::VerificationResult {
-                approved: false,
-                confidence: 0.0,
-                breakdown: vec![],
-                trust_tier: "Unknown".to_string(),
-                risk_verdict: crate::verification::RiskVerdictSummary {
-                    status: "Blocked".to_string(),
-                    findings: vec![],
-                },
-                policy_verdict: "Rejected".to_string(),
-                audit_trail_id: "gr-error".to_string(),
-                content_hash: "error".to_string(),
-                // A verification that errored observed nothing at all, which is
-                // the strongest form of "descriptive".
-                scope: crate::verification::VerificationScope::Descriptive {
-                    unobserved: vec![
-                        "verification returned an error; nothing about this transaction was observed"
-                            .to_string(),
-                    ],
-                    unobserved_codes: vec![crate::verification::UnobservedCode::NoArtifact],
-                },
-                transaction: crate::transaction_builder::BuiltTransaction {
-                    program_id: case.input.program_id.clone(),
-                    protocol_version: case.input.protocol_version.clone(),
-                    instruction_name: "Error".to_string(),
-                    instruction_discriminator: case.input.instruction_discriminator.clone(),
-                    instruction_count: 0,
-                    account_count: case.input.account_addresses.len(),
-                    signer_count: 0,
-                    writable_count: 0,
-                    compute_budget_units: 0,
-                    accounts: vec![],
-                    data_hex: String::new(),
-                    data_len: 0,
-                },
-                resolved_accounts: vec![],
-                protocol_name: "Error".to_string(),
-                instruction_name: "Error".to_string(),
-                manifest_found: false,
-                unknown_protocol: true,
-                manifest_version: None,
-                summary: "BLOCKED | verification error".to_string(),
-                simulation_flagged: None,
-                simulation_divergence: None,
-                layers: vec![],
+        // W25 (external review): an error is a refusal, not a detection. It
+        // used to be scored as a blocked exploit; it is counted on its own.
+        let result = match core.verify(&case.input) {
+            Ok(result) => result,
+            Err(e) => {
+                errors += 1;
+                println!("{:<40} {:<12} ERROR: {e}", case.label, case.category);
+                continue;
             }
-        });
+        };
         let elapsed = start.elapsed();
         total_latency_us += elapsed.as_micros();
         latencies_us.push(elapsed.as_micros());
@@ -229,6 +191,10 @@ pub fn run_benchmark() {
     println!("  Total cases:      {}", total);
     println!("  Scored cases:     {} (safe + malicious only)", scored);
     println!("  Correct:          {}/{}", correct, scored);
+    println!(
+        "  Errors:           {}  (did not verify; not scored as blocks)",
+        errors
+    );
     println!("  Accuracy:         {:.1}%", accuracy);
     println!(
         "  Precision:        {:.1}%  (of all blocked, how many were actually malicious)",
@@ -488,10 +454,15 @@ fn build_benchmark_cases() -> Vec<BenchmarkCase> {
                 good_evidence(),
             ),
         },
+        // External review R2 (2026-10-01): this case was labelled a legitimate
+        // burn, but it declares the intent "transfer" (make_input's default)
+        // for a Burn — the mislabel R2 is about, which used to clear L5 on the
+        // prose ("transfers") and be approved. The intent vocabulary has no
+        // burn, so a burn cannot be declared and is refused (fail closed).
         BenchmarkCase {
-            label: "SPL Token Burn (legitimate)",
-            category: "safe",
-            expected_approved: true,
+            label: "SPL Token Burn declared as a transfer (external review R2)",
+            category: "malicious",
+            expected_approved: false,
             input: make_input(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                 "08",
@@ -1168,6 +1139,32 @@ mod tests {
     /// hand-constructed VerificationInput with a manually-encoded expected
     /// label, and the REAL/SYNTHETIC distinction is enforced so no case can
     /// silently overclaim its provenance.
+    /// W25 (external review): the published precision and recall are only
+    /// what they say if every case actually verified — an error used to be
+    /// scored as a blocked exploit. Pinned: no case errors. (Builds that can
+    /// verify synchronously only: without a feature, `verify` refuses by
+    /// design, and that refusal is pinned by its own test.)
+    #[test]
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    fn every_benchmark_case_verifies_without_error() {
+        let core = crate::verification::GraphiteCore::new();
+        core.seed_simulation_baseline(
+            "11111111111111111111111111111111",
+            crate::simulation_integrity::ComputeBaseline {
+                mean_compute_units: 150.0,
+                std_compute_units: 20.0,
+                sample_count: 100,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for case in build_benchmark_cases() {
+            if let Err(e) = core.verify(&case.input) {
+                panic!("{}: {e}", case.label);
+            }
+        }
+    }
+
     #[test]
     fn benchmark_composition_is_pinned_and_honestly_labeled() {
         let cases = build_benchmark_cases();

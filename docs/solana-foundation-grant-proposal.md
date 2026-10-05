@@ -1,276 +1,183 @@
-# Graphite — Solana Foundation Grant Proposal
+# Graphite — Solana Foundation grant proposal
 
-> **Living document, last revised 2026-09-23.** The figures below are the
-> project's current ones as of that date. For anything that has moved since,
-> [`CURRENT.md`](CURRENT.md) is authoritative and this page is not.
+> **Revised 2026-10-03, after Round 24.** Every figure about Graphite below is measured in this
+> repository and named with where it comes from. [`CURRENT.md`](CURRENT.md) is authoritative
+> for anything that has moved since.
 
-
-**Project:** Graphite — a deterministic transaction-verification and anti-drain layer for AI agents on Solana
-**Requested funding:** $120,000 (milestone-based, 3 milestones over ~9 months)
-**Grant type:** Open-source public good / security infrastructure (Foundation funding range $10k–$400k, milestone-based, ~30-day evaluation)
-
----
-
-## 1. Executive Summary
-
-Graphite is a security layer that sits between an AI agent and the Solana network. It
-deterministically verifies **what a transaction will do** — program, instruction,
-accounts, CPI structure, cross-instruction patterns, and intent — **before** the agent
-signs and submits it. It exists because the fastest-growing attack class on Solana —
-wallet drainers, approval abuse, authority hijack, and compositional phishing — is
-exactly the failure mode an autonomous agent cannot afford: an agent with a signing key
-will approve whatever it is instructed to approve, and drainers are built to exploit
-weak or absent transaction simulation.
-
-The problem is measured in billions, not millions: **$494M was stolen by wallet drainers
-in 2024** (Scam Sniffer); **$2.17B was stolen across crypto in the first half of 2025**
-(Chainalysis); Google Cloud's threat-intel team tracked CLINKSINK drainer campaigns
-stealing at least $900k on Solana alone; and **malicious AI-generated packages began
-draining Solana wallets in mid-2025** — the exact convergence Graphite targets. Solana
-phishing specifically "exploits weaknesses in transaction simulations" (Scam Sniffer).
-
-Graphite is not a research prototype. It is a working, tested, and live-validated system:
-
-- **987 tests / 0 failures / 0 clippy warnings / 0 compiler warnings**, fmt clean.
-- **28 protocol manifests / 695 verified instructions**, every program ID verified
-  executable on mainnet.
-- **A 2,181-fixture regression corpus** — dev, regression, and a real holdout of 38
-  independently labeled transactions (35 real mainnet exploit signatures from a
-  peer-reviewed arXiv dataset + 3 real mainnet transactions) with **0 false negatives**.
-- **Real on-chain validation**: 3 real mainnet exploits scored in the benchmark
-  (Wormhole $320M hack, CLINKSINK STMT drainer, SlowMist AAT drainer — all blocked);
-  L3 simulation validated against real devnet RPC; L8 execution verification validated
-  against real mainnet RPC (Confirmed / Unknown / Unavailable, honestly reported).
-- **Working integrations**: TypeScript SDK, Go SDK, Python advisory layer, React
-  dashboard, HTTP server (auth, rate limiting, CORS, audit log), Dockerfile, and a
-  SolanaAgentKit integration verified end-to-end on devnet with 5 finalized transactions.
-- **Two independent adversarial security audits** (C33–C44) that found and root-fixed
-  four P0 and one P1 class of vulnerabilities — including a real discriminator bug that
-  would have let SetAuthority hijacks bypass detection entirely.
-
-We are asking the Solana Foundation to fund the final mile: public deployment with a
-professional security audit, expansion of the real-exploit corpus and protocol coverage,
-and enterprise integration so that every AI agent framework on Solana can be protected
-by default.
+**Project:** Graphite — deterministic verification of a Solana transaction's bytes against what
+the agent says it is doing, before the agent's key signs it.
+**License:** MIT. The whole system is open source.
+**Requested funding:** $120,000, milestone-based, three milestones over about nine months.
+**Grant type:** open-source public good / security infrastructure.
 
 ---
 
-## 2. The Problem
+## 1. Summary
 
-### 2.1 Autonomous agents are a new, unsolved attack surface
+An AI agent that holds a Solana key signs what it builds, and what it builds comes from a model
+that can be talked into things. Graphite sits between the agent and the key. It parses the exact
+transaction bytes, resolves every account, simulates the transaction when an RPC is attached,
+diffs the account state it would change, and compares all of that with the agent's declared
+intent and with a manifest of what each instruction is allowed to do. It then answers approved or
+refused, with the reason. Nothing is signed on a refusal, and no model is in the decision path.
 
-AI agents that transact on Solana hold signing keys. Their "intent" comes from an LLM —
-which is prompt-injectable — and the transaction they build is what gets signed. The
-industry's current defenses assume a human reviews the transaction:
+What exists today, all in the repository:
 
-- **Wallet UIs** show simulation summaries — but simulation can lie (or be absent),
-  and an agent has no eyes to read the summary.
-- **Existing security tools** scan for known malicious *programs* or *addresses*. They
-  do not verify *behavior*: a known-good program (SPL Token, Jupiter, System) is exactly
-  what drainers route their theft through.
-- **"Just check the simulation"** is the standard advice, and it is precisely the
-  mechanism Solana drainers are built to exploit.
+- **A Rust core** with an eight-layer pipeline, an HTTP server with an append-only audit trail,
+  a CLI, and a manifest registry with signed submissions and a replay gate.
+- **137 protocol manifests covering 3,504 instructions.** Every program id is verified
+  executable on mainnet. 113 carry a `BattleTested` tier backed by a recorded mainnet
+  measurement, which the loader checks and lowers when the evidence does not support it
+  ([`protocol-coverage.md`](protocol-coverage.md)).
+- **Three agent-framework integrations behind one signing boundary:** SolanaAgentKit, the
+  Vercel AI SDK, and a Model Context Protocol server. All three sign only through
+  `integrations/agent-guard`. The guard binds the approved bytes to the signed bytes, refuses
+  residual risks the operator has not accepted, records each lifecycle step on the audit trail,
+  and enforces the operator's spend cap. For a swap, the cap is checked against the wallet
+  outflow measured by simulating the exact transaction.
+- **SDKs** for TypeScript and Go, a Python advisory layer that cannot override the core, and
+  a React dashboard.
+- **Tests:** 1,908 Rust tests in the all-features suite, plus 183 in the agent guard, 34 in the
+  TypeScript SDK, 15 across the Vercel AI and MCP adapters, 6 in the SolanaAgentKit adapter,
+  Go and Python suites, and 7 in the dashboard. A runtime oracle compares Graphite's parser
+  with the validator's own decoder on about 628,500 generated frames per CI seed.
 
-### 2.2 The attack classes (all demonstrated against Graphite, all blocked)
+## 2. The problem
 
-1. **Approval abuse / AAT**: Approve a delegate, then transfer out. Mass-approve + System
-   assign to steal ownership (SlowMist-documented $3M+ drainer pattern).
-2. **Authority hijack**: SetAuthority / CloseAccount smuggled inside a CPI from an
-   untrusted contract.
-3. **Compositional drains**: many transfers, many destinations, one transaction; or a
-   custom program re-entered repeatedly along one CPI path.
-4. **ISA / phishing**: fund movement to vanity addresses impersonating system accounts
-   (the dominant SolPhishHunter class on mainnet).
-5. **Fake swaps**: a "swap" intent executed by a non-swap program, or a swap whose
-   state changes establish no output credit.
-6. **Baseline poisoning**: inflating the simulation baseline so divergence goes
-   unnoticed — defended by a robust median/MAD statistic.
+The losses are documented. Wallet drainers stole about $494M from more than 300,000 addresses
+in 2024, according to Scam Sniffer's annual report. Chainalysis counted $2.17B stolen across
+crypto in the first half of 2025, with personal-wallet compromises rising. Google Cloud's
+Mandiant traced at least $900,000 stolen from Solana users by CLINKSINK drainer affiliates.
 
-### 2.3 Why now
+Agents make this worse in a specific way. A drainer has to persuade a person to sign. An agent
+signs whatever its tool call produces, and its tool call is produced by a model that reads
+untrusted text. Address and program blocklists do not help, because drains route through
+programs everyone trusts: System, SPL Token, Token-2022, the major DEXs. A simulation summary
+does not help either, because the agent has no one to read it. What is missing is a check of
+behaviour, done on the bytes, that fails closed.
 
-Solana is the leading chain for AI agents by transaction volume and framework adoption
-(SolanaAgentKit, ElizaOS, and others), and agent wallets are increasingly funded. The
-first AI-package-drainer attacks on Solana wallets were observed in July 2025. Every
-framework that gives an agent a key is a drainer target. The window to build
-"verification by default" into the agent stack is now.
+## 3. What Graphite checks
 
----
-
-## 3. The Solution
-
-Graphite is a deterministic, multi-layer verification pipeline:
-
-```
-LLM / Agent intent
-        │  (advisory — never authoritative)
-        ▼
-┌─────────────────────────────────────────────────────┐
-│ Graphite (Rust core, 8 layers, all deterministic)    │
-│  L1 Account resolution  (PDA derivation, roles)      │
-│  L2 Instruction verification (discriminator match)   │
-│  L3 Simulation integrity (median/MAD, anti-poison)   │
-│  L4 State verification (writable/signer vs layout)   │
-│  L5 Semantic verification (intent ↔ program)         │
-│  L6 Policy (wallet profile thresholds)               │
-│  L7 Risk engine (attack-pattern gates)               │
-│  L8 Execution verification (post-submission status)  │
-│  + Phase 2 gates: multi-instruction + CPI-trace      │
-└─────────────────────────────────────────────────────┘
-        │  Approved / Blocked / Inconclusive (audit trail)
-        ▼
-Signing (only on Approved)
-```
-
-Key properties:
-
-- **Deterministic** (P2): same transaction → same verdict, cryptographically hashed.
-  No LLM in the decision path — the Python layer is an advisory pattern matcher that
-  can never override a Rust security decision (P1).
-- **Fail-closed** (P12): unknown program, unknown instruction on a high-risk protocol,
-  or a risk-class instruction without declared intent → blocked.
-- **Manifest-anchored**: 22 curated manifests (program IDs verified on mainnet) define
-  the trusted instruction surface; everything else is unverified code.
-- **Layered**: if one gate misses, the next catches it — proven by the P0/P1 audit
-  history where each layer closed the previous layer's gap.
-- **Auditable**: every decision has an itemized breakdown and an append-only audit
-  trail; AuditBind middleware re-hashes the signed transaction against the approved
-  content hash (TOCTOU prevention).
-
----
-
-## 4. Traction & Evidence (all measured, all real)
-
-| Claim | Evidence |
+| Layer | What it establishes |
 |---|---|
-| Correctness | 987 tests / 0 failures / 0 clippy / 0 warnings; benchmark 100% precision & recall on 16 scored cases |
-| Real data | 3 real mainnet exploits blocked in benchmark (Wormhole $320M, CLINKSINK, SlowMist AAT); 35 real exploit signatures in holdout, 0 false negatives |
-| Live validation | L3 on real devnet RPC; L8 on real mainnet RPC; SAK integration = 5 finalized devnet transactions |
-| Corpus | 2,181 deterministic fixtures (dev / regression / holdout), byte-identical across runs |
-| Manifests | 129 protocols, 3,186 instructions, program IDs verified executable on mainnet; 106 carry a `BattleTested` tier backed by a recorded measurement |
-| Security | Two independent adversarial audits; 4 P0 + 1 P1 classes root-fixed and re-attacked with fresh variants |
-| Performance | ~1.8ms p50 / ~2.8ms p95 / ~3.0ms p99 verification — 0.5% of Solana's 400ms block budget |
-| Integrations | TypeScript SDK, Go SDK, Python advisory layer, React dashboard, HTTP server, Dockerfile, SolanaAgentKit integration |
+| L1 Account resolution | Each account is what the manifest says the slot holds: PDA seeds re-derived, pinned addresses compared |
+| L2 Instruction identity | The described instruction is in the bytes: discriminator, account count, the runtime's privileges |
+| L3 Simulation | The simulator's report is consistent with the program's earned baseline (median/MAD, anti-poisoning) |
+| L4 State diff | Every account change in the simulation is declared: closures, owner changes, delegate grants, token debits, Token-2022 extension authorities, native authorities |
+| L5 Intent | The declared intent can describe this instruction's security class (one table, `manifest::INTENT_DECLARES`) |
+| L6 Policy | Confidence and trust tier meet the wallet profile |
+| L7 Risk | Drainer, hand-over, impersonation, multi-instruction and CPI-tree patterns, on the call tree the simulator actually executed |
+| L8 Execution | After submission, the chain's own bytes for the signature match the approved transaction |
 
----
+Properties: deterministic (the same input gives the same verdict, which is hashed); fail-closed
+(an unknown program, an undescribed instruction, an unreadable answer or a missing observation
+refuses rather than passes); the AI layer is advisory only; every verdict says what it did *not*
+observe, and the guard refuses to sign over any such gap the operator has not accepted by name.
 
-## 5. Milestones & Budget
+## 4. Evidence, and how it was produced
 
-**Total request: $120,000** — milestone-based, disbursed on verified completion (per the
-Foundation's milestone model). Rationale in §8.
+- **Adversarial rounds.** The repository records 24 rounds of internal review and repair. Each
+  finding has a class, a root cause, a fix, and a test that fails before the fix
+  ([`AUDIT/01-findings.md`](../AUDIT/01-findings.md)). Every fix in the last two rounds was then
+  reverted once, alone, to show its test catches the reversal. The latest round answered an
+  external review. Its two most serious items (R2 and R3) showed that a `transfer` label could
+  clear a multisig drain or a delegate hand-over at the intent and risk layers. Both were
+  reproduced on the previous commit and fixed at the root.
+- **Real traffic.** Whole finalized mainnet blocks from four days, 48,855 executed transactions,
+  are pushed through the full pipeline bound to their real bytes. Graphite records 0 parse
+  failures and 0 verify errors, and every verdict that changes between rounds is attributed to
+  the finding that changed it ([`round24-the-intent-is-the-class-2026-10-03.md`](round24-the-intent-is-the-class-2026-10-03.md)).
+  The samples are fetched by slot list, with their SHA-256 recorded, so anyone can re-measure
+  them ([`../tools/mainnet-sample/SAMPLES.md`](../tools/mainnet-sample/SAMPLES.md)).
+- **Real exploits.** 35 mainnet exploit transactions from the public SolPhishHunter dataset
+  (arXiv:2505.04094), labelled outside Graphite, are all refused.
 
-### Milestone 1 — Public Deployment + Professional Security Audit — $45,000 (months 1–3)
+What this evidence is not:
 
-- Deploy Graphite to a production public endpoint (TLS, auth, rate limiting, health,
-  monitoring, secrets management) with a documented security posture.
-- Commission an independent professional security audit of the core verification engine,
-  risk engine, and server; fix all findings at the root with regression tests.
-- Publish a live public demo endpoint so anyone can verify a transaction.
-- **Deliverable:** live endpoint + audit report + remediation commit set.
-- **Exit check:** audit findings closed; endpoint passes the adversarial test matrix.
+- **It is not an independent audit.** Every review in the repository is internal engineering
+  work, done by the maintainer with AI engineering agents, apart from one external review whose
+  items are verified and answered in `AUDIT/01-findings.md`. No third party has certified
+  Graphite. Milestone 1 pays for one to try.
+- **There is no public deployment.** Graphite runs locally, in Docker, and in CI.
+- **Coverage is partial.** On the measured mainnet sample, most executed transactions call at
+  least one program with no manifest. There, Graphite falls back to its drainer heuristics,
+  and it refuses rather than approves what it cannot describe.
+- **Approval is earned.** A fresh deployment approves nothing until it has simulation evidence
+  from an RPC, by design. The known limitations are listed in
+  [`../SECURITY.md`](../SECURITY.md#known-limitations).
 
-### Milestone 2 — Real-Exploit Corpus Expansion + Protocol Coverage — $40,000 (months 4–6)
+## 5. Milestones and budget
 
-- Expand the real on-chain corpus: fetch and pin 100+ additional real mainnet exploit
-  and benign transactions (raw instruction bytes) across a wider attack-class and
-  protocol distribution; grow the holdout to a statistically meaningful evaluation.
-- Onboard 10–15 additional protocol manifests (IDL/source-verified layouts, PDA seed
-  templates) covering the top agent-facing programs.
-- Publish the corpus and evaluation methodology as an open benchmark other teams can
-  run against.
-- **Deliverable:** expanded corpus + expanded manifests + published benchmark.
+**Total: $120,000**, each tranche released on verified delivery.
 
-### Milestone 3 — Agent-Framework Integration + Ecosystem Adoption — $35,000 (months 7–9)
+### Milestone 1: independent audit and public endpoint ($45,000; months 1–3)
 
-- Production integration with the major Solana agent frameworks (SolanaAgentKit and at
-  least one more, e.g. ElizaOS) so verification is default-on for agent wallets.
-- SDK hardening: typed verdicts, plugin surface, dashboard observability, docs.
-- Outreach: developer guides, security write-ups, and a "verify before you sign" public
-  campaign with the Foundation.
-- **Deliverable:** framework integrations merged upstream / published + adoption
-  metrics.
-- **Exit check:** N real agent frameworks routing transactions through Graphite; public
-  documentation.
+- Commission an independent security audit of the core, the server, and the agent guard. Fix
+  every finding at its root, with a test for each, and publish the report.
+- Deploy a public verification endpoint (TLS, auth, rate limits, monitoring) that anyone can
+  send a transaction to. Turn on branch protection and signed releases.
+- **Exit:** a published audit report with every finding closed or explained; a live endpoint.
 
----
+### Milestone 2: coverage where agents transact ($40,000; months 4–6)
 
-## 6. Team
+- Onboard the programs that dominate the unmanifested share of agent and mainnet traffic,
+  each from its program's own interface. Each gets a mainnet measurement before it earns a tier.
+- Watch for protocol upgrades (ProgramData and upgrade authority), so a manifest cannot
+  silently outlive the program it describes (roadmap R-M1).
+- Grow the labelled real-exploit set and publish the corpus and method as an open benchmark.
+- **Exit:** the measured share of mainnet transactions with a manifested program rises, and the
+  measurement is published with its samples.
 
-> (Complete with real names/links before submission. For the application, the honest
-> framing: this is currently a solo/small-team open-source effort with a strong audit
-> trail — the plan below shows where grant funding goes to build out review capacity.)
+### Milestone 3: verification on by default in agent stacks ($35,000; months 7–9)
 
-- **Maintainer / core engineer** — full ownership of the Rust core, risk engine, and
-  manifests; authored the C33–C44 audit-and-fix series.
-- **Security reviewer (M2 funded)** — independent audit lead.
-- **Integration engineer (M3 funded)** — framework integrations.
+- Upstream the integrations: SolanaAgentKit, the Vercel AI SDK and MCP exist today; add ElizaOS.
+  Make the guarded path the default for agent wallets in each.
+- Ship a hosted tier of the same MIT code for teams that do not want to run it, with the
+  self-hosted path kept first-class.
+- Write developer guides and a public "verify before you sign" write-up with the Foundation.
+- **Exit:** frameworks route real agent transactions through Graphite, with numbers reported.
 
----
+## 6. Why fund it
 
-## 7. Why the Solana Foundation
+1. **It is a public good.** Graphite is MIT-licensed infrastructure with no token. The hosted
+   tier pays for operations, while the code, manifests, corpus and benchmark stay open.
+2. **The hard part exists.** The verification engine, the manifests and the signing boundary
+   are built and tested. The grant pays for what one maintainer cannot do alone: an independent
+   audit, a public deployment, and coverage measured against real traffic.
+3. **It is honest about itself.** Every claim in the repository names its evidence, every
+   limitation is written down, and every fix is tested against its own reversal. A reviewer
+   can check the work.
 
-1. **Public good, not a token project**: Graphite is verification infrastructure. It has
-   no token, no fee, no rent extraction — it is exactly the "open-source public good"
-   the Foundation's grant program funds.
-2. **Network-level security value**: every protected agent wallet protects the Solana
-   ecosystem's reputation and reduces the drainer tax on Solana users.
-3. **Complements existing Foundation investments**: agent frameworks (SolanaAgentKit
-   ecosystem), security tooling, and AI x Solana programs. Graphite is the missing
-   verification layer those investments need.
-4. **Proven delivery**: the project has already shipped what most grants fund — the
-   request is for the final mile, de-risked by a working, tested, live-validated codebase.
+## 7. Team
 
----
+- **Victor Stanley:** maintainer and core engineer. Owns the Rust core, manifests, agent guard
+  and integrations.
+- **Independent auditor (Milestone 1):** contracted security firm.
+- **Integration engineer (Milestone 3):** framework integrations and the hosted tier.
 
-## 8. Funding Amount — Rationale
+## 8. Risks
 
-We request **$120,000 over three milestones**. Reasoning:
+- **The audit may find serious issues.** That is the point of Milestone 1. The budget assumes
+  fixes at the root, each with a test.
+- **Manifest upkeep.** Programs upgrade. Milestone 2's upgrade watch and the registry's replay
+  gate exist for this, and a stale manifest refuses rather than approves.
+- **Adoption.** Verification protects only the agents that route through it, which is what
+  Milestone 3 is for.
 
-- **What remains is not research risk — it is delivery cost.** The core is built and
-  tested (987 tests, two audits, live RPC validation). The remaining work — deployment,
-  professional audit, corpus expansion, integrations — is well-scoped execution.
-- **Professional security audit** of a Rust verification engine of this surface area
-  realistically costs $30k–$60k; our M1 allocates ~$30k toward it (rest internal).
-- **Benchmarked against the Foundation's range**: $10k–$400k, milestone-based. $120k is
-  mid-range — appropriate for a working system with a public-good mandate, not an
-  idea-stage microgrant ($10k) and not a large strategic grant.
-- **A higher ask ($250k+) is not yet justified** because the project is not yet
-  deployed at ecosystem scale; a lower ask would not cover a real audit + deployment +
-  integrations.
-- **The grant is milestone-gated by the Foundation**: each tranche is disbursed on
-  verified deliverables, so the amount scales with demonstrated progress.
+## 9. Success metrics
 
----
+- The independent audit is published, and every finding is closed or explained.
+- A public endpoint serves real verification traffic.
+- The manifested share of mainnet transactions rises, measured on published samples.
+- Real-exploit false negatives stay at 0 on the expanded set.
+- Agent frameworks route transactions through Graphite by default.
 
-## 9. Risks & Honest Limitations
+## 10. Links
 
-- **Corpus-scoped validation**: 0 false negatives on 38 holdout transactions is strong
-  but not a mainnet-wide statistical claim. M2 grows this explicitly.
-- **Manifest maintenance**: protocol correctness depends on curated manifests; the
-  registry's signed-submission gate (G5) addresses community growth, and M2 expands
-  coverage.
-- **Agent adoption**: verification is only effective if frameworks route through it —
-  the exact problem M3 tackles.
-- **L3/L8 production activation**: live-validated but not yet default-on in production;
-  M1 makes them production-activated.
-
----
-
-## 10. Success Metrics
-
-- **Security**: 0 verified-exploit false negatives on the expanded holdout; audit
-  findings closed.
-- **Adoption**: 2+ agent frameworks routing transactions through Graphite; public
-  endpoint serving real verification traffic.
-- **Ecosystem**: published open benchmark; documentation; measurable reduction in
-  drainer success on integrated wallets (reported, not overclaimed).
-- **Sustainability**: a hosted verification API and SDK that any Solana team can adopt
-  free for public-good use, with paid tier options for enterprise (future, post-grant).
-
----
-
-## 11. Contact / Links
-
-> (Insert before submission.)
-- GitHub: https://github.com/Stan-lee13/graphite
-- Docs / architecture: `ARCHITECTURE.md`, `docs/phase2-certification-report.md`
-- Demo endpoint: (M1 deliverable — currently no public endpoint, honestly stated)
+- Repository: https://github.com/Stan-lee13/graphite
+- Current status: [`CURRENT.md`](CURRENT.md); architecture: [`../ARCHITECTURE.md`](../ARCHITECTURE.md);
+  audit trail: [`../AUDIT/`](../AUDIT/)
+- Sources for §2: Scam Sniffer 2024 drainer report (reported by BleepingComputer, "Cryptocurrency
+  wallet drainers stole $494 million in 2024"); Chainalysis 2025 mid-year crypto crime update
+  (reported by The Record, "$2.17 billion in crypto stolen in first half of 2025"); Google Cloud
+  Mandiant, "Solana cryptocurrency stolen in CLINKSINK drainer campaigns".

@@ -18,6 +18,7 @@ export interface ExtractedParameters {
   output_token?: string;
   amount?: string;
   destination?: string;
+  account_type?: string;
   slippage_bps?: number;
 }
 
@@ -356,6 +357,11 @@ export interface ArtifactBoundScope {
    * Absent from servers older than Round 21 and when the bytes did not parse.
    */
   compute_budget?: ComputeBudgetRequest;
+  /**
+   * The message version the bytes carry, read from them (Round 24). Absent
+   * when they did not parse, and from servers older than Round 24.
+   */
+  message_version?: "legacy" | "v0" | "v1";
 }
 
 /** A transaction's compute-budget request (Round 21). */

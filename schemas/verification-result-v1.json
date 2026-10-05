@@ -384,6 +384,11 @@
               "minItems": 1,
               "description": "unobserved_codes[i] names unobserved[i]: same length, same order. The stable identifiers a consumer decides on. `program_semantics` and `inner_instructions` are inherent to every artifact-bound verdict; every other code names an observation that was possible and did not happen, and an execution-capable integration MUST NOT execute on a verdict carrying one it has not explicitly accepted (the SAK bridge's ResidualPolicy refuses them by default)."
             },
+            "message_version": {
+              "type": "string",
+              "enum": ["legacy", "v0", "v1"],
+              "description": "The message version the supplied bytes carry, read from them (Round 24). Absent when the bytes did not parse, and from servers before Round 24."
+            },
             "compute_budget": {
               "type": "object",
               "description": "artifact_bound only, Round 21. What the transaction asks of the runtime's compute budget, read from its bytes: the v1 header, or the Compute Budget program's instructions for legacy and v0. Absent when the bytes could not be parsed. `priority_fee_lamports` is the priority fee the fee payer pays (at most this, when no limit is set); a request above the plausible-fee ceiling is refused with risk pattern ExcessivePriorityFee.",

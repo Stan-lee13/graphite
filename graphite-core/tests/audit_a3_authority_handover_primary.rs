@@ -252,10 +252,12 @@ fn attack_stake_authorize_withdrawer_under_stake_intent_is_blocked() {
         r.risk_verdict,
         layer(&r, "L5_SemanticVerification")
     );
+    assert!(!r.approved, "approved a withdraw-authority hand-over");
 }
 
+/// Named for the guarantee (W24: it was named for the bug it pins).
 #[test]
-fn attack_stake_authorize_under_stake_intent_is_approved_on_gaming() {
+fn attack_stake_authorize_under_stake_intent_is_not_approved_on_gaming() {
     let core = core_with_three_samples(STAKE);
     let r = core
         .verify(&stake_authorize_withdrawer_to_attacker(
@@ -314,6 +316,10 @@ fn attack_approve_checked_under_revoke_intent_is_blocked() {
             r.approved,
             r.confidence
         );
+        assert!(
+            !r.approved,
+            "{program}: approved an unlimited delegate grant"
+        );
     }
 }
 
@@ -330,6 +336,7 @@ fn attack_approve_checked_under_approve_intent_is_blocked_like_approve() {
         ))
         .unwrap();
     assert_eq!(r.risk_verdict.status, "Blocked", "{:?}", r.risk_verdict);
+    assert!(!r.approved, "approved an unlimited delegate grant");
 }
 
 #[test]
@@ -345,6 +352,7 @@ fn attack_assign_with_seed_under_create_intent_is_blocked_like_assign() {
         r.risk_verdict,
         r.approved
     );
+    assert!(!r.approved, "approved an ownership hand-over");
 }
 
 #[test]

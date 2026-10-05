@@ -390,7 +390,7 @@ fn test_fix5_fake_swap_wired_into_pipeline() {
                 input_token: Some("SOL".to_string()),
                 output_token: Some("USDC".to_string()),
                 amount: Some("1".to_string()),
-                slippage_bps: None,
+                ..Default::default()
             }),
         },
         program_id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4".to_string(),

@@ -347,3 +347,56 @@ async fn refused_requests_do_not_fill_the_promotable_shadow() {
         core.frozen_baselines()
     );
 }
+
+/// W21 (external review, verified 2026-10-03): the server writes a verdict's
+/// audit row after `verify_async` returns, and the baseline had already grown
+/// — a verdict the trail never held still trained it. With observations
+/// deferred, nothing trains until the caller commits the verdict, and a
+/// discarded one never does.
+#[tokio::test]
+async fn an_observation_trains_the_baseline_only_once_its_verdict_is_recorded() {
+    let knobs: Shared = Arc::default();
+    let endpoint = cluster(Arc::clone(&knobs));
+    let samples = |core: &GraphiteCore| {
+        core.simulation_baseline(SYSTEM)
+            .map(|b| b.sample_count)
+            .unwrap_or(0)
+    };
+
+    // Precondition: undeferred, a clean simulated verification trains at once.
+    let immediate = core_at(&endpoint);
+    let _ = immediate
+        .verify_async(&describe_amount(2_000_201))
+        .await
+        .unwrap();
+    assert_eq!(
+        samples(&immediate),
+        1,
+        "precondition: this request is an observation"
+    );
+
+    let mut core = core_at(&endpoint);
+    core.defer_observations_until_recorded();
+    let committed = core
+        .verify_async(&describe_amount(2_000_202))
+        .await
+        .unwrap();
+    let discarded = core
+        .verify_async(&describe_amount(2_000_203))
+        .await
+        .unwrap();
+    assert_eq!(
+        samples(&core),
+        0,
+        "nothing trains before its verdict is recorded"
+    );
+
+    core.discard_observation(&discarded.audit_trail_id);
+    core.commit_observation(&discarded.audit_trail_id).await;
+    assert_eq!(samples(&core), 0, "a discarded observation never trains");
+
+    core.commit_observation(&committed.audit_trail_id).await;
+    assert_eq!(samples(&core), 1, "a recorded verdict's observation trains");
+    core.commit_observation(&committed.audit_trail_id).await;
+    assert_eq!(samples(&core), 1, "and only once");
+}

@@ -1,6 +1,6 @@
-# Graphite Phase 1/1.5 Final Certification Report
+# Graphite Phase 1/1.5 internal validation report (August 2026)
 
-> **Historical record (August 2026, Phase 1/1.5).** Every number in this report — test counts, layer status, the certification verdict — describes the codebase as it was then and is kept unedited as evidence. "Auditor" here names an internal engineering-agent pass, not an independent third party. For what is true now, read [docs/CURRENT.md](docs/CURRENT.md).
+> **Historical record (August 2026, Phase 1/1.5).** Every number in this report — test counts, layer status, the certification verdict — describes the codebase as it was then and is kept unedited as evidence. "Auditor" here names an internal engineering-agent pass, not an independent third party. For what is true now, read [CURRENT.md](CURRENT.md). This file was `GRAPHITE_FINAL_CERTIFICATION_REPORT.md` at the repository root until 2026-10-03; it was renamed because it certified nothing an independent party checked.
 ## Comprehensive Engineering Validation with Real On-Chain Attack Data
 
 **Date:** August 7, 2026 (original report: August 2, 2026)

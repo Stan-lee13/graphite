@@ -134,13 +134,19 @@ fn a_gross_above_u64_into_one_account_does_not_panic_the_diff_check() {
         resolved(B, false),
     ];
     let prose = vec!["transfers tokens from accounts.source to accounts.destination".to_string()];
-    // Must return a report, not panic.
-    let report = check_state_diff(&StateDiffCheck {
-        diff: &diff,
-        resolved_accounts: &accts,
-        privileges_grounded: true,
-        expected_state_changes: &prose,
-        fee_payer: Some(SIGNER),
-    });
-    let _ = report.blocked;
+    // A robustness test, and named as one (W24, external review): A2-10 was a
+    // panic, so the property is that a report comes back — the same one each
+    // time (P2), every finding carrying its reason.
+    let check = || {
+        check_state_diff(&StateDiffCheck {
+            diff: &diff,
+            resolved_accounts: &accts,
+            privileges_grounded: true,
+            expected_state_changes: &prose,
+            fee_payer: Some(SIGNER),
+        })
+    };
+    let report = check();
+    assert_eq!(report, check(), "the same diff gives the same report");
+    assert!(report.findings.iter().all(|f| !f.detail.is_empty()));
 }

@@ -219,6 +219,22 @@ impl RegressionCorpus {
                     err: e.to_string(),
                 })?;
             for f in fixtures {
+                // W11 (external review, verified 2026-10-03): a fixture's
+                // program and identity were taken on trust. A file edited
+                // to file a fixture under another program, or to change its
+                // input under the old hash, replayed as the program's own
+                // evidence. Both are recomputed from the input.
+                if f.program_id != f.input.program_id
+                    || f.content_hash != RegressionFixture::content_hash(&f.input, &f.source)
+                {
+                    return Err(RegressionError::CorruptFixture {
+                        file: path.display().to_string(),
+                        err: format!(
+                            "fixture {} is not what its input says it is: its program_id or its content hash does not match the input it carries",
+                            f.content_hash
+                        ),
+                    });
+                }
                 corpus.add_fixture(f);
             }
         }
@@ -530,6 +546,41 @@ mod tests {
             Err(RegressionError::CorruptFixture { .. })
         ));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// W11 (external review): a fixture edited after it was recorded is
+    /// refused at load, not replayed as the program's evidence.
+    #[test]
+    fn a_fixture_that_is_not_what_its_input_says_is_refused_at_load() {
+        for (tag, tamper) in [
+            (
+                "program",
+                (|f: &mut RegressionFixture| f.program_id = TOKEN.to_string())
+                    as fn(&mut RegressionFixture),
+            ),
+            ("input", |f: &mut RegressionFixture| {
+                f.input.compute_units += 1
+            }),
+        ] {
+            let dir = temp_dir(&format!("tampered-{tag}"));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut fixture = RegressionFixture::new(safe_system_transfer(), true, "recorded");
+            tamper(&mut fixture);
+            std::fs::write(
+                dir.join(format!("{SYSTEM}.json")),
+                serde_json::to_string(&vec![fixture]).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                matches!(
+                    RegressionCorpus::load_from_dir(&dir),
+                    Err(RegressionError::CorruptFixture { .. })
+                ),
+                "{tag}"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     #[test]

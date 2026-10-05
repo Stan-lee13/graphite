@@ -217,7 +217,7 @@ fn even_a_bound_artifact_states_the_limit_of_the_binding() {
     let scope = scope_of(&input(Some(vec![3u8; 16])));
     let joined = scope.unobserved().join(" | ");
     assert!(
-        joined.contains("could not be parsed as a legacy or v0 Solana message"),
+        joined.contains("could not be parsed as a legacy, v0 or v1 Solana transaction"),
         "when the artifact cannot be read the verdict must name that and say what it costs. \
          These fixtures are synthetic blobs, so this is the FALLBACK branch; a real \
          transaction takes the parsed branch - see tests/tx_artifact_real.rs: {joined}"

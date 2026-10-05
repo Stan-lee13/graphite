@@ -271,3 +271,36 @@ proptest! {
         }
     }
 }
+
+/// Anti-vacuity (W24, external review): `approved implies Clear` above is an
+/// `if r.approved` branch, so it checks nothing unless the generator reaches
+/// an approval. Pinned on the same strategy, deterministically: the
+/// generator produces approved and refused verdicts both.
+#[test]
+fn the_generator_reaches_an_approval_and_a_refusal() {
+    use proptest::strategy::{Strategy, ValueTree};
+    use proptest::test_runner::TestRunner;
+    let mut runner = TestRunner::deterministic();
+    let core = graphite_core::GraphiteCore::new();
+    let (mut approved, mut refused) = (0, 0);
+    for _ in 0..512 {
+        let input = valid_input_strategy()
+            .new_tree(&mut runner)
+            .unwrap()
+            .current();
+        if let Ok(r) = core.verify(&input) {
+            if r.approved {
+                approved += 1;
+                assert_eq!(r.risk_verdict.status, "Clear");
+            } else {
+                refused += 1;
+            }
+        }
+    }
+    eprintln!("VACUITY: approved={approved} refused={refused}");
+    assert!(
+        approved > 0,
+        "no generated input was approved: the approval invariant is vacuous"
+    );
+    assert!(refused > 0, "no generated input was refused");
+}

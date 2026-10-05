@@ -11,7 +11,16 @@ raw base64 transaction bytes, and the block's own metadata for it (whether it
 failed, compute units, the addresses its lookup tables resolved to). Nothing is interpreted here;
 interpretation is the Rust probe's job, so the sample can be re-run against
 two builds of the engine and diffed.
+
+Reproducible (W25, external review): `--slots 450453705,450454105,...` fetches
+exactly those finalized blocks instead of blocks counted back from the head,
+the sample records the slots it holds, and the file's SHA-256 is printed. A
+finalized block does not change, so the same slots give the same rows; the
+samples behind the published numbers are listed with their slots and hashes in
+SAMPLES.md. `--out <path>` writes somewhere other than mainnet_sample.json.
 """
+import argparse
+import hashlib
 import http.client
 import json
 import os
@@ -61,12 +70,21 @@ def rpc(method, params, timeout=120, attempts=4):
 
 
 def main():
-    head = rpc("getSlot", [{"commitment": "finalized"}])["result"]
-    print(f"finalized head {head}", flush=True)
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--slots", help="comma-separated finalized slots to fetch, instead of counting back from the head")
+    parser.add_argument("--out", default=OUT, help="where to write the sample (default: mainnet_sample.json here)")
+    args = parser.parse_args()
+
+    if args.slots:
+        slots = [int(s) for s in args.slots.split(",") if s.strip()]
+    else:
+        head = rpc("getSlot", [{"commitment": "finalized"}])["result"]
+        print(f"finalized head {head}", flush=True)
+        slots = [head - 80 - i * STRIDE for i in range(BLOCKS)]
 
     rows = []
-    for i in range(BLOCKS):
-        slot = head - 80 - i * STRIDE
+    fetched = []
+    for slot in slots:
         print(f"block {slot} ...", end=" ", flush=True)
         r = rpc(
             "getBlock",
@@ -89,6 +107,7 @@ def main():
             time.sleep(PAUSE_S)
             continue
         block = r["result"]
+        fetched.append(slot)
         txs = block.get("transactions", [])
         for t in txs:
             payload = t.get("transaction")
@@ -110,9 +129,16 @@ def main():
         print(f"{len(txs)} txs", flush=True)
         time.sleep(PAUSE_S)
 
-    with open(OUT, "w", encoding="utf-8") as f:
-        json.dump({"endpoint_kind": "public mainnet", "count": len(rows), "rows": rows}, f)
-    print(f"\nwrote {len(rows)} transactions to {OUT}", flush=True)
+    with open(args.out, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(
+            {"endpoint_kind": "public mainnet", "slots": fetched, "count": len(rows), "rows": rows},
+            f,
+        )
+    with open(args.out, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    print(f"\nwrote {len(rows)} transactions from {len(fetched)} blocks to {args.out}", flush=True)
+    print(f"slots: {','.join(str(s) for s in fetched)}", flush=True)
+    print(f"sha256: {digest}", flush=True)
     by_version = {}
     for r in rows:
         by_version[r["version"]] = by_version.get(r["version"], 0) + 1

@@ -1,0 +1,7134 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Zeta (ZETAxsqB)",
+  "program_id": "ZETAxsqBRek56DhiGXrn75yj2NHU3aYUnxvHXpkf3aD",
+  "website": "",
+  "github": "",
+  "category": ""
+ },
+ "version": {
+  "label": "0.1.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "initializeZetaPricing",
+   "discriminator": "23d1b41df5c77d10",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, pricing, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateZetaPricingPubkeys",
+   "discriminator": "a9dd17f8db7a8e9e",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: pricing",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeZetaGroup",
+   "discriminator": "068724e82327fa47",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "underlyingMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpSyncQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "underlying",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "usdcMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, admin, zetaGroup, greeks, perpSyncQueue, underlying, vault, insuranceVault, socializedLossAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "overrideExpiry",
+   "discriminator": "81c575726c77cf88",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "migrateToCrossMarginAccount",
+   "discriminator": "9d356b68b8bd64dc",
+   "accounts": [
+    {
+     "name": "crossMarginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: crossMarginAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeCrossMarginAccountManager",
+   "discriminator": "489a0f1ca5d7d1c7",
+   "accounts": [
+    {
+     "name": "crossMarginAccountManager",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: crossMarginAccountManager, payer",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "initializeCrossMarginAccount",
+   "discriminator": "1b1ae432d2d3cd5e",
+   "accounts": [
+    {
+     "name": "crossMarginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "crossMarginAccountManager",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: crossMarginAccount, crossMarginAccountManager, payer",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "initializeMarginAccount",
+   "discriminator": "43eb4266a7ab78c5",
+   "accounts": [
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, payer",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "initializeSpreadAccount",
+   "discriminator": "ce56fb1b5b6f17d3",
+   "accounts": [
+    {
+     "name": "spreadAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: spreadAccount, payer",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "closeCrossMarginAccountManager",
+   "discriminator": "e8b6b689565876fc",
+   "accounts": [
+    {
+     "name": "crossMarginAccountManager",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: crossMarginAccountManager",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "closeCrossMarginAccount",
+   "discriminator": "cbc4bb3c0daabe45",
+   "accounts": [
+    {
+     "name": "crossMarginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "crossMarginAccountManager",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: crossMarginAccount, crossMarginAccountManager, authority",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "closeMarginAccount",
+   "discriminator": "69d729efa6cf0167",
+   "accounts": [
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, authority",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "closeSpreadAccount",
+   "discriminator": "bee4fd10c994a1f0",
+   "accounts": [
+    {
+     "name": "spreadAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: spreadAccount, authority",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "initializeUnderlying",
+   "discriminator": "726cd55caf7c2b13",
+   "accounts": [
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "underlying",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "underlyingMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, underlying",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializePerpSyncQueue",
+   "discriminator": "0a379ae081aea108",
+   "accounts": [
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpSyncQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: perpSyncQueue, pricing",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeMarketIndexes",
+   "discriminator": "5b3fcd901453b178",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketIndexes",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marketIndexes, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeMarketNode",
+   "discriminator": "32761515b3f81780",
+   "accounts": [
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketNode",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marketNode, greeks, payer",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "halt",
+   "discriminator": "189c087941030552",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, pricing",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "unhalt",
+   "discriminator": "f98c1bd58082cf71",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, pricing",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateHaltState",
+   "discriminator": "d72d35a2958a053f",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateVolatility",
+   "discriminator": "be6974dde5c6d053",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: greeks",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateInterestRate",
+   "discriminator": "4b08ff297b3b87ee",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: greeks, zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "addPerpMarketIndex",
+   "discriminator": "7a280e40a912e788",
+   "accounts": [
+    {
+     "name": "marketIndexes",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marketIndexes, pricing",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "addMarketIndexes",
+   "discriminator": "5ef690af04a4e9fc",
+   "accounts": [
+    {
+     "name": "marketIndexes",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marketIndexes, zetaGroup",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "initializeZetaState",
+   "discriminator": "44274b8ebf925ede",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "treasuryWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referralsAdmin",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referralsRewardsWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "usdcMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "secondaryAdmin",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, treasuryWallet, referralsRewardsWallet, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeZetaTreasuryWallet",
+   "discriminator": "f939bb66b86825e7",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "treasuryWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "usdcMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, treasuryWallet, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeZetaReferralsRewardsWallet",
+   "discriminator": "f5e5df780786f7f8",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referralsRewardsWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "usdcMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, referralsRewardsWallet, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateAdmin",
+   "discriminator": "a1b028d53cb8b3e4",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "newAdmin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, newAdmin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateSecondaryAdmin",
+   "discriminator": "54e61a4b02b3afea",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "newAdmin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, newAdmin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateReferralsAdmin",
+   "discriminator": "49905c774a6a10c8",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "newAdmin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, newAdmin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateZetaState",
+   "discriminator": "68b614bb03a43c03",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateOracle",
+   "discriminator": "7029d112f8e2fcbc",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateOracleBackupFeed",
+   "discriminator": "e60921cae4d1b462",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updatePricingParameters",
+   "discriminator": "697fd0863d3d71f7",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateMarginParameters",
+   "discriminator": "4532aec57bc448ec",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: pricing",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateZetaGroupMarginParameters",
+   "discriminator": "3cd07993f26a0bfe",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updatePerpParameters",
+   "discriminator": "5a87db2aa48661ae",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: pricing",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateZetaGroupPerpParameters",
+   "discriminator": "48988c9ec35df71f",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updateZetaGroupExpiryParameters",
+   "discriminator": "11457968e1ce8cd7",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "toggleZetaGroupPerpsOnly",
+   "discriminator": "aa734d0ba19df7a9",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "cleanZetaMarkets",
+   "discriminator": "7a7f315944e4559d",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "cleanZetaMarketHalted",
+   "discriminator": "898c5e12e7e8d9cc",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bids",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "asks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "settlePositionsHalted",
+   "discriminator": "aa938ba31368a74d",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeMarketStrikes",
+   "discriminator": "bd2eff217e852bab",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaGroup",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "expireSeriesOverride",
+   "discriminator": "6816227b56e08246",
+   "accounts": [],
+   "expected_state_changes": [
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer",
+   "variable_accounts": true
+  },
+  {
+   "name": "expireSeries",
+   "discriminator": "2da269622c15ab7f",
+   "accounts": [],
+   "expected_state_changes": [
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer",
+   "variable_accounts": true
+  },
+  {
+   "name": "initializeZetaMarket",
+   "discriminator": "74efe2952ea3dd03",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketIndexes",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "baseMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "quoteMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaBaseVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaQuoteVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexBaseVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexQuoteVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vaultOwner",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: pricing, admin, market, requestQueue, eventQueue, bids, asks, baseMint, quoteMint, zetaBaseVault, zetaQuoteVault, dexBaseVault, dexQuoteVault",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeMarketTifEpochCycle",
+   "discriminator": "c78fad93cacc40cc",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: admin, market",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "updatePricingV2",
+   "discriminator": "eb6d8aad0f2533f4",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpMarket",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpBids",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpAsks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: pricing",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "applyPerpFunding",
+   "discriminator": "1752e1dedb7ae6fb",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "deposit",
+   "discriminator": "f223c68952e1f2b6",
+   "accounts": [
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, vault, userTokenAccount, socializedLossAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "depositV2",
+   "discriminator": "6d4b4599acda9213",
+   "accounts": [
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, vault, userTokenAccount, socializedLossAccount, pricing",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "depositInsuranceVault",
+   "discriminator": "2f35192f6d7a1616",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceDepositAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, insuranceVault, insuranceDepositAccount, userTokenAccount, zetaVault, socializedLossAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "depositInsuranceVaultV2",
+   "discriminator": "f22c18135b3b07c9",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceDepositAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, pricing, insuranceVault, insuranceDepositAccount, userTokenAccount, zetaVault, socializedLossAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "withdraw",
+   "discriminator": "b712469c946da122",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: vault, marginAccount, userTokenAccount, socializedLossAccount",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "withdrawV2",
+   "discriminator": "f250a300c4ddc2c2",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: pricing, vault, marginAccount, userTokenAccount, socializedLossAccount",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "withdrawInsuranceVault",
+   "discriminator": "11fad52dac7551e1",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceDepositAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, insuranceVault, insuranceDepositAccount, userTokenAccount",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "withdrawInsuranceVaultV2",
+   "discriminator": "cb472c94e0f245a5",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceDepositAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, pricing, insuranceVault, insuranceDepositAccount, userTokenAccount",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "initializeOpenOrders",
+   "discriminator": "37ea1052642a7ec0",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrdersMap",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: openOrders, marginAccount, payer, openOrdersMap",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "initializeOpenOrdersV2",
+   "discriminator": "dc11551470ae94e3",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrdersMap",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: openOrders, marginAccount, payer, openOrdersMap",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "initializeOpenOrdersV3",
+   "discriminator": "16bf8b88792754ca",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "crossMarginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrdersMap",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: openOrders, crossMarginAccount, payer, openOrdersMap",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "closeOpenOrders",
+   "discriminator": "c8d83fef07e6ff14",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrdersMap",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: openOrders, marginAccount, authority, openOrdersMap",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "closeOpenOrdersV2",
+   "discriminator": "4e98c4a344b37948",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrdersMap",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: openOrders, marginAccount, authority, openOrdersMap",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "closeOpenOrdersV3",
+   "discriminator": "cf0fc64ac5e4b01e",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "crossMarginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrdersMap",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: openOrders, crossMarginAccount, authority, openOrdersMap",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "initializeWhitelistDepositAccount",
+   "discriminator": "3de773db51f39e8a",
+   "accounts": [
+    {
+     "name": "whitelistDepositAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "user",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: whitelistDepositAccount, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeWhitelistInsuranceAccount",
+   "discriminator": "2b2ef09b50045666",
+   "accounts": [
+    {
+     "name": "whitelistInsuranceAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "user",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: whitelistInsuranceAccount, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeWhitelistTradingFeesAccount",
+   "discriminator": "c681d8b9f71d69be",
+   "accounts": [
+    {
+     "name": "whitelistTradingFeesAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "user",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: whitelistTradingFeesAccount, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeInsuranceDepositAccount",
+   "discriminator": "55a372798ba72925",
+   "accounts": [
+    {
+     "name": "insuranceDepositAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "whitelistInsuranceAccount",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: insuranceDepositAccount, payer",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "initializeCombinedInsuranceVault",
+   "discriminator": "4d12b590db54066a",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "usdcMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, insuranceVault, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeCombinedVault",
+   "discriminator": "3b6369114977e5fc",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "usdcMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, vault, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeCombinedSocializedLossAccount",
+   "discriminator": "886c58f5e6e06552",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "usdcMint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state, socializedLossAccount, admin",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "placeOrder",
+   "discriminator": "33c29baf6d82606a",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_orderPayerTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketNode",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, openOrders, marketAccounts_market, marketAccounts_requestQueue, marketAccounts_eventQueue, marketAccounts_bids, marketAccounts_asks, marketAccounts_orderPayerTokenAccount, marketAccounts_coinVault, marketAccounts_pcVault, marketAccounts_coinWallet, marketAccounts_pcWallet, marketNode, marketMint",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "placeOrderV2",
+   "discriminator": "e86f73c4ed8f3ecc",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_orderPayerTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketNode",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, openOrders, marketAccounts_market, marketAccounts_requestQueue, marketAccounts_eventQueue, marketAccounts_bids, marketAccounts_asks, marketAccounts_orderPayerTokenAccount, marketAccounts_coinVault, marketAccounts_pcVault, marketAccounts_coinWallet, marketAccounts_pcWallet, marketNode, marketMint",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "placeOrderV3",
+   "discriminator": "925d0ea79f14063a",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_orderPayerTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketNode",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, openOrders, marketAccounts_market, marketAccounts_requestQueue, marketAccounts_eventQueue, marketAccounts_bids, marketAccounts_asks, marketAccounts_orderPayerTokenAccount, marketAccounts_coinVault, marketAccounts_pcVault, marketAccounts_coinWallet, marketAccounts_pcWallet, marketNode, marketMint",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "placePerpOrder",
+   "discriminator": "45a15dca787e4cb9",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_orderPayerTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpSyncQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, openOrders, marketAccounts_market, marketAccounts_requestQueue, marketAccounts_eventQueue, marketAccounts_bids, marketAccounts_asks, marketAccounts_orderPayerTokenAccount, marketAccounts_coinVault, marketAccounts_pcVault, marketAccounts_coinWallet, marketAccounts_pcWallet, marketMint, perpSyncQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "placePerpOrderV2",
+   "discriminator": "cd5482b43f760acf",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_orderPayerTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpSyncQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, openOrders, marketAccounts_market, marketAccounts_requestQueue, marketAccounts_eventQueue, marketAccounts_bids, marketAccounts_asks, marketAccounts_orderPayerTokenAccount, marketAccounts_coinVault, marketAccounts_pcVault, marketAccounts_coinWallet, marketAccounts_pcWallet, marketMint, perpSyncQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "placeOrderV4",
+   "discriminator": "f3f8d58fb84f2949",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_orderPayerTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketNode",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, openOrders, marketAccounts_market, marketAccounts_requestQueue, marketAccounts_eventQueue, marketAccounts_bids, marketAccounts_asks, marketAccounts_orderPayerTokenAccount, marketAccounts_coinVault, marketAccounts_pcVault, marketAccounts_coinWallet, marketAccounts_pcWallet, marketNode, marketMint",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "placePerpOrderV3",
+   "discriminator": "5bf660073516eae1",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "rent",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_requestQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_orderPayerTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_coinWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketAccounts_pcWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marketMint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpSyncQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, openOrders, marketAccounts_market, marketAccounts_requestQueue, marketAccounts_eventQueue, marketAccounts_bids, marketAccounts_asks, marketAccounts_orderPayerTokenAccount, marketAccounts_coinVault, marketAccounts_pcVault, marketAccounts_coinWallet, marketAccounts_pcWallet, marketMint, perpSyncQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "cancelOrder",
+   "discriminator": "5f81edf00831df84",
+   "accounts": [
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "cancelOrderNoError",
+   "discriminator": "5f61d7cc6f33ccb8",
+   "accounts": [
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "cancelAllMarketOrders",
+   "discriminator": "8bbee6f94da0ce04",
+   "accounts": [
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "cancelOrderHalted",
+   "discriminator": "00c0e902fcfb82a9",
+   "accounts": [
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "cancelOrderByClientOrderId",
+   "discriminator": "73b2c908afb77b77",
+   "accounts": [
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "cancelOrderByClientOrderIdNoError",
+   "discriminator": "354da79daf8390ab",
+   "accounts": [
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "pruneExpiredTifOrders",
+   "discriminator": "18e3e2d45d1af2e6",
+   "accounts": [
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: market, bids, asks, eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "forceCancelOrderByOrderIdV2",
+   "discriminator": "51f33c5adec929de",
+   "accounts": [
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "forceCancelOrderByOrderId",
+   "discriminator": "b6eb30b3f885d2f0",
+   "accounts": [
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "forceCancelOrdersV2",
+   "discriminator": "0e3e95ca8f113873",
+   "accounts": [
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "forceCancelOrders",
+   "discriminator": "40b5c43fde4840e8",
+   "accounts": [
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_openOrders",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_bids",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_asks",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "cancelAccounts_eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: cancelAccounts_marginAccount, cancelAccounts_openOrders, cancelAccounts_market, cancelAccounts_bids, cancelAccounts_asks, cancelAccounts_eventQueue",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "crankEventQueue",
+   "discriminator": "438561dfb2bcebb5",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "eventQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "perpSyncQueue",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: market, eventQueue, perpSyncQueue",
+    "updates protocol accounting state"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": ""
+  },
+  {
+   "name": "collectTreasuryFunds",
+   "discriminator": "f3d504ec1af6b4ae",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "treasuryWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "collectionTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: treasuryWallet, collectionTokenAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "treasuryMovement",
+   "discriminator": "0122f269d7d39d12",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "treasuryWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referralsRewardsWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: insuranceVault, treasuryWallet, referralsRewardsWallet",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "rebalanceInsuranceVault",
+   "discriminator": "0bc442eb3beddf6f",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "insuranceVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "treasuryWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "socializedLossAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: zetaVault, insuranceVault, treasuryWallet, socializedLossAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "liquidateV2",
+   "discriminator": "0f56553702e1a1eb",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "liquidator",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "liquidatorAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pricing",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "liquidatedAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: liquidatorAccount, liquidatedAccount",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "liquidate",
+   "discriminator": "dfb3e27d302e274a",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "liquidator",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "liquidatorMarginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "liquidatedMarginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: liquidatorMarginAccount, liquidatedMarginAccount",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "burnVaultTokens",
+   "discriminator": "e9cba5c9af2bbc9f",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: mint, vault",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "settleDexFunds",
+   "discriminator": "a5678e26d3a60ee2",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "market",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaBaseVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaQuoteVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexBaseVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexQuoteVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "vaultOwner",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "serumAuthority",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: market, zetaBaseVault, zetaQuoteVault, dexBaseVault, dexQuoteVault",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "positionMovement",
+   "discriminator": "75104bf9b37fab93",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "spreadAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "greeks",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracle",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupFeed",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oracleBackupProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, spreadAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "transferExcessSpreadBalance",
+   "discriminator": "acb80c0a346940d5",
+   "accounts": [
+    {
+     "name": "zetaGroup",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "spreadAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount, spreadAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "toggleMarketMaker",
+   "discriminator": "cbf7549f68fd9450",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "initializeReferrerAccount",
+   "discriminator": "2d5cca4447433304",
+   "accounts": [
+    {
+     "name": "referrer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "referrerAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: referrer, referrerAccount",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "referUser",
+   "discriminator": "39729accb921aa88",
+   "accounts": [
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "referrerAccount",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referralAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: user, referralAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "initializeReferrerAlias",
+   "discriminator": "431c034e8c6c148a",
+   "accounts": [
+    {
+     "name": "referrer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "referrerAlias",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referrerAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: referrer, referrerAlias, referrerAccount",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "setReferralsRewards",
+   "discriminator": "3ee801124b074d9e",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referralsAdmin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "claimReferralsRewards",
+   "discriminator": "799c6d9f9edbd98f",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "referralsRewardsWallet",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userReferralsAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "userTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "user",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: referralsRewardsWallet, userReferralsAccount, userTokenAccount",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "editDelegatedPubkey",
+   "discriminator": "89f547592ef91635",
+   "accounts": [
+    {
+     "name": "marginAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: marginAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "resetNumFlexUnderlyings",
+   "discriminator": "3013fed1c8d3313d",
+   "accounts": [
+    {
+     "name": "state",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "admin",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: state",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  }
+ ],
+ "trust_tier": "OfficialManifest"
+}

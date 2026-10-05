@@ -1,0 +1,12 @@
+{
+  "name": "@graphite/mcp-server",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "bin": { "graphite-mcp": "./server.ts" },
+  "scripts": { "start": "tsx server.ts", "typecheck": "tsc --noEmit", "test": "tsx --test *.test.ts" },
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.31.0", "zod": "^4.1.8" },
+  "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.0.0", "typescript": "^5.5.0" }
+}

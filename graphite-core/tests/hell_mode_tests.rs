@@ -551,6 +551,11 @@ fn h6b_spoofed_manifest_non_covered_discriminator_boundary() {
     );
     assert_eq!(result.trust_tier, "OfficialManifest", "P7 cap holds");
     assert_eq!(result.risk_verdict.status, "Clear");
+    // Pinned by value (W24, external review: it was only printed). Since R2
+    // the spoofed manifest's instruction carries no class, and a `transfer`
+    // intent does not declare an unclassed instruction, so L5 fails and the
+    // manifest's word no longer approves it.
+    assert!(!result.approved, "{}", result.summary);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -865,6 +870,12 @@ fn h12_stake_delegate_stake_not_blocked() {
         WalletProfile::TradingBot,
         max_evidence(),
     );
+    // Declared as what it is (external review R2): `make_input` labels every
+    // request "transfer", and a transfer intent cannot declare a `stake`
+    // instruction — Check 9b refuses that label. A delegation declared as
+    // "stake" is the legitimate case this pins.
+    let mut input = input;
+    input.proposed_intent.intent_type = "stake".to_string();
     let result = core.verify(&input);
     match result {
         Ok(r) => assert_eq!(
@@ -878,7 +889,11 @@ fn h12_stake_delegate_stake_not_blocked() {
 #[test]
 fn h12_squads_execute_transaction_not_blocked() {
     let core = GraphiteCore::new();
-    // Use the actual Squads V4 discriminator for execute_transaction
+    // 8faecbbfaecf93c5 is in no manifest (W24, external review: this said it
+    // was Squads' execute_transaction). What is pinned: an instruction the
+    // Squads manifest does not describe matches no attack pattern — it is not
+    // called an attack — and it is not approved either, because an undescribed
+    // instruction cannot be verified.
     let input = make_input(
         "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf",
         "8faecbbfaecf93c5",
@@ -895,11 +910,17 @@ fn h12_squads_execute_transaction_not_blocked() {
     );
     let result = core.verify(&input);
     match result {
-        Ok(r) => assert_eq!(
-            r.risk_verdict.status, "Clear",
-            "Squads ExecuteTransaction is legitimate governance — must NOT be blocked"
+        Ok(r) => {
+            assert_eq!(
+                r.risk_verdict.status, "Clear",
+                "an undescribed Squads instruction is not an attack pattern"
+            );
+            assert!(!r.approved, "an undescribed instruction was approved");
+        }
+        Err(e) => panic!(
+            "an undescribed Squads instruction should not error: {:?}",
+            e
         ),
-        Err(e) => panic!("Squads ExecuteTransaction should not error: {:?}", e),
     }
 }
 
@@ -994,16 +1015,17 @@ fn h16_empty_and_zero_discriminators_dont_crash() {
         WalletProfile::TradingBot,
         max_evidence(),
     );
+    // W24 (external review): `is_ok() || is_err()` asserted nothing. An
+    // empty or zero discriminator is refused or errors; it is never approved.
     let r1 = core.verify(&input1);
     let r2 = core.verify(&input2);
-    // Both should not crash — Err is acceptable as long as it's not a panic
     assert!(
-        r1.is_ok() || r1.is_err(),
-        "Empty discriminator should not panic"
+        r1.as_ref().map_or(true, |r| !r.approved),
+        "an empty discriminator was approved: {r1:?}"
     );
     assert!(
-        r2.is_ok() || r2.is_err(),
-        "Zero discriminator should not panic"
+        r2.as_ref().map_or(true, |r| !r.approved),
+        "a zero discriminator was approved: {r2:?}"
     );
 }
 
@@ -1073,14 +1095,19 @@ fn h19_large_instruction_data_does_not_crash() {
         real_account_metas: vec![],
         state_diff: None,
     };
+    // W24 (external review): the bytes are 100 KB of 0x42 under a declared
+    // System Transfer; they do not decode as one, so this is never approved.
     let result = core.verify(&input);
-    match result {
-        Ok(r) => assert!(
+    if let Ok(r) = &result {
+        assert!(
             !r.confidence.is_nan(),
-            "100KB instruction data must not corrupt confidence"
-        ),
-        Err(_) => {}
+            "100KB instruction data corrupted confidence"
+        );
     }
+    assert!(
+        result.as_ref().map_or(true, |r| !r.approved),
+        "100KB of data that is not a Transfer was approved"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -5,7 +5,7 @@
 Graphite is a deterministic semantic verification engine for Solana. It verifies
 that transactions constructed by AI agents match their declared intent by checking
 program IDs, CPI chains, account structures, cross-instruction patterns, and risk
-patterns against a knowledge base of 129 protocol manifests covering 3,195
+patterns against a knowledge base of 137 protocol manifests covering 3,504
 instructions.
 
 **Honest framing:** Graphite performs deterministic pattern matching on program
@@ -47,7 +47,7 @@ The pipeline executes in order. Each layer is tracked in the verification result
    Without RPC and without a supplied diff, the layer falls back to a structural consistency check on the manifest prose against the resolved account list (fund-movement wording must be matched by at least two writable accounts, authority wording by a signer, and so on) — honest about being a consistency check rather than a diff. See `tests/l4_state_diff_gate.rs`, which asserts the diff path through `verify` rather than against `check_state_diff` directly.
 5. **L5 Semantic Verification** — Compares the proposed intent against the Semantic Graph's expected behavior for this program. The intent vocabulary is exactly: `swap|trade|exchange`, `transfer|send`, `stake|delegate`, `close|close_account`, `create|create_account`, `approve|revoke` (anything else fails closed). The advisory labeler (v2, C21) emits only this vocabulary.
 6. **L6 Policy Verification** — Computes confidence (0.0–1.0 from weighted signals + tier ceilings) and applies wallet profile thresholds (TradingBot 80%, Treasury 95%, Gaming 55%, Enterprise 99%) and trust tier requirements
-7. **L7 Risk Verification** — Pattern-matches against 12 known attack patterns (16 risk checks, hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack (including any instruction named for an authority change, Check 2b), FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, Impersonation (system-account impersonation — SolPhishHunter arXiv:2505.04094), UnspendableDestination, MultiInstructionDrain (C29), and CpiTraceAnomaly (C29). A registered plugin's veto is reported as `PluginBlock`. Runs early for fail-fast but is reported at L7 per architecture spec. Every instruction in the transaction is assessed, not just the primary — see "Secondary Instruction Risk Assessment" below.
+7. **L7 Risk Verification** — Pattern-matches against 12 known attack patterns (17 risk checks, hard gate, independent of confidence): Drainer, HiddenTransfer, AuthorityHijack (including any instruction named for an authority change, Check 2b), FakeSwap, UnexpectedCpi, PermissionEscalation, MaliciousAccountChange, CompositionalDrainPattern, Impersonation (system-account impersonation — SolPhishHunter arXiv:2505.04094), UnspendableDestination, MultiInstructionDrain (C29), and CpiTraceAnomaly (C29). A registered plugin's veto is reported as `PluginBlock`. Runs early for fail-fast but is reported at L7 per architecture spec. Every instruction in the transaction is assessed, not just the primary — see "Secondary Instruction Risk Assessment" below.
 8. **L8 Execution Verification** — Post-submission: `POST /verify/execution` (or `graphite execution`) confirms the signature on-chain and reconciles it against the verdict on the append-only trail. Outcomes: ApprovedAndExecuted, ApprovedButFailedOnChain, **BlockedButExecuted** (the gate was bypassed — the one worth paging on, and invisible to every layer inside a verification request), BlockedAndNotExecuted, NotFound, NoVerificationOnRecord, Unavailable. Caller-driven by design: Graphite does not watch the chain. Live-validated against mainnet. Since Round 12 an RPC's word for *inclusion* is weighed, not taken: the status's `confirmationStatus` is read and a `processed`-only sighting draws no positive conclusion; `getTransaction`'s slot and outcome are held against `getSignatureStatuses` and a contradiction draws none (`chain_inconsistent`); a malformed status is `Unavailable`; redirects are never followed; and with `GRAPHITE_RPC_WITNESS_URL` a second, independent RPC must agree (`inclusion_witness`) before an approval is reported executed. The alarm is asymmetric on purpose: a BLOCKED transaction sighted by either endpoint, at any commitment, is `BlockedButExecuted` — the bytes are fetched from whichever endpoint saw it and bound to the signature like any other.
 
 ### Key Properties
@@ -133,7 +133,7 @@ Reachable through `graphite quarantine add|lift|list` (operating on the server's
 
 Most account roles in an instruction are genuinely **externally-determined** — which token account to debit, who the recipient is — and cannot be pre-verified by any means; requiring a PDA seed or an expected address on every role would be both wrong (there is nothing to check against) and infeasible. But a large, high-value subset of roles are **fixed, well-known constants**: the SPL Token, Token-2022, System, Compute Budget, and Associated-Token-Account program IDs, and a manifest's own program self-reference (the `"{program_id}"` seed-template sentinel). These are neither a PDA (no seed formula exists) nor legitimately caller-chosen.
 
-`AccountRoleDef.expected_address` (a manifest-declared constant, or a small set of acceptable constants — e.g. a generic "token program" slot that legitimately accepts either classic SPL Token or Token-2022) lets the manifest pin these slots. Account resolution checks the supplied address against them and, on mismatch, sets `ResolvedAccount.expected_address_mismatch` — folded into the SAME hard-block risk finding (`AccountIdentityMismatch`) that a PDA mismatch already produces (Constitution P4). 542 account roles across 19 of the 129 manifests are pinned this way (`graphite-core/scripts/populate_expected_addresses.py` — rerun when onboarding a new protocol).
+`AccountRoleDef.expected_address` (a manifest-declared constant, or a small set of acceptable constants — e.g. a generic "token program" slot that legitimately accepts either classic SPL Token or Token-2022) lets the manifest pin these slots. Account resolution checks the supplied address against them and, on mismatch, sets `ResolvedAccount.expected_address_mismatch` — folded into the SAME hard-block risk finding (`AccountIdentityMismatch`) that a PDA mismatch already produces (Constitution P4). 596 account roles across 23 of the 137 manifests are pinned this way (`graphite-core/scripts/populate_expected_addresses.py` — rerun when onboarding a new protocol).
 
 **Privileges.** `privilege_mismatch` compares the manifest's declared signer/writable expectation with the transaction's real flags (read from its header whenever the bytes are supplied) and flags two directions: a required signer that is not signed, and a declared read-only slot the transaction marks writable. Since Round 20 the second direction is not applied to the transaction's **fee payer**: the runtime makes the fee payer writable in every transaction because it pays the fee, so the flag says nothing about the instruction — and reading it as an escalation blocked every SPL / Token-2022 transfer whose authority also paid the fee (1,355 identity/privilege blocks over a 19,458-transaction mainnet sample fell to 519). The fee payer's signer requirement, and both directions for every other account, are checked as before. **Since Round 21 the write direction is decided by observation**, because Solana grants privileges per message: a write that another located instruction's manifest declares explains the flag, and any other is deferred to the pre/post diff — the account passes only when Graphite's own simulation observed it unchanged, and blocks (with `privilege_mismatch` restored on the resolved account) when it changed or was not observed. The signer direction is decided at resolution, as before. A manifest instruction may declare alternate `account_layouts` for a program that takes more than one (Raydium AMM v4's 17- and 18-account swaps); `layout_for(n)` selects one by exact count, and two of one length are refused at load.
 
@@ -298,7 +298,7 @@ reconciliation), `POST /audit/event` (caller-reported lifecycle events, P9),
 ## What Graphite Does NOT Do (Honest)
 
 - Does NOT decode instruction data semantics beyond the discriminator for protocols it has no manifest for (it parses the transaction's wire format — structure, accounts, privileges, data bytes — but reads amounts and arguments only where a manifest or the state diff gives them meaning)
-- Does NOT detect novel attack patterns (only the 12 known patterns / 16 checks are matched)
+- Does NOT detect novel attack patterns (only the 12 known patterns / 17 checks are matched)
 - Does NOT use AI/ML in the verification path (deterministic pattern matching only; the Python layer is an advisory labeler)
 - Does NOT treat the advisory labeler's suggestions as decisions — a wrong suggestion simply fails to match and the verification blocks (P1)
 - Does NOT watch the chain — L8 is caller-driven; someone must report the signature after submission
@@ -390,7 +390,7 @@ blockhash window between verification and execution.
 graphite/
 ├── graphite-core/          # Rust verification engine
 │   ├── src/                # core modules + plugins/ + feature-gated server/cli/rpc
-│   ├── protocols/          # 129 JSON protocol manifests (3,195 instructions) + battle_tested_evidence.json
+│   ├── protocols/          # 137 JSON protocol manifests (3,504 instructions) + battle_tested_evidence.json
 │   ├── tests/              # integration suites (adversarial + exploit + RPC trust boundary + real mainnet legacy/v0/v1 + cross-language corpus); 1,849 tests in the default leg counting src/ unit tests
 │   └── Cargo.toml
 ├── sdk/
@@ -398,6 +398,8 @@ graphite/
 │   └── go/                 # Go SDK (19-field VerificationResult parity)
 ├── integrations/
 │   ├── agent-guard/        # The verification gate every integration signs through
+│   ├── vercel-ai/          # Vercel AI SDK tools over the guard
+│   ├── mcp-server/         # MCP server over the guard (elicitation confirms every fund movement)
 │   └── solana-agent-kit/   # SAK adapter over the guard (SAK's wallet cannot sign)
 ├── python-ai-layer/        # Advisory intent parser (separate process, P1)
 ├── schemas/                # JSON schemas (proposed-intent, verification-result)

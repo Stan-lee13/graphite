@@ -62,7 +62,9 @@ fn risk_class_is_in_check_10s_vocabulary() {
     // A class added to the loader without a place here fails, instead of
     // reaching the Risk Engine unplaced (2026-10-01: four copies of the list
     // had drifted from each other).
-    let low = ["", "create", "transfer"];
+    // `inert` (Round 24): moves no value and changes no control, so it is
+    // not refused without an intent; no intent declares it either.
+    let low = ["", "inert", "create", "transfer"];
     let high = graphite_core::manifest::HIGH_RISK_CLASSES;
     for class in graphite_core::manifest::RISK_CLASSES {
         assert!(

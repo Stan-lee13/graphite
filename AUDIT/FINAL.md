@@ -1,22 +1,33 @@
-# AUDIT FINAL — verdict (2026-10-01)
+# AUDIT FINAL — verdict (2026-10-03, after Round 24)
 
-**Scope:** the whole repository at `3327fcf` (Round 22), audited in six areas
-([`00-map.md`](00-map.md)), fixed, reviewed, and re-measured. **Internal engineering work by the
-maintainer and sub-agents — not an independent third-party audit and not a certification.** The
-independent audit remains an owner decision (R-M4).
+**Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
+fixed in Round 23. An external review of the result followed (R1–R26 with W1–W26); its items were
+re-verified one at a time and answered through `eb17aa5` and Round 24. **Internal engineering
+work by the maintainer and AI engineering agents, plus one external review answered here. Not an
+independent third-party audit and not a certification.** The independent audit remains an owner
+decision (R-M4).
 
 ## Verdict
 
-**Ready for a supervised production pilot behind its documented operating conditions; not yet
-ready to be called independently assured.** Every finding this audit raised is fixed at its root
-or recorded as an owner decision or a documented limitation, and every fix's test was shown to
-fail when the fix is taken away. That is a statement about what this audit looked for, not a
-proof that nothing else exists. An external review of the result has since raised items that
-are not yet verified, two of which (R2, R3) concern whether a declared intent can let a
-dangerous instruction through; **until they are verified and, if real, fixed, this audit does
-not claim that no harmful transaction can be approved.** The issues listed under "Still open"
-are real, and a fresh adversarial review by someone who did not write the fixes is the next
-thing that would raise confidence.
+**Ready for a supervised production pilot behind its documented operating conditions; not
+independently assured.**
+
+Every finding this work raised is in one of three states:
+
+- fixed at its root;
+- recorded as an owner decision;
+- recorded as a documented limitation, with its measured cost.
+
+Every fix's test was shown to fail when the fix is taken away.
+
+The two external-review items that bore most directly on this verdict were R2 and R3: whether a
+declared intent could let a dangerous instruction through. Both were reproduced on `eb17aa5` and
+are fixed. A third case of the same kind (R3-b) was found by this round's own mainnet
+re-measurement and fixed the same day.
+
+This audit claims no harmful transaction can be approved **only for what it examined**. It is not
+a proof that nothing else exists. A fresh adversarial review by someone who did not write the
+fixes is still the next thing that would raise confidence.
 
 This is **not** a "0 issues" verdict.
 
@@ -24,88 +35,82 @@ This is **not** a "0 issues" verdict.
 
 | | P0 | P1 | P2 | P3 | Other |
 |---|---|---|---|---|---|
-| Audit areas A1–A6 | 0 | 4 | 20 | 54 | 3 owner decisions, 3 coverage gaps |
-| Review of the fixes and the suite (F1–F18) | 0 | 1 candidate (F3) | 5 (F1, F2, F4, F16 and F3's residual) | 9 | 2 test-quality, 2 nits, 1 rejected (F6) |
-| External review, verified so far (R1) | 0 | 0 | 1 (R1) | 0 | R2–R26 being verified |
+| Audit areas A1–A6 (Round 23) | 0 | 4 | 20 | 54 | 3 owner decisions, 3 coverage gaps |
+| Review of the fixes and the suite (F1–F18) | 0 | 1 candidate (F3) | 5 | 9 | 2 test-quality, 2 nits, 1 rejected (F6) |
+| External review R1–R12 and W1–W26 | 0 | 4 (R2; R3 and W14-a, which completes it; R3-b, from this round's measurement) | 15 (R1; 13 in Round 24, one disclosed rather than refused; R11 open) | 22 (21 fixed; W7 open) | R4–R10 fixed (documents, schemas, bridge); W24 test quality; 6 documented limitations; owner items |
 
-- The four P1s (A1-01, A3-01, A3-02, A3-03) each produced `approved: true` or a Clear risk verdict
-  for a harmful transaction on `3327fcf`; each now has a test that fails on `3327fcf`.
-- Two fixes introduced regressions that the process caught before release: F1 (from A2-01) by the
-  independent review, F16 (from F3) by the existing suite. One pre-existing defect surfaced from
-  the same sweep (F18: the durable-nonce opt-in could never approve).
+- The R2 and R3 cases each got **L5 Passed and L7 Clear** on `eb17aa5`, measured in its own build.
+  The review's recipe, with seeded evidence and a simulation, reported `approved: true` for one of
+  them (Bubblegum `delegate`). Each case now has a test that fails on `eb17aa5`.
+- R3-b: on four days of mainnet, the R2 fix turned one refused verdict into a Clear one. Tensor
+  AMM's `editPool` carried the IDL onboarding's default `transfer` class. 52 switch/edit
+  instructions, and 391 that need an admin's signature, were classed the same way. They are now
+  control changes by rule, whatever their tag.
 
 ## Evidence
 
-- **Tests:** 1,849 Rust tests in the default leg (341 featureless, 1,594 CLI-only), 170 in the agent guard and 6 in the SAK
-  adapter (R-P8 phase 3), 37 TypeScript SDK, 44 Go, 35 Python, 7 dashboard, all passing on the local mirror of CI;
-  every fixed finding has a named test that fails before the fix (`01-findings.md`).
-- **Deliberate breaks:** 59 of 59 caught — each fix reverted once and its test re-run. One test
-  (B54, A4-11) was vacuous on its first run and was strengthened until it failed without the fix.
-- **Real traffic:** 48,855 executed mainnet transactions from four days, `3327fcf` against this
-  round, row by row: 0 parse failures, 0 verify errors; 461 durable-nonce transactions no longer
-  refused for their nonce advance; 9 newly refused, each a protocol or pool configuration call or
-  a program-upgrade hand-over (0.018%). The read-only live-RPC check was not repeated this round, so
-  the L4 changes (F1, F2) are pinned by tests but not yet observed on live simulations.
-- **Supply chain:** cargo-audit on both lockfiles; an npm advisory gate keyed by advisory and
-  package on all three npm lockfiles (one allowlisted advisory: `bigint-buffer`, a native addon
-  never built because installs run with `--ignore-scripts`); Dependabot.
+- **Tests:** 1,908 Rust tests pass in the all-features suite (135 binaries, 12 ignored: network-
+  or sample-dependent, plus one soak benchmark), 356 in the featureless library build and 1,641
+  in the cli-only build. The TypeScript suites pass: 183 in the agent guard, 34 in the SDK (4 more
+  need a live server), 7 in the Vercel AI adapter, 8 in the MCP server, 6 in the SolanaAgentKit
+  adapter and 7 in the dashboard. Go passes 45 and Python 35. Clippy `-D warnings` is clean on
+  all three feature legs, and fmt is clean. The runtime oracle is never looser than agave on
+  both CI seeds. Every fixed finding has a named test that fails before the fix
+  (`01-findings.md`).
+- **Deliberate breaks:** 103 of 103 caught. B01–B59 are from Round 23; B60–B103 are from
+  Round 24 (R2, R3, R3-b and W11–W25). B62 and B99 were missed on their first run because their
+  tests did not exercise the reverted rule; each test was corrected and the break caught. The
+  TypeScript breaks TSB1–TSB5 were 5 of 5 caught.
+- **Real traffic:** 48,855 executed mainnet transactions from four days, with sample hashes
+  recorded. Under the labels `eb17aa5` was measured with: 0 parse failures, 0 verify errors, 302
+  newly refused (0.62%), **0 refused-to-Clear**, 0 approved before or after. Under honest labels,
+  219 transactions with a manifested primary are newly refused (R2-c, below).
+- **Supply chain:** cargo-audit on both lockfiles; the npm gate keyed by advisory and package
+  (scoped entries only); pip-audit on the Python lockfile; Dependabot for cargo, npm, pip, GitHub
+  Actions and Docker.
 
 ## Still open
 
 Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with its class.
 
 **Owner decisions** (code cannot close them):
-- branch protection on `main` (R-M5) — until it is on, every CI gate is advisory;
+
+- branch protection on `main` (R-M5): until it is on, every CI gate is advisory;
 - the crate's publish flag (A6-15) and a disclosure mailbox for `SECURITY.md` (A6-36);
 - an independent third-party audit (R-M4); deployment, TLS, DNS and monitoring (R-M6).
 
-**Documented limitations:**
-- L3 baselines are per program, not per instruction (A2-08), and winsorizing raises false
-  `SimulationSpoofing` flags for heavy-tailed programs (F5) — a deliberate trade against a
-  ratchet;
-- a lifecycle append that completes after a request timed out leaves a row the client never saw
-  (F9) — it fails closed for the client;
-- the L8 deadline test is wall-clock;
-- creating a token account with someone else's close authority stays blocked (F6). In the four
-  mainnet samples 18 executed OKX router transactions carry it as a sibling; all 18 were already
-  refused at `3327fcf` (Check 10: a `close` sibling with no declared intent), so no verdict
-  changed;
-- an agent wallet cannot change any configuration through Graphite. The IDL onboarding tags every
-  `set_*`, `update*`, `change*` and `configure*` instruction `authority`, which covers protocol
-  administration and also an owner configuring its own object (Magic Eden MMM `updatePool`, a
-  marketplace's `update_offer`); since F3 both are refused under any intent. Measured cost on
-  four days of mainnet: 9 newly refused of 48,855, the five owner ones all `updatePool`. Telling
-  owner configuration from administration (by the IDL's signer account and the object's owner
-  field) is roadmap item R-M13;
-- 87% of verified mainnet transactions call a program with no manifest; the drainer heuristic is
-  the coverage boundary there (Round 22), not a bug.
+**Documented limitations, with their measured cost where one exists:**
 
-**External review items not yet verified:** R2–R26 of the 2026-10-01 external review are
-being re-verified one at a time. Until an item is verified it is not counted here as a finding
-or as a non-finding. R2 and R3 (how a declared intent and an instruction's name and class gate
-dangerous instructions) are the ones that bear most directly on this verdict.
+- **R2-c.** An honest agent has no intent for a withdrawal, a claim, or a close on a protocol
+  program, so these are refused under any label: 219 of 48,855 executed transactions, mostly
+  pump AMM accumulator closes, Meteora DLMM liquidity calls and fee claims (roadmap R-M14).
+- **R-M13.** Owner configuration of one's own object is refused like protocol administration.
+- **A2-08.** L3 baselines are per program, not per instruction.
+- **W17-c.** A lookup table's freshness is not checked against the current slot.
+- **W11-c.** Registry records keep no signatures.
+- **W18/19-f.** Signer lamports under a declared debit are disclosed, not refused; Graphite does
+  not bind amounts, so the agent guard's cap does.
+- **W25-d.** The holdout's benign labels are Graphite's own.
+- **Coverage.** About 86% of verified mainnet transactions have a primary program with no
+  manifest. There, the drainer heuristic is the coverage boundary.
 
-**Not measured this round:**
-- the approval path on live traffic: offline, approval is unreachable by design (it needs an RPC
-  simulation and earned evidence), so "valid transactions are approved" is shown only by the
-  pipeline tests, not on mainnet traffic;
-- attacks beyond the repository's own suites, the 35 documented real exploits (all refused) and the
-  deliberate breaks — unknown attack classes are, by definition, not covered by a test;
-- why two real benign transactions in the holdout (a Jupiter route and a PumpSwap trade) are
-  refused; they are counted as false refusals until examined.
+**Open engineering:**
 
-**Planned engineering:**
-- the SAK bridge's migration to `@solana/kit` (R-P8), which lets it build v1; the last npm advisory
-  (`bigint-buffer`) goes only when the bridge drops its `solana-agent-kit` dependency, which brings
-  it in through `@solana/spl-token` 0.4;
-- a persisted archive index for L8 lookups into rotated archives (R-M11);
-- a committed mainnet subset gated in CI (R-P2/R-P3) and the release-evaluation report (R-P1);
-- protocol upgrade detection (R-M1) and per-instruction L3 baselines (A2-08);
-- scheduled mutation, fuzz and coverage runs (R-P11/12/15); Rust coverage is not measured.
+- protocol upgrade detection (R-M1);
+- a persisted archive index (R-M11);
+- a committed mainnet subset gated in CI (R-P2/R-P3);
+- the guard off `@solana/web3.js` 1.x (R-M15);
+- scheduled mutation, fuzz and coverage runs (R-P11/12/15). Rust coverage is not measured.
+
+**Not measured:**
+
+- the approval path on live traffic: offline, approval is unreachable by design;
+- attack classes beyond the repository's suites, the 35 documented real exploits and the
+  deliberate breaks.
 
 ## Bottom line
 
-Graphite fails closed where this audit looked, its fixes are pinned by tests that were shown to
-catch their own reversal, and its cost on four days of real mainnet traffic is measured and small.
-It should run as a supervised pilot with branch protection turned on first, and it should not be
-described as independently audited until it is.
+Graphite fails closed where this work looked. Its fixes are pinned by tests that catch their own
+reversal, and its cost on four days of real mainnet traffic is measured and attributed. It
+should run as a supervised pilot with branch protection on first. It should not be described as
+independently audited until it is.

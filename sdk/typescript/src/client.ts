@@ -7,6 +7,7 @@ import type {
   VerificationInput,
   VerificationResult,
 } from "./types.js";
+import { UNOBSERVED_CODES } from "./types.js";
 
 export interface GraphiteClientOptions {
   baseUrl: string;
@@ -33,18 +34,73 @@ export interface GraphiteClientOptions {
   timeoutMs?: number;
 }
 
+const TRUST_TIERS: ReadonlySet<string> = new Set([
+  "Unknown",
+  "HeuristicInferred",
+  "OfficialManifest",
+  "SimulationValidated",
+  "CommunityVerified",
+  "BattleTested",
+]);
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((s) => typeof s === "string");
+}
+
 /**
- * Minimal runtime shape guard for a VerificationResult (GAP-2026-08-06-8).
+ * The scope's shape, as `schemas/verification-result-v1.json` states it: the
+ * field an execution gate decides on (artifact_bound or not, and what was not
+ * observed). A scope that claims `artifact_bound` without the digest of what
+ * it bound is not a binding.
+ */
+function scopeViolation(scope: unknown): string | null {
+  if (typeof scope !== "object" || scope === null || Array.isArray(scope)) {
+    return "`scope` must be an object";
+  }
+  const s = scope as Record<string, unknown>;
+  if (s.kind !== "artifact_bound" && s.kind !== "descriptive") {
+    return "`scope.kind` must be \"artifact_bound\" or \"descriptive\"";
+  }
+  if (!isStringArray(s.unobserved) || s.unobserved.length === 0) {
+    return "`scope.unobserved` must be a non-empty array of strings";
+  }
+  if (s.unobserved_codes !== undefined) {
+    if (!isStringArray(s.unobserved_codes)) return "`scope.unobserved_codes` must be an array of strings";
+    const unknown = s.unobserved_codes.find((c) => !(UNOBSERVED_CODES as readonly string[]).includes(c));
+    if (unknown !== undefined) return `\`scope.unobserved_codes\` has an unknown code ${JSON.stringify(unknown)}`;
+    if (s.unobserved_codes.length !== s.unobserved.length) {
+      return "`scope.unobserved_codes` must name each entry of `scope.unobserved`";
+    }
+  }
+  if (s.kind === "artifact_bound") {
+    if (typeof s.transaction_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(s.transaction_sha256)) {
+      return "`scope.transaction_sha256` must be 64 lowercase hex characters";
+    }
+    if (!Number.isSafeInteger(s.transaction_bytes) || (s.transaction_bytes as number) < 1) {
+      return "`scope.transaction_bytes` must be a positive integer";
+    }
+    if (typeof s.simulated !== "boolean") return "`scope.simulated` must be a boolean";
+  }
+  return null;
+}
+
+/**
+ * Runtime shape guard for a VerificationResult (GAP-2026-08-06-8; deepened in
+ * Round 24, W22).
  *
  * The wire format is the only untrusted input the SDK consumes — a truncated,
  * hostile, or mis-shaped payload must fail loudly here instead of flowing
- * through typed as a `VerificationResult` (which would let e.g. a flipped
- * `approved` or a missing `audit_trail_id` reach caller logic silently). This
- * is defense-in-depth, not a substitute for TLS: transport-level integrity
- * still belongs to the deployment (see README trust-boundary notes).
+ * through typed as a `VerificationResult`. Every field a caller decides on is
+ * checked against `schemas/verification-result-v1.json`: the verdict, its
+ * confidence, its risk verdict and findings, its trust tier, its layers, and
+ * its scope (what the approval is bound to and what was not observed). A
+ * verdict that contradicts itself — approved while the risk verdict is
+ * Blocked — is refused. This is defense-in-depth, not a substitute for TLS:
+ * transport-level integrity still belongs to the deployment (see README
+ * trust-boundary notes).
  *
  * Returns a description of the first violation, or null when the shape is
- * structurally valid.
+ * valid.
  */
 export function validateVerificationResult(value: unknown): string | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -52,8 +108,8 @@ export function validateVerificationResult(value: unknown): string | null {
   }
   const v = value as Record<string, unknown>;
   if (typeof v.approved !== "boolean") return "`approved` must be a boolean";
-  if (typeof v.confidence !== "number" || !Number.isFinite(v.confidence)) {
-    return "`confidence` must be a finite number";
+  if (typeof v.confidence !== "number" || !Number.isFinite(v.confidence) || v.confidence < 0 || v.confidence > 1) {
+    return "`confidence` must be a finite number in [0, 1]";
   }
   if (typeof v.audit_trail_id !== "string" || v.audit_trail_id.length === 0) {
     return "`audit_trail_id` must be a non-empty string";
@@ -62,20 +118,38 @@ export function validateVerificationResult(value: unknown): string | null {
     return "`content_hash` must be a non-empty string";
   }
   const riskVerdict = v.risk_verdict;
+  if (typeof riskVerdict !== "object" || riskVerdict === null || Array.isArray(riskVerdict)) {
+    return "`risk_verdict` must be an object";
+  }
+  const risk = riskVerdict as Record<string, unknown>;
+  if (risk.status !== "Clear" && risk.status !== "Blocked") {
+    return "`risk_verdict.status` must be \"Clear\" or \"Blocked\"";
+  }
   if (
-    typeof riskVerdict !== "object" ||
-    riskVerdict === null ||
-    typeof (riskVerdict as { status?: unknown }).status !== "string"
+    !Array.isArray(risk.findings) ||
+    !risk.findings.every(
+      (f) => typeof f === "object" && f !== null && typeof f.pattern === "string" && typeof f.reason === "string",
+    )
   ) {
-    return "`risk_verdict.status` must be a string";
+    return "`risk_verdict.findings` must be an array of { pattern, reason } strings";
+  }
+  if (v.approved && risk.status !== "Clear") {
+    return "an approved verdict must have a Clear risk verdict";
+  }
+  if (v.trust_tier !== undefined && (typeof v.trust_tier !== "string" || !TRUST_TIERS.has(v.trust_tier))) {
+    return "`trust_tier` must be one of the schema's tiers";
   }
   if (v.layers !== undefined) {
     if (!Array.isArray(v.layers)) return "`layers` must be an array";
     for (const layer of v.layers) {
-      if (typeof layer?.layer !== "string" || typeof layer?.passed !== "boolean") {
-        return "each layer must carry `layer` (string) and `passed` (boolean)";
+      if (typeof layer?.layer !== "string" || typeof layer?.passed !== "boolean" || typeof layer?.reason !== "string") {
+        return "each layer must carry `layer` (string), `passed` (boolean) and `reason` (string)";
       }
     }
+  }
+  if (v.scope !== undefined) {
+    const violation = scopeViolation(v.scope);
+    if (violation !== null) return violation;
   }
   return null;
 }

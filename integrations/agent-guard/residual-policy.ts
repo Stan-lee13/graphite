@@ -48,6 +48,18 @@ export interface ResidualDecision {
   inherent: UnobservedCode[];
 }
 
+/**
+ * The residual policy refused an approved verdict: Graphite did not observe
+ * something this deployment has not accepted, or the verdict is not bound to
+ * the bytes. A refusal, not an error — a tool reports it as such.
+ */
+export class ResidualPolicyRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResidualPolicyRefusal";
+  }
+}
+
 export class ResidualPolicy {
   private readonly acceptedCodes: ReadonlySet<UnobservedCode>;
 
@@ -98,7 +110,7 @@ export class ResidualPolicy {
    */
   assertExecutable(scope: VerificationScope | undefined, label: string): ResidualDecision {
     if (scope?.kind !== "artifact_bound") {
-      throw new Error(
+      throw new ResidualPolicyRefusal(
         `[Graphite] ${label}: the verdict is ${scope?.kind ?? "unscoped"}, not artifact_bound. ` +
           "A descriptive verdict describes what the request SAID; it does not constrain what " +
           "gets signed. ABORTING.",
@@ -106,14 +118,14 @@ export class ResidualPolicy {
     }
     const codes = scope.unobserved_codes;
     if (!codes) {
-      throw new Error(
+      throw new ResidualPolicyRefusal(
         `[Graphite] ${label}: this Graphite server reports what it did not observe as prose only ` +
           "(no scope.unobserved_codes; pre-2026-09-12). The residual policy cannot decide on prose, " +
           "and refuses rather than execute on an undecided verdict. Upgrade the server. ABORTING.",
       );
     }
     if (codes.length !== scope.unobserved.length) {
-      throw new Error(
+      throw new ResidualPolicyRefusal(
         `[Graphite] ${label}: malformed verdict — ${codes.length} unobserved code(s) for ` +
           `${scope.unobserved.length} unobserved entr(ies). ABORTING.`,
       );
@@ -135,7 +147,7 @@ export class ResidualPolicy {
       }
     });
     if (refused.length > 0) {
-      throw new Error(
+      throw new ResidualPolicyRefusal(
         [
           `[Graphite] ${label}: the verdict is approved and artifact-bound, but Graphite did not observe ` +
             `${refused.length} propert(ies) this deployment has not accepted:`,

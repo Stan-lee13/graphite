@@ -211,7 +211,27 @@ pub struct Token2022Powers {
     /// SHA-256 over the confidential-transfer extension values present, so a
     /// change to encrypted balances is visible without decoding them.
     pub confidential_digest: Option<String>,
+    /// W19 (external review): the authority the other authority-bearing mint
+    /// extensions keep in their first 32 bytes — transfer hook, interest
+    /// rate, metadata and group pointers, token metadata and group update
+    /// authority, scaled UI amount, pause, confidential configuration — as
+    /// (extension, key or none), in extension order. A change to any of them
+    /// is a change of who controls the mint.
+    #[serde(default)]
+    pub extension_authorities: Vec<(u16, Option<String>)>,
+    /// Pausable: whether the mint is paused (every holder's transfers stop).
+    #[serde(default)]
+    pub paused: Option<bool>,
 }
+
+/// Mint extensions whose value starts with an `OptionalNonZeroPubkey`
+/// authority (spl-token-2022 `ExtensionType`): ConfidentialTransferMint (4),
+/// InterestBearingConfig (10), TransferHook (14), ConfidentialTransferFeeConfig
+/// (16), MetadataPointer (18), TokenMetadata (19, update authority),
+/// GroupPointer (20), TokenGroup (21, update authority), GroupMemberPointer
+/// (22), ScaledUiAmount (25), Pausable (26).
+const EXT_AUTHORITY_FIRST: [u16; 11] = [4, 10, 14, 16, 18, 19, 20, 21, 22, 25, 26];
+const EXT_PAUSABLE: u16 = 26;
 
 /// Read the extension values in `Token2022Powers`, exactly or not at all.
 pub fn decode_token2022_powers(data: &[u8]) -> Option<Token2022Powers> {
@@ -251,11 +271,25 @@ pub fn decode_token2022_powers(data: &[u8]) -> Option<Token2022Powers> {
             any_confidential = true;
         }
     }
+    let mut extension_authorities = Vec::new();
+    for d in EXT_AUTHORITY_FIRST {
+        if present(d) {
+            let v = single_extension_value(data, d)?;
+            extension_authorities.push((d, optional_nonzero_pubkey(v, 0)?));
+        }
+    }
+    let paused = if present(EXT_PAUSABLE) {
+        Some(*single_extension_value(data, EXT_PAUSABLE)?.get(32)? != 0)
+    } else {
+        None
+    };
     Some(Token2022Powers {
         permanent_delegate: key32(EXT_PERMANENT_DELEGATE)?,
         close_authority: key32(EXT_MINT_CLOSE_AUTHORITY)?,
         transfer_hook_program,
         confidential_digest: any_confidential.then(|| hex::encode(hasher.finalize())),
+        extension_authorities,
+        paused,
     })
 }
 
@@ -562,7 +596,20 @@ impl AccountSnapshot {
 ///   withdrawer 44..76 }, `Lockup` { unix_timestamp 76..84, epoch 84..92,
 ///   custodian 92..124 }.
 /// - BPF Upgradeable Loader `ProgramData` (u32 tag 3): slot (u64, 4..12),
-///   `Option<Pubkey>` upgrade authority (tag byte 12, key 13..45).
+///   `Option<Pubkey>` upgrade authority (tag byte 12, key 13..45), then the
+///   program's code, recorded by its SHA-256 so a rewrite under an unchanged
+///   authority shows. `Buffer` (u32 tag 1): `Option<Pubkey>` authority (tag
+///   byte 4, key 5..37).
+///
+/// W19 (external review) added the rest, each a standing power over the
+/// account that no lamport or token field shows:
+/// - the stake lockup itself (unix_timestamp, epoch), not only its custodian;
+/// - a System nonce account (80 bytes: version u32, state u32 = 1
+///   Initialized, authority 8..40), whose authority can withdraw it;
+/// - a vote account (`VoteState` u32 tag 1 V1_14_11 or 2 Current:
+///   node 4..36, authorized withdrawer 36..68);
+/// - an address lookup table (u32 type 1, `Option<Pubkey>` authority: tag
+///   byte 21, key 22..54).
 ///
 /// Anything shorter than its layout, or another state, decodes to nothing.
 fn native_authorities(owner: &str, data: &[u8]) -> Vec<(String, String)> {
@@ -573,19 +620,68 @@ fn native_authorities(owner: &str, data: &[u8]) -> Vec<(String, String)> {
     let mut out = Vec::new();
     match (owner, tag) {
         ("Stake11111111111111111111111111111111111111", Some(1 | 2)) => {
-            if let (Some(staker), Some(withdrawer), Some(custodian)) =
-                (key(12..44), key(44..76), key(92..124))
-            {
+            if let (Some(staker), Some(withdrawer), Some(custodian), Some(ts), Some(epoch)) = (
+                key(12..44),
+                key(44..76),
+                key(92..124),
+                data.get(76..84)
+                    .map(|b| i64::from_le_bytes(b.try_into().expect("8 bytes"))),
+                data.get(84..92)
+                    .map(|b| u64::from_le_bytes(b.try_into().expect("8 bytes"))),
+            ) {
                 out.push(("stake staker".to_string(), staker));
                 out.push(("stake withdrawer".to_string(), withdrawer));
                 out.push(("stake lockup custodian".to_string(), custodian));
+                out.push((
+                    "stake lockup".to_string(),
+                    format!("unix {ts}, epoch {epoch}"),
+                ));
             }
         }
-        ("BPFLoaderUpgradeab1e11111111111111111111111", Some(3)) => match data.get(12) {
-            Some(0) => out.push(("program upgrade authority".to_string(), "none".to_string())),
+        ("BPFLoaderUpgradeab1e11111111111111111111111", Some(3)) => {
+            match data.get(12) {
+                Some(0) => out.push(("program upgrade authority".to_string(), "none".to_string())),
+                Some(1) => {
+                    if let Some(k) = key(13..45) {
+                        out.push(("program upgrade authority".to_string(), k));
+                    }
+                }
+                _ => {}
+            }
+            if let Some(code) = data.get(45..) {
+                use sha2::Digest;
+                out.push((
+                    "program code (sha256)".to_string(),
+                    hex::encode(sha2::Sha256::digest(code)),
+                ));
+            }
+        }
+        ("BPFLoaderUpgradeab1e11111111111111111111111", Some(1)) => match data.get(4) {
+            Some(0) => out.push(("buffer authority".to_string(), "none".to_string())),
             Some(1) => {
-                if let Some(k) = key(13..45) {
-                    out.push(("program upgrade authority".to_string(), k));
+                if let Some(k) = key(5..37) {
+                    out.push(("buffer authority".to_string(), k));
+                }
+            }
+            _ => {}
+        },
+        ("11111111111111111111111111111111", Some(0 | 1))
+            if data.len() == 80 && data.get(4..8) == Some(&1u32.to_le_bytes()[..]) =>
+        {
+            if let Some(k) = key(8..40) {
+                out.push(("nonce authority".to_string(), k));
+            }
+        }
+        ("Vote111111111111111111111111111111111111111", Some(1 | 2)) => {
+            if let Some(k) = key(36..68) {
+                out.push(("vote authorized withdrawer".to_string(), k));
+            }
+        }
+        ("AddressLookupTab1e1111111111111111111111111", Some(1)) => match data.get(21) {
+            Some(0) => out.push(("lookup table authority".to_string(), "none".to_string())),
+            Some(1) => {
+                if let Some(k) = key(22..54) {
+                    out.push(("lookup table authority".to_string(), k));
                 }
             }
             _ => {}
@@ -1350,6 +1446,20 @@ impl DeclaredEffects {
     /// - Words, not substrings: `payer` is not `pay`, `fees` is `fee`.
     /// - Scope: an effect stated about `accounts.<name>` applies to that
     ///   account only (`covers`).
+    ///
+    /// W19 (external review, verified 2026-10-03) added two more:
+    ///
+    /// - Role. An account named after "to"/"into" is where something ARRIVES:
+    ///   it is credited, and nothing else on the line is said about it.
+    ///   CloseAccount's "closes accounts.account, sends its lamports to
+    ///   accounts.destination" excused a closure of the destination (usually
+    ///   the user's wallet), and InitializeAccount's "sets the owner to
+    ///   accounts.owner" an authority change on whatever sat in the owner
+    ///   slot. An account after "from" is where something LEAVES: it is the
+    ///   debit's, not the credit's.
+    /// - Polarity. A line that revokes declares no grant: Revoke's "revokes
+    ///   accounts.source delegated_amount" declared a delegation on source,
+    ///   and so excused a delegate granted there.
     pub fn parse(expected_state_changes: &[String]) -> Self {
         let mut e = Self {
             absent: expected_state_changes.is_empty(),
@@ -1404,7 +1514,8 @@ impl DeclaredEffects {
             {
                 found.push("create");
             }
-            if has(&["delegat", "approv"]) {
+            // A revoke takes a delegation away; it never declares one.
+            if has(&["delegat", "approv"]) && !has(&["revok"]) {
                 found.push("delegate");
             }
             if has(&["authorit", "assign", "owner"]) {
@@ -1438,7 +1549,16 @@ impl DeclaredEffects {
                 if named.is_empty() {
                     scope.anywhere = true;
                 } else {
-                    scope.accounts.extend(named.iter().cloned());
+                    scope.accounts.extend(
+                        named
+                            .iter()
+                            .filter(|(_, role)| match role {
+                                NamedRole::Recipient => effect == "credit",
+                                NamedRole::Source => effect != "credit",
+                                NamedRole::Subject => true,
+                            })
+                            .map(|(name, _)| name.clone()),
+                    );
                 }
             }
         }
@@ -1462,12 +1582,24 @@ impl DeclaredEffects {
     }
 }
 
-/// The account names a declaration line references (`accounts.<name>`) and
-/// its remaining words, lowercased, with every `accounts.<x>`/`data.<x>`
-/// reference removed so a name is never read as a verb.
-fn effect_words(line: &str) -> (Vec<String>, Vec<String>) {
+/// What an account named in a declaration line is to that line (W19).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NamedRole {
+    /// What the line acts on.
+    Subject,
+    /// Named after "from": where value leaves.
+    Source,
+    /// Named after "to"/"into": where value arrives.
+    Recipient,
+}
+
+/// The account names a declaration line references (`accounts.<name>`),
+/// each with its role on the line, and its remaining words, lowercased, with
+/// every `accounts.<x>`/`data.<x>` reference removed so a name is never read
+/// as a verb.
+fn effect_words(line: &str) -> (Vec<(String, NamedRole)>, Vec<String>) {
     let mut named = Vec::new();
-    let mut words = Vec::new();
+    let mut words: Vec<String> = Vec::new();
     for token in line.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '(' | ')')) {
         let t = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '_');
         if let Some(name) = t.strip_prefix("accounts.") {
@@ -1476,7 +1608,12 @@ fn effect_words(line: &str) -> (Vec<String>, Vec<String>) {
                 .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
                 .collect();
             if !name.is_empty() {
-                named.push(name);
+                let role = match words.last().map(String::as_str) {
+                    Some("to" | "into") => NamedRole::Recipient,
+                    Some("from") => NamedRole::Source,
+                    _ => NamedRole::Subject,
+                };
+                named.push((name, role));
             }
             continue;
         }
@@ -1990,9 +2127,22 @@ fn model_transfer_fees(diff: &StateDiff, declared: &DeclaredEffects) -> Transfer
                     break;
                 };
                 let free = fee_schedule_candidates(&config, diff.fee_epoch)
-                    .iter()
-                    .any(|s| s.fee(arrived) == Some(0));
-                if !free {
+                    .into_iter()
+                    .find(|s| s.fee(arrived) == Some(0));
+                if let Some(free) = free {
+                    // W19 (external review): a pending schedule applies here
+                    // too. Only the withheld branch asked, so a 0 bps schedule
+                    // now with 9,000 bps pending raised nothing on this path.
+                    pending_schedule_findings(
+                        &config,
+                        diff.fee_epoch,
+                        free,
+                        &d.pubkey,
+                        &[arrived],
+                        0,
+                        &mut model.findings,
+                    );
+                } else {
                     failed = Some(format!(
                         "{arrived} tokens of mint {mint} arrived in {} with no fee withheld, but the mint's schedules [{}; {}] charge a fee on that amount — the diff is not what a Token-2022 transfer produces",
                         d.pubkey,
@@ -2807,14 +2957,14 @@ fn permanent_delegate_exercises(diff: &StateDiff) -> Vec<StateDiffFinding> {
             .find(|d| &d.pubkey == source)
             .and_then(|d| d.before.as_ref())
             .and_then(|s| s.token.as_ref());
+        let holders_own = source_before.is_some_and(|t| {
+            &t.owner == authority || t.delegate.as_deref() == Some(authority.as_str())
+        });
         let Some(mint_state) = mint_snapshot(diff, mint) else {
             // A2-03 (2026-09-29 audit): an unread mint is not a mint without
             // a permanent delegate. The movement is the holder's own — its
             // owner or its ordinary delegate signing — or it could be the
             // mint's; which, Graphite cannot say, so it is refused.
-            let holders_own = source_before.is_some_and(|t| {
-                &t.owner == authority || t.delegate.as_deref() == Some(authority.as_str())
-            });
             if !holders_own {
                 out.push(StateDiffFinding::critical(
                     "Token2022MintUnread",
@@ -2827,11 +2977,23 @@ fn permanent_delegate_exercises(diff: &StateDiff) -> Vec<StateDiffFinding> {
             }
             continue;
         };
-        let Some(Some(delegate)) = mint_state
-            .token2022_powers
-            .as_ref()
-            .and_then(|p| p.permanent_delegate.clone())
-        else {
+        // W19 (external review): a mint read but whose extensions could not
+        // be decoded exactly is no better known than one not read at all; it
+        // was treated as having no permanent delegate.
+        let Some(powers) = mint_state.token2022_powers.as_ref() else {
+            if !holders_own {
+                out.push(StateDiffFinding::critical(
+                    "Token2022MintUnread",
+                    Some(source.as_str()),
+                    format!(
+                        "{} moves tokens out of this account under authority {authority}, which is not shown to be its owner or delegate, and the extensions of mint {mint} could not be read exactly — a permanent delegate cannot be ruled out",
+                        ix.position
+                    ),
+                ));
+            }
+            continue;
+        };
+        let Some(delegate) = powers.permanent_delegate.clone().flatten() else {
             continue;
         };
         if &delegate != authority {
@@ -3195,6 +3357,9 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
     // A token debit on a signer's account that a NAMED debit declaration does
     // not cover (F2, review of the 2026-09-29 audit's fix).
     let mut signer_debit_outside_scope: Option<String> = None;
+    // Lamports that left a signer's own wallet beyond the fee, under a
+    // declaration that debits only named accounts (W19).
+    let mut signer_lamports_outside_scope: i128 = 0;
     // Who signed: the transaction's own privileges where Graphite has them,
     // else the resolved accounts' signer flags.
     let signers: std::collections::HashSet<&str> = match input.diff.transaction_privileges.as_ref()
@@ -3380,6 +3545,48 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 ));
             }
         }
+        // W19 (external review): the authorities Token-2022 mint extensions
+        // keep. A transfer hook's authority can point every transfer at new
+        // code; a pause authority can stop every holder; a metadata or
+        // group authority rewrites what the token says it is. They were
+        // reported as informational extensions, never blocked.
+        if let (Some(Some(b)), Some(Some(a))) = (
+            d.before.as_ref().map(|s| s.token2022_powers.as_ref()),
+            d.after.as_ref().map(|s| s.token2022_powers.as_ref()),
+        ) {
+            if b.extension_authorities != a.extension_authorities && !declares("authority") {
+                let changed: Vec<String> = a
+                    .extension_authorities
+                    .iter()
+                    .filter(|x| !b.extension_authorities.contains(x))
+                    .map(|(ext, who)| {
+                        format!("extension {ext} authority is now {}", authority_label(who))
+                    })
+                    .collect();
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredToken2022AuthorityChange",
+                    acct,
+                    format!(
+                        "{}; the manifest declares no authority change. Whoever holds it controls that part of the mint after this transaction ends",
+                        if changed.is_empty() {
+                            "a Token-2022 extension authority was removed".to_string()
+                        } else {
+                            changed.join(", ")
+                        }
+                    ),
+                ));
+            }
+            if b.paused != a.paused && !declares("authority") && !declares("freeze") {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredToken2022Pause",
+                    acct,
+                    format!(
+                        "the mint's paused flag changed from {:?} to {:?}; the manifest declares no authority change and no freeze. A paused mint stops every holder's transfers",
+                        b.paused, a.paused
+                    ),
+                ));
+            }
+        }
         if let Some((from, to)) = d.freeze_authority_change() {
             // A freeze authority change is an authority change; it is also the
             // thing that decides whether a freeze can ever happen, so a
@@ -3476,6 +3683,26 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
             if !(is_fee_payer && magnitude <= fee) {
                 net_lamport_out += magnitude - if is_fee_payer { fee } else { 0 };
             }
+            // W19 (external review): a debit declared about named accounts
+            // says nothing about the signer's own wallet. Disclosed, not
+            // refused: the same outflow is every tip and every rent payment
+            // for an account a sibling creates, and Graphite does not bind
+            // amounts; an agent guard bounds it by the operator's cap on the
+            // measured outflow.
+            let own_wallet = d
+                .before
+                .as_ref()
+                .is_some_and(|s| s.owner == SYSTEM_PROGRAM && s.data_len == 0);
+            if declared.debit
+                && !declares("debit")
+                && own_wallet
+                && signers.contains(d.pubkey.as_str())
+            {
+                let beyond_fee = magnitude - if is_fee_payer { fee } else { 0 };
+                if beyond_fee > 0 {
+                    signer_lamports_outside_scope += beyond_fee;
+                }
+            }
         }
         if d.token_delta().is_some_and(|t| t < 0) {
             token_debit = true;
@@ -3499,6 +3726,16 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
                 signer_debit_outside_scope = Some(d.pubkey.clone());
             }
         }
+    }
+
+    if signer_lamports_outside_scope > 0 {
+        findings.push(StateDiffFinding::warning(
+            "SignerLamportsOutsideDeclaredDebit",
+            None,
+            format!(
+                "{signer_lamports_outside_scope} lamports left a signer's own wallet beyond the fee; the manifest declares a debit only of other accounts"
+            ),
+        ));
     }
 
     if let Some(account) = signer_debit_outside_scope {
@@ -4979,5 +5216,375 @@ mod tests {
             assert!(!f.code.is_empty(), "empty code in {f:?}");
             assert!(!f.detail.is_empty(), "empty detail in {f:?}");
         }
+    }
+}
+
+/// W19 (external review, verified 2026-10-03): what a declaration line says
+/// about each account it names.
+#[cfg(test)]
+mod w19_scope_tests {
+    use super::*;
+    use crate::account_resolution::{AccountIdentity, ResolvedAccount};
+
+    const SOURCE: &str = "A1ice11111111111111111111111111111111111111";
+    const DEST: &str = "B0b11111111111111111111111111111111111111111";
+    const WALLET: &str = "Wa11et1111111111111111111111111111111111111";
+
+    fn named(address: &str, name: &str, signer: bool) -> ResolvedAccount {
+        ResolvedAccount {
+            address: address.to_string(),
+            role: "account".to_string(),
+            name: name.to_string(),
+            is_pda: false,
+            is_signer: signer,
+            is_writable: true,
+            pda_seeds: vec![],
+            identity: AccountIdentity::Unverified,
+            expected_address_mismatch: false,
+            pda_mismatch: false,
+            privilege_mismatch: false,
+        }
+    }
+
+    fn token_account(delegate: Option<[u8; 32]>) -> Vec<u8> {
+        let mut d = vec![0u8; TOKEN_ACCOUNT_LEN];
+        d[32..64].copy_from_slice(&[9u8; 32]);
+        d[64..72].copy_from_slice(&1_000u64.to_le_bytes());
+        if let Some(k) = delegate {
+            d[72..76].copy_from_slice(&1u32.to_le_bytes());
+            d[76..108].copy_from_slice(&k);
+            d[121..129].copy_from_slice(&1_000u64.to_le_bytes());
+        }
+        d[108] = 1;
+        d
+    }
+
+    fn report(
+        deltas: Vec<AccountDelta>,
+        accounts: &[ResolvedAccount],
+        declared: &[&str],
+    ) -> StateDiffReport {
+        let diff = StateDiff {
+            deltas,
+            provenance: DiffProvenance::RpcSimulated,
+            ..Default::default()
+        };
+        let declared: Vec<String> = declared.iter().map(|s| s.to_string()).collect();
+        check_state_diff(&StateDiffCheck {
+            diff: &diff,
+            resolved_accounts: accounts,
+            privileges_grounded: true,
+            expected_state_changes: &declared,
+            fee_payer: None,
+        })
+    }
+
+    fn codes(r: &StateDiffReport) -> Vec<&str> {
+        r.findings.iter().map(|f| f.code.as_str()).collect()
+    }
+
+    /// Revoke's own prose ("revokes accounts.source delegated_amount") used to
+    /// declare a delegation on source, and so excused a delegate granted
+    /// there by a CPI.
+    #[test]
+    fn a_revoke_declares_no_delegate_grant() {
+        let delta = AccountDelta {
+            pubkey: SOURCE.to_string(),
+            before: Some(AccountSnapshot::from_raw(
+                SOURCE,
+                2_039_280,
+                SPL_TOKEN_PROGRAM,
+                &token_account(None),
+            )),
+            after: Some(AccountSnapshot::from_raw(
+                SOURCE,
+                2_039_280,
+                SPL_TOKEN_PROGRAM,
+                &token_account(Some([66u8; 32])),
+            )),
+        };
+        let r = report(
+            vec![delta],
+            &[named(SOURCE, "source", false)],
+            &["revokes accounts.source delegated_amount (sets to 0)"],
+        );
+        assert!(
+            codes(&r).contains(&"UndeclaredDelegateGrant"),
+            "{:?}",
+            r.findings
+        );
+        assert!(r.blocked);
+    }
+
+    /// CloseAccount's prose names the destination as where the lamports go.
+    /// That excused a closure of the destination — usually the user's wallet.
+    #[test]
+    fn where_lamports_go_is_not_what_is_closed() {
+        let lamports = |k: &str, n: u64| AccountSnapshot::from_raw(k, n, SYSTEM_PROGRAM, &[]);
+        let declared =
+            ["closes accounts.account and transfers its lamports to accounts.destination"];
+        let closing = |who: &str| AccountDelta {
+            pubkey: who.to_string(),
+            before: Some(lamports(who, 5_000_000)),
+            after: Some(lamports(who, 0)),
+        };
+        let accounts = [
+            named(SOURCE, "account", false),
+            named(DEST, "destination", false),
+        ];
+        let r = report(vec![closing(DEST)], &accounts, &declared);
+        assert!(
+            codes(&r).contains(&"UndeclaredAccountClosure"),
+            "{:?}",
+            r.findings
+        );
+        let r = report(vec![closing(SOURCE)], &accounts, &declared);
+        assert!(
+            !codes(&r).contains(&"UndeclaredAccountClosure"),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    /// A debit declared about a token account says nothing about the signer's
+    /// wallet. Disclosed (not refused; see the finding's comment).
+    #[test]
+    fn lamports_leaving_the_signers_wallet_outside_the_declared_debit_are_disclosed() {
+        let delta = AccountDelta {
+            pubkey: WALLET.to_string(),
+            before: Some(AccountSnapshot::from_raw(
+                WALLET,
+                10_000_000_000,
+                SYSTEM_PROGRAM,
+                &[],
+            )),
+            after: Some(AccountSnapshot::from_raw(
+                WALLET,
+                5_000_000_000,
+                SYSTEM_PROGRAM,
+                &[],
+            )),
+        };
+        let accounts = [
+            named(SOURCE, "source", false),
+            named(WALLET, "authority", true),
+        ];
+        let r = report(
+            vec![delta],
+            &accounts,
+            &["transfers data.amount tokens from accounts.source to accounts.destination"],
+        );
+        let f = r
+            .findings
+            .iter()
+            .find(|f| f.code == "SignerLamportsOutsideDeclaredDebit")
+            .unwrap_or_else(|| panic!("{:?}", r.findings));
+        assert_eq!(f.severity, DiffSeverity::Warning);
+        assert!(f.detail.contains("5000000000"), "{}", f.detail);
+    }
+}
+
+/// W19 (external review, verified 2026-10-03): standing powers that live in
+/// account data — Token-2022 mint extension authorities and native account
+/// authorities — are judged like the SPL authority fields.
+#[cfg(test)]
+mod w19_authority_tests {
+    use super::*;
+    use crate::account_resolution::{AccountIdentity, ResolvedAccount};
+
+    const MINT: &str = "B0b11111111111111111111111111111111111111111";
+    const DECLARED: &[&str] = &["debit source, credit dest"];
+
+    fn writable(address: &str) -> ResolvedAccount {
+        ResolvedAccount {
+            address: address.to_string(),
+            role: "account".to_string(),
+            name: String::new(),
+            is_pda: false,
+            is_signer: false,
+            is_writable: true,
+            pda_seeds: vec![],
+            identity: AccountIdentity::Unverified,
+            expected_address_mismatch: false,
+            pda_mismatch: false,
+            privilege_mismatch: false,
+        }
+    }
+
+    fn report(owner: &str, before: &[u8], after: &[u8]) -> StateDiffReport {
+        let diff = StateDiff {
+            deltas: vec![AccountDelta {
+                pubkey: MINT.to_string(),
+                before: Some(AccountSnapshot::from_raw(MINT, 5_000_000, owner, before)),
+                after: Some(AccountSnapshot::from_raw(MINT, 5_000_000, owner, after)),
+            }],
+            provenance: DiffProvenance::RpcSimulated,
+            fee_lamports: 0,
+            covers_all_writable: false,
+            artifact_balance_writes: None,
+            artifact_account_universe: None,
+            artifact_accounts_undescribed: None,
+            transfer_fee_mints: Default::default(),
+            token2022_executed: None,
+            fee_epoch: None,
+            token2022_mints: Default::default(),
+            transaction_accounts: None,
+            transaction_privileges: None,
+        };
+        let declared: Vec<String> = DECLARED.iter().map(|s| s.to_string()).collect();
+        check_state_diff(&StateDiffCheck {
+            diff: &diff,
+            resolved_accounts: &[writable(MINT)],
+            privileges_grounded: true,
+            expected_state_changes: &declared,
+            fee_payer: None,
+        })
+    }
+
+    fn codes(r: &StateDiffReport) -> Vec<&str> {
+        r.findings.iter().map(|f| f.code.as_str()).collect()
+    }
+
+    /// A Token-2022 mint: the 82-byte base (initialized, no authorities),
+    /// padding to 165, the Mint account type, then the TLV entries given.
+    fn t22_mint(extensions: &[(u16, Vec<u8>)]) -> Vec<u8> {
+        let mut d = vec![0u8; TOKEN_ACCOUNT_LEN];
+        d[44] = 6;
+        d[45] = 1;
+        d.push(1); // AccountType::Mint
+        for (ty, value) in extensions {
+            d.extend_from_slice(&ty.to_le_bytes());
+            d.extend_from_slice(&(value.len() as u16).to_le_bytes());
+            d.extend_from_slice(value);
+        }
+        d
+    }
+
+    fn key_then(key: u8, rest: &[u8]) -> Vec<u8> {
+        let mut v = vec![key; 32];
+        v.extend_from_slice(rest);
+        v
+    }
+
+    #[test]
+    fn a_transfer_hook_authority_changing_hands_is_critical() {
+        let program = [9u8; 32];
+        let before = t22_mint(&[(14, key_then(2, &program))]);
+        let after = t22_mint(&[(14, key_then(66, &program))]);
+        let r = report(SPL_TOKEN_2022_PROGRAM, &before, &after);
+        assert!(r.blocked, "{:?}", r.findings);
+        assert!(
+            codes(&r).contains(&"UndeclaredToken2022AuthorityChange"),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    #[test]
+    fn a_metadata_update_authority_and_a_pause_are_critical() {
+        let before = t22_mint(&[(19, key_then(2, &[7u8; 40])), (26, key_then(3, &[0]))]);
+        let after = t22_mint(&[(19, key_then(66, &[7u8; 40])), (26, key_then(3, &[1]))]);
+        let r = report(SPL_TOKEN_2022_PROGRAM, &before, &after);
+        let c = codes(&r);
+        assert!(c.contains(&"UndeclaredToken2022AuthorityChange"), "{c:?}");
+        assert!(c.contains(&"UndeclaredToken2022Pause"), "{c:?}");
+    }
+
+    #[test]
+    fn unchanged_extension_authorities_are_not_an_authority_change() {
+        let mint = t22_mint(&[(18, key_then(2, &[8u8; 32])), (26, key_then(3, &[0]))]);
+        let r = report(SPL_TOKEN_2022_PROGRAM, &mint, &mint);
+        let c = codes(&r);
+        assert!(!c.contains(&"UndeclaredToken2022AuthorityChange"), "{c:?}");
+        assert!(!c.contains(&"UndeclaredToken2022Pause"), "{c:?}");
+    }
+
+    fn nonce(authority: u8) -> Vec<u8> {
+        let mut d = vec![0u8; 80];
+        d[0..4].copy_from_slice(&1u32.to_le_bytes());
+        d[4..8].copy_from_slice(&1u32.to_le_bytes());
+        d[8..40].copy_from_slice(&[authority; 32]);
+        d[40..72].copy_from_slice(&[5u8; 32]);
+        d
+    }
+
+    #[test]
+    fn a_nonce_authority_changing_hands_is_critical() {
+        let r = report(SYSTEM_PROGRAM, &nonce(2), &nonce(66));
+        assert!(
+            codes(&r).contains(&"UndeclaredNativeAuthorityChange"),
+            "{:?}",
+            r.findings
+        );
+        // Advancing the nonce (a new stored blockhash) is not an authority change.
+        let mut advanced = nonce(2);
+        advanced[40..72].copy_from_slice(&[6u8; 32]);
+        let r = report(SYSTEM_PROGRAM, &nonce(2), &advanced);
+        assert!(
+            !codes(&r).contains(&"UndeclaredNativeAuthorityChange"),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    #[test]
+    fn a_program_rewritten_under_the_same_authority_is_critical() {
+        let program_data = |code: u8| {
+            let mut d = vec![0u8; 45];
+            d[0..4].copy_from_slice(&3u32.to_le_bytes());
+            d[12] = 1;
+            d[13..45].copy_from_slice(&[2u8; 32]);
+            d.extend_from_slice(&[code; 64]);
+            d
+        };
+        let r = report(
+            "BPFLoaderUpgradeab1e11111111111111111111111",
+            &program_data(1),
+            &program_data(2),
+        );
+        assert!(
+            codes(&r).contains(&"UndeclaredNativeAuthorityChange"),
+            "{:?}",
+            r.findings
+        );
+    }
+
+    #[test]
+    fn lookup_table_and_vote_withdrawer_authorities_are_watched() {
+        let alt = |auth: u8| {
+            let mut d = vec![0u8; 56];
+            d[0..4].copy_from_slice(&1u32.to_le_bytes());
+            d[4..12].copy_from_slice(&u64::MAX.to_le_bytes());
+            d[21] = 1;
+            d[22..54].copy_from_slice(&[auth; 32]);
+            d
+        };
+        let r = report(
+            "AddressLookupTab1e1111111111111111111111111",
+            &alt(2),
+            &alt(66),
+        );
+        assert!(
+            codes(&r).contains(&"UndeclaredNativeAuthorityChange"),
+            "{:?}",
+            r.findings
+        );
+        let vote = |withdrawer: u8| {
+            let mut d = vec![0u8; 3762];
+            d[0..4].copy_from_slice(&2u32.to_le_bytes());
+            d[4..36].copy_from_slice(&[4u8; 32]);
+            d[36..68].copy_from_slice(&[withdrawer; 32]);
+            d
+        };
+        let r = report(
+            "Vote111111111111111111111111111111111111111",
+            &vote(2),
+            &vote(66),
+        );
+        assert!(
+            codes(&r).contains(&"UndeclaredNativeAuthorityChange"),
+            "{:?}",
+            r.findings
+        );
     }
 }

@@ -458,14 +458,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: userStats",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "initializeReferrerName",
@@ -2205,14 +2205,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: user, highLeverageModeConfig",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "fillPerpOrder",
@@ -2572,14 +2572,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: user, highLeverageModeConfig",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "updateUserStatsReferrerStatus",
@@ -5593,14 +5593,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: perpMarket",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "updateK",

@@ -6,8 +6,9 @@
 // Fails when the lockfile carries a HIGH or CRITICAL advisory that is not
 // listed in the package's allowlist. An entry `GHSA-xxxx@package` covers that
 // advisory in that package only, so the same advisory surfacing in another
-// package is NEW (review of the 2026-09-29 audit's fix, F14); a bare
-// `GHSA-xxxx` covers it in any package. It also fails when a listed advisory is no longer
+// package is NEW (review of the 2026-09-29 audit's fix, F14). A bare
+// `GHSA-xxxx`, which would cover it in any package, is refused (W23, external
+// review). It also fails when a listed advisory is no longer
 // reported (the list must be pruned in the same change that fixes it), and
 // when the report is missing or is an npm error instead of an audit.
 //
@@ -74,17 +75,20 @@ const allowed = new Set(
     .map((l) => l.split(/\s+/)[0]),
 );
 
-const allows = (key, id) => allowed.has(key) || allowed.has(id);
+for (const entry of allowed) {
+  if (!/^GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}@\S+$/.test(entry)) {
+    fail(`allowlist entry ${entry} is not GHSA-xxxx-xxxx-xxxx@package; an advisory is allowed in one named package only`);
+  }
+}
+const allows = (key) => allowed.has(key);
 
 for (const [key, a] of found) {
-  if (!allows(key, a.id)) {
+  if (!allows(key)) {
     fail(`NEW ${a.severity} advisory ${a.id} in ${a.name} ${a.range}: ${a.title}`);
   }
 }
-const foundIds = new Set([...found.values()].map((a) => a.id));
 for (const entry of allowed) {
-  const reported = entry.includes("@") ? found.has(entry) : foundIds.has(entry);
-  if (!reported) {
+  if (!found.has(entry)) {
     fail(`${entry} is allowlisted but no longer reported at high/critical; remove it from ${allowPath}`);
   }
 }

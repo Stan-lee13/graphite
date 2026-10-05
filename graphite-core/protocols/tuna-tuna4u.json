@@ -6015,14 +6015,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: authority, market, vault_a, vault_b",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "reset_tuna_spot_position",
@@ -6073,14 +6073,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: tuna_position, tuna_position_ata_a, tuna_position_ata_b",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "set_admin_authority",

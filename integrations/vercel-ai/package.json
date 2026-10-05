@@ -1,0 +1,11 @@
+{
+  "name": "@graphite/vercel-ai",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "typecheck": "tsc --noEmit", "test": "tsx --test *.test.ts" },
+  "dependencies": { "ai": "^7.0.127", "zod": "^4.1.8" },
+  "devDependencies": { "@types/node": "^22.0.0", "tsx": "^4.0.0", "typescript": "^5.5.0" }
+}

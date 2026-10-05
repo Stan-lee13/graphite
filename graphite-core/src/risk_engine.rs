@@ -18,12 +18,12 @@ pub enum RiskError {
 }
 
 /// Number of distinct risk checks `assess` performs: Checks 1, 1b, 2, 2b, 3,
-/// 3b, 4, 5, 6a, 6b, 7, 8, 9, 10 (impersonation), 10b and 10 (high-risk class
-/// with no intent). The L7 layer report states it ("N patterns checked").
+/// 3b, 4, 5, 6a, 6b, 7, 8, 9, 9b (intent-class mismatch, external review R2),
+/// 10 (impersonation), 10b and 10 (high-risk class with no intent). The L7 layer report states it ("N patterns checked").
 /// It said 13 while `assess` ran 16 (2026-09-29 audit): the comment promised
 /// it could not drift, and nothing checked. `tests::checked_patterns_counts_
 /// the_labelled_checks` now counts the `// P0 Check` labels in `assess`.
-pub const CHECKED_PATTERNS: usize = 16;
+pub const CHECKED_PATTERNS: usize = 17;
 
 /// Adversarial pattern categories that the Risk Engine detects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -437,6 +437,60 @@ fn disc_matches(selector: &str, input_disc: &str) -> bool {
     !s.is_empty() && i.starts_with(&s)
 }
 
+/// Check 1 alone: a CPI target outside the universal set, from a program
+/// with no allowed CPI list (no manifest data) — fail closed.
+pub fn unexpected_cpi_target(
+    cpi_targets: &[String],
+    allowed_cpis: &[String],
+) -> Option<RiskVerdict> {
+    if !cpi_targets.is_empty() {
+        let non_universal_cpis: Vec<&String> = cpi_targets
+            .iter()
+            .filter(|cpi| !is_universal_cpi(cpi))
+            .collect();
+
+        if !non_universal_cpis.is_empty() && allowed_cpis.is_empty() {
+            // No manifest data at all — unknown protocol, fail-closed (P12)
+            if let Some(cpi_target) = non_universal_cpis.first() {
+                return Some(RiskVerdict::Blocked {
+                    pattern: RiskPattern::UnexpectedCpi,
+                    reason: format!(
+                        "CPI target '{}' is not in manifest's allowed CPI list (unknown protocol — fail-closed)",
+                        cpi_target
+                    ),
+                });
+            }
+        }
+    }
+    None
+}
+
+/// Check 1b alone: a token-program CPI from a root that is not a trusted
+/// composability program and whose manifest does not declare it.
+pub fn token_cpi_from_untrusted_root(
+    program_id: &str,
+    cpi_targets: &[String],
+    allowed_cpis: &[String],
+) -> Option<RiskVerdict> {
+    if !TRUSTED_CPI_ROOTS.contains(&program_id) {
+        for cpi_target in cpi_targets {
+            if RISKY_CPI_PROGRAMS.contains(&cpi_target.as_str())
+                && !allowed_cpis.iter().any(|c| c == cpi_target)
+            {
+                return Some(RiskVerdict::Blocked {
+                    pattern: RiskPattern::AuthorityHijack,
+                    reason: format!(
+                        "CPI target '{}' is a token program from untrusted root '{}' and is NOT declared in the manifest's allowed CPI list — cannot verify instruction inside CPI (possible SetAuthority/CloseAccount via CPI, P12 fail-closed)",
+                        short_id(cpi_target),
+                        short_id(program_id)
+                    ),
+                });
+            }
+        }
+    }
+    None
+}
+
 /// Pure, deterministic (Constitution P2). Based on transaction structure and
 /// known risk signatures, not runtime behavior.
 pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
@@ -450,25 +504,8 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // never silently dropped (Constitution P3).
     // For unknown protocols (no allowed CPI list): unexpected CPI is suspicious
     // and still fail-closed (response 4).
-    if !input.cpi_targets.is_empty() {
-        let non_universal_cpis: Vec<&String> = input
-            .cpi_targets
-            .iter()
-            .filter(|cpi| !is_universal_cpi(cpi))
-            .collect();
-
-        if !non_universal_cpis.is_empty() && input.allowed_cpis.is_empty() {
-            // No manifest data at all — unknown protocol, fail-closed (P12)
-            if let Some(cpi_target) = non_universal_cpis.first() {
-                return Ok(RiskVerdict::Blocked {
-                    pattern: RiskPattern::UnexpectedCpi,
-                    reason: format!(
-                        "CPI target '{}' is not in manifest's allowed CPI list (unknown protocol — fail-closed)",
-                        cpi_target
-                    ),
-                });
-            }
-        }
+    if let Some(blocked) = unexpected_cpi_target(&input.cpi_targets, &input.allowed_cpis) {
+        return Ok(blocked);
     }
 
     // P0 Check 1b: CPI-level risky pattern detection
@@ -492,21 +529,10 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
     // behavior from a non-trusted root is exactly the vector Check 1b
     // exists to catch). The CPI trace layer (Phase 2) independently gates
     // risky instruction CONTENT inside allowed CPIs when a trace is present.
-    if !TRUSTED_CPI_ROOTS.contains(&input.program_id.as_str()) {
-        for cpi_target in &input.cpi_targets {
-            if RISKY_CPI_PROGRAMS.contains(&cpi_target.as_str())
-                && !input.allowed_cpis.iter().any(|c| c == cpi_target)
-            {
-                return Ok(RiskVerdict::Blocked {
-                    pattern: RiskPattern::AuthorityHijack,
-                    reason: format!(
-                        "CPI target '{}' is a token program from untrusted root '{}' and is NOT declared in the manifest's allowed CPI list — cannot verify instruction inside CPI (possible SetAuthority/CloseAccount via CPI, P12 fail-closed)",
-                        short_id(cpi_target),
-                        short_id(&input.program_id)
-                    ),
-                });
-            }
-        }
+    if let Some(blocked) =
+        token_cpi_from_untrusted_root(&input.program_id, &input.cpi_targets, &input.allowed_cpis)
+    {
+        return Ok(blocked);
     }
 
     // P0 Check 2: Known risky instruction patterns at root level
@@ -801,6 +827,32 @@ pub fn assess(input: &RiskAssessmentInput) -> Result<RiskVerdict, RiskError> {
                 input.proposed_intent_type, input.program_id
             ),
         });
+    }
+
+    // P0 Check 9b: Intent-class mismatch — a declared intent that cannot
+    // declare the instruction's security class (external review R2).
+    //
+    // Check 9 asks whether the PROGRAM serves the intent, and for `transfer`
+    // every program does. So a `transfer` label passed the Risk Engine for an
+    // instruction of any class the checks below key on a missing intent for:
+    // Squads `vaultTransactionExecute` (drain), SPL `MintTo`, a stake
+    // withdrawal. The class is the manifest's machine-readable statement of
+    // what the instruction does, and `manifest::INTENT_DECLARES` — the table
+    // L5 reads too — says which classes each intent can declare. An empty
+    // class (no manifest, or an instruction its manifest does not class) is
+    // left to L5 and the trust tier, which see the difference between the two.
+    if !input.proposed_intent_type.trim().is_empty() && !input.manifest_risk_class.is_empty() {
+        let intent = canonical_intent(input.proposed_intent_type.trim());
+        if crate::manifest::intent_declares_class(intent, &input.manifest_risk_class) != Some(true)
+        {
+            return Ok(RiskVerdict::Blocked {
+                pattern: RiskPattern::PermissionEscalation,
+                reason: format!(
+                    "Intent-class mismatch: a '{}' intent cannot declare an instruction whose security class is '{}' — the declared intent does not describe what this instruction does",
+                    input.proposed_intent_type, input.manifest_risk_class
+                ),
+            });
+        }
     }
 
     // P0 Check 10: System-account impersonation (ISA) — a fund-movement
@@ -1253,7 +1305,7 @@ pub(crate) fn canonical_intent(intent_type: &str) -> &str {
     }
 }
 
-fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
+pub(crate) fn program_supports_intent(program_id: &str, intent_type: &str) -> bool {
     match canonical_intent(intent_type) {
         "swap" | "trade" | "exchange" => is_swap_program(program_id),
         "stake" | "delegate" => {

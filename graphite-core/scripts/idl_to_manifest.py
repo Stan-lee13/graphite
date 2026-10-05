@@ -56,6 +56,13 @@ _CLOSE = ("close", "delete", "destroy")
 _AUTHORITY = ("set_", "update", "change", "configure", "config", "transfer_authority",
               "transfer_ownership", "admin", "pause", "resume", "freeze", "thaw",
               "approve", "revoke", "migrate", "upgrade", "accept_", "propose")
+# A name that opens by switching or editing a setting changes how a protocol or
+# an object behaves (Round 24: `unpause_dex`, `toggle_feature`, `editPool` and
+# `pause_swap_and_arbitrage` were classed transfers, and `pause_swap...` hit
+# the swap family first). Tested before every other family; the Core applies
+# the same switch rule to names in `manifest::names_an_authority_change`.
+_SWITCH = ("edit", "reset", "enable", "disable", "toggle", "pause", "unpause",
+           "halt", "unhalt", "resume")
 _SWAP = ("swap", "route", "exchange", "trade", "fill", "buy", "sell", "quote")
 _MINT = ("mint",)
 _BOOKKEEPING = ("refresh", "crank", "update_price", "log", "emit", "sync",
@@ -74,6 +81,8 @@ def anchor_disc(name):
 
 def classify(name):
     n = snake(name)
+    if any(n == p or n.startswith(p + "_") for p in _SWITCH):
+        return "authority"
     # Order matters: "close_position" is a close, "update_fee" an authority
     # change, and "increase_liquidity" a transfer - the first match wins, so
     # the most specific families are tested first.
@@ -257,7 +266,7 @@ def build(idl, program_id, name, website="", github="", category="",
         for aname, a in flat:
             writable = bool(a.get("writable") or a.get("isMut"))
             signer = bool(a.get("signer") or a.get("isSigner"))
-            accts.append({
+            acct = {
                 "name": aname,
                 "role": role_of(writable, signer),
                 "is_writable": writable,
@@ -268,8 +277,30 @@ def build(idl, program_id, name, website="", github="", category="",
                 "pda_seeds": pda_template(
                     a.get("pda") or {}, [x[1] for x in flat], ix.get("args") or [], pid_bytes
                 ),
-            })
+            }
+            # An Anchor optional account (`optional` in the new IDL spec,
+            # `isOptional` in the old): when absent the program's own id
+            # fills the slot, unsigned and read-only. The Core treats that as
+            # "absent" only for a slot the manifest marks optional (Round 22);
+            # without the flag every call that omits it reads as an unsigned
+            # signer or a demoted writable (found grounding Tensor AMM,
+            # 2026-10-03).
+            if a.get("optional") or a.get("isOptional"):
+                acct["optional"] = True
+            accts.append(acct)
         cls = classify(ix["name"])
+        # An instruction that requires a signer the IDL names as an ADMIN
+        # (`admin`, `group_admin`, `secondaryAdmin`, ...) is an operation only
+        # a protocol's administrator may perform — the registry's definition
+        # of `authority` — whatever its name suggests (external review R3's
+        # structural rule). Name heuristics tagged Mango's `groupEdit` and
+        # `tokenRegister` and Zeta's `halt` as transfers. "authority" is NOT
+        # used here: in most IDLs it names the user's own key.
+        if any(
+            acc["is_signer"] and "admin" in re.sub(r"[^a-z]", "", acc["name"].lower())
+            for acc in accts
+        ):
+            cls = "authority"
         risk_class, _ = CLASSES[cls]
         cpis = [] if cls in ("authority", "bookkeeping") else [TOKEN_PROGRAM, TOKEN_2022]
         if cls == "create":

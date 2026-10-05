@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import bs58 from "bs58";
+import { Keypair } from "@solana/web3.js";
 
 export interface RecordedCall {
   /** JSON-RPC method, or `METHOD /path` for the REST stand-ins. */
@@ -107,6 +108,22 @@ export function wireTransactionId(base64: string): string {
   return bs58.encode(signatureSlots(Buffer.from(base64, "base64")).subarray(0, 64));
 }
 
+/** An account as the stand-in RPC serves it. */
+export interface MockAccount {
+  lamports: number;
+  owner: string;
+  data?: Uint8Array;
+}
+
+/** An SPL Token account image: mint, owner, amount (the 165-byte base layout). */
+export function tokenAccountData(mint: string, owner: string, amount: bigint): Uint8Array {
+  const data = new Uint8Array(165);
+  data.set(bs58.decode(mint), 0);
+  data.set(bs58.decode(owner), 32);
+  new DataView(data.buffer).setBigUint64(64, amount, true);
+  return data;
+}
+
 /** A blockhash the stand-in hands out — 32 bytes of 0x07, base58. */
 export const MOCK_BLOCKHASH = bs58.encode(new Uint8Array(32).fill(7));
 
@@ -117,8 +134,25 @@ export async function mockRpc(
     loadedAccountsDataSize?: number | null;
     /** A simulation error to report instead of success. */
     simulationErr?: unknown;
+    /**
+     * Accounts as the ledger holds them (getMultipleAccounts), and as a
+     * simulation leaves them (simulateTransaction's `accounts`; an address
+     * absent here keeps its ledger state). An address in neither does not exist.
+     */
+    ledger?: Record<string, MockAccount>;
+    afterSimulation?: Record<string, MockAccount | null>;
   } = {},
 ): Promise<Loopback> {
+  const encode = (a: MockAccount | null | undefined) =>
+    a
+      ? {
+          lamports: a.lamports,
+          owner: a.owner,
+          data: [Buffer.from(a.data ?? new Uint8Array()).toString("base64"), "base64"],
+          executable: false,
+          rentEpoch: 0,
+        }
+      : null;
   const calls: RecordedCall[] = [];
   const { server, url } = await listen(
     (_m, _p, body) => {
@@ -130,7 +164,15 @@ export async function mockRpc(
       switch (req?.method) {
         case "getLatestBlockhash":
           return ok({ context: { slot: 1 }, value: { blockhash: MOCK_BLOCKHASH, lastValidBlockHeight: 1_000 } });
-        case "simulateTransaction":
+        case "getMultipleAccounts": {
+          const addresses = ((req as { params?: unknown[] }).params?.[0] ?? []) as string[];
+          return ok({ context: { slot: 1 }, value: addresses.map((a) => encode(opts.ledger?.[a])) });
+        }
+        case "simulateTransaction": {
+          const config = (req as { params?: unknown[] }).params?.[1] as
+            | { accounts?: { addresses?: string[] } }
+            | undefined;
+          const requested = config?.accounts?.addresses;
           return ok({
             context: { slot: 1 },
             value: {
@@ -140,13 +182,22 @@ export async function mockRpc(
                 `Program 11111111111111111111111111111111 consumed ${opts.unitsConsumed ?? 150} of 200000 compute units`,
                 "Program 11111111111111111111111111111111 success",
               ],
-              accounts: null,
+              accounts: requested
+                ? requested.map((a) =>
+                    encode(
+                      opts.afterSimulation && a in opts.afterSimulation
+                        ? opts.afterSimulation[a]
+                        : opts.ledger?.[a],
+                    ),
+                  )
+                : null,
               unitsConsumed: opts.unitsConsumed ?? 150,
               ...(opts.loadedAccountsDataSize === null
                 ? {}
                 : { loadedAccountsDataSize: opts.loadedAccountsDataSize ?? 2_048 }),
             },
           });
+        }
         case "sendTransaction": {
           // A real RPC answers with the id the bytes carry.
           const wire = (req as { params?: unknown[] }).params?.[0];
@@ -202,3 +253,14 @@ export async function mockService(initial: Record<string, unknown> = {}): Promis
 export const BLOCKED_VERDICT: Record<string, unknown> = JSON.parse(
   readFileSync(new URL("../../examples/sample-verification-result.json", import.meta.url), "utf8"),
 );
+
+/**
+ * A wallet generated for one test and never funded: its secret key in the
+ * base58 form the guard's `privateKey` takes, and its address. Lets an
+ * adapter's tests build a guard without depending on @solana/web3.js
+ * themselves.
+ */
+export function throwawayWallet(): { secretKeyBase58: string; publicKey: string } {
+  const kp = Keypair.generate();
+  return { secretKeyBase58: bs58.encode(kp.secretKey), publicKey: kp.publicKey.toBase58() };
+}

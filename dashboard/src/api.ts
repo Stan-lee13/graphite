@@ -38,6 +38,14 @@ export interface ConfidencePoint {
   approved: boolean;
   program_id: string;
   audit_trail_id: string;
+  /**
+   * The digest of the bytes the verdict is bound to; null for a descriptive
+   * verdict, which is about what the request said (W22, external review: the
+   * dashboard showed "approved" either way). Absent from older servers.
+   */
+  transaction_sha256?: string | null;
+  /** The manifest version the verdict was judged against. */
+  manifest_version?: string | null;
 }
 
 export interface ConfidenceHistory {

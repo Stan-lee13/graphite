@@ -67,5 +67,6 @@ export const SWAP_PROGRAM_IDS: ReadonlySet<string> = new Set([
   "ghosty4ZU1Qk1HN7Ymz4pZ15QfspzJZgSYFkdKN6ZLK", // stableswap-ghosty.json
   "DF1ow4tspfHX9JwWJsAb9epbkA8hmpSEAtxXy1V27QBH", // swap-orchestrator-df1ow4.json
   "J51H4gevuj9sLwp2qvRQMs4fBvZHWebEVeNhdUdPNR1K", // tail-trade-j51h4g.json
+  "MoonCVVNZFSYkqNXP6bxHLPL6QQJiMagDL3qcqUQTrG", // token-launchpad-mooncv.json
   "zapvX9M3uf5pvy4wRPAbQgdQsM1xmuiFnkfHKPvwMiz", // zap-zapvx9.json
 ]);

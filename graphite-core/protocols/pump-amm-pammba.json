@@ -1207,14 +1207,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global_config",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "extend_account",
@@ -1728,14 +1728,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global_config",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_mayhem_mode",
@@ -1774,14 +1774,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global_config",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "transfer_creator_fees_to_pump",

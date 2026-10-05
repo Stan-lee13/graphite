@@ -156,6 +156,9 @@ struct Tally {
     parse_failed: BTreeMap<String, usize>,
     unresolvable_accounts: usize,
     no_usable_instruction: usize,
+    /// Manifested instructions no intent describes, under
+    /// `GRAPHITE_MAINNET_HONEST_INTENT` (external review R2).
+    no_honest_intent: usize,
     verified: usize,
     verify_error: BTreeMap<String, usize>,
     l2_passed: usize,
@@ -212,10 +215,29 @@ fn l2_class(reason: &str) -> &'static str {
     }
 }
 
-fn sample() -> Option<serde_json::Value> {
-    let path = std::env::var("GRAPHITE_MAINNET_SAMPLE").ok()?;
-    let raw = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&raw).ok()
+/// The sample this run measures. W25 (external review): a path that was set
+/// but could not be read or parsed used to end the test early as a pass, so a
+/// typo in the path was a clean run. Run explicitly (it is `#[ignore]`), the
+/// test fails unless it measured something.
+fn sample() -> serde_json::Value {
+    let path = std::env::var("GRAPHITE_MAINNET_SAMPLE").unwrap_or_else(|_| {
+        panic!(
+            "GRAPHITE_MAINNET_SAMPLE is not set: point it at the JSON written by tools/mainnet-sample/fetch_mainnet.py. Nothing was measured."
+        )
+    });
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("GRAPHITE_MAINNET_SAMPLE={path}: {e}. Nothing was measured."));
+    // The run's output names its input (tools/mainnet-sample/SAMPLES.md).
+    {
+        use sha2::Digest;
+        println!(
+            "[mainnet] sample {path} sha256 {}",
+            hex::encode(sha2::Sha256::digest(raw.as_bytes()))
+        );
+    }
+    serde_json::from_str(&raw).unwrap_or_else(|e| {
+        panic!("GRAPHITE_MAINNET_SAMPLE={path} is not JSON: {e}. Nothing was measured.")
+    })
 }
 
 /// One transaction's verdict, for the differential.
@@ -238,14 +260,12 @@ struct Row {
 #[test]
 #[ignore = "network sample — fetch with fetch_mainnet.py, then set GRAPHITE_MAINNET_SAMPLE"]
 fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
-    let Some(doc) = sample() else {
-        eprintln!(
-            "[mainnet] no sample: set GRAPHITE_MAINNET_SAMPLE to the JSON written by \
-             fetch_mainnet.py. Skipping rather than passing vacuously."
-        );
-        return;
-    };
+    let doc = sample();
     let rows = doc["rows"].as_array().expect("rows array");
+    assert!(
+        !rows.is_empty(),
+        "the sample has no rows; nothing was measured"
+    );
     let core = GraphiteCore::new();
     let registry = graphite_core::manifest::load_seed_manifests();
     let mut t = Tally::default();
@@ -354,11 +374,31 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
             )
             .collect();
 
-        let ix_name = registry
-            .find_instruction(&ix.program_id, &disc)
-            .map(|i| i.name.clone())
-            .unwrap_or_default();
-        let intent = graphite_core::live_corpus::classify_intent(&ix.program_id, &ix_name);
+        let found = registry.find_instruction(&ix.program_id, &disc);
+        let ix_name = found.map(|i| i.name.clone()).unwrap_or_default();
+        // `GRAPHITE_MAINNET_HONEST_INTENT=1` (external review R2): declare the
+        // intent an honest agent would — the one L5's own rule says describes
+        // the instruction — instead of the name-based guess, and count the
+        // instructions no intent describes. Measures what an honest agent can
+        // get through, separately from the guess's label.
+        let intent = match (
+            std::env::var("GRAPHITE_MAINNET_HONEST_INTENT").is_ok(),
+            found,
+        ) {
+            (true, Some(def)) => match graphite_core::live_corpus::honest_intent(
+                &ix.program_id,
+                &def.name,
+                def.security_class(),
+                &def.expected_state_changes,
+            ) {
+                Some(intent) => intent.to_string(),
+                None => {
+                    t.no_honest_intent += 1;
+                    "transfer".to_string()
+                }
+            },
+            _ => graphite_core::live_corpus::classify_intent(&ix.program_id, &ix_name),
+        };
 
         let input = VerificationInput {
             proposed_intent: ProposedIntent {
@@ -599,6 +639,12 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
         t.verify_error.values().sum::<usize>(),
         t.verify_error
     );
+    if std::env::var("GRAPHITE_MAINNET_HONEST_INTENT").is_ok() {
+        println!(
+            "  honest intents; manifested instructions no intent describes {:>6}",
+            t.no_honest_intent
+        );
+    }
     println!("  VERIFIED                   {:>6}", t.verified);
     println!("    artifact-bound scope     {:>6}", t.artifact_bound);
     println!("    L2 passed                {:>6}", t.l2_passed);

@@ -169,6 +169,8 @@ type ExtractedParameters struct {
 	InputToken  string `json:"input_token,omitempty"`
 	OutputToken string `json:"output_token,omitempty"`
 	Amount      string `json:"amount,omitempty"`
+	Destination string `json:"destination,omitempty"`
+	AccountType string `json:"account_type,omitempty"`
 	SlippageBPS *int64 `json:"slippage_bps,omitempty"`
 }
 
@@ -382,6 +384,10 @@ type VerificationScope struct {
 	// from its bytes (Round 21). Nil from older servers and when the bytes
 	// did not parse.
 	ComputeBudget *ComputeBudgetRequest `json:"compute_budget,omitempty"`
+	// MessageVersion is the message version the bytes carry: "legacy",
+	// "v0" or "v1" (Round 24). Empty when they did not parse, and from
+	// servers older than Round 24.
+	MessageVersion string `json:"message_version,omitempty"`
 }
 
 // ComputeBudgetRequest is a transaction's compute-budget request: the v1

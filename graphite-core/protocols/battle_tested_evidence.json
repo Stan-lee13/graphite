@@ -140,6 +140,102 @@
    "meets_battle_tested": true
   },
   {
+   "program_id": "4MangoMjqJ2firMokCjjGgoK8d4MXcrgL7XJaL3w6fVg",
+   "manifest": "mango-v4-4mango.json",
+   "name": "Mango V4 (4MangoMj)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791055232,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1982,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 452975457,
+    "oldest_slot": 435457928,
+    "newest_block_time": 1791041709,
+    "oldest_block_time": 1785121594,
+    "window_seconds": 5920115
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 0,
+    "transactions_sampled": 80,
+    "anchor_event_cpis_excluded": 0,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 253,
+    "instructions_named_by_manifest": 253,
+    "decode_rate": 1.0,
+    "instructions_by_name": {
+     "perpPlaceOrder": 88,
+     "accountClose": 61,
+     "stubOracleSet": 39,
+     "tokenWithdraw": 23,
+     "perpDeactivatePosition": 15,
+     "perpCancelAllOrders": 13,
+     "perpCloseMarket": 2,
+     "adminPerpWithdrawFees": 2,
+     "perpSettlePnl": 2,
+     "perpSettleFees": 2,
+     "perpForceClosePosition": 2,
+     "perpLiqForceCancelOrders": 2,
+     "perpEditMarket": 2
+    },
+    "unmatched_leading_bytes": {}
+   },
+   "meets_battle_tested": true
+  },
+  {
+   "program_id": "4R3gSG8BpU4t19KYj8CfnbtRpnT8gtk4dvTHxVRwc2r7",
+   "manifest": "jito-tip-distribution-4r3gsg.json",
+   "name": "Jito Tip Distribution (4R3gSG8B)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791055482,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1998,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 452977984,
+    "oldest_slot": 452782595,
+    "newest_block_time": 1791042381,
+    "oldest_block_time": 1790990259,
+    "window_seconds": 52122
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 0,
+    "transactions_sampled": 80,
+    "anchor_event_cpis_excluded": 0,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 80,
+    "instructions_named_by_manifest": 80,
+    "decode_rate": 1.0,
+    "instructions_by_name": {
+     "claim": 67,
+     "initialize_tip_distribution_account": 9,
+     "migrate_tda_merkle_root_upload_authority": 4
+    },
+    "unmatched_leading_bytes": {}
+   },
+   "meets_battle_tested": true
+  },
+  {
    "program_id": "5BD9UAUCRCg6Chv6CS5k4sBHGd7CciWpng9u7iJxJFjx",
    "manifest": "escrow-5bd9ua.json",
    "name": "Escrow (5BD9UAUC)",
@@ -2566,6 +2662,51 @@
    "meets_battle_tested": true
   },
   {
+   "program_id": "LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn",
+   "manifest": "locker-locpqg.json",
+   "name": "Locker (LocpQguc)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791055731,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1979,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 453017723,
+    "oldest_slot": 450723391,
+    "newest_block_time": 1791053046,
+    "oldest_block_time": 1790438774,
+    "window_seconds": 614272
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 0,
+    "transactions_sampled": 80,
+    "anchor_event_cpis_excluded": 80,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 81,
+    "instructions_named_by_manifest": 81,
+    "decode_rate": 1.0,
+    "instructions_by_name": {
+     "claim_v2": 47,
+     "close_vesting_escrow": 29,
+     "create_vesting_escrow_v2": 3,
+     "claim": 1,
+     "create_vesting_escrow_metadata": 1
+    },
+    "unmatched_leading_bytes": {}
+   },
+   "meets_battle_tested": true
+  },
+  {
    "program_id": "M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K",
    "manifest": "m2-m2mx93.json",
    "name": "M2 (M2mx93ek)",
@@ -2941,6 +3082,48 @@
     }
    },
    "meets_battle_tested": false
+  },
+  {
+   "program_id": "MoonCVVNZFSYkqNXP6bxHLPL6QQJiMagDL3qcqUQTrG",
+   "manifest": "token-launchpad-mooncv.json",
+   "name": "Token Launchpad (MoonCVVN)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791056099,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1824,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 453022264,
+    "oldest_slot": 443353280,
+    "newest_block_time": 1791054265,
+    "oldest_block_time": 1788243405,
+    "window_seconds": 2810860
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 0,
+    "transactions_sampled": 80,
+    "anchor_event_cpis_excluded": 0,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 80,
+    "instructions_named_by_manifest": 80,
+    "decode_rate": 1.0,
+    "instructions_by_name": {
+     "sell": 58,
+     "buy": 22
+    },
+    "unmatched_leading_bytes": {}
+   },
+   "meets_battle_tested": true
   },
   {
    "program_id": "MzLoYnJ6sF6eeejs4vV95TNmXqS3W4cAtLGKkjT4ZrK",
@@ -3699,6 +3882,98 @@
    "meets_battle_tested": false
   },
   {
+   "program_id": "T1pyyaTNZsKv2WcRAB8oVnk93mLJw2XzjtVYqCsaHqt",
+   "manifest": "jito-tip-payment-t1pyya.json",
+   "name": "Jito Tip Payment (T1pyyaTN)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791056199,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1986,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 453029108,
+    "oldest_slot": 453021020,
+    "newest_block_time": 1791056096,
+    "oldest_block_time": 1791053932,
+    "window_seconds": 2164
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 0,
+    "transactions_sampled": 80,
+    "anchor_event_cpis_excluded": 0,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 160,
+    "instructions_named_by_manifest": 160,
+    "decode_rate": 1.0,
+    "instructions_by_name": {
+     "changeTipReceiver": 80,
+     "changeBlockBuilder": 80
+    },
+    "unmatched_leading_bytes": {}
+   },
+   "meets_battle_tested": true
+  },
+  {
+   "program_id": "TAMM6ub33ij1mbetoMyVBLeKY5iP41i4UPUJQGkhfsg",
+   "manifest": "amm-program-tamm6u.json",
+   "name": "AMM Program (TAMM6ub3)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791056321,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1918,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 453027265,
+    "oldest_slot": 451749863,
+    "newest_block_time": 1791055605,
+    "oldest_block_time": 1790713872,
+    "window_seconds": 341733
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 0,
+    "transactions_sampled": 80,
+    "anchor_event_cpis_excluded": 0,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 101,
+    "instructions_named_by_manifest": 101,
+    "decode_rate": 1.0,
+    "instructions_by_name": {
+     "editPool": 50,
+     "tammNoop": 18,
+     "sellNftTradePool": 6,
+     "closePool": 6,
+     "createPool": 6,
+     "sellNftTokenPoolCore": 4,
+     "sellNftTradePoolCore": 4,
+     "depositSol": 3,
+     "buyNftCore": 2,
+     "buyNft": 2
+    },
+    "unmatched_leading_bytes": {}
+   },
+   "meets_battle_tested": true
+  },
+  {
    "program_id": "TCMPhJdwDryooaGtiocG1u3xcYbRpiJzb283XfCZsDp",
    "manifest": "tcomp-tcmphj.json",
    "name": "Tcomp (TCMPhJdw)",
@@ -3740,6 +4015,51 @@
     "unmatched_leading_bytes": {}
    },
    "meets_battle_tested": false
+  },
+  {
+   "program_id": "TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN",
+   "manifest": "tensorswap-tswapa.json",
+   "name": "Tensorswap (TSWAPaqy)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791056449,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1810,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 453027891,
+    "oldest_slot": 452342110,
+    "newest_block_time": 1791055771,
+    "oldest_block_time": 1790872323,
+    "window_seconds": 183448
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 0,
+    "transactions_sampled": 66,
+    "anchor_event_cpis_excluded": 0,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 66,
+    "instructions_named_by_manifest": 60,
+    "decode_rate": 0.9090909090909091,
+    "instructions_by_name": {
+     "withdrawMarginAccountCpiTcomp": 40,
+     "depositMarginAccount": 17,
+     "withdrawMarginAccount": 3
+    },
+    "unmatched_leading_bytes": {
+     "235910ebe259f82d": 6
+    }
+   },
+   "meets_battle_tested": true
   },
   {
    "program_id": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -3914,6 +4234,56 @@
     "unmatched_leading_bytes": {}
    },
    "meets_battle_tested": true
+  },
+  {
+   "program_id": "ZETAxsqBRek56DhiGXrn75yj2NHU3aYUnxvHXpkf3aD",
+   "manifest": "zeta-zetaxs.json",
+   "name": "Zeta (ZETAxsqB)",
+   "declared_trust_tier": "OfficialManifest",
+   "measured_at_unix": 1791056687,
+   "identity": {
+    "exists": true,
+    "executable": true,
+    "loader": "BPFLoaderUpgradeab1e11111111111111111111111"
+   },
+   "volume": {
+    "counts": "successful transactions whose account list carries the program address (getSignaturesForAddress); invocation is established by the decode sample, not by this number",
+    "endpoint_answered": true,
+    "successful_transactions_counted": 1318,
+    "signatures_scanned": 2000,
+    "pages": 2,
+    "reached_target": true,
+    "newest_slot": 450713890,
+    "oldest_slot": 367526433,
+    "newest_block_time": 1790436236,
+    "oldest_block_time": 1758153252,
+    "window_seconds": 32282984
+   },
+   "decode": {
+    "transactions_requested": 80,
+    "transactions_unavailable": 1,
+    "transactions_sampled": 61,
+    "anchor_event_cpis_excluded": 0,
+    "instructions_from_block_sweep": 0,
+    "decode_applicable": true,
+    "instructions_observed": 94,
+    "instructions_named_by_manifest": 63,
+    "decode_rate": 0.6702127659574468,
+    "instructions_by_name": {
+     "initializeCrossMarginAccount": 25,
+     "closeMarginAccount": 22,
+     "closeOpenOrdersV2": 12,
+     "initializeOpenOrdersV3": 1,
+     "initializeCrossMarginAccountManager": 1,
+     "treasuryMovement": 1,
+     "collectTreasuryFunds": 1
+    },
+    "unmatched_leading_bytes": {
+     "a6cbb0d2b0348c69": 24,
+     "69e448ddda12b375": 7
+    }
+   },
+   "meets_battle_tested": false
   },
   {
    "program_id": "aMERKpFAWoChCi5oZwPvgsSCoGpZKBiU7fi76bdZjt2",

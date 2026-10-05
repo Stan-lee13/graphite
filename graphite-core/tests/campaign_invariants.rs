@@ -308,9 +308,9 @@ fn every_unparseable_simulation_field_is_none_rather_than_zero() {
 
     // Balances that are not integers.
     for bad in [
-        r#"{"unitsConsumed":300,"preBalances":[1.5,2.5],"postBalances":[1.5,2.5]}"#,
-        r#"{"unitsConsumed":300,"preBalances":["1","2"],"postBalances":["1","2"]}"#,
-        r#"{"unitsConsumed":300,"preBalances":[-1,-2],"postBalances":[-1,-2]}"#,
+        r#"{"err":null,"unitsConsumed":300,"preBalances":[1.5,2.5],"postBalances":[1.5,2.5]}"#,
+        r#"{"err":null,"unitsConsumed":300,"preBalances":["1","2"],"postBalances":["1","2"]}"#,
+        r#"{"err":null,"unitsConsumed":300,"preBalances":[-1,-2],"postBalances":[-1,-2]}"#,
     ] {
         let v: serde_json::Value = serde_json::from_str(bad).unwrap();
         let r = parse(&v).expect("parse must not error");
@@ -323,7 +323,7 @@ fn every_unparseable_simulation_field_is_none_rather_than_zero() {
     // Inner instructions whose shape is unreadable: one bad group makes the
     // total unknown, never smaller.
     let v: serde_json::Value = serde_json::from_str(
-        r#"{"unitsConsumed":300,"innerInstructions":[{"instructions":[{},{}]},{"instructions":"nope"}]}"#,
+        r#"{"err":null,"unitsConsumed":300,"innerInstructions":[{"instructions":[{},{}]},{"instructions":"nope"}]}"#,
     )
     .unwrap();
     let r = parse(&v).expect("parse must not error");
@@ -337,7 +337,7 @@ fn every_unparseable_simulation_field_is_none_rather_than_zero() {
     // And the readable case still works, so none of the above is achieved by
     // refusing everything.
     let v: serde_json::Value = serde_json::from_str(
-        r#"{"unitsConsumed":300,"preBalances":[10,20],"postBalances":[9,21],
+        r#"{"err":null,"unitsConsumed":300,"preBalances":[10,20],"postBalances":[9,21],
             "innerInstructions":[{"instructions":[{},{}]}]}"#,
     )
     .unwrap();

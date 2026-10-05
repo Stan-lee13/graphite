@@ -122,6 +122,17 @@ submitted — and nothing is signed under a residual the operator has not accept
   sent to the Core is the grounded one, so the Core's transaction-versus-intent check no
   longer compares the AI's output with itself.
 - Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
+- **The operator's spend limits (`spend-policy.ts`, Round 24).** Graphite cannot know
+  whether a person wanted a request; the amount bounds the damage when a model was talked
+  into it. `GRAPHITE_MAX_TRANSFER_LAMPORTS` caps one transaction and
+  `GRAPHITE_ALLOWED_DESTINATIONS` lists where a transfer may go; a malformed value is a
+  startup error. A transfer is checked on its grounded amount and destination before
+  anything is built. A swap is checked on what the exact transaction takes out of the
+  wallet, measured by simulating it (`measureWalletOutflow`: lamports including the fee
+  and wrapped SOL, and every token account the wallet owns): over the cap is refused, a
+  swap that spends any other token is refused because a lamport cap cannot price it, and
+  with an allowlist but no cap every swap is refused, because a swap has no destination
+  to check. Limits only narrow; nothing here can make a refused transaction executable.
 - **Version 0 through lookup tables (Round 22).** `BoundTransaction.build({ version: 0,
   addressLookupTables })` compiles a v0 message reading accounts through tables the
   caller has already fetched; `executeSwap` does so when the payload names

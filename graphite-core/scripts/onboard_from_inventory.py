@@ -81,9 +81,17 @@ def category_of(idl_name, instruction_names):
 
 
 def main():
-    limit = int(sys.argv[1]) if len(sys.argv) > 1 else 90
+    # `--programs <id> ...` onboards exactly those programs (each still has to
+    # clear every gate above), for protocols the usage census did not sample;
+    # otherwise the top `limit` of the census are considered.
+    args = sys.argv[1:]
+    explicit = args[1:] if args and args[0] == "--programs" else None
+    limit = int(args[0]) if args and explicit is None else (len(explicit) if explicit else 90)
     index = {p["program_id"]: p for p in json.loads(IDX.read_text(encoding="utf-8"))["programs"]}
     census = json.loads(CENSUS.read_text(encoding="utf-8"))
+    if explicit is not None:
+        sampled = {p["program_id"]: p for p in census["programs"]}
+        census = {"programs": [sampled.get(pid, {"program_id": pid, "successful_txs": 0}) for pid in explicit]}
     curated = json.loads(CURATED.read_text(encoding="utf-8")) if CURATED.exists() else {}
 
     existing = {}
@@ -169,8 +177,16 @@ def main():
               f"{p['successful_txs']:6d} sampled txs  {name}", flush=True)
 
     print(f"\n{len(written)} manifests written, {len(skipped)} candidates skipped")
-    (HERE / "out" / "onboarding_report.json").write_text(
-        json.dumps({"written": written, "skipped": skipped}, indent=1), encoding="utf-8")
+    report = HERE / "out" / "onboarding_report.json"
+    if explicit is not None and report.exists():
+        # An explicit run adds to the record of the census runs; it does not
+        # replace it. Entries for the named programs are superseded.
+        prev = json.loads(report.read_text(encoding="utf-8"))
+        named = set(explicit)
+        written = [w for w in prev["written"] if w[1] not in named] + written
+        skipped = [s for s in prev["skipped"] if s[0] not in named] + skipped
+    report.write_text(json.dumps({"written": written, "skipped": skipped}, indent=1),
+                      encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

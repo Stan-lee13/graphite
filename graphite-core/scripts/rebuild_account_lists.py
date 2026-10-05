@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Rebuild manifest account lists from official program IDLs.
 
-Sources (all fetched 2026-08-14, archived under e2e-scratch/idls/):
-  - orca-whirlpools: e2e-scratch/idls/orca-whirlpools.json (Anchor,
+Sources (all fetched 2026-08-14, archived under scripts/idls/):
+  - orca-whirlpools: scripts/idls/orca-whirlpools.json (Anchor,
     isMut/isSigner metadata) -- the deployed whirlpools program v0.9.0
     surface; swapV2/twoHopSwapV2 layouts corroborated live on mainnet.
-  - meteora-dlmm: e2e-scratch/idls/meteora-dlmm.json (codama,
+  - meteora-dlmm: scripts/idls/meteora-dlmm.json (codama,
     writable/signer metadata) -- the deployed DLMM program IDL.
-  - jupiter-v6: e2e-scratch/idls/jupiter.json (codama) for the
+  - jupiter-v6: scripts/idls/jupiter.json (codama) for the
     legacy route family (matches live mainnet layouts, user-first with
     writable source/destination token accounts), plus live on-chain
     grounding (base58-decoded getTransaction jsonParsed) for the V2
@@ -99,17 +99,17 @@ def main() -> None:
     root = "protocols/"
 
     # ---------------- orca-whirlpools ----------------
-    orca_idl = load_idl_accounts("e2e-scratch/idls/orca-whirlpools.json", "anchor")
+    orca_idl = load_idl_accounts("scripts/idls/orca-whirlpools.json", "anchor")
     orca = rebuild(root + "orca-whirlpools.json", orca_idl, {})
     write_json(root + "orca-whirlpools.json", orca)
 
     # ---------------- meteora-dlmm ----------------
-    meteora_idl = load_idl_accounts("e2e-scratch/idls/meteora-dlmm.json", "codama")
+    meteora_idl = load_idl_accounts("scripts/idls/meteora-dlmm.json", "codama")
     meteora = rebuild(root + "meteora-dlmm.json", meteora_idl, {})
     write_json(root + "meteora-dlmm.json", meteora)
 
     # ---------------- jupiter-v6 ----------------
-    jup_idl = load_idl_accounts("e2e-scratch/idls/jupiter.json", "codama")
+    jup_idl = load_idl_accounts("scripts/idls/jupiter.json", "codama")
     jup_aliases = {
         "route": "route",
         "sharedAccountsRoute": "shared_accounts_route",

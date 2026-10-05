@@ -319,4 +319,121 @@ export class RpcSimulator {
       return failure();
     }
   }
+
+  /**
+   * What the exact transaction would take out of the wallet: the wallet's own
+   * lamports (fee included) and the balance of every token account the wallet
+   * owns among `accounts`, each read before and after an unsigned simulation
+   * of `wire` — the bytes that will be signed, not a description of them.
+   * Wrapped SOL counts as lamports. Refuses (throws) rather than reporting a
+   * number it did not read: a failed simulation, an account the RPC does not
+   * return, or a wallet token account it cannot decode.
+   */
+  async measureWalletOutflow(params: {
+    wire: Uint8Array;
+    wallet: string;
+    accounts: readonly string[];
+  }): Promise<WalletOutflow> {
+    assertEverySignatureSlotEmpty(params.wire);
+    const addresses = [...new Set([params.wallet, ...params.accounts])];
+    const pre = await this.rpc<{ value?: (RpcAccount | null)[] }>("getMultipleAccounts", [
+      addresses,
+      { encoding: "base64", commitment: "confirmed" },
+    ]);
+    const sim = await this.rpc<{
+      value?: { err?: unknown; accounts?: (RpcAccount | null)[] | null };
+    }>("simulateTransaction", [
+      Buffer.from(params.wire).toString("base64"),
+      {
+        encoding: "base64",
+        sigVerify: false,
+        replaceRecentBlockhash: true,
+        commitment: "confirmed",
+        accounts: { encoding: "base64", addresses },
+      },
+    ]);
+    const before = pre.value;
+    const value = sim.value;
+    if (!Array.isArray(before) || before.length !== addresses.length) {
+      throw new Error("[RpcSimulator] the RPC did not return every account the outflow is measured on. REFUSING.");
+    }
+    if (!value || !("err" in value)) throw new Error("[RpcSimulator] outflow simulation: no result. REFUSING.");
+    if (value.err !== null) {
+      throw new Error(
+        `[RpcSimulator] outflow simulation failed: ${JSON.stringify(value.err).slice(0, 160)}. REFUSING.`,
+      );
+    }
+    const after = value.accounts;
+    if (!Array.isArray(after) || after.length !== addresses.length) {
+      throw new Error("[RpcSimulator] the simulation did not return the post-state of every account. REFUSING.");
+    }
+    const walletBefore = before[0];
+    if (!walletBefore) throw new Error("[RpcSimulator] the wallet account does not exist. REFUSING.");
+    let lamports = positiveDecrease(BigInt(walletBefore.lamports), BigInt(after[0]?.lamports ?? 0));
+    const tokens: WalletOutflow["tokens"] = [];
+    for (let i = 1; i < addresses.length; i++) {
+      const b = before[i];
+      if (!b || !TOKEN_PROGRAMS.has(b.owner)) continue;
+      const data = Buffer.from(b.data[0], "base64");
+      if (data.length < TOKEN_ACCOUNT_BASE_LEN) continue; // a mint or a multisig, not a token account
+      if (new PublicKey(data.subarray(32, 64)).toBase58() !== params.wallet) continue;
+      const mint = new PublicKey(data.subarray(0, 32)).toBase58();
+      const a = after[i];
+      let postAmount = 0n;
+      if (a && TOKEN_PROGRAMS.has(a.owner)) {
+        const post = Buffer.from(a.data[0], "base64");
+        if (post.length < TOKEN_ACCOUNT_BASE_LEN) {
+          throw new Error(`[RpcSimulator] ${addresses[i]} is not a token account after the simulation. REFUSING.`);
+        }
+        postAmount = post.readBigUInt64LE(64);
+      }
+      const spent = positiveDecrease(data.readBigUInt64LE(64), postAmount);
+      if (spent === 0n) continue;
+      if (mint === WRAPPED_SOL_MINT) lamports += spent;
+      else tokens.push({ mint, account: addresses[i], amount: spent });
+    }
+    return { lamports, tokens };
+  }
+
+  private async rpc<T>(method: string, params: unknown[]): Promise<T> {
+    const response = await fetch(this.rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      redirect: "error",
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`[RpcSimulator] ${method}: HTTP ${response.status}. REFUSING.`);
+    const body = (await response.json()) as { error?: { message?: string }; result?: T };
+    if (body.error || body.result === undefined) {
+      throw new Error(`[RpcSimulator] ${method} refused by the RPC: ${body.error?.message ?? "no result"}. REFUSING.`);
+    }
+    return body.result;
+  }
+}
+
+interface RpcAccount {
+  lamports: number;
+  owner: string;
+  data: [string, string];
+}
+
+/** What one transaction takes out of the wallet (see `measureWalletOutflow`). */
+export interface WalletOutflow {
+  /** Lamports, the fee and wrapped SOL included. */
+  lamports: bigint;
+  /** Every other token balance the wallet's own accounts lose. */
+  tokens: { mint: string; account: string; amount: bigint }[];
+}
+
+const TOKEN_PROGRAMS = new Set([
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+]);
+/** mint(32) owner(32) amount(8) …: the SPL Token account layout Token-2022 extends. */
+const TOKEN_ACCOUNT_BASE_LEN = 165;
+export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
+
+function positiveDecrease(before: bigint, after: bigint): bigint {
+  return before > after ? before - after : 0n;
 }

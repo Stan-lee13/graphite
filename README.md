@@ -14,7 +14,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 [![Rust Tests](https://img.shields.io/badge/Rust_Tests-1849_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
-[![Protocols](https://img.shields.io/badge/Protocol_Manifests-129-blue?style=flat-square)](docs/protocol-coverage.md)
+[![Protocols](https://img.shields.io/badge/Protocol_Manifests-137-blue?style=flat-square)](docs/protocol-coverage.md)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-12-red?style=flat-square)](graphite-core/src/risk_engine.rs)
 [![Version](https://img.shields.io/badge/Version-v0.2.0--beta-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
 
@@ -120,11 +120,11 @@ Each layer can only **reduce** confidence or **block**. No layer can invent conf
 | **UnspendableDestination** | Value sent to an address nobody can spend from — a native program, a loader or a sysvar (distinct from `Impersonation`, which is about addresses that only *look* official) |
 | **CpiTraceAnomaly** | Malicious shape in hierarchical CPI trace — unknown program, repeated revisits, a same-instruction sweep across many account sets, or vanity-impersonated program in the tree. Judged on the call tree the Core's own simulation reports (`innerInstructions`), not only on one a caller declares (Round 19) |
 
-All 12 patterns are real detection logic — not stubs, not placeholders. Ten are emitted by the single-instruction risk engine (`risk_engine.rs`), whose `assess` runs 16 checks (P0 Check 1–10 with sub-checks 1b, 2b, 3b, 6a/6b and 10b, and the manifest high-risk-class gate); `MultiInstructionDrain` and `CpiTraceAnomaly` are emitted by the transaction-level and CPI-trace analyzers (`tx_pattern_analysis.rs`) and mapped onto the same `RiskPattern` enum in the orchestrator. The enum's thirteenth variant, `PluginBlock`, is not a detector: it names a registered plugin's veto as a plugin veto. Separately, the pipeline bounds the priority fee (`ExcessivePriorityFee`, Round 21).
+All 12 patterns are real detection logic — not stubs, not placeholders. Ten are emitted by the single-instruction risk engine (`risk_engine.rs`), whose `assess` runs 17 checks (P0 Check 1–10 with sub-checks 1b, 2b, 3b, 6a/6b, 9b and 10b, and the manifest high-risk-class gate); `MultiInstructionDrain` and `CpiTraceAnomaly` are emitted by the transaction-level and CPI-trace analyzers (`tx_pattern_analysis.rs`) and mapped onto the same `RiskPattern` enum in the orchestrator. The enum's thirteenth variant, `PluginBlock`, is not a detector: it names a registered plugin's veto as a plugin veto. Separately, the pipeline bounds the priority fee (`ExcessivePriorityFee`, Round 21).
 
 ---
 
-## Supported Protocols (129 Manifests / 3,195 Instructions)
+## Supported Protocols (137 Manifests / 3,504 Instructions)
 
 The full table — every program, its instruction count, the tier the loader
 actually applied, and the mainnet measurement behind it — is
@@ -133,7 +133,7 @@ from the manifests and compared against the loaded registry in CI, so it cannot
 drift from the code the way a hand-maintained table does (it had: four rows of
 the old table named the wrong tier).
 
-Of those, **106 carry a BattleTested tier that a mainnet measurement supports** — up from 8 that merely declared one.
+Of those, **113 carry a BattleTested tier that a mainnet measurement supports** — up from 8 that merely declared one.
 
 **A manifest does not get to award itself a trust tier.** `BattleTested` lifts
 the confidence ceiling from 0.75 to 1.0 and is the floor the Enterprise profile
@@ -168,7 +168,7 @@ graphite/
 │   ├── src/
 │   │   ├── verification.rs         ← 8-layer pipeline orchestrator
 │   │   ├── account_resolution.rs  ← L1: PDA derivation (Solana hash-chain), account matching
-│   │   ├── risk_engine.rs         ← L7: 10 of the 12 detection patterns (16 checks)
+│   │   ├── risk_engine.rs         ← L7: 10 of the 12 detection patterns (17 checks)
 │   │   ├── confidence_engine.rs   ← L6: Weighted signal scoring + tier ceilings
 │   │   ├── policy_engine.rs       ← L6: Per-wallet policy profiles
 │   │   ├── simulation_integrity.rs← L3: 3-signal z-score (compute/writes/CPI) + MAD baseline
@@ -191,7 +191,7 @@ graphite/
 │   │   ├── benchmark.rs           ← Benchmark (18 scored + 2 baselines; SYNTHETIC cases labeled)
 │   │   ├── bin/graphite.rs        ← Binary entry point (server + CLI)
 │   │   └── cli.rs                 ← CLI command handlers (the clap tree is in bin/graphite.rs; `graphite --help` lists every command)
-│   ├── protocols/                 ← 129 JSON protocol manifests (3,195 instructions)
+│   ├── protocols/                 ← 137 JSON protocol manifests (3,504 instructions)
 │   │                                 + battle_tested_evidence.json: the mainnet measurement behind each tier
 │   └── tests/                     ← integration suites (adversarial + exploit + RPC trust boundary + live RPC + real mainnet); 1,849 tests in the default leg counting src/ unit tests
 │
@@ -213,7 +213,10 @@ graphite/
 │   │   ├── residual-policy.ts     ← Which unobserved residuals a deployment accepts; refuses the rest before signing
 │   │   ├── execution-lifecycle.ts ← The one path from verdict to network: policy → sign → record → submit → record → confirm → L8
 │   │   ├── devnet-test.ts         ← Live devnet test (BoundTransaction → signApproved → sendRawTransaction)
+│   │   ├── spend-policy.ts        ← The operator's per-transfer cap and destination allowlist, enforced before anything is built
 │   │   └── mainnet-benchmark.ts   ← Real mainnet exploit benchmark runner
+│   ├── vercel-ai/                 ← Vercel AI SDK tools over the guard (cap required; approval config for every fund movement)
+│   ├── mcp-server/                ← MCP server over the guard (cap required; a person confirms through elicitation)
 │   └── solana-agent-kit/          ← SAK adapter: VerifiedSakAgent over the guard; SAK gets a wallet that cannot sign
 │
 ├── python-ai-layer/               ← Advisory intent parser (P1: AI never decides)
@@ -229,12 +232,31 @@ graphite/
 ├── ROADMAP.md                     ← Phases 1–2 complete; hardening rounds; Phase 3 gates
 ├── SECURITY.md                    ← Security policy + known limitations
 ├── CONTRIBUTING.md                 ← How to contribute
-├── GRAPHITE_FINAL_CERTIFICATION_REPORT.md ← Phase 1/1.5 certification (historical)
 ├── Dockerfile                     ← Multi-stage container build
 ├── docker-compose.yml             ← One-command deploy
 └── README.md                      ← You are here
 ```
 ---
+
+## Agent Framework Integrations
+
+Every integration signs through one framework-independent package,
+[`integrations/agent-guard`](integrations/agent-guard/README.md) (`GraphiteGuard`): the
+request is grounded in the user's own words, ONE transaction is built (legacy, v0 or v1),
+Graphite Core verifies those exact bytes, and the guard signs only on an artifact-bound
+approval whose digest matches. The operator's spend policy (a per-transaction cap and an
+optional destination allowlist) is enforced on a transfer before anything is built, and
+on a swap against the wallet outflow measured by simulating the exact transaction.
+
+| Integration | Framework | What the model can do | Bounds that hold whatever the model writes |
+|---|---|---|---|
+| [`integrations/vercel-ai`](integrations/vercel-ai/README.md) | Vercel AI SDK 7 (`ai`) | call `graphite_transfer_sol` / `graphite_swap` / `graphite_wallet` | Graphite's verdict; a required per-transaction cap (a swap is bounded by the outflow its simulation measures); `GRAPHITE_TOOL_APPROVAL` asks a person before every fund movement |
+| [`integrations/mcp-server`](integrations/mcp-server/README.md) | Model Context Protocol (Claude, Cursor, ElizaOS's MCP plugin, LangChain's MCP adapters, the AI SDK's MCP client) | the same three tools over stdio | Graphite's verdict; a required cap; a person confirms every fund movement through MCP elicitation, and a client that cannot ask is refused |
+| [`integrations/solana-agent-kit`](integrations/solana-agent-kit/README.md) | Solana Agent Kit 2.x | `executeTransfer` / `executeSwap`; SAK's own agent for read-only use | Graphite's verdict; SAK is given a wallet that cannot sign |
+
+The guard and the AI SDK and MCP packages carry no high or critical npm advisory (CI
+fails on one); the SAK adapter is the only package that depends on `solana-agent-kit`,
+and the only one carrying its gated `bigint-buffer` advisory.
 
 ## Quick Start
 
@@ -687,8 +709,8 @@ What we **do** claim:
 
 - **Confidence is calibrated honestly and earned, never asserted (G4).** The three evidence-derived signals (`SimulationMatch`, `HistoricalVolume`, `CommunityVerification`) read from the Semantic Graph's **internal accumulator** — the program's RPC-verified simulation baseline (`sample_count`, counting DISTINCT sound transactions: the same bytes re-verified are one observation, and a request refused at L2 or by the Risk Engine is none) and its earned Behavior evidence — never from request-body JSON, which an attacker could fabricate to mint confidence. Trust tiers are capped at `OfficialManifest` (P7: tiers 3+ must be earned via the Semantic Graph, not self-asserted). A fresh Core therefore scores a known, clean, intent-aligned protocol at **~0.44** and the built-in presets (TradingBot 0.80, Treasury 0.95, Gaming 0.55, Enterprise 0.99) block everything until evidence is earned — e.g. Gaming (0.55) is exactly satisfiable by a HeuristicInferred manifest-backed program (the P6 ceiling), Treasury unlocks at battle-tested evidence (≈ 0.98). The benchmark and the agent guard default to a `Custom { min_confidence: 0.40, min_trust_tier: OfficialManifest }` profile (which the Core clamps to Gaming unless the operator allows permissive profiles); `graphite verify --profile <preset>` or `graphite profiles` drives the presets from the CLI. Raise or lower the profile to change policy; the engine's score itself is the honest number.
 - 1,849 Rust tests passing (1,864 total; 15 network- or sample-dependent ignored), 0 failures, 0 clippy warnings — every test has real assertions, and every security fix since 2026-09-08 has had its fix reverted once to show its test fails without it (the "deliberate break" logs in the round reports).
-- 12 detection patterns (13 `RiskPattern` variants counting the `PluginBlock` plugin veto) and the Risk Engine's 16 checks, plus the priority-fee bound, are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
-- 129 protocol manifests / 3,195 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20; Stake and the BPF Upgradeable Loader rebuilt from their interfaces in Round 22), program IDs verified against on-chain sources and pinned both ways by test; 96 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
+- 12 detection patterns (13 `RiskPattern` variants counting the `PluginBlock` plugin veto) and the Risk Engine's 17 checks, plus the priority-fee bound, are real detection logic, not stubs. Multi-instruction drain, CPI trace analysis (C29), and manifest-declared high-risk class gating (C38) shipped.
+- 137 protocol manifests / 3,504 instructions (Round 18; Token-2022's transfer-fee instructions added in Round 20; Stake and the BPF Upgradeable Loader rebuilt from their interfaces in Round 22; eight programs added and the instructions that move nothing classed `inert` in Round 24), program IDs verified against on-chain sources and pinned both ways by test; 104 generated from each program's own on-chain Anchor IDL; every `BattleTested` tier backed by a mainnet measurement in `protocols/battle_tested_evidence.json` or lowered at load.
 - Confidence engine uses real weighted computation with tier ceilings and NaN rejection.
 - Simulation integrity uses 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm and median/MAD baseline (C28).
 - The SAK integration imports real `solana-agent-kit` v2 and calls real SAK methods — **verified on Solana devnet** (wallet `CWb8MciizembLV66kisYcXo3Cb91hdszxw74QHpEJKZR`, 5 finalized transactions: 2 faucet airdrops + 3 SAK test transfers; latest signature `xHa4dyuFS6JmSaTsmhcMpEtwbWnPjBoUGwk3wNixD2uw2Wmeui6GhnSmmdzNVkv85zXSd6g7QYhHymAjciwP3jJ` confirmed and finalized).

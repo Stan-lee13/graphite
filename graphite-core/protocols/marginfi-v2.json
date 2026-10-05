@@ -966,14 +966,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: fee_state",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "edit_staked_settings",
@@ -1003,14 +1003,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: staked_settings",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "end_deleverage",

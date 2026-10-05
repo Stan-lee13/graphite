@@ -102,8 +102,17 @@ pub const AUTHORITY_CHANGE_CLASS: &str = "authority_change";
 /// System Program's had tagged `AdvanceNonceAccount` the same way, which made
 /// staking and every permitted durable-nonce transaction unverifiable once
 /// the tag meant a hand-over (2026-10-01, F3 follow-up).
+///
+/// `inert` (Round 24) marks an instruction that moves no value and changes no
+/// control — a compute budget, a memo, `SyncNative`, a read-only query, a
+/// nonce advance. The empty class means only that the manifest does not say;
+/// since W14 a declared sibling with no class is refused unless the
+/// transaction's intent describes it, and `inert` is what lets the plumbing
+/// every transaction carries through that rule. No intent declares `inert`:
+/// it is never what an agent asks for.
 pub const RISK_CLASSES: &[&str] = &[
     "",
+    "inert",
     "drain",
     "authority",
     "withdraw",
@@ -118,6 +127,46 @@ pub const RISK_CLASSES: &[&str] = &[
 /// instruction that moves value or control the agent never stated (P12).
 pub const HIGH_RISK_CLASSES: &[&str] =
     &["drain", "authority", "withdraw", "mint", "close", "stake"];
+
+/// Which security classes ([`InstructionDef::security_class`]) each canonical
+/// intent can declare (external review R2, 2026-10-01).
+///
+/// A declared intent used to be compared with an instruction by matching
+/// intent keywords against the instruction's name and its manifest PROSE.
+/// The prose is boilerplate — the create, withdraw and close templates all
+/// say "transfers", and "move" matched "remove" — so a `transfer` label
+/// cleared L5 for thousands of instructions of other classes, among them
+/// both `drain` instructions, Bubblegum `delegate`, and SPL `MintTo`/`Burn`.
+/// The class is the instruction's machine-readable security identity; the
+/// intent is compared with it, never with prose.
+///
+/// One table, read by L5, by the Risk Engine's Check 9b and (for an unclassed
+/// declared sibling) by the secondary-instruction pass, so they cannot
+/// disagree. An intent outside it declares nothing and fails closed. The
+/// empty class means the manifest does not say what the instruction does;
+/// only a swap (whose routes are unclassed, Jupiter's among them, and whose
+/// programs Check 9 restricts to swap programs) and a revoke (which L5 also
+/// holds to the instruction's name) declare it. `approve` declares no class:
+/// every delegate grant is an `authority_change`, refused under any intent.
+pub const INTENT_DECLARES: &[(&str, &[&str])] = &[
+    ("transfer", &["transfer"]),
+    ("swap", &["transfer", ""]),
+    ("stake", &["stake", "withdraw", "transfer", "create"]),
+    ("close", &["close"]),
+    ("create", &["create"]),
+    ("approve", &[]),
+    ("revoke", &[""]),
+];
+
+/// Whether a canonical intent can declare an instruction of this security
+/// class: `Some(true)` / `Some(false)`, or `None` when the intent is outside
+/// the vocabulary (which declares nothing). See [`INTENT_DECLARES`].
+pub fn intent_declares_class(canonical_intent: &str, security_class: &str) -> Option<bool> {
+    INTENT_DECLARES
+        .iter()
+        .find(|(intent, _)| *intent == canonical_intent)
+        .map(|(_, classes)| classes.contains(&security_class))
+}
 
 impl ProtocolManifest {
     /// The instruction a call with this discriminator (hex, from the bytes)
@@ -214,9 +263,34 @@ pub fn names_an_authority_change(name: &str) -> bool {
         "auth",
         "auths",
     ];
+    // External review R3 (2026-10-01): `register`/`deregister` (a guardian),
+    // `name` (Phoenix `NameSuccessor`), `execute` (Squads
+    // `configTransactionExecute`), `modify`, `renounce`.
     const VERBS: &[&str] = &[
-        "set", "update", "change", "transfer", "grant", "enable", "disable", "add", "remove",
-        "allow", "revoke", "accept", "replace", "rotate", "assign", "appoint", "nominate",
+        "set",
+        "update",
+        "change",
+        "transfer",
+        "grant",
+        "enable",
+        "disable",
+        "add",
+        "remove",
+        "allow",
+        "revoke",
+        "accept",
+        "replace",
+        "rotate",
+        "assign",
+        "appoint",
+        "nominate",
+        "register",
+        "deregister",
+        "unregister",
+        "name",
+        "modify",
+        "renounce",
+        "execute",
     ];
     const POWERS: &[&str] = &[
         "manager",
@@ -246,14 +320,70 @@ pub fn names_an_authority_change(name: &str) -> bool {
         "permissions",
         "keeper",
         "keepers",
+        // External review R3: powers the first vocabulary missed.
+        "executor",
+        "executors",
+        "submitter",
+        "submitters",
+        "successor",
+        "successors",
+        "builder",
+        "builders",
+        "actor",
+        "actors",
+        "collector",
+        "collectors",
+        "coordinator",
+        "coordinators",
+        "publisher",
+        "publishers",
+        "pubkey",
+        "whitelist",
+        "allowlist",
+        "config",
+        "configs",
+        // Compounds a camelCase split breaks apart (`multisigSetTimeLock` →
+        // time, lock; `multisigAddSpendingLimit` → spending, limit), matched
+        // against adjacent word pairs below.
+        "spendinglimit",
+        "spendinglimits",
+        "rentcollector",
     ];
     const READ_ONLY: &[&str] = &["check", "has", "is", "get"];
+    const SWITCHES: &[&str] = &[
+        "enable", "disable", "toggle", "pause", "unpause", "halt", "unhalt", "resume",
+    ];
     let words = name_words(name);
+    // Adjacent pairs, so a compound the split broke apart is still a word.
+    let compounds: Vec<String> = words
+        .windows(2)
+        .map(|p| format!("{}{}", p[0], p[1]))
+        .collect();
     let has = |set: &[&str]| words.iter().any(|w| set.contains(&w.as_str()));
     if has(&["immutable"]) {
         return false;
     }
-    let mutates = has(VERBS);
+    // A name that opens by switching something on or off changes how a
+    // protocol or an object behaves, whatever it switches (Round 24, measured
+    // on mainnet: the IDL onboarding classed Tensor AMM's `editPool`,
+    // Jupiter DEX's `unpause_dex` and `pause_swap_and_arbitrage`, and
+    // `toggle_feature` as transfers, so a `transfer` intent cleared them).
+    if words
+        .first()
+        .is_some_and(|w| SWITCHES.contains(&w.as_str()))
+    {
+        return true;
+    }
+    // "transfer" is a verb, except in the noun phrases "transfer fee" and
+    // "transfer hook" (`InitializeTransferFeeConfig` sets up a new mint's
+    // fee; it hands over nothing on its own name).
+    let mutates = words.iter().enumerate().any(|(i, w)| {
+        VERBS.contains(&w.as_str())
+            && !(w == "transfer"
+                && words
+                    .get(i + 1)
+                    .is_some_and(|n| matches!(n.as_str(), "fee" | "fees" | "hook" | "hooks")))
+    });
     if !mutates
         && words
             .first()
@@ -261,7 +391,47 @@ pub fn names_an_authority_change(name: &str) -> bool {
     {
         return false;
     }
-    has(CONTROL) || (mutates && has(POWERS))
+    let names_a_power = has(POWERS) || compounds.iter().any(|c| POWERS.contains(&c.as_str()));
+    has(CONTROL) || (mutates && names_a_power)
+}
+
+/// Whether an instruction's NAME says it delegates a power to another key
+/// (external review R3): Bubblegum `delegate`, Helium `delegate_v0`, Data
+/// Credits `delegate_data_credits_v0`, Escrow `create_delegate`. A delegate
+/// can act on what was delegated — a cNFT, a position, credits — so granting
+/// one is a hand-over even with no "authority" in the name. A stake
+/// account's own delegation to a validator (`DelegateStake`,
+/// `createAndDelegateStakeAccount`) is staking, not a hand-over, and is
+/// excluded by the word "stake" or the manifest's `stake` class (see
+/// [`InstructionDef::security_class`]).
+pub fn names_a_delegation_grant(name: &str) -> bool {
+    let words = name_words(name);
+    let has = |w: &str| words.iter().any(|x| x == w);
+    if !(has("delegate") || has("delegation")) || has("stake") {
+        return false;
+    }
+    let delegates_first = words
+        .first()
+        .is_some_and(|w| w == "delegate" || w == "approve");
+    let with_a_verb = words.iter().any(|w| {
+        matches!(
+            w.as_str(),
+            "set"
+                | "update"
+                | "change"
+                | "add"
+                | "create"
+                | "init"
+                | "initialize"
+                | "grant"
+                | "assign"
+                | "renounce"
+                | "revoke"
+                | "remove"
+                | "replace"
+        )
+    });
+    delegates_first || with_a_verb
 }
 
 impl InstructionDef {
@@ -279,11 +449,37 @@ impl InstructionDef {
     /// tagged instructions in the seed registry) through the Risk Engine
     /// (review of the 2026-09-29 audit's fixes, F3).
     pub fn security_class(&self) -> &str {
-        if self.risk_class == "authority" || names_an_authority_change(&self.name) {
+        if self.risk_class == "authority"
+            || names_an_authority_change(&self.name)
+            || (self.risk_class != "stake" && names_a_delegation_grant(&self.name))
+            || self.requires_an_admin_signature()
+        {
             AUTHORITY_CHANGE_CLASS
         } else {
             &self.risk_class
         }
+    }
+
+    /// Whether a layout of this instruction requires a signature from an
+    /// account the manifest names an administrator (`admin`, `groupAdmin`,
+    /// `secondary_admin`, ...). Only a protocol's administrator can perform
+    /// such an instruction, which is the registry's definition of an
+    /// authority change, whatever the instruction is named or tagged
+    /// (Round 24: 391 seed instructions with an admin signer were classed
+    /// `transfer`, `create`, `withdraw`, `close` or nothing, so the intent of
+    /// that class cleared them; external review R3's structural rule). The
+    /// word `authority` is not used here: most IDLs name the user's own key
+    /// that.
+    pub fn requires_an_admin_signature(&self) -> bool {
+        self.all_layouts().flatten().any(|a| {
+            a.is_signer
+                && a.name
+                    .chars()
+                    .filter(char::is_ascii_alphabetic)
+                    .collect::<String>()
+                    .to_ascii_lowercase()
+                    .contains("admin")
+        })
     }
 
     /// The layout that describes a transaction passing `n` accounts: an
@@ -881,6 +1077,14 @@ pub const SEED_MANIFESTS: &[(&str, &str)] = seed_manifests![
     "bridge-fcw1ub.json",
     "guacswap-gswppe.json",
     "zap-zapvx9.json",
+    "amm-program-tamm6u.json",
+    "jito-tip-distribution-4r3gsg.json",
+    "jito-tip-payment-t1pyya.json",
+    "locker-locpqg.json",
+    "mango-v4-4mango.json",
+    "tensorswap-tswapa.json",
+    "token-launchpad-mooncv.json",
+    "zeta-zetaxs.json",
     "atlas-fee-payer-apr1me.json",
     "profile-vault-pv1tto.json",
     "merkle-distributor-merky6.json",
@@ -1039,6 +1243,34 @@ mod tests {
     use super::*;
 
     /// Names that hand over control, and names that do not (review F3).
+    /// Round 24: a name that opens by switching something is a control
+    /// change; the switch must be the first word, so a noun that merely
+    /// contains one is not.
+    #[test]
+    fn a_name_that_opens_with_a_switch_is_a_control_change() {
+        for name in [
+            "unpause_dex",
+            "pause_swap_and_arbitrage",
+            "toggleFeature",
+            "Pause",
+            "enableOrDisablePool",
+            "disable_source_chain_selector",
+            "halt",
+            "resume_market",
+        ] {
+            assert!(names_an_authority_change(name), "{name}");
+        }
+        for name in [
+            "pauser_claim",
+            "deposit_enabled",
+            "swap",
+            "editor_claim",
+            "isPaused",
+        ] {
+            assert!(!names_an_authority_change(name), "{name}");
+        }
+    }
+
     #[test]
     fn authority_change_names_are_recognised() {
         for name in [

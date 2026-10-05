@@ -1,0 +1,455 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Token Launchpad (MoonCVVN)",
+  "program_id": "MoonCVVNZFSYkqNXP6bxHLPL6QQJiMagDL3qcqUQTrG",
+  "website": "",
+  "github": "",
+  "category": "swap"
+ },
+ "version": {
+  "label": "0.1.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "tokenMint",
+   "discriminator": "032ca4b87b0df5b3",
+   "accounts": [
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "backendAuthority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "mintMetadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "configAccount",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplTokenMetadata",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: sender, curveAccount, mint, mintMetadata, curveTokenAccount",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "buy",
+   "discriminator": "66063d1201daebea",
+   "accounts": [
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "senderTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexFee",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "helioFee",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "configAccount",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: sender, senderTokenAccount, curveAccount, curveTokenAccount, dexFee, helioFee",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "sell",
+   "discriminator": "33e685a4017f83ad",
+   "accounts": [
+    {
+     "name": "sender",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "senderTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexFee",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "helioFee",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "configAccount",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: sender, senderTokenAccount, curveAccount, curveTokenAccount, dexFee, helioFee",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "migrateFunds",
+   "discriminator": "2ae50ae7bd3ec1ae",
+   "accounts": [
+    {
+     "name": "backendAuthority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "migrationAuthority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "curveTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "migrationAuthorityTokenAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mint",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "dexFeeAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "helioFeeAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "configAccount",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: migrationAuthority, curveAccount, curveTokenAccount, migrationAuthorityTokenAccount, mint, dexFeeAccount, helioFeeAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "configInit",
+   "discriminator": "0deca4ad6afda4b9",
+   "accounts": [
+    {
+     "name": "configAuthority",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "configAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: configAuthority, configAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "configUpdate",
+   "discriminator": "50256d88528759f1",
+   "accounts": [
+    {
+     "name": "configAuthority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "configAccount",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: configAccount",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  }
+ ],
+ "trust_tier": "BattleTested"
+}

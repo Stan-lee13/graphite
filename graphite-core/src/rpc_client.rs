@@ -474,7 +474,16 @@ fn parse_simulation_value(value: &serde_json::Value) -> Result<SimulationResult,
             }
         });
 
-    // A JSON `null` here means "no error", not "an error named null".
+    // A JSON `null` here means "no error", not "an error named null". An
+    // ABSENT `err` means nothing: every RPC states it, and a missing one is an
+    // unreadable answer, not a successful simulation that may then train the
+    // baseline (W16, external review).
+    if value.get("err").is_none() {
+        return Err(RpcError::InvalidResponse(
+            "simulateTransaction result has no `err` field; whether it succeeded is unknown"
+                .to_string(),
+        ));
+    }
     let err = value.get("err").filter(|e| !e.is_null()).map(|e| {
         if let Some(s) = e.as_str() {
             s.to_string()
@@ -843,6 +852,63 @@ pub struct OraclePrice {
 /// for an instruction's writable accounts rather than bulk program data.
 const MAX_RPC_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
+/// The most JSON values (objects, arrays, strings, numbers, literals) one RPC
+/// response may hold.
+///
+/// W16 (external review, verified 2026-10-03): the byte cap bounds the body,
+/// not what parsing it costs. A `serde_json::Value` is 32 bytes before any
+/// heap it owns, so 32 MiB of `[0,0,0,…]` parses to ~16.7 million values and
+/// ~540 MB — over the container's 512 MB, from a body the cap accepted. A
+/// real response is a few thousand values at most (100 accounts, a
+/// simulation's balance arrays and inner instructions), almost all of its
+/// bytes inside long base64 strings, which are one value each.
+const MAX_RPC_RESPONSE_VALUES: usize = 1_000_000;
+
+/// How many JSON values `body` holds, counted in one pass without building
+/// them, or `None` once there are more than `limit`. Strings (with their
+/// escapes) are skipped as single values; every other value begins at a
+/// byte outside a string that is not whitespace, a separator or a closer.
+fn json_value_count_within(body: &[u8], limit: usize) -> Option<usize> {
+    let mut count = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut in_scalar = false;
+    for &b in body {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => {
+                in_string = true;
+                in_scalar = false;
+                count += 1;
+            }
+            b'{' | b'[' => {
+                in_scalar = false;
+                count += 1;
+            }
+            b',' | b':' | b'}' | b']' | b' ' | b'\n' | b'\r' | b'\t' => in_scalar = false,
+            _ => {
+                if !in_scalar {
+                    in_scalar = true;
+                    count += 1;
+                }
+            }
+        }
+        if count > limit {
+            return None;
+        }
+    }
+    Some(count)
+}
+
 /// The longest attacker-chosen text that may travel inside an `RpcError`.
 ///
 /// A JSON-RPC error body is echoed into `RpcError::RequestFailed`, which reaches
@@ -1076,6 +1142,11 @@ impl SolanaRpcClient {
                         )));
                     }
                     let body = read_body_capped(res).await?;
+                    if json_value_count_within(&body, MAX_RPC_RESPONSE_VALUES).is_none() {
+                        return Err(RpcError::InvalidResponse(format!(
+                            "RPC response holds more than {MAX_RPC_RESPONSE_VALUES} JSON values; refused before parsing"
+                        )));
+                    }
                     let json: serde_json::Value = serde_json::from_slice(&body)
                         .map_err(|e| RpcError::InvalidResponse(bound_rpc_text(&e.to_string())))?;
                     if let Some(err) = json.get("error") {
@@ -1460,9 +1531,11 @@ impl SolanaRpcClient {
             .decode(encoded)
             .map_err(|e| RpcError::InvalidResponse(format!("getTransaction base64: {e}")))?;
         let slot = result.get("slot").and_then(|s| s.as_u64());
+        // A meta without `err` says nothing about the outcome (W16, external
+        // review): it was read as success.
         let succeeded = match result.get("meta") {
             None | Some(serde_json::Value::Null) => None,
-            Some(meta) => Some(meta.get("err").is_none_or(|e| e.is_null())),
+            Some(meta) => meta.get("err").map(|e| e.is_null()),
         };
         Ok(Some(ChainTransaction {
             bytes,
@@ -1665,6 +1738,71 @@ mod tests {
             .await
             .expect("get_slot must parse plain u64 result");
         assert_eq!(slot, 437672586);
+        handle.join().unwrap();
+    }
+
+    /// W16 (external review): the byte cap bounded the body, not the parsed
+    /// tree. A body of 1.5 million zeros is 3 MB and would parse to 48 MB of
+    /// `Value`s; the count refuses it before parsing, and a real response
+    /// (one value per string, however long) is far inside the limit.
+    #[test]
+    fn a_response_is_bounded_by_what_it_parses_to_not_only_its_bytes() {
+        let real = br#"{"jsonrpc":"2.0","result":{"value":[{"data":["AAAA\"\\[1,2]","base64"],"lamports":5,"owner":"11111111111111111111111111111111","executable":false}]},"id":1}"#;
+        assert_eq!(
+            json_value_count_within(real, MAX_RPC_RESPONSE_VALUES),
+            Some(20)
+        );
+        let mut zeros = b"{\"result\":[".to_vec();
+        for i in 0..1_500_000u32 {
+            if i > 0 {
+                zeros.push(b',');
+            }
+            zeros.push(b'0');
+        }
+        zeros.extend_from_slice(b"]}");
+        assert!(zeros.len() < MAX_RPC_RESPONSE_BYTES);
+        assert_eq!(
+            json_value_count_within(&zeros, MAX_RPC_RESPONSE_VALUES),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn an_rpc_answer_with_too_many_values_is_refused_before_parsing() {
+        let mut body = String::from("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[");
+        for i in 0..1_100_000u32 {
+            if i > 0 {
+                body.push(',');
+            }
+            body.push('0');
+        }
+        body.push_str("]}");
+        let body: &'static str = Box::leak(body.into_boxed_str());
+        let (url, handle) = mock_rpc_server(vec![(200, body)]);
+        let err = client_at(&url, 0).get_slot().await.unwrap_err();
+        assert!(err.to_string().contains("JSON values"), "{err}");
+        handle.join().unwrap();
+    }
+
+    /// W16 (external review): a `getTransaction` meta that does not state
+    /// `err` says nothing about the outcome. It was read as success.
+    #[tokio::test]
+    async fn a_transaction_meta_without_err_is_not_a_success() {
+        let (url, handle) = mock_rpc_server(vec![
+            (
+                200,
+                r#"{"jsonrpc":"2.0","id":1,"result":{"slot":7,"transaction":["AQID","base64"],"meta":{"fee":5000}}}"#,
+            ),
+            (
+                200,
+                r#"{"jsonrpc":"2.0","id":1,"result":{"slot":7,"transaction":["AQID","base64"],"meta":{"err":null}}}"#,
+            ),
+        ]);
+        let client = client_at(&url, 0);
+        let unstated = client.get_chain_transaction("sig").await.unwrap().unwrap();
+        assert_eq!(unstated.succeeded, None, "no `err`, no outcome");
+        let stated = client.get_chain_transaction("sig").await.unwrap().unwrap();
+        assert_eq!(stated.succeeded, Some(true));
         handle.join().unwrap();
     }
 
@@ -1877,12 +2015,37 @@ mod tests {
         assert!(matches!(err, RpcError::RequestFailed(_)));
     }
 
+    /// `getAccountInfo` read as the cluster answers it — the System Program's
+    /// own account, in the shape a validator returns it (`context`, `value`
+    /// with base64 data, `space`). W24 (external review): this was a live
+    /// devnet call left `#[ignore]`, so CI never ran it; the request it makes
+    /// is unchanged, the answer is served on loopback, and an absent account
+    /// is `AccountNotFound`, not a zeroed account.
     #[tokio::test]
-    #[ignore = "makes a live devnet RPC call — run explicitly: cargo test --all-features -- --ignored"]
-    async fn test_get_account_live_devnet() {
-        let client = SolanaRpcClient::devnet();
+    async fn get_account_reads_a_validators_answer() {
+        let (url, handle) = mock_rpc_server(vec![
+            (
+                200,
+                r#"{"jsonrpc":"2.0","result":{"context":{"apiVersion":"2.2.7","slot":412345678},"value":{"data":["c3lzdGVtX3Byb2dyYW0=","base64"],"executable":true,"lamports":1,"owner":"NativeLoader1111111111111111111111111111111","rentEpoch":18446744073709551615,"space":14}},"id":1}"#,
+            ),
+            (
+                200,
+                r#"{"jsonrpc":"2.0","result":{"context":{"slot":412345679},"value":null},"id":1}"#,
+            ),
+        ]);
+        let client = client_at(&url, 0);
         let pubkey = Pubkey::from_base58("11111111111111111111111111111111").unwrap();
         let account = client.get_account(&pubkey).await.unwrap();
         assert_eq!(account.pubkey, "11111111111111111111111111111111");
+        assert_eq!(account.owner, "NativeLoader1111111111111111111111111111111");
+        assert_eq!(account.lamports, 1);
+        assert!(account.executable);
+        assert_eq!(account.rent_epoch, u64::MAX);
+        assert_eq!(account.data, b"system_program");
+        assert!(matches!(
+            client.get_account(&pubkey).await,
+            Err(RpcError::AccountNotFound(k)) if k == "11111111111111111111111111111111"
+        ));
+        handle.join().unwrap();
     }
 }

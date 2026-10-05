@@ -389,12 +389,20 @@ def test_program_ids_match_manifests():
         "vault-vo1twg.json": None,
         "verifier-ttainy.json": None,
         "zap-zapvx9.json": "swap",
+        "amm-program-tamm6u.json": None,
+        "jito-tip-distribution-4r3gsg.json": None,
+        "jito-tip-payment-t1pyya.json": None,
+        "locker-locpqg.json": None,
+        "mango-v4-4mango.json": None,
+        "tensorswap-tswapa.json": None,
+        "token-launchpad-mooncv.json": "swap",
+        "zeta-zetaxs.json": None,
     }
     expected_manifests = set(manifest_to_intent.keys())
     # The map is the expectation; the count below only guards against an
     # accidental duplicate key silently shrinking it. Round 18 onboarded 49
     # programs from their own on-chain IDLs, taking the set from 33 to 82.
-    assert len(expected_manifests) == 129, f"expected 129 manifests, map has {len(expected_manifests)}"
+    assert len(expected_manifests) == 137, f"expected 137 manifests, map has {len(expected_manifests)}"
 
     all_manifests = sorted(glob.glob(os.path.join(manifest_dir, "*.json")))
     all_manifests = [

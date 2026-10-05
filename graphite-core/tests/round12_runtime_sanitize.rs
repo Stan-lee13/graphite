@@ -245,8 +245,19 @@ fn more_than_256_accounts_is_refused() {
         matches!(err, ArtifactParseError::TooManyAccounts { total: 263 }),
         "{err}"
     );
-    // 253 loaded on 3 static = 256 exactly is the largest legal universe.
-    parse_transaction(&v0(3, &[0, 255], &[(200, 53)])).expect("256 keys is legal");
+    // 253 loaded on 3 static = 256 exactly is the largest universe sanitize
+    // accepts; the bank then refuses to lock more than 64 (W17), so it is
+    // refused for that, not for its size.
+    assert!(
+        matches!(
+            parse_transaction(&v0(3, &[0, 255], &[(200, 53)])),
+            Err(ArtifactParseError::TooManyAccountLocks {
+                total: 256,
+                max: 64
+            })
+        ),
+        "256 keys pass sanitize; the bank locks at most 64"
+    );
 }
 
 fn describe(artifact: Vec<u8>, program_id: &str) -> VerificationInput {

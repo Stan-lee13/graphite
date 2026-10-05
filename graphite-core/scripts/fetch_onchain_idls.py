@@ -176,7 +176,7 @@ def main():
                 "has_explicit_discriminators": bool(ixs and ixs[0].get("discriminator")),
                 "spec": "new" if (ixs and ixs[0].get("discriminator")) else "old",
             }
-            (OUTDIR / f"{pid}.json").write_text(json.dumps(idl, indent=1), encoding="utf-8")
+            (OUTDIR / f"{pid}.json").write_text(json.dumps(idl, indent=1), encoding="utf-8", newline="\n")
             print(f"[{i+1}/{len(pids)}] {pid}: {name} v{ver} — {len(ixs)} ix "
                   f"({ident['idl']['spec']} spec)", flush=True)
         index.append(ident)
@@ -184,6 +184,7 @@ def main():
     (HERE / "out" / "idl_index.json").write_text(
         json.dumps({"fetched_at_unix": int(time.time()), "rpc": RPC, "programs": index}, indent=1),
         encoding="utf-8",
+        newline="\n",
     )
     ok = sum(1 for p in index if p.get("idl"))
     print(f"\n{ok}/{len(index)} programs published an on-chain IDL")

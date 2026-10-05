@@ -3366,14 +3366,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: store",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "disable_virtual_inventory",
@@ -3403,14 +3403,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: virtual_inventory",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "enable_role",
@@ -3433,14 +3433,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: store",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "execute_decrease_order_v2",
@@ -7679,14 +7679,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: store",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_glv_market_flag",
@@ -7723,14 +7723,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: glv",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_gt_minting",
@@ -7760,14 +7760,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_market",
@@ -7797,14 +7797,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_token_config",
@@ -7834,14 +7834,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: token_map",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_token_price_adjustment",
@@ -7871,14 +7871,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: token_map",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "token_decimals",

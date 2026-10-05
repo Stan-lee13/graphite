@@ -42,6 +42,15 @@ export { RpcSimulator, assertEverySignatureSlotEmpty };
 // Round 19 (F-19-C5): the AI layer's answer is checked against the user's text.
 import { assertEcho, groundSwapIntent, groundTransferIntent, IntentGroundingError } from "./intent-grounding.js";
 export { assertEcho, groundSwapIntent, groundTransferIntent, IntentGroundingError };
+// The operator's spending limits, checked before anything is built.
+import {
+  assertSwapAllowed,
+  assertTransferAllowed,
+  spendPolicyFromEnv,
+  SpendPolicyRefusal,
+  type SpendPolicy,
+} from "./spend-policy.js";
+export { assertSwapAllowed, assertTransferAllowed, spendPolicyFromEnv, SpendPolicyRefusal, type SpendPolicy };
 // A5-01: the programs a swap payload may be addressed to.
 import { SWAP_PROGRAM_IDS } from "./swap-programs.js";
 export { SWAP_PROGRAM_IDS };
@@ -53,7 +62,8 @@ export { AuditBind };
 
 // Graphite TS SDK
 import { GraphiteClient, assertSecureBaseUrl } from "../../sdk/typescript/src/client.js";
-import { ResidualPolicy } from "./residual-policy.js";
+import { ResidualPolicy, ResidualPolicyRefusal } from "./residual-policy.js";
+export { ResidualPolicyRefusal };
 import { executeBoundTransaction, type ExecutionLifecycle } from "./execution-lifecycle.js";
 import type {
   VerificationInput,
@@ -243,6 +253,11 @@ export interface GuardConfig {
      * so the trail says which integration executed. Default "agent-guard".
      */
     reporter?: string;
+    /**
+     * The operator's spending limits (see spend-policy.ts). Overrides
+     * GRAPHITE_MAX_TRANSFER_LAMPORTS / GRAPHITE_ALLOWED_DESTINATIONS.
+     */
+    spendPolicy?: SpendPolicy;
 }
 
 /**
@@ -269,12 +284,14 @@ export class GraphiteGuard {
   private residualPolicy: ResidualPolicy;
   private transactionVersion: BridgeTransactionVersion;
   private reporterName: string;
+  private spendPolicy: SpendPolicy;
 
   private constructor(
     graphite: GraphiteClient, connection: Connection,
     walletProfile: WalletProfile, aiLayerUrl: string, walletPublicKey: string, walletKeypair: Keypair,
     residualPolicy: ResidualPolicy, aiLayerTimeoutMs: number, transactionVersion: BridgeTransactionVersion,
     reporterName: string,
+    spendPolicy: SpendPolicy,
   ) {
     this.graphite = graphite; this.connection = connection;
     this.walletProfile = walletProfile; this.aiLayerUrl = aiLayerUrl; this.aiLayerTimeoutMs = aiLayerTimeoutMs;
@@ -283,6 +300,7 @@ export class GraphiteGuard {
     this.residualPolicy = residualPolicy;
     this.transactionVersion = transactionVersion;
     this.reporterName = reporterName;
+    this.spendPolicy = spendPolicy;
   }
 
   /** The `reported_by` on every lifecycle row this bridge writes. */
@@ -346,6 +364,9 @@ export class GraphiteGuard {
     const residualPolicy = config?.acceptUnobserved
       ? new ResidualPolicy(config.acceptUnobserved)
       : ResidualPolicy.fromEnv();
+    // Read here, not lazily: a malformed limit is a startup error, never an
+    // absent one.
+    const spendPolicy = config?.spendPolicy ?? spendPolicyFromEnv();
     const accepted = residualPolicy.accepts();
     console.log(
       accepted.length === 0
@@ -356,6 +377,7 @@ export class GraphiteGuard {
     return new GraphiteGuard(
       graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair,
       residualPolicy, aiLayerTimeoutMs, transactionVersion, config?.reporter ?? "agent-guard",
+      spendPolicy,
     );
   }
 
@@ -638,8 +660,13 @@ export class GraphiteGuard {
     // `parseFloat(...) * 1e9`.
     const grounded = groundTransferIntent(naturalLanguage, proposedIntent.extracted_parameters);
     const destination = grounded.destination;
-    // The intent the Core compares against is rebuilt from the grounded
-    // values and the bridge's own copy of the request.
+    // The operator's limits, on the grounded values, before a blockhash is
+    // fetched, anything is simulated or the Core is asked.
+    assertTransferAllowed(this.spendPolicy, destination, grounded.lamports);
+    // The intent sent to the Core is rebuilt from the grounded values and the
+    // guard's own copy of the request. The Core does not compare the amount
+    // or the destination with the instruction; they are bound here, because
+    // the transfer below is built from exactly these values.
     const groundedIntent: ProposedIntent = {
       ...proposedIntent,
       raw_natural_language: naturalLanguage,
@@ -871,6 +898,17 @@ export class GraphiteGuard {
       [buildInstructionFromPayload(payload)],
       payload.addressLookupTableAddresses ?? [],
     );
+    // The operator's limits, on what this exact transaction would take out of
+    // the wallet — measured by simulating the bytes that will be signed, not
+    // read from the request, whose amount is whatever the model wrote.
+    if (this.spendPolicy.maxTransferLamports !== undefined || this.spendPolicy.allowedDestinations !== undefined) {
+      const outflow = await this.simulator.measureWalletOutflow({
+        wire: boundSwap.artifactBytes,
+        wallet: this.walletPublicKey,
+        accounts: payload.accounts.filter((a) => a.isWritable).map((a) => a.pubkey),
+      });
+      assertSwapAllowed(this.spendPolicy, outflow);
+    }
     const verification = await this.verifyTransaction({
       // No Jupiter default: groundSwapIntent has already refused a payload
       // without a swap program.
@@ -911,6 +949,18 @@ export class GraphiteGuard {
     const lifecycle = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
     console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
     return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
+  }
+
+  /** The operator's spending limits, as configured (a copy). */
+  get limits(): SpendPolicy {
+    return {
+      ...(this.spendPolicy.maxTransferLamports !== undefined
+        ? { maxTransferLamports: this.spendPolicy.maxTransferLamports }
+        : {}),
+      ...(this.spendPolicy.allowedDestinations !== undefined
+        ? { allowedDestinations: [...this.spendPolicy.allowedDestinations] }
+        : {}),
+    };
   }
 
   /** The wallet's public key, base58. The secret key is not reachable from outside. */

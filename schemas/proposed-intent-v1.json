@@ -18,8 +18,11 @@
         "input_token": { "type": "string" },
         "output_token": { "type": "string" },
         "amount": { "type": "string" },
+        "destination": { "type": "string" },
+        "account_type": { "type": "string" },
         "slippage_bps": { "type": "integer" }
-      }
+      },
+      "additionalProperties": false
     }
   }
 }

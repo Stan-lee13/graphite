@@ -7,8 +7,13 @@
 # artifact on every platform. Regenerate with `pip download <pkg>==<ver>
 # --only-binary=:all:` followed by `pip hash`, and change the version here and
 # in requirements.txt together.
-pytest==8.3.4 \
-    --hash=sha256:50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6
+# 9.1.1 (W23, external review): 8.3.4 carries PYSEC-2026-1845, fixed in
+# 9.0.3; pip-audit now gates this file in CI. pytest has required pygments
+# since 8.4.
+pytest==9.1.1 \
+    --hash=sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c
+pygments==2.21.0 \
+    --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
 iniconfig==2.3.0 \
     --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
 packaging==26.3 \

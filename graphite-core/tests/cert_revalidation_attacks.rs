@@ -552,7 +552,11 @@ fn cert_p0_4_manifest_declared_token_cpi_from_known_protocol_approved() {
         ],
         "",
         "transfer",
-        "withdraw",
+        // A transfer-class instruction, declared "transfer". This test is about
+        // the manifest's CPI allowlist; it used to pair the intent with a
+        // `withdraw` instruction, which a transfer intent cannot declare
+        // (external review R2, Check 9b).
+        "transfer",
     );
     let v = assess(&input).unwrap();
     assert!(

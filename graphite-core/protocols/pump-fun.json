@@ -796,7 +796,7 @@
     "associated_user must be owned by accounts.user",
     "RISK: if sell output is drained to an attacker address instead of accounts.user, flag CompositionalDrain"
    ],
-   "risk_class": "withdraw"
+   "risk_class": ""
   },
   {
    "name": "sell_v2",
@@ -3904,14 +3904,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global, authority",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_create_v2",
@@ -3952,14 +3952,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global, authority",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "toggle_mayhem_mode",
@@ -4000,14 +4000,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global, authority",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "update_buyback_config",

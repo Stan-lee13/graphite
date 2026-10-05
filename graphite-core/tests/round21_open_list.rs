@@ -672,6 +672,23 @@ fn a_pending_increase_is_disclosed_with_why_it_can_be_paid() {
     assert!(detail(&r, "Token2022TransferFeeRising").contains("durable nonce"));
 }
 
+/// W19 (external review, verified 2026-10-03): the arithmetic path — no
+/// executed instructions to replay — asked about a pending schedule only when
+/// a fee was withheld. An arrival under a 0 bps schedule with 9,000 bps
+/// pending was accepted in silence.
+#[test]
+fn a_pending_majority_fee_blocks_on_the_arithmetic_path_too() {
+    let terms = Terms {
+        withheld: 0,
+        older: (0, u64::MAX, 0),
+        newer: (10, u64::MAX, 9_000),
+    };
+    let r = check(&diff(one_transfer(0), Some(terms), None, None));
+    assert!(r.blocked, "{:?}", r.findings);
+    let d = detail(&r, "Token2022TransferFeeMajority");
+    assert!(d.contains("pending schedule"), "{d}");
+}
+
 /// A pending schedule that would take more than half of a transfer blocks,
 /// for a blockhash transaction as for a durable nonce (Round 22).
 #[test]
@@ -1895,6 +1912,47 @@ mod extensions_judged_by_what_happened {
             by(SRC_OWNER),
         ));
         assert!(!codes(&r).contains(&"Token2022PermanentDelegateExercised".to_string()));
+    }
+
+    /// W19 (external review): a mint read but whose extensions do not decode
+    /// exactly is no better known than one not read; a transfer by someone
+    /// who is not shown to be the holder's owner or delegate is refused.
+    #[test]
+    fn a_mint_whose_extensions_do_not_decode_cannot_rule_out_a_permanent_delegate() {
+        // A permanent-delegate entry three bytes long: present, unreadable.
+        let mint = mint_with(&[(12, vec![1, 2, 3])]);
+        let by = |authority: [u8; 32]| {
+            let mut data = vec![12u8];
+            data.extend_from_slice(&1_000u64.to_le_bytes());
+            data.push(6);
+            Some(vec![ix(
+                "instruction #0",
+                &[SOURCE, MINT, DEST, authority],
+                data,
+            )])
+        };
+        let r = check(&with_mint(
+            transfer_with(&[], &[]),
+            Some(mint.clone()),
+            by(DELEGATE),
+        ));
+        assert!(r.blocked, "{:?}", r.findings);
+        assert!(
+            codes(&r).contains(&"Token2022MintUnread".to_string()),
+            "{:?}",
+            r.findings
+        );
+        // The holder's own transfer: nothing to rule out.
+        let r = check(&with_mint(
+            transfer_with(&[], &[]),
+            Some(mint),
+            by(SRC_OWNER),
+        ));
+        assert!(
+            !codes(&r).contains(&"Token2022MintUnread".to_string()),
+            "{:?}",
+            r.findings
+        );
     }
 
     #[test]

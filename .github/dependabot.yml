@@ -51,6 +51,32 @@ updates:
         update-types: ["minor", "patch"]
 
   - package-ecosystem: npm
+    directory: /integrations/vercel-ai
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      vercel-ai:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /integrations/mcp-server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      mcp-server:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
     directory: /integrations/agent-guard
     schedule:
       interval: weekly
@@ -121,6 +147,15 @@ updates:
       sdk-go:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+
+  # Both base images are pinned by digest (Dockerfile). Without this entry
+  # the digests never moved, and an image with a fixed CVE was never offered
+  # (W23, external review).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
 
   # requirements-lock.txt is hash-pinned (`pip install --require-hashes`).
   - package-ecosystem: pip

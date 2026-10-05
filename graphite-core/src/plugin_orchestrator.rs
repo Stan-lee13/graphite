@@ -336,6 +336,10 @@ pub struct RegistrationSummary {
     pub skipped_pending: usize,
     /// Manifests skipped because review status is rejected.
     pub skipped_rejected: usize,
+    /// Approved manifests naming a plugin already registered under that name:
+    /// nothing new runs for them (W15, external review: they were counted as
+    /// registered).
+    pub already_registered: usize,
 }
 
 /// The plugin orchestrator. Sole caller of every plugin (P8).
@@ -398,14 +402,21 @@ impl PluginOrchestrator {
     /// Idempotent by name: registering a plugin whose name is already
     /// registered for the same role is a no-op (logged) — so a manifest that
     /// re-activates an already-running built-in cannot double-fire findings.
-    pub fn register_plugin(&mut self, plugin: PluginKind) {
+    ///
+    /// Returns whether the plugin is now registered. `false` means a plugin of
+    /// that name was already there and this one will NOT run; that is a
+    /// warning, because an operator's plugin that shares a built-in's name was
+    /// otherwise dropped without a word (W15, external review).
+    pub fn register_plugin(&mut self, plugin: PluginKind) -> bool {
         let name = plugin.manifest().name.clone();
         match plugin {
             PluginKind::Analytics(a) => {
                 if !self.analytics.iter().any(|p| p.manifest().name == name) {
                     self.analytics.push(a);
+                    true
                 } else {
-                    tracing::info!("plugin '{name}' already registered — skipping duplicate");
+                    tracing::warn!("plugin '{name}' is already registered; this one will not run");
+                    false
                 }
             }
             kind => {
@@ -413,11 +424,13 @@ impl PluginOrchestrator {
                 let entry = self.plugins.entry(layer).or_default();
                 if !entry.iter().any(|k| k.manifest().name == name) {
                     entry.push(kind);
+                    true
                 } else {
-                    tracing::info!(
-                        "plugin '{name}' already registered for {} — skipping duplicate",
+                    tracing::warn!(
+                        "plugin '{name}' is already registered for {}; this one will not run",
                         layer.as_str()
                     );
+                    false
                 }
             }
         }
@@ -508,8 +521,11 @@ impl PluginOrchestrator {
                             name: m.name.clone(),
                         }
                     })?;
-                    self.register_plugin(builtin);
-                    summary.registered += 1;
+                    if self.register_plugin(builtin) {
+                        summary.registered += 1;
+                    } else {
+                        summary.already_registered += 1;
+                    }
                 }
                 ReviewStatus::Pending => summary.skipped_pending += 1,
                 ReviewStatus::Rejected => summary.skipped_rejected += 1,
@@ -645,8 +661,8 @@ impl PluginOrchestrator {
     /// warning finding). Only `PluginKind::Risk` is consulted — a plugin of
     /// any other trait can never become a risk finding, even if its manifest
     /// declares L7 (P8 dispatch by trait, not by manifest claim). `NoFinding`
-    /// and plugin panics contribute nothing (a panic cannot fabricate a
-    /// block).
+    /// contributes nothing; a plugin that panics is a block (`run_family`: a
+    /// security plugin that cannot reach a verdict refuses).
     pub fn risk_outcome(&self, ctx: &PluginContext) -> RiskPluginOutcome {
         let mut findings = Vec::new();
         let mut blocked = false;
@@ -654,6 +670,16 @@ impl PluginOrchestrator {
             match run.verdict {
                 PluginVerdict::Block { pattern, reason } => {
                     blocked = true;
+                    // A block is never shaped like a note (W15, external
+                    // review): `name:warning` is how a Note is recorded, and
+                    // the shadow-baseline filter reads that suffix as
+                    // non-blocking, so a Block named "warning" let a refused
+                    // request feed the shadow accumulator.
+                    let pattern = if pattern == "warning" || pattern.ends_with(":warning") {
+                        format!("{pattern}-block")
+                    } else {
+                        pattern
+                    };
                     findings.push(RiskFinding {
                         pattern: format!("{}:{}", run.plugin_name, pattern),
                         reason,
@@ -1196,6 +1222,55 @@ mod tests {
         assert_eq!(summary.skipped_pending, 1);
         assert_eq!(summary.skipped_rejected, 1);
         assert_eq!(orch.registered_count(), 1);
+    }
+
+    /// W15 (external review): a Block a plugin names "warning" is still
+    /// recorded as a block, never with the suffix a Note carries.
+    #[test]
+    fn test_a_block_named_warning_is_not_recorded_as_a_note() {
+        struct WarningBlock {
+            m: PluginManifest,
+        }
+        impl RiskPlugin for WarningBlock {
+            fn manifest(&self) -> &PluginManifest {
+                &self.m
+            }
+            fn assess_risk(&self, _ctx: &PluginContext) -> PluginVerdict {
+                PluginVerdict::Block {
+                    pattern: "warning".into(),
+                    reason: "blocks".into(),
+                }
+            }
+        }
+        let mut orch = PluginOrchestrator::new();
+        orch.register_plugin(PluginKind::Risk(Arc::new(WarningBlock {
+            m: manifest("warning-block", LayerId::L7RiskVerification),
+        })));
+        let outcome = orch.risk_outcome(&ctx());
+        assert!(outcome.blocked);
+        assert_eq!(outcome.findings.len(), 1);
+        assert!(
+            !outcome.findings[0].pattern.ends_with(":warning"),
+            "{}",
+            outcome.findings[0].pattern
+        );
+    }
+
+    /// W15 (external review): a manifest naming a plugin that is already
+    /// registered runs nothing new; it used to be counted as registered.
+    #[test]
+    fn test_a_duplicate_registration_is_reported_not_counted() {
+        let mut orch = PluginOrchestrator::new();
+        let approved = manifest("fake-rewards-drainer", LayerId::L7RiskVerification);
+        let summary = orch
+            .register_discovered(&[approved.clone(), approved])
+            .unwrap();
+        assert_eq!(summary.registered, 1);
+        assert_eq!(summary.already_registered, 1);
+        assert_eq!(orch.registered_count(), 1);
+        assert!(
+            !orch.register_plugin(crate::plugins::builtin_plugin("fake-rewards-drainer").unwrap())
+        );
     }
 
     #[test]

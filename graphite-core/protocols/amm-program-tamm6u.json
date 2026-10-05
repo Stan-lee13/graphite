@@ -1,0 +1,2624 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "AMM Program (TAMM6ub3)",
+  "program_id": "TAMM6ub33ij1mbetoMyVBLeKY5iP41i4UPUJQGkhfsg",
+  "website": "",
+  "github": "",
+  "category": "nft"
+ },
+ "version": {
+  "label": "1.0.0",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "tammNoop",
+   "discriminator": "1fa2e49e99a0c6b6",
+   "accounts": [
+    {
+     "name": "pool",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "createPool",
+   "discriminator": "e992d18ecf6840bc",
+   "accounts": [
+    {
+     "name": "rentPayer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "sharedEscrow",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: rentPayer, pool",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "editPool",
+   "discriminator": "32ae222403a61dcc",
+   "accounts": [
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: pool",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "closePool",
+   "discriminator": "8cbdd117ef3eef0b",
+   "accounts": [
+    {
+     "name": "rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: rentPayer, owner, pool",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "closeExpiredPool",
+   "discriminator": "6cd4e93584533fdb",
+   "accounts": [
+    {
+     "name": "rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: rentPayer, owner, pool",
+    "closes the position or account and transfers remaining funds back to the user"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "close"
+  },
+  {
+   "name": "depositSol",
+   "discriminator": "6c514e757d9b38c8",
+   "accounts": [
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: owner, pool",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "withdrawSol",
+   "discriminator": "91834a8841892a26",
+   "accounts": [
+    {
+     "name": "owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: owner, pool",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "depositNft",
+   "discriminator": "5de284a68d093065",
+   "accounts": [
+    {
+     "name": "transfer_owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "transfer_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_edition",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_userTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_poolTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_tokenMetadataProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_sysvarInstructions",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRules",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRulesProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "ownerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: transfer_owner, transfer_pool, mplx_metadata, mplx_userTokenRecord, mplx_poolTokenRecord, nftReceipt, ownerTa, poolTa",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "withdrawNft",
+   "discriminator": "8eb5bf9552afd864",
+   "accounts": [
+    {
+     "name": "transfer_owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "transfer_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_edition",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_userTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_poolTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_tokenMetadataProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_sysvarInstructions",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRules",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRulesProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "ownerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: transfer_owner, transfer_pool, mplx_metadata, mplx_userTokenRecord, mplx_poolTokenRecord, nftReceipt, ownerTa, poolTa",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "buyNft",
+   "discriminator": "60001cbe316b53de",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_edition",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_userTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_poolTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_tokenMetadataProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_sysvarInstructions",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRules",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRulesProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "takerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, mplx_metadata, mplx_userTokenRecord, mplx_poolTokenRecord, nftReceipt, takerTa, poolTa",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "sellNftTokenPool",
+   "discriminator": "392cc03053086b30",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_edition",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_userTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_poolTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_tokenMetadataProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_sysvarInstructions",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRules",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRulesProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "takerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "ownerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "ownerTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, mplx_metadata, mplx_userTokenRecord, mplx_poolTokenRecord, takerTa, ownerTa, poolTa, ownerTokenRecord",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "sellNftTradePool",
+   "discriminator": "83527d4d0d9d245a",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_metadata",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_edition",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "mplx_userTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_poolTokenRecord",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_tokenMetadataProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_sysvarInstructions",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRules",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "mplx_authorizationRulesProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "takerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, mplx_metadata, mplx_userTokenRecord, mplx_poolTokenRecord, nftReceipt, takerTa, poolTa",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "depositNftCore",
+   "discriminator": "49150440a1d6f84d",
+   "accounts": [
+    {
+     "name": "transfer_owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "transfer_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "core_asset",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_collection",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "core_mplCoreProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: transfer_owner, transfer_pool, core_asset, nftReceipt",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "withdrawNftCore",
+   "discriminator": "7083ef74bb957291",
+   "accounts": [
+    {
+     "name": "transfer_owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "transfer_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "core_asset",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_collection",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "core_mplCoreProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: transfer_owner, transfer_pool, core_asset, nftReceipt",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "buyNftCore",
+   "discriminator": "a3663a6bb804a979",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_asset",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_collection",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "core_mplCoreProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, core_asset, nftReceipt",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "sellNftTokenPoolCore",
+   "discriminator": "89e3c57af5e538cd",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_asset",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_collection",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "core_mplCoreProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, core_asset",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "sellNftTradePoolCore",
+   "discriminator": "25cd8d3556f52d4e",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_asset",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "core_collection",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "core_mplCoreProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, core_asset, nftReceipt",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "depositNftT22",
+   "discriminator": "d02206935fda31a0",
+   "accounts": [
+    {
+     "name": "transfer_owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "transfer_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "t22_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "ownerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: transfer_owner, transfer_pool, nftReceipt, ownerTa, poolTa",
+    "transfers funds between the protocol and the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "withdrawNftT22",
+   "discriminator": "703750e7b5be5c0c",
+   "accounts": [
+    {
+     "name": "transfer_owner",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "transfer_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "transfer_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "t22_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "ownerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: transfer_owner, transfer_pool, nftReceipt, ownerTa, poolTa",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "buyNftT22",
+   "discriminator": "9bdb7ef5aac7334f",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "t22_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "takerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, nftReceipt, takerTa, poolTa",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "sellNftTokenPoolT22",
+   "discriminator": "95ea1f671a24a631",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "t22_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "takerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "ownerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, takerTa, ownerTa",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  },
+  {
+   "name": "sellNftTradePoolT22",
+   "discriminator": "7c91173448715509",
+   "accounts": [
+    {
+     "name": "trade_owner",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_taker",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_rentPayer",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_feeVault",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_pool",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_whitelist",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_mintProof",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_sharedEscrow",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_makerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_takerBroker",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_cosigner",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_ammProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "trade_escrowProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": [],
+     "optional": true
+    },
+    {
+     "name": "trade_nativeProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "t22_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "nftReceipt",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "takerTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "poolTa",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "associatedTokenProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: trade_owner, trade_taker, trade_rentPayer, trade_feeVault, trade_pool, trade_sharedEscrow, trade_makerBroker, trade_takerBroker, nftReceipt, takerTa, poolTa",
+    "credits the output token account with the received amount for the swap"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "transfer"
+  }
+ ],
+ "trust_tier": "BattleTested"
+}

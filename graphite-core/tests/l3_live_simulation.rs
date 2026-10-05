@@ -126,8 +126,8 @@ async fn l3_malformed_payload_fails_safely() {
     }
 }
 
+/// Loopback only (port 1 refuses at once), so it runs with the suite.
 #[tokio::test]
-#[ignore = "network test — run explicitly"]
 async fn l3_unreachable_rpc_errors_never_fabricates() {
     let client = client("http://127.0.0.1:1");
     let result = client.simulate_transaction(b"whatever").await;

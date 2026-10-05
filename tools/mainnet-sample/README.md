@@ -74,8 +74,8 @@ Every changed verdict only lost findings; none gained one. The causes are in
 
 ## Recorded results (three days, Round 21)
 
-The committed 2026-09-23 sample plus two more fetched the same way into a work
-directory (not committed: 12 MB each) — 2026-09-25 (10,019 transactions) and
+The 2026-09-23 sample plus two more fetched the same way (none is committed:
+12 MB each; each is identified by its slots and SHA-256 in `SAMPLES.md`) — 2026-09-25 (10,019 transactions) and
 2026-09-27 (10,465) — so the measurement is three days of traffic, not one.
 Each was run against Round 20's code (`f47db5a`) and Round 21's, and the
 verdict files diffed row by row.
@@ -92,8 +92,8 @@ verdict files diffed row by row.
 
 The causes, and what the remaining blocks are, are in
 `docs/round21-what-happened-not-what-could-2026-09-27.md` §4. To fetch an
-extra day without overwriting the committed sample, run a copy of
-`fetch_mainnet.py` with `OUT` pointed elsewhere.
+extra day without overwriting a sample, pass `--out <path>`; to fetch a
+published sample's blocks again, pass its slots with `--slots` (`SAMPLES.md`).
 
 ## Recorded results (2026-09-23 sample, Round 19)
 

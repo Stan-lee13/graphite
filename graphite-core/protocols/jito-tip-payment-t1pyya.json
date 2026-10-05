@@ -1,0 +1,420 @@
+{
+ "graphite_manifest_version": "1.0",
+ "protocol": {
+  "name": "Jito Tip Payment (T1pyyaTN)",
+  "program_id": "T1pyyaTNZsKv2WcRAB8oVnk93mLJw2XzjtVYqCsaHqt",
+  "website": "",
+  "github": "",
+  "category": ""
+ },
+ "version": {
+  "label": "0.1.5",
+  "effective_from_slot": 0,
+  "previous_version_ref": null
+ },
+ "instructions": [
+  {
+   "name": "initialize",
+   "discriminator": "afaf6d1f0d989bed",
+   "accounts": [
+    {
+     "name": "config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount0",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount1",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount2",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount3",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount4",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount5",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount6",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount7",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "systemProgram",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "payer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: config, tipPaymentAccount0, tipPaymentAccount1, tipPaymentAccount2, tipPaymentAccount3, tipPaymentAccount4, tipPaymentAccount5, tipPaymentAccount6, tipPaymentAccount7, payer",
+    "creates the protocol account and transfers any initial funds"
+   ],
+   "allowed_cpis": [
+    "11111111111111111111111111111111",
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "create"
+  },
+  {
+   "name": "claimTips",
+   "discriminator": "f71cc1e437ee1f71",
+   "accounts": [
+    {
+     "name": "config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount0",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount1",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount2",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount3",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount4",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount5",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount6",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount7",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipReceiver",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "blockBuilder",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "signer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: config, tipPaymentAccount0, tipPaymentAccount1, tipPaymentAccount2, tipPaymentAccount3, tipPaymentAccount4, tipPaymentAccount5, tipPaymentAccount6, tipPaymentAccount7, tipReceiver, blockBuilder, signer",
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
+   ],
+   "allowed_cpis": [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+   ],
+   "risk_rules": [],
+   "risk_class": "withdraw"
+  },
+  {
+   "name": "changeTipReceiver",
+   "discriminator": "456316470be7568f",
+   "accounts": [
+    {
+     "name": "config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oldTipReceiver",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "newTipReceiver",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "blockBuilder",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount0",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount1",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount2",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount3",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount4",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount5",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount6",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount7",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "signer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: config, oldTipReceiver, newTipReceiver, blockBuilder, tipPaymentAccount0, tipPaymentAccount1, tipPaymentAccount2, tipPaymentAccount3, tipPaymentAccount4, tipPaymentAccount5, tipPaymentAccount6, tipPaymentAccount7, signer",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  },
+  {
+   "name": "changeBlockBuilder",
+   "discriminator": "86502689a515727b",
+   "accounts": [
+    {
+     "name": "config",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipReceiver",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "oldBlockBuilder",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "newBlockBuilder",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount0",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount1",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount2",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount3",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount4",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount5",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount6",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "tipPaymentAccount7",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "signer",
+     "role": "signer",
+     "is_writable": true,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "modifies writable accounts: config, tipReceiver, oldBlockBuilder, newBlockBuilder, tipPaymentAccount0, tipPaymentAccount1, tipPaymentAccount2, tipPaymentAccount3, tipPaymentAccount4, tipPaymentAccount5, tipPaymentAccount6, tipPaymentAccount7, signer",
+    "updates protocol configuration or authority"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [],
+   "risk_class": "authority"
+  }
+ ],
+ "trust_tier": "BattleTested"
+}

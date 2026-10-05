@@ -5,11 +5,11 @@
 > Do not edit by hand — `tests/docs_match_the_registry.rs` compares this page to
 > the loaded registry, and a hand edit fails CI.
 
-Rendered: 2026-09-28
+Rendered: 2026-10-03
 
 ## In one line
 
-**129 protocol manifests / 3195 instructions**, of which **106 carry a BattleTested tier that a mainnet measurement supports**.
+**137 protocol manifests / 3504 instructions**, of which **113 carry a BattleTested tier that a mainnet measurement supports**.
 
 ## What BattleTested means here
 
@@ -42,6 +42,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Tail Trade (J51H4gev) | `J51H4gevuj9sLwp2qvRQMs4fBvZHWebEVeNhdUdPNR1K` | 230 | BattleTested | 1,998 | 3,088s | 81 | 100% |
 | Gmsol Store (Gmso1uvJ) | `Gmso1uvJnLbawvw7yezdfCDcPydwW2s2iqG3w6MDucLo` | 130 | BattleTested | 1,000 | 7,416s | 79 | 100% |
 | Sage (SAGE2HAw) | `SAGE2HAwep459SNq61LHvjxPk4pLPEJLoMETef7f7EE` | 106 | BattleTested | 1,000 | 112s | 125 | 100% |
+| Mango V4 (4MangoMj) | `4MangoMjqJ2firMokCjjGgoK8d4MXcrgL7XJaL3w6fVg` | 103 | BattleTested | 1,982 | 5,920,115s | 253 | 100% |
 | Meteora DLMM | `LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo` | 84 | BattleTested | 1,191 | 5s | 306 | 100% |
 | Kamino Lending | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` | 66 | BattleTested | 1,512 | 5,317s | 213 | 100% |
 | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` | 66 | BattleTested | 1,061 | 15s | 201 | 100% |
@@ -50,6 +51,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Perpetuals (PERPHjGB) | `PERPHjGBqRHArX4DySjwM6UJHiR3sWAatqfdBS2qQJu` | 59 | BattleTested | 1,425 | 2,391s | 57 | 100% |
 | Marketplace (CcmRKTuZ) | `CcmRKTuZCGJBWQwMHvDYApBRvSZNHqGJXkznqpDTSQUr` | 52 | BattleTested | 1,553 | 8,424s | 53 | 100% |
 | Pump.fun | `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` | 47 | BattleTested | 1,220 | 21s | 808 | 100% |
+| Tensorswap (TSWAPaqy) | `TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN` | 46 | BattleTested | 1,810 | 183,448s | 66 | 91% |
 | Cp AMM (cpamdpZC) | `cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG` | 38 | BattleTested | 1,707 | 30s | 252 | 100% |
 | Raydium CLMM | `CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK` | 38 | BattleTested | 1,568 | 27s | 262 | 100% |
 | DEX (jupZ4m2G) | `jupZ4m2GqUCJ5iueMfzQf8khFfH31d4XAQt3RzCT9Vd` | 37 | BattleTested | 1,122 | 2,938s | 47 | 100% |
@@ -80,6 +82,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | M2 (M2mx93ek) | `M2mx93ekt1fmXSVkTrUL9xVFHkmME8HTUi5Cyc5aF7K` | 24 | BattleTested | 1,988 | 1,320s | 54 | 100% |
 | Futarchy (FUTARELB) | `FUTARELBfJfQ8RDGhg1wdhddq1odMAJUePHFuBYfUxKq` | 23 | BattleTested | 1,137 | 2,458s | 29 | 100% |
 | Helium Sub Daos (hdaoVTCq) | `hdaoVTCqhfHHo75XdAMxBKdUqvq1i5bF23sisBqVgGR` | 23 | BattleTested | 1,860 | 82,121s | 41 | 100% |
+| AMM Program (TAMM6ub3) | `TAMM6ub33ij1mbetoMyVBLeKY5iP41i4UPUJQGkhfsg` | 22 | BattleTested | 1,918 | 341,733s | 101 | 100% |
 | Bo Sc (MAN1CxT5) | `MAN1CxT5Hh2J7pyLB7Fu4P7TNvQ1d1NSLcKbgSGrhLZ` | 21 | BattleTested | 1,000 | 13,976s | 40 | 100% |
 | Ccip Offramp (offqSMQW) | `offqSMQWgQud6WJz694LRzkeN5kMYpCHTpXQr3Rkcjm` | 21 | BattleTested | 1,000 | 36,253s | 40 | 100% |
 | Omnipair (omnixgS8) | `omnixgS8fnqHfCcTGKWj6JtKjzpJZ1Y5y9pyFkQDkYE` | 21 | BattleTested | 1,429 | 20,157s | 41 | 100% |
@@ -108,6 +111,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Rmn Remote (RmnXLft1) | `RmnXLft1mSEwDgMKu2okYuHkiazxntFFcZFrrcXxYg7` | 12 | BattleTested | 1,000 | 33,182s | 49 | 100% |
 | System Program | `11111111111111111111111111111111` | 12 | BattleTested | 1,456 | 1s | 15,411 | 100% |
 | Hylo Earn Pool (HysTabVU) | `HysTabVUfmQBFcmzu1ctRd1Y1fxd66RBpboy1bmtDSQQ` | 11 | BattleTested | 1,856 | 114,370s | 41 | 100% |
+| Locker (LocpQguc) | `LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn` | 11 | BattleTested | 1,979 | 614,272s | 81 | 100% |
 | Staking (SKRskrmt) | `SKRskrmtL83pcL4YqLWt6iPefDqwXQWHSw9S9vz94BZ` | 11 | BattleTested | 1,000 | 2,266s | 45 | 100% |
 | Tuktuk (tuktukUr) | `tuktukUrfhXT6ZT77QTU8RQtvgL967uRuVagWF57zVA` | 11 | BattleTested | 1,581 | 2,047s | 42 | 100% |
 | Vault (vo1tWgqZ) | `vo1tWgqZMjG61Z2T9qUaMYKqZ75CYzMuaZ2LZP1n7HV` | 11 | BattleTested | 1,542 | 14,018s | 43 | 100% |
@@ -115,6 +119,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Aligned Distributor (aMERKpFA) | `aMERKpFAWoChCi5oZwPvgsSCoGpZKBiU7fi76bdZjt2` | 10 | BattleTested | 1,000 | 1,546,291s | 61 | 100% |
 | Crash Game (G3z6yQqL) | `G3z6yQqLP1q2JqFqEwND6rTX3vsnzzr3Vv16pMoSdkcx` | 10 | BattleTested | 1,000 | 2,717s | 44 | 100% |
 | Debot Router (G7MVcM9Y) | `G7MVcM9YzGxrmLtmobUgyt8A6WhQ2dgQX3aSJcPejdEp` | 10 | BattleTested | 1,575 | 16,194s | 78 | 100% |
+| Jito Tip Distribution (4R3gSG8B) | `4R3gSG8BpU4t19KYj8CfnbtRpnT8gtk4dvTHxVRwc2r7` | 10 | BattleTested | 1,998 | 52,122s | 80 | 100% |
 | Jupiter DCA | `DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M` | 10 | BattleTested | 1,962 | 467,620s | 109 | 100% |
 | Wormhole Core Bridge Solana (HDw2E7P8) | `HDw2E7P8X1SkCyjvoGsfBGAVUutKcj874bXjHrpVYrVL` | 10 | BattleTested | 1,997 | 1,586s | 21 | 100% |
 | Wormhole Core Bridge Solana (HDwcJBJX) | `HDwcJBJXjL9FpJ7UBsYBtaDjsBUhuLCUYoz3zr8SWWaQ` | 10 | BattleTested | 1,000 | 462s | 69 | 100% |
@@ -131,9 +136,11 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Cc Vrf (ccvrfu3f) | `ccvrfu3fSpbnPLiUqdWAt85Zn9nq96ekwGTbHqGtdgQ` | 6 | BattleTested | 1,000 | 3,045s | 45 | 100% |
 | Orao Vrf (VRFzZoJd) | `VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y` | 6 | BattleTested | 1,000 | 77,460s | 39 | 100% |
 | Relay Depository (99vQwtBw) | `99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2` | 6 | BattleTested | 1,992 | 549s | 90 | 100% |
+| Token Launchpad (MoonCVVN) | `MoonCVVNZFSYkqNXP6bxHLPL6QQJiMagDL3qcqUQTrG` | 6 | BattleTested | 1,824 | 2,810,860s | 80 | 100% |
 | AMM Routing (REALp6iM) | `REALp6iMBDTctQqpmhBo4PumwJGcybbnDpxtax3ara3` | 5 | BattleTested | 1,999 | 8,848s | 42 | 100% |
 | Wormhole Core Bridge | `worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth` | 5 | BattleTested | 1,000 | 8,713s | 42 | 100% |
 | Compute Budget Program | `ComputeBudget111111111111111111111111111111` | 4 | BattleTested | 1,397 | 1s | 19,410 | 100% |
+| Jito Tip Payment (T1pyyaTN) | `T1pyyaTNZsKv2WcRAB8oVnk93mLJw2XzjtVYqCsaHqt` | 4 | BattleTested | 1,986 | 2,164s | 160 | 100% |
 | Orca TokenSwap V2 | `9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP` | 4 | BattleTested | 1,014 | 2,384s | 47 | 100% |
 | Raydium Liquidity Locking (LockrWmn) | `LockrWmn6K5twhz3y9w1dQERbmgSaRkfnTeTKbpofwE` | 4 | BattleTested | 1,706 | 40,507s | 40 | 100% |
 | Associated Token Account Program | `ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL` | 3 | BattleTested | 1,580 | 2s | 6,849 | 99% |
@@ -146,6 +153,7 @@ Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 | Pyth Push Oracle (pyt2F414) | `pyt2F414BA6dPttK6RddPZUdHfapoBN24GL5wbrPCou` | 1 | BattleTested | 1,999 | 1,357s | 31 | 100% |
 | Pyth Push Oracle (pythWSns) | `pythWSnswVUd12oZpeFP8e9CVaEqJg25g1Vtc2biRsT` | 1 | BattleTested | 1,000 | 315s | 66 | 100% |
 | Drift Perpetuals Exchange | `dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH` | 249 | OfficialManifest | 1,284 | 3,109,097s | 0 | — |
+| Zeta (ZETAxsqB) | `ZETAxsqBRek56DhiGXrn75yj2NHU3aYUnxvHXpkf3aD` | 107 | OfficialManifest | 1,318 | 32,282,984s | 94 | 67% |
 | Marginfi | `MFv2hWf31Z9kbCa1snEPYctwafyhdvnV7FZnsebVacA` | 91 | OfficialManifest | 503 | 12,727s | 120 | 100% |
 | Switchboard | `SW1TCH7qEPTdLsDHRgPuMQjbQxKdH2aBStViMFnt64f` | 48 | OfficialManifest | 59 | 39,938,355s | 0 | — |
 | Pump Fees (pfeeUxB6) | `pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ` | 29 | OfficialManifest | 1,248 | 2s | 4,195 | 0% |

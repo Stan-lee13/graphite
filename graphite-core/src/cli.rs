@@ -529,8 +529,11 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
                     dir.display()
                 );
                 println!(
-                    "  registered: {} | skipped pending: {} | skipped rejected: {}",
-                    summary.registered, summary.skipped_pending, summary.skipped_rejected
+                    "  registered: {} | skipped pending: {} | skipped rejected: {} | already registered (not run again): {}",
+                    summary.registered,
+                    summary.skipped_pending,
+                    summary.skipped_rejected,
+                    summary.already_registered
                 );
                 for p in core.plugins().registered_plugins() {
                     println!("  ✓ {}", p);
@@ -703,12 +706,29 @@ fn load_registry(
     }
 }
 
+/// Written to a temporary file and renamed into place (W12, external review):
+/// a plain write torn by a crash left a registry that does not parse, which
+/// the server reads as empty.
 fn save_registry(
     engine: &crate::manifest_registry::ManifestRegistryEngine,
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    std::fs::write(path, engine.to_json()?)?;
+    crate::verification::persist_json_atomic(path, &engine.to_json()?)?;
     Ok(())
+}
+
+/// Held for a registry command's read-modify-write (W12, external review):
+/// two submits at once each read the log, each appended, and the second
+/// write dropped the first's record — possibly a correction, putting the
+/// older version back in force.
+fn lock_registry(state_path: &Path) -> Result<std::fs::File, Box<dyn std::error::Error>> {
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(state_path.with_extension("lock"))?;
+    lock.lock()?;
+    Ok(lock)
 }
 
 fn load_graph(
@@ -729,7 +749,7 @@ fn save_graph(
     store: &crate::semantic_graph_store::SemanticGraphStore,
     path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    std::fs::write(path, store.to_json()?)?;
+    crate::verification::persist_json_atomic(path, &store.to_json()?)?;
     Ok(())
 }
 
@@ -1781,6 +1801,7 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                     signature_hex: signature_hex.to_string(),
                 });
             }
+            let _registry_lock = lock_registry(&state_path)?;
             let mut engine = load_registry(&state_path)?;
             let mut store = load_graph(&graph_path)?;
             let regression = match corpus_dir {

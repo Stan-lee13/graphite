@@ -33,7 +33,8 @@
       "risk_rules": [
         "no state changes — pure logging instruction",
         "safe by default"
-      ]
+      ],
+      "risk_class": "inert"
     }
   ],
   "trust_tier": "OfficialManifest"

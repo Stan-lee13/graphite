@@ -108,6 +108,12 @@ pub enum ArtifactParseError {
     /// oracle).
     #[error("{total} account keys (static and loaded); the runtime addresses at most 256")]
     TooManyAccounts { total: usize },
+    /// More accounts than the bank will lock for one transaction. The
+    /// sanitizer accepts it; the bank refuses it before anything runs
+    /// (`TooManyAccountLocks`), so it is not a transaction to bind a verdict
+    /// to (W17, external review).
+    #[error("{total} account keys (static and loaded); the runtime locks at most {max} per transaction (TooManyAccountLocks)")]
+    TooManyAccountLocks { total: usize, max: usize },
     #[error("account key {key} appears at static positions {first} and {second}; the runtime refuses a transaction that loads an account twice (AccountLoadedTwice)")]
     DuplicateAccountKey {
         key: String,
@@ -931,6 +937,12 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
     if total_keys > 256 {
         return Err(ArtifactParseError::TooManyAccounts { total: total_keys });
     }
+    if total_keys > MAX_TX_ACCOUNT_LOCKS {
+        return Err(ArtifactParseError::TooManyAccountLocks {
+            total: total_keys,
+            max: MAX_TX_ACCOUNT_LOCKS,
+        });
+    }
     for (index, ix) in instructions.iter().enumerate() {
         if let Some(&account_index) = ix
             .account_indexes
@@ -1670,6 +1682,13 @@ pub const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
 
 /// The Compute Budget program.
 pub const COMPUTE_BUDGET_PROGRAM: &str = "ComputeBudget111111111111111111111111111111";
+/// How many accounts (static and loaded) the bank locks for one transaction.
+/// The bank's `get_transaction_account_lock_limit` is 64 unless the
+/// `increase_tx_account_lock_limit` feature is active, which raises it to
+/// `solana-transaction`'s `MAX_TX_ACCOUNT_LOCKS` (128). It is not active on
+/// mainnet: across the 48,946 transactions of the four mainnet samples
+/// (2026-09-23 to 2026-09-30) the largest executed one locks exactly 64.
+pub const MAX_TX_ACCOUNT_LOCKS: usize = 64;
 /// The runtime's ceiling on a transaction's compute-unit limit.
 pub const MAX_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
 /// The default compute-unit allowance per instruction when a transaction sets
@@ -1720,6 +1739,39 @@ fn priority_fee(price_micro_lamports: u64, limit: u32) -> u64 {
 
 /// Read a message's compute-budget request (Round 21).
 pub fn compute_budget_request(message: &ArtifactMessage) -> ComputeBudgetRequest {
+    if let Some(v1) = message.v1_config {
+        // In v1 a limit the header leaves unset is ZERO, not a default
+        // (SIMD-0385; `solana-message` 5.0 `v1::TransactionConfig`: "None
+        // means use `0`"). W17 (external review): this used to report the
+        // legacy default of 200,000 per instruction for a transaction that
+        // has no compute to run.
+        let effective = v1
+            .compute_unit_limit
+            .map_or(0, |l| l.min(MAX_COMPUTE_UNIT_LIMIT));
+        let mut problems = Vec::new();
+        if v1.compute_unit_limit.is_none() {
+            problems.push(
+                "the v1 header sets no compute-unit limit; an unset limit is 0, so no instruction can run"
+                    .to_string(),
+            );
+        }
+        if v1.loaded_accounts_data_size_limit.is_none() {
+            problems.push(
+                "the v1 header sets no loaded-accounts data limit; an unset limit is 0, so no account data can be loaded"
+                    .to_string(),
+            );
+        }
+        return ComputeBudgetRequest {
+            source: "v1_header".to_string(),
+            compute_unit_limit: v1.compute_unit_limit,
+            effective_compute_unit_limit: effective,
+            compute_unit_price_micro_lamports: None,
+            priority_fee_lamports: v1.priority_fee.unwrap_or(0),
+            heap_bytes: v1.heap_size,
+            loaded_accounts_data_size_limit: v1.loaded_accounts_data_size_limit,
+            problems,
+        };
+    }
     let others = message
         .instructions
         .iter()
@@ -1729,21 +1781,6 @@ pub fn compute_budget_request(message: &ArtifactMessage) -> ComputeBudgetRequest
         .unwrap_or(u32::MAX)
         .saturating_mul(DEFAULT_INSTRUCTION_COMPUTE_UNIT_LIMIT)
         .min(MAX_COMPUTE_UNIT_LIMIT);
-    if let Some(v1) = message.v1_config {
-        let effective = v1
-            .compute_unit_limit
-            .map_or(default_limit, |l| l.min(MAX_COMPUTE_UNIT_LIMIT));
-        return ComputeBudgetRequest {
-            source: "v1_header".to_string(),
-            compute_unit_limit: v1.compute_unit_limit,
-            effective_compute_unit_limit: effective,
-            compute_unit_price_micro_lamports: None,
-            priority_fee_lamports: v1.priority_fee.unwrap_or(0),
-            heap_bytes: v1.heap_size,
-            loaded_accounts_data_size_limit: v1.loaded_accounts_data_size_limit,
-            problems: Vec::new(),
-        };
-    }
     let mut r = ComputeBudgetRequest {
         source: "compute_budget_instructions".to_string(),
         ..Default::default()

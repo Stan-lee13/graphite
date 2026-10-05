@@ -1009,5 +1009,61 @@ fn the_v1_header_is_the_compute_budget() {
     assert_eq!(b.priority_fee_lamports, 5_000);
     assert_eq!(b.compute_unit_limit, Some(200_000));
     assert_eq!(b.effective_compute_unit_limit, 200_000);
-    assert!(b.problems.is_empty());
+    // This fixture sets no loaded-accounts data limit, and in v1 that is 0.
+    assert_eq!(b.problems.len(), 1, "{:?}", b.problems);
+    assert!(
+        b.problems[0].contains("loaded-accounts data limit"),
+        "{:?}",
+        b.problems
+    );
+}
+
+/// W17 (external review): in v1 an unset compute-unit limit is ZERO
+/// (`solana-message` 5.0: "None means use `0`"). It used to be reported as
+/// the legacy default of 200,000 per instruction, for a transaction that has
+/// no compute to run.
+#[test]
+fn an_unset_v1_compute_limit_is_zero_not_a_default() {
+    let mut tx = V1::transfer();
+    tx.config.compute_unit_limit = None;
+    let b = graphite_core::tx_artifact::compute_budget_request(
+        &parse_transaction(&tx.frame()).expect("v1 parses"),
+    );
+    assert_eq!(b.compute_unit_limit, None);
+    assert_eq!(b.effective_compute_unit_limit, 0);
+    assert!(
+        b.problems
+            .iter()
+            .any(|p| p.contains("no compute-unit limit")),
+        "{:?}",
+        b.problems
+    );
+}
+
+/// W22 (external review, Round 24): a verdict did not say which message
+/// format Graphite parsed. The artifact-bound scope now carries it, read
+/// from the bytes: the same transfer as legacy, v0 and v1.
+#[test]
+fn the_verdict_names_the_message_version_it_parsed() {
+    let tx = V1::transfer();
+    let data = tx.instructions[0].2.clone();
+    let legacy = legacy_transfer(&data);
+    let mut v0 = legacy[..65].to_vec();
+    v0.push(0x80);
+    v0.extend_from_slice(&legacy[65..]);
+    v0.push(0); // no lookup tables
+    let version_of = |frame: Vec<u8>, versioned: bool| {
+        let mut input = v1_input(&tx, vec![]);
+        input.signed_transaction = Some(frame);
+        input.uses_versioned_transaction = versioned;
+        match GraphiteCore::new().verify(&input).expect("verified").scope {
+            VerificationScope::ArtifactBound {
+                message_version, ..
+            } => message_version,
+            other => panic!("not bound: {other:?}"),
+        }
+    };
+    assert_eq!(version_of(legacy, false).as_deref(), Some("legacy"));
+    assert_eq!(version_of(v0, true).as_deref(), Some("v0"));
+    assert_eq!(version_of(tx.frame(), true).as_deref(), Some("v1"));
 }

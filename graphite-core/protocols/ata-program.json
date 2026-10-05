@@ -78,7 +78,8 @@
    ],
    "risk_rules": [
     "fails if the associated account already exists (use idempotent variant for retries)"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "CreateAssociatedTokenAccountIdempotent",
@@ -145,7 +146,8 @@
    ],
    "risk_rules": [
     "observed live in mainnet transactions (2026-08-08 pinned fixtures)"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "RecoverNested",
@@ -198,7 +200,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   }
  ],
  "trust_tier": "BattleTested"

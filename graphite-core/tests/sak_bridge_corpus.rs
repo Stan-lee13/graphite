@@ -468,6 +468,10 @@ fn every_byte_level_mutation_is_read_the_same_way_on_both_sides() {
                     ArtifactParseError::ProgramIsFeePayer { .. } => "program is the fee payer",
                     ArtifactParseError::EmptyLookup { .. } => "empty lookup",
                     ArtifactParseError::TooManyAccounts { .. } => "more than 256 accounts",
+                    // W17: the bank's lock limit, which web3.js does not apply.
+                    ArtifactParseError::TooManyAccountLocks { .. } => {
+                        "more accounts than the bank locks"
+                    }
                     // Round 19: the bank's lock validation, which neither
                     // web3.js nor sanitize applies.
                     ArtifactParseError::DuplicateAccountKey { .. } => "account loaded twice",

@@ -15,6 +15,7 @@
   "instructions": [
     {
       "name": "Memo",
+      "risk_class": "inert",
       "discriminator": "",
       "accounts": [
         {

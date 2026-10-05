@@ -102,6 +102,16 @@ const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 /// `GRAPHITE_MAX_CONNECTIONS_PER_IP` to choose either way (0 = no cap).
 const DEFAULT_MAX_CONNECTIONS_PER_PEER: usize = 64;
 
+/// How long one connection may stay open, whatever it is doing
+/// (`GRAPHITE_CONNECTION_LIFETIME_SECS`). W21 (external review, verified
+/// 2026-10-03): nothing bounded a connection once its request head had
+/// arrived. A client that asked for `/manifests` and never read the answer,
+/// or that kept an idle keep-alive open, held its connection slot and its
+/// per-peer slot indefinitely, so a handful of addresses could fill the
+/// 1,024-connection cap. A request is bounded by `REQUEST_TIMEOUT` (10 s), so
+/// this cuts only connections that are stalled or idle; a client reconnects.
+const DEFAULT_CONNECTION_LIFETIME: Duration = Duration::from_secs(120);
+
 /// Open connections per peer (keyed like the rate limiter: IPv6 per /64),
 /// released by [`PeerSlot`] on drop.
 #[derive(Default)]
@@ -693,6 +703,9 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // Takes the directory's lock (held by the core for the life of the
     // process) and refuses a corrupt snapshot. See `GraphiteCore::open_data_dir`.
     let mut core = GraphiteCore::open_data_dir(data_dir.clone())?;
+    // A simulation observation trains the baseline only once its verdict is
+    // on the audit trail (W21): see `verify_handler`.
+    core.defer_observations_until_recorded();
 
     // Durable-nonce transactions: refused at L2 unless the operator opts in,
     // and then only after the nonce account is verified on-chain. See
@@ -722,8 +735,8 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
                 // able to switch off a check. The log used to read as though
                 // a rejected manifest had disabled one.
                 Ok(summary) => tracing_log(&format!(
-                    "plugins: {} registered, {} pending (not activated), {} rejected (not activated) from {}; the built-in plugins are always active and are not governed by manifests in this directory",
-                    summary.registered, summary.skipped_pending, summary.skipped_rejected, dir
+                    "plugins: {} registered, {} pending (not activated), {} rejected (not activated), {} already registered (not run again) from {}; the built-in plugins are always active and are not governed by manifests in this directory",
+                    summary.registered, summary.skipped_pending, summary.skipped_rejected, summary.already_registered, dir
                 )),
                 // Round 17 (F-16-07): an operator who configured a plugin
                 // directory expects those plugins to be running. Starting
@@ -1113,7 +1126,25 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         },
         HEADER_READ_TIMEOUT.as_secs()
     ));
-    serve_hardened(listener, app, max_connections, max_per_peer, shutdown).await?;
+    let connection_lifetime = std::env::var("GRAPHITE_CONNECTION_LIFETIME_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|s| *s > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_CONNECTION_LIFETIME);
+    tracing_log(&format!(
+        "a connection is closed after {}s (GRAPHITE_CONNECTION_LIFETIME_SECS)",
+        connection_lifetime.as_secs()
+    ));
+    serve_hardened(
+        listener,
+        app,
+        max_connections,
+        max_per_peer,
+        connection_lifetime,
+        shutdown,
+    )
+    .await?;
     Ok(())
 }
 
@@ -1132,6 +1163,7 @@ async fn serve_hardened(
     app: Router,
     max_connections: usize,
     max_per_peer: usize,
+    connection_lifetime: Duration,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
     use hyper_util::rt::{TokioIo, TokioTimer};
@@ -1186,8 +1218,14 @@ async fn serve_hardened(
             );
         let connection = graceful.watch(connection);
         tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                tracing::debug!("connection from {remote} ended: {e}");
+            match tokio::time::timeout(connection_lifetime, connection).await {
+                Ok(Err(e)) => tracing::debug!("connection from {remote} ended: {e}"),
+                Ok(Ok(())) => {}
+                // Dropping the connection closes its socket.
+                Err(_) => tracing::debug!(
+                    "connection from {remote} closed: open for {}s (GRAPHITE_CONNECTION_LIFETIME_SECS)",
+                    connection_lifetime.as_secs()
+                ),
             }
             drop(permit);
             drop(peer_slot);
@@ -2002,6 +2040,7 @@ async fn verify_handler(
             // same reason: a refusal the caller can act on beats an answer they
             // cannot rely on.
             if !audit_recorded {
+                state.core.discard_observation(&result.audit_trail_id);
                 Metrics::inc(&state.metrics.verify_errors);
                 tracing_server_error(
                     "audit write FAILED for a completed verification — refusing to return the                      verdict, because an approval with no durable record cannot be reconciled                      by L8, cannot be quarantined against, and cannot be investigated",
@@ -2016,6 +2055,10 @@ async fn verify_handler(
                     })),
                 ));
             }
+
+            // On the trail: what this verification observed may now train
+            // the baseline (W21).
+            state.core.commit_observation(&result.audit_trail_id).await;
 
             // Counted only once the verdict is on the trail (A4-09,
             // 2026-09-29 audit): the approved counter went up before the
@@ -2883,6 +2926,13 @@ async fn quarantine_handler(
         })));
     }
 
+    // Kept so a lift that cannot be recorded can be undone (W21, below).
+    let reason_before_lift = state
+        .core
+        .quarantined_programs()
+        .into_iter()
+        .find(|(p, _)| p == &program_id)
+        .map(|(_, reason)| reason);
     let outcome = if body.lift {
         state.core.lift_program_quarantine_durably(&program_id)
     } else {
@@ -2957,6 +3007,32 @@ async fn quarantine_handler(
     } else {
         false
     };
+    if !audit_recorded && body.lift {
+        // W21 (external review, verified 2026-10-03): the reasoning above
+        // keeps a QUARANTINE in force when the trail cannot record it, because
+        // undoing it would fail open. The same reasoning refuses a LIFT that
+        // cannot be recorded: restoring trust with no record of who restored
+        // it is the failing-open direction. The quarantine is put back.
+        let restored = state.core.quarantine_program_durably(
+            &program_id,
+            reason_before_lift
+                .as_deref()
+                .unwrap_or("quarantine restored"),
+        );
+        tracing_server_error(&format!(
+            "audit: the quarantine lift on {program_id} could not be recorded, so it was not applied (quarantine restored: {})",
+            if restored.is_ok() { "yes" } else { "NO" }
+        ));
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "the audit trail could not record the lift, so the quarantine stays in force",
+                "error_type": "AuditUnavailable",
+                "program_id": program_id,
+                "quarantined": restored.is_ok(),
+            })),
+        ));
+    }
     if !audit_recorded {
         tracing_server_error(&format!(
             "audit: operator action on {program_id} took effect but was NOT recorded"
@@ -3187,7 +3263,7 @@ async fn lifecycle_event_handler(
         let audit_trail_id = audit_trail_id.clone();
         let transaction_sha256 = transaction_sha256.clone();
         let content_hash = content_hash.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::verification::bounded_archive_scan(move || {
             if let Some(id) = &audit_trail_id {
                 (
                     log.find_verification(VerificationKey::AuditTrailId(id)),
@@ -3539,28 +3615,27 @@ async fn append_lifecycle_off_runtime(log: &AuditLog, record: LifecycleEventReco
     off_runtime(move || log.append_lifecycle(&record)).await
 }
 
-/// The most dashboard scans that run at once. Each parses the active audit
-/// file on the blocking pool, which the audit appends of `/verify` also use;
-/// unbounded, a burst of dashboard polls queued every verdict's write behind
-/// them (review of the 2026-09-29 audit's fix, F9). Excess scans wait their
-/// turn on this permit, not on the pool.
-const MAX_CONCURRENT_DASHBOARD_SCANS: usize = 4;
+#[cfg(test)]
+/// The most dashboard scans that run at once: they share
+/// `verification::MAX_CONCURRENT_ARCHIVE_SCANS` with the lookups. Each
+/// parses the audit file on the blocking pool, which the audit appends of
+/// `/verify` also use; unbounded, a burst of dashboard polls queued every
+/// verdict's write behind them (review of the 2026-09-29 audit's fix, F9).
+const MAX_CONCURRENT_DASHBOARD_SCANS: usize = crate::verification::MAX_CONCURRENT_ARCHIVE_SCANS;
 
 /// [`off_runtime`] for a dashboard scan, at most
-/// [`MAX_CONCURRENT_DASHBOARD_SCANS`] at a time.
+/// [`MAX_CONCURRENT_DASHBOARD_SCANS`] at a time, the slot held until the scan
+/// ends even when the request was abandoned (W21).
 async fn dashboard_scan<T, F>(scan: F) -> T
 where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
 {
-    static SCANS: tokio::sync::Semaphore =
-        tokio::sync::Semaphore::const_new(MAX_CONCURRENT_DASHBOARD_SCANS);
-    // The semaphore is never closed, so acquiring cannot fail.
-    let _permit = SCANS
-        .acquire()
-        .await
-        .expect("the scan semaphore is never closed");
-    off_runtime(scan).await
+    match crate::verification::bounded_archive_scan(scan).await {
+        Ok(v) => v,
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        Err(join) => panic!("an audit-trail scan did not complete: {join}"),
+    }
 }
 
 /// Run a scan of the audit trail on the blocking pool (A4-04, 2026-09-29
@@ -3603,12 +3678,17 @@ async fn confidence_history_handler(State(state): State<AppState>) -> Json<serde
         .iter()
         .rev()
         .map(|r| {
+            // W22 (external review): what the verdict is bound to. Without
+            // it the dashboard showed an approval of a description and an
+            // approval of bytes the same way.
             serde_json::json!({
                 "timestamp": r.timestamp,
                 "confidence": r.confidence,
                 "approved": r.approved,
                 "program_id": r.program_id,
                 "audit_trail_id": r.audit_trail_id,
+                "transaction_sha256": r.transaction_sha256,
+                "manifest_version": r.manifest_version,
             })
         })
         .collect();
@@ -3640,6 +3720,8 @@ async fn policy_violations_handler(State(state): State<AppState>) -> Json<serde_
                 "policy_verdict": r.policy_verdict,
                 "risk_status": r.risk_status,
                 "audit_trail_id": r.audit_trail_id,
+                "transaction_sha256": r.transaction_sha256,
+                "manifest_version": r.manifest_version,
             })
         })
         .collect();
@@ -4441,6 +4523,59 @@ mod tests {
         assert!(core.quarantined_programs().is_empty());
     }
 
+    /// W21 (external review, verified 2026-10-03): a quarantine stays in
+    /// force when the trail cannot record it (undoing it would fail open), and
+    /// a lift the trail cannot record is not applied, for the same reason.
+    #[tokio::test]
+    async fn a_quarantine_lift_the_trail_cannot_record_is_not_applied() {
+        let (state, dir, key) = keyed_state();
+        let core = state.core.clone();
+        let log = state.audit.clone().unwrap();
+        let app = build_app(state, vec![]);
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "reason": "GHSA-2026-0002"}),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK, "{json}");
+
+        // Every append fails from here: a read-only handle in the log.
+        {
+            let ro = std::fs::OpenOptions::new()
+                .read(true)
+                .open(audit_path(&dir))
+                .unwrap();
+            *log.file.lock().unwrap() = ro;
+        }
+        let (status, json) = post_json(
+            &app,
+            "/admin/quarantine",
+            Some(&key),
+            serde_json::json!({"program_id": SYSTEM, "lift": true}),
+        )
+        .await;
+        assert_eq!(
+            status,
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "{json}"
+        );
+        assert_eq!(json["error_type"], "AuditUnavailable");
+        assert_eq!(
+            core.quarantined_programs(),
+            vec![(SYSTEM.to_string(), "GHSA-2026-0002".to_string())],
+            "the lift was not applied"
+        );
+        let reloaded = crate::verification::GraphiteCore::with_data_dir(dir.clone());
+        assert_eq!(
+            reloaded.quarantined_programs().len(),
+            1,
+            "nor persisted: a restart still has the quarantine"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[tokio::test]
     async fn quarantine_endpoint_rejects_a_missing_reason_and_a_bogus_lift() {
         let (state, _dir, key) = keyed_state();
@@ -4882,6 +5017,12 @@ mod tests {
         assert_eq!(json["count"], 2);
         let series = json["series"].as_array().unwrap();
         assert_eq!(series[0]["confidence"], 0.3, "most recent first");
+        // W22: what each verdict is bound to travels with it.
+        assert!(
+            series[0]["transaction_sha256"].is_null(),
+            "a descriptive verdict"
+        );
+        assert_eq!(series[0]["manifest_version"], "1.0.0");
         let _ = dir;
     }
 
@@ -6624,6 +6765,46 @@ Connection: close
             peak <= MAX_CONCURRENT_DASHBOARD_SCANS,
             "{peak} dashboard scans held the blocking pool at once (cap \
              {MAX_CONCURRENT_DASHBOARD_SCANS})"
+        );
+    }
+
+    /// W21 (external review, verified 2026-10-03): a request that times out
+    /// abandons its scan, and the scan used to give back its slot as it did,
+    /// so abandoned scans ran uncounted. The slot is held until the scan ends.
+    #[tokio::test]
+    async fn an_abandoned_scan_keeps_its_slot_until_it_ends() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static RUNNING: AtomicUsize = AtomicUsize::new(0);
+        static PEAK: AtomicUsize = AtomicUsize::new(0);
+        let abandoned: Vec<_> = (0..3 * MAX_CONCURRENT_DASHBOARD_SCANS)
+            .map(|_| {
+                tokio::spawn(tokio::time::timeout(
+                    std::time::Duration::from_millis(20),
+                    dashboard_scan(|| {
+                        let now = RUNNING.fetch_add(1, Ordering::SeqCst) + 1;
+                        PEAK.fetch_max(now, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        RUNNING.fetch_sub(1, Ordering::SeqCst);
+                    }),
+                ))
+            })
+            .collect();
+        for task in abandoned {
+            assert!(
+                task.await.unwrap().is_err(),
+                "precondition: every request timed out"
+            );
+        }
+        // The scans run on after their requests are gone; let them start,
+        // then wait them out.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        while RUNNING.load(Ordering::SeqCst) > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let peak = PEAK.load(Ordering::SeqCst);
+        assert!(
+            peak <= MAX_CONCURRENT_DASHBOARD_SCANS,
+            "{peak} abandoned scans ran at once (cap {MAX_CONCURRENT_DASHBOARD_SCANS})"
         );
     }
 

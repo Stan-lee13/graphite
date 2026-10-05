@@ -105,3 +105,45 @@ test("a redirect from the Core is refused on every call, and its target is never
     }
   }
 });
+
+// W22 (external review, Round 24): the result guard checked five fields and
+// never the scope, so a verdict claiming `artifact_bound` with no digest, an
+// unknown residual code, or `approved` beside a Blocked risk verdict reached
+// the caller typed as a VerificationResult.
+test("a verdict is checked on every field a caller decides on", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { validateVerificationResult } = await import("./client.js");
+  const sample = JSON.parse(
+    readFileSync(new URL("../../../examples/sample-verification-result.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+  assert.equal(validateVerificationResult(sample), null, "the committed sample is valid");
+  const bound = {
+    kind: "artifact_bound",
+    transaction_sha256: "ab".repeat(32),
+    transaction_bytes: 215,
+    simulated: true,
+    unobserved: ["program semantics", "inner instructions"],
+    unobserved_codes: ["program_semantics", "inner_instructions"],
+  };
+  assert.equal(validateVerificationResult({ ...sample, scope: bound }), null, "a whole artifact-bound scope is valid");
+  const refused: [string, Record<string, unknown>, RegExp][] = [
+    ["approved beside Blocked", { approved: true, risk_verdict: { status: "Blocked", findings: [] } }, /Clear risk verdict/],
+    ["an unknown risk status", { risk_verdict: { status: "Fine", findings: [] } }, /risk_verdict.status/],
+    ["findings missing", { risk_verdict: { status: "Clear" } }, /findings/],
+    ["confidence above 1", { confidence: 1.5 }, /\[0, 1\]/],
+    ["an unknown tier", { trust_tier: "Trusted" }, /trust_tier/],
+    ["a layer without a reason", { layers: [{ layer: "L1", passed: true }] }, /reason/],
+    ["a binding without its digest", { scope: { ...bound, transaction_sha256: undefined } }, /transaction_sha256/],
+    ["an uppercase digest", { scope: { ...bound, transaction_sha256: "AB".repeat(32) } }, /transaction_sha256/],
+    ["zero bytes bound", { scope: { ...bound, transaction_bytes: 0 } }, /transaction_bytes/],
+    ["simulated not said", { scope: { ...bound, simulated: "yes" } }, /simulated/],
+    ["nothing unobserved", { scope: { ...bound, unobserved: [], unobserved_codes: [] } }, /non-empty/],
+    ["an unknown residual code", { scope: { ...bound, unobserved_codes: ["program_semantics", "made_up"] } }, /unknown code/],
+    ["codes that do not name each entry", { scope: { ...bound, unobserved_codes: ["program_semantics"] } }, /name each entry/],
+    ["an unknown scope kind", { scope: { ...bound, kind: "bound" } }, /scope.kind/],
+  ];
+  for (const [what, change, reason] of refused) {
+    const violation = validateVerificationResult({ ...sample, ...change });
+    assert.ok(violation !== null && reason.test(violation), `${what}: ${violation}`);
+  }
+});

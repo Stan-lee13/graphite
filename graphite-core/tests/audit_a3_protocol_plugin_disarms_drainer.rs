@@ -158,3 +158,99 @@ fn attack_a_protocol_plugin_rule_removes_a_risk_block() {
         r.risk_verdict
     );
 }
+
+/// A protocol plugin whose rule declares the very effect the diff shows.
+struct OwnerRulePlugin(PluginManifest);
+impl ProtocolPlugin for OwnerRulePlugin {
+    fn manifest(&self) -> &PluginManifest {
+        &self.0
+    }
+    fn protocol_id(&self) -> &str {
+        UNKNOWN_PROGRAM
+    }
+    fn semantic_rules(&self, _d: &str) -> Vec<String> {
+        vec!["reassigns accounts owner".to_string()]
+    }
+    fn allowed_cpis(&self, _d: &str) -> Vec<String> {
+        vec![]
+    }
+}
+
+/// The three-account call with a diff that hands its first account to
+/// another program.
+fn call_that_reassigns_an_owner() -> VerificationInput {
+    use graphite_core::state_diff::{AccountDelta, AccountSnapshot, DiffProvenance, StateDiff};
+    let mut input = three_account_call();
+    let account = input.account_addresses[0].clone();
+    let snapshot = |owner: &str| AccountSnapshot {
+        pubkey: account.clone(),
+        lamports: 10_000_000,
+        owner: owner.to_string(),
+        data_len: 0,
+        token: None,
+        mint: None,
+        extensions: Default::default(),
+        transfer_fee_withheld: None,
+        transfer_fee_config: None,
+        token2022_powers: None,
+        data_sha256: None,
+        executable: false,
+        native_authorities: Vec::new(),
+    };
+    input.state_diff = Some(StateDiff {
+        deltas: vec![AccountDelta {
+            pubkey: account.clone(),
+            before: Some(snapshot("11111111111111111111111111111111")),
+            after: Some(snapshot(OTHER_PROGRAM)),
+        }],
+        provenance: DiffProvenance::CallerSupplied,
+        fee_lamports: 5_000,
+        covers_all_writable: false,
+        artifact_balance_writes: None,
+        artifact_account_universe: None,
+        artifact_accounts_undescribed: None,
+        transfer_fee_mints: Default::default(),
+        token2022_executed: None,
+        fee_epoch: None,
+        token2022_mints: Default::default(),
+        transaction_accounts: None,
+        transaction_privileges: None,
+    });
+    input
+}
+
+fn l4_of(r: &graphite_core::verification::VerificationResult) -> (String, String) {
+    let l = r
+        .layers
+        .iter()
+        .find(|l| l.layer == "L4_StateVerification")
+        .expect("L4 reported");
+    (format!("{:?}", l.status), l.reason.clone())
+}
+
+/// W15 (external review, verified 2026-10-03): the plugin rules reached the
+/// diff comparison, so a rule naming the effect excused it — "reassigns
+/// accounts owner" turned an UndeclaredOwnerReassignment from Failed into a
+/// pass. A diff is compared with the manifest's own declaration only.
+#[test]
+fn attack_a_protocol_plugin_rule_excuses_a_critical_state_change() {
+    let control = GraphiteCore::new()
+        .verify(&call_that_reassigns_an_owner())
+        .unwrap();
+    let (status, reason) = l4_of(&control);
+    assert_eq!(status, "Failed", "control: {reason}");
+    assert!(reason.contains("UndeclaredOwnerReassignment"), "{reason}");
+
+    let mut core = GraphiteCore::new();
+    core.register_plugin(PluginKind::Protocol(Arc::new(OwnerRulePlugin(manifest(
+        "w15-owner-rule-protocol-plugin",
+    )))));
+    let r = core.verify(&call_that_reassigns_an_owner()).unwrap();
+    let (status, reason) = l4_of(&r);
+    assert_eq!(
+        status, "Failed",
+        "a plugin rule excused the takeover: {reason}"
+    );
+    assert!(reason.contains("UndeclaredOwnerReassignment"), "{reason}");
+    assert!(!r.approved);
+}

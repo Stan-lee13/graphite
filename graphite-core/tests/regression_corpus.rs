@@ -492,22 +492,6 @@ fn intent_for(name: &str, program: &str) -> &'static str {
     }
 }
 
-/// L5 semantic-layer keyword table (verification.rs `verify_semantic`): the
-/// declared intent's keywords must appear in the instruction name OR the
-/// manifest's expected state changes for the layer to pass.
-fn l5_keywords(intent: &str) -> &'static [&'static str] {
-    match intent {
-        "swap" | "trade" | "exchange" => &["swap", "route", "trade", "token", "credit", "debit"],
-        "transfer" | "send" => &["transfer", "send", "debit", "credit", "move"],
-        "stake" | "delegate" => &["stake", "delegate", "withdraw", "deactivate", "reward"],
-        "close" | "close_account" => &["close", "closure", "shutdown"],
-        "create" | "create_account" => &["create", "allocate", "assign", "initialize"],
-        "approve" => &["approve", "delegate"],
-        "revoke" => &["revoke"],
-        _ => &[],
-    }
-}
-
 /// L4 state-verification outcome modeled from `verify_state`'s documented
 /// rules: debit/credit in state changes ⇒ ≥2 writable accounts; signer/
 /// approve/delegate/assign ⇒ ≥1 signer; close/closure ⇒ ≥1 writable.
@@ -546,27 +530,57 @@ fn l4_passes(
     true
 }
 
-fn l5_matches(intent: &str, name: &str, state_changes: &[String]) -> bool {
-    let kws = l5_keywords(intent);
-    if kws.is_empty() {
-        return false; // unknown intent type → L5 fail-closed
+/// L5 (`verify_semantic`) since external review R2: the intent declares the
+/// instruction's SECURITY CLASS (`manifest::INTENT_DECLARES`, the table the
+/// Risk Engine's Check 9b reads too), the program serves the intent (Check
+/// 9's rule), the name is not the opposite effect, and a revoke is named one.
+/// The manifest's prose is not read. This used to mirror the prose-keyword
+/// rule, so the corpus labelled a `transfer` intent as aligned with every
+/// instruction whose boilerplate said "transfers" — the R2 gap, encoded as
+/// expected behaviour.
+fn l5_matches(
+    intent: &str,
+    program: &str,
+    name: &str,
+    security_class: &str,
+    state_changes: &[String],
+) -> bool {
+    if graphite_core::manifest::intent_declares_class(intent, security_class) != Some(true) {
+        return false;
+    }
+    if graphite_core::risk_engine::detect_intent_program_mismatch(program, intent).is_some() {
+        return false;
     }
     let n = name.to_lowercase();
     // An instruction named for the opposite effect fails L5 (A3-01).
     let opposites: &[&str] = match intent {
         "approve" => &["revoke"],
         "revoke" => &["approve"],
-        "create" | "create_account" => &["close"],
-        "close" | "close_account" => &["create", "initialize"],
+        "create" => &["close"],
+        "close" => &["create", "initialize"],
         _ => &[],
     };
     if opposites.iter().any(|o| n.contains(o)) {
         return false;
     }
+    if intent == "revoke" && !n.contains("revoke") {
+        return false;
+    }
+    // The previous rule's vocabulary, kept as a condition that can only
+    // refuse (verify_semantic): the name or the prose must use it.
+    let kws: &[&str] = match intent {
+        "swap" => &["swap", "route", "trade", "token", "credit", "debit"],
+        "transfer" => &["transfer", "send", "debit", "credit", "move"],
+        "stake" => &["stake", "delegate", "withdraw", "deactivate", "reward"],
+        "close" => &["close", "closure", "shutdown"],
+        "create" => &["create", "allocate", "assign", "initialize"],
+        "approve" => &["approve", "delegate"],
+        "revoke" => &["revoke"],
+        _ => &[],
+    };
     let changes: Vec<String> = state_changes.iter().map(|c| c.to_lowercase()).collect();
-    let ix_matches = kws.iter().any(|kw| n.contains(kw));
-    let changes_match = changes.iter().any(|c| kws.iter().any(|kw| c.contains(kw)));
-    ix_matches || changes_match
+    kws.iter().any(|kw| n.contains(kw))
+        || changes.iter().any(|c| kws.iter().any(|kw| c.contains(kw)))
 }
 
 /// Expected approval for a canonical manifest instruction, from documented
@@ -586,12 +600,12 @@ fn canonical_expected(
     state_changes: &[String],
     intent: &str,
     manifest_accounts: &[graphite_core::manifest::AccountRoleDef],
-    authority_change: bool,
+    security_class: &str,
 ) -> bool {
     if risky_policy_block(program, disc) {
         return false;
     }
-    if authority_change {
+    if security_class == graphite_core::manifest::AUTHORITY_CHANGE_CLASS {
         return false; // Check 2b: an authority change blocks under any intent
     }
     if intent == "swap" && is_swap_program(program) {
@@ -602,7 +616,8 @@ fn canonical_expected(
             return false; // FakeSwap: output unverifiable
         }
     }
-    l5_matches(intent, name, state_changes) && l4_passes(state_changes, manifest_accounts)
+    l5_matches(intent, program, name, security_class, state_changes)
+        && l4_passes(state_changes, manifest_accounts)
 }
 
 // ────────────────────────────── fixture notes ─────────────────────────────
@@ -671,9 +686,10 @@ fn build_dev(manifests: &[&ProtocolManifest]) -> (RegressionCorpus, Vec<Note>) {
                 &ins.expected_state_changes,
                 intent,
                 &ins.accounts,
-                // The manifest's `authority` tag, or a name that hands over
-                // control (`InstructionDef::security_class`).
-                ins.security_class() == graphite_core::manifest::AUTHORITY_CHANGE_CLASS,
+                // The class the pipeline judges the instruction by: the
+                // manifest's tag, raised to an authority change by its name
+                // (`InstructionDef::security_class`).
+                ins.security_class(),
             );
             let instruction_data = Some(instruction_data);
 
@@ -1390,14 +1406,40 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
                 gen_addr(5),
             ],
             vec![],
-            "transfer",
+            "stake",
             good_evidence(),
         ),
         true,
         "regression",
         "risk-class",
         "synthetic-benign",
-        "Stake Withdraw with transfer intent — proceeds",
+        "Stake Withdraw declared as a stake operation — proceeds",
+    );
+    // External review R2: the same withdrawal labelled "transfer" used to
+    // proceed too — the label cleared L5 on prose and Check 9 accepted it for
+    // every program. A transfer intent cannot declare a `withdraw` instruction.
+    push(
+        &mut corpus,
+        &mut notes,
+        input(
+            "Stake11111111111111111111111111111111111111",
+            "04000000",
+            vec![
+                gen_addr(1),
+                gen_addr(2),
+                "SysvarC1ock11111111111111111111111111111111".to_string(),
+                "SysvarStakeHistory1111111111111111111111111".to_string(),
+                gen_addr(5),
+            ],
+            vec![],
+            "transfer",
+            good_evidence(),
+        ),
+        false,
+        "regression",
+        "risk-class",
+        "synthetic-attack",
+        "Stake Withdraw declared as a transfer — refused (external review R2)",
     );
     push(
         &mut corpus,
@@ -1427,11 +1469,14 @@ fn build_regression() -> (RegressionCorpus, Vec<Note>) {
             "transfer",
             good_evidence(),
         ),
-        true,
+        // External review R2: this was labelled "proceeds", and it did — a
+        // MintTo declared as a transfer cleared L5 on prose. No intent in the
+        // vocabulary declares a mint, so it is refused.
+        false,
         "regression",
         "risk-class",
-        "synthetic-benign",
-        "Token MintTo with intent — proceeds",
+        "synthetic-attack",
+        "Token MintTo declared as a transfer — refused (external review R2)",
     );
 
     // CPI trace rules (C29)
@@ -1935,10 +1980,17 @@ fn real_holdout_evaluation_independent_labels() {
     let mut tn = 0usize; // benign, approved
     let mut fn_details = Vec::new();
     let mut fp_details = Vec::new();
+    // W25 (external review): an error is a refusal, but it is not a
+    // detection. It used to be scored as a blocked exploit, so the recall
+    // would have held if every exploit input had failed to parse.
+    let mut errors = Vec::new();
     for f in hold_corpus.all() {
         let got = match core.verify(&f.input) {
             Ok(r) => r.approved,
-            Err(_) => false,
+            Err(e) => {
+                errors.push((f.program_id.clone(), f.content_hash.clone(), e.to_string()));
+                continue;
+            }
         };
         let malicious = !f.expected_approved;
         match (malicious, got) {
@@ -1979,6 +2031,11 @@ fn real_holdout_evaluation_independent_labels() {
     for (p, h) in &fp_details {
         eprintln!("  FALSE POSITIVE (benign blocked): program {p} hash {h}");
     }
+
+    assert!(
+        errors.is_empty(),
+        "holdout inputs that did not verify (scored as nothing, not as blocks): {errors:?}"
+    );
 
     // Security property: a documented real exploit must NEVER be approved.
     // (FP on a real benign tx is a finding to report, not a hard failure —

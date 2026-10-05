@@ -697,6 +697,11 @@ fn test_verify_stake_delegate_passes_risk() {
         WalletProfile::TradingBot,
         good_evidence(),
     );
+    // Declared as what it is (external review R2): a transfer intent cannot
+    // declare a `stake` instruction, and `make_input` labels every request
+    // "transfer".
+    let mut input = input;
+    input.proposed_intent.intent_type = "stake".to_string();
     let result = core.verify(&input).unwrap();
     assert_eq!(result.risk_verdict.status, "Clear");
 }

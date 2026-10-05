@@ -155,8 +155,8 @@ async fn l8_fabricated_signature_is_never_confirmed() {
     eprintln!("L8 fabricated signature outcome: {outcome:?}");
 }
 
+/// Loopback only (port 1 refuses at once), so it runs with the suite.
 #[tokio::test]
-#[ignore = "network test — run explicitly"]
 async fn l8_unreachable_rpc_is_unavailable_not_confirmed() {
     // An unreachable endpoint must produce Unavailable — never a fabricated
     // Confirmed. (Unavailable is a safe, honest degradation.)

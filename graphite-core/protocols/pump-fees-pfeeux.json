@@ -1044,14 +1044,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: sharing_config, pump_creator_vault, coin_creator_vault_authority, coin_creator_vault_ata",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "reset_fee_sharing_config_v2",
@@ -1205,14 +1205,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: authority, sharing_config, pump_creator_vault, pump_creator_vault_ata, coin_creator_vault_authority, coin_creator_vault_ata",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "revoke_fee_sharing_authority",

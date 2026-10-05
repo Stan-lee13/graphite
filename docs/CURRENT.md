@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-01, after Round 23 — the six-area audit, its review and the fixes (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-10-03, after Round 24 — external review R2/R3 and W11–W25 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -61,10 +61,15 @@ Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 
                                  3327fcf: 0 parse failures, 0 verify errors, 461 Blocked → Clear (durable-nonce
                                  transactions no longer refused for their nonce advance, F18) and 9 Clear →
                                  Blocked (protocol or pool configuration and one program-upgrade hand-over, F3).
-                                 Measured on samples fetched on those dates; the samples are not in the repo
-                                 (tools/mainnet-sample/mainnet_sample.json is gitignored), so a re-run
-                                 measures a fresh sample, not these
-Manifest coverage of the chain:  129 manifests / 3,195 instructions. On a 10,617-transaction mainnet sample
+                                 Round 24 (2026-10-03), the same four samples against eb17aa5 and the labels it
+                                 was measured with: 0 parse failures, 0 verify errors, 302 Clear → Blocked (a
+                                 transfer label on a buy, a close, a creation or a withdrawal, which R2 refuses),
+                                 0 Blocked → Clear, 0 approved before or after. Under honest labels 219
+                                 transactions with a manifested primary are newly refused (AUDIT R2-c).
+                                 The samples are not in the repo (gitignored); since Round 24 they are fetched
+                                 by slot list and their SHA-256 is recorded in tools/mainnet-sample/SAMPLES.md,
+                                 so a re-run can be checked against these files
+Manifest coverage of the chain:  137 manifests / 3,504 instructions (129 / 3,195 when the sample below was measured). On a 10,617-transaction mainnet sample
                                  fetched on 2026-09-23 (not in the repo),
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%
                                  for the same sample before Round 18. The rest still meet the drainer heuristic
@@ -265,6 +270,16 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## What is NOT enforced (documented limitations)
 
+- **An honest agent has no intent for a withdrawal, a claim or a protocol close
+  (Round 24, R2-c).** Since R2 an intent declares only the security classes
+  `manifest::INTENT_DECLARES` lists, so these are refused whatever label they
+  carry: 219 of 48,855 executed mainnet transactions (roadmap R-M14).
+- **Graphite does not bind amounts.** `ExtractedParameters.amount` is carried,
+  not compared; lamports leaving the signer's wallet under a declared debit are
+  disclosed (`SignerLamportsOutsideDeclaredDebit`), not refused. The agent
+  guard's spend cap bounds a transfer's amount and a swap's simulated outflow.
+- **A lookup table's freshness and a registry record's signatures are not
+  checked** (Round 24, W17-c, W11-c); see `SECURITY.md`.
 - **The Token-2022 model replays what the simulator reports it executed.**
   With no `innerInstructions` in the simulation, or an index Graphite cannot
   place, the Round 20 diff-only rule decides and says it is arithmetic rather
@@ -319,8 +334,8 @@ transaction under the stated threat model, and no external party has yet tried.
   tables since Round 22, with every signing guarantee of the legacy path;
   web3.js 1.x cannot compile v1, and Graphite verifies v1 bytes from any
   builder that can.
-- **Manifests are grounded where programs were seen running.** 383 of 3,195
-  manifest instructions have been observed executing (three block samples plus
+- **Manifests are grounded where programs were seen running.** 383 of the 3,195
+  manifest instructions of the Round 22 registry have been observed executing (three block samples plus
   2,998 per-program transactions); the rest are grounded in their programs'
   published interfaces. Three published IDLs disagree with their own programs'
   executions and are not adopted — mintfx `transfer`, marginfi
@@ -363,6 +378,9 @@ transaction under the stated threat model, and no external party has yet tried.
 | Item | Status | Whose decision |
 |---|---|---|
 | Independent third-party audit | Not performed | Owner |
+| External review R2/R3 (a declared intent clearing a dangerous instruction) | **Closed in Round 24**: reproduced on `eb17aa5`, fixed by one intent-to-class table read by L5 and the Risk Engine, and by the control-change rules; one more case (R3-b) found by the round's own mainnet re-measurement and fixed | — |
+| Honest intents for withdrawals, claims and protocol closes | Open (R-M14): refused under any label since R2; measured cost 219 of 48,855 executed transactions | Engineering |
+| Protocol upgrade detection (ProgramData slot / upgrade authority watch) | Open (R-M1) | Engineering |
 | Rounds 15–16 findings | **Closed in Round 17** (every item, each with a regression test; see the Round 17 report and `SECURITY.md`) | — |
 | Identity mismatches on declared slots | **Diagnosed and mostly closed (Round 20)**: the fee payer's structural writable flag was read as an escalation, blocking every self-paid token transfer. Over the 19,458-transaction sample, identity/privilege blocks fell from 1,355 to 519 and 156 executed transactions went from Blocked to Clear; no other verdict loosened. The remainder is mostly declared read-only slots the transaction marks writable (247) — writability is per message, so a program really can write them — and fixed-address mismatches (156). Measured, not loosened | Engineering |
 | Manifests for the traffic that publishes no on-chain IDL | Measured (Round 22): the programs behind 71% of the drainer refusals are signed by five or fewer fee payers and publish no IDL — bots' own programs, not a wallet user's; the programs with an IDL and real users were already manifested and their refusals were fixed | Engineering |
@@ -380,19 +398,18 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## Numbers (as of this page's commit)
 
-1,741 Rust tests passing in the all-features build (15 ignored: network- or
-sample-dependent, plus one soak benchmark; for Round 22 the mainnet conformance
-test was run on three days of samples against Round 21's code and this round's,
-and the live-mainnet-RPC run on 40 transactions before and after the round's
-last fix); 331 in the featureless library build; 1,512 in the cli-only
-build; 129 TypeScript tests in the SAK
-integration; 32 in the TypeScript SDK (28 hermetic, 4 against a live server — run
-in CI's container job); 34 Go; 31 Python; 6 dashboard; 22 live-probe checks of
-the release binary (all pass; `a1db51f` fails 17 of them); the runtime oracle
-over the corpus and ~628,500 frames per CI seed, bincode and wincode, legacy, v0
-and v1. Clippy `-D warnings` (all three feature legs) and fmt clean on rustc
-1.98.1. Reproduced from `cargo test` / `npm test` / `go test` / `pytest` output
-in the Round 19 report, not estimated. CI for the
+1,908 Rust tests passing in the all-features build (135 binaries; 12 ignored:
+network- or sample-dependent, plus one soak benchmark; for Round 24 the mainnet
+conformance test was run on four days of samples against `eb17aa5` and this
+round, under both label sets); 356 in the featureless library build; 1,641 in
+the cli-only build; 183 TypeScript tests in the agent guard, 6 in the SAK
+adapter, 7 in the Vercel AI adapter, 8 in the MCP server; 38 in the TypeScript
+SDK (34 hermetic, 4 against a live server — run in CI's container job); 45 Go;
+35 Python; 7 dashboard; the runtime oracle over the corpus and ~628,500 frames
+per CI seed, bincode and wincode, legacy, v0 and v1, never looser than agave.
+Clippy `-D warnings` (all three feature legs) and fmt clean on rustc 1.98.1.
+Reproduced from `cargo test` / `npm test` / `go test` / `pytest` output on
+2026-10-05, not estimated. CI for the
 commit is the GitHub Actions run for that SHA — the runs endpoint, not the
 combined-status endpoint.
 
@@ -400,6 +417,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-03 | [round24-the-intent-is-the-class-2026-10-03.md](round24-the-intent-is-the-class-2026-10-03.md) | External review R2/R3 reproduced on `eb17aa5` (a `transfer` label got L5 Passed and L7 Clear for Squads drains, Bubblegum `delegate`, `MintTo`/`Burn`) and fixed with one intent-to-class table; control changes by name, delegation, switch and admin signer; W11–W25 verified and fixed or documented; the Vercel AI SDK and MCP integrations; eight more manifests (137 / 3,504, 113 battle-tested). Four days of mainnet: 302 newly refused, 0 freed, 0 approved; one more P1 (R3-b) found by that measurement and fixed |
 | 2026-10-01 | [round23-the-audit-closed-at-the-root-2026-09-30.md](round23-the-audit-closed-at-the-root-2026-09-30.md) | A six-area audit of the whole repository at `3327fcf` (`AUDIT/`): no P0, four P1s (a close with a trailing byte, hand-overs as primary and as sibling, quarantine of the primary only), 20 P2s and 54 P3s, each fixed at its root with a test that fails on `3327fcf`. A review of the fixes found what they broke (F1–F15), and the full suite and a native-manifest sweep found three more: staking refused as a hand-over (F16), a fixture without account names (F17), and a durable-nonce opt-in that could never approve (F18). Four days of mainnet against `3327fcf`: 461 transactions freed, 9 newly refused. Verdict in `AUDIT/FINAL.md`: a supervised pilot, not independently audited |
 | 2026-09-27 | [round22-the-rest-of-the-list-2026-09-27.md](round22-the-rest-of-the-list-2026-09-27.md) | Round 21's open items, each measured first. A transfer hook that runs a program is bounded by the bytes (nothing Token-2022 can hand it signs; every writable one is its own) and no longer blocks on sight; the fee landing margin is removed — a pending schedule is always judged; privileges are the runtime's (agave's demotion); Anchor's absent optional accounts recognised (676 slots from IDLs and traffic); every manifest grounded in 2,998 of its programs' own transactions — Jupiter's token-account pins, a placeholder Stake manifest and a swapped BPF Loader layout rebuilt from their interfaces, sixteen remaining-account interfaces declared (45,253 of 45,282 executed instructions clean); declared siblings counted by their writable extras like the primary (live mainnet RPC: risk Clear 24 → 33 of 40). The bridge builds v0. 71% of drainer refusals are bots' own IDL-less programs; the heuristic stays. Three days of mainnet: 230 Blocked → Clear, 0 the other way |
 | 2026-09-27 | [round21-what-happened-not-what-could-2026-09-27.md](round21-what-happened-not-what-could-2026-09-27.md) | The open list closed by observation. Graphite refused on what an account, flag or extension COULD do rather than what the transaction DID: the fee model now replays the executed Token-2022 instructions (withdrawals, several transfers, send-and-receive; 31 of 31 real transactions reproduced exactly) with the epoch read; a writable flag is judged by a sibling's declared write or Graphite's own diff; a null hook, untouched confidential state and unchanged issuer powers are inert and a permanent delegate's exercise is Critical; a self-refunding `CloseAccount` and read-only remaining accounts are no longer drains; the priority fee is read and bounded. 105 manifest instructions rebuilt or corrected where the programs' IDLs AND executed traffic agree. L4 measured at one slot and against the whole transaction (live L4 failures 10 → 2 of 40). Three days of mainnet (39,857 verified): 2,553 executed transactions Blocked → Clear on risk, 0 the other way. 25 of 25 deliberate breaks caught |
@@ -422,7 +440,7 @@ combined-status endpoint.
 | 2026-09-08 | [production-readiness-audit-2026-09-08.md](production-readiness-audit-2026-09-08.md) | Server, audit trail, CI, deployment |
 | 2026-09-08 | [rpc-validation-campaign-2026-09-08.md](rpc-validation-campaign-2026-09-08.md) | RPC trust boundary, budget, provider precedence |
 | 2026-09-06 | [adversarial-campaign-2026-09-06.md](adversarial-campaign-2026-09-06.md) | Early adversarial hardening |
-| earlier | `final-forensic-report.md`, `forensic-audit-report.md`, `clean-room-revalidation-C26.md`, `phase2-certification-report.md`, `release-evaluation-report.md`, `independent-gap-audit.md`, `p16-mainnet-benchmark.md`, `drift-kamino-onboarding-C27.md` | Phase 1/2 milestones. Their descriptions of L8, benchmark sizes, test counts and protocol counts are **historical** and superseded here. |
+| earlier | `phase1-internal-validation-report-2026-08.md` (formerly the root `GRAPHITE_FINAL_CERTIFICATION_REPORT.md`), `final-forensic-report.md`, `forensic-audit-report.md`, `clean-room-revalidation-C26.md`, `phase2-certification-report.md`, `release-evaluation-report.md`, `independent-gap-audit.md`, `p16-mainnet-benchmark.md`, `drift-kamino-onboarding-C27.md` | Phase 1/2 milestones. Their descriptions of L8, benchmark sizes, test counts and protocol counts are **historical** and superseded here. |
 
 `phase2-plan.md`, `phase2-branch-strategy.md` and the two grant proposals are
 plans and proposals, not status.

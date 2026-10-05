@@ -91,6 +91,59 @@ pub fn classify_intent(program_id: &str, instruction_name: &str) -> String {
     "transfer".to_string()
 }
 
+/// The intent an honest agent would declare for an instruction: the first of
+/// the vocabulary's intents that DESCRIBES it — L5's own decision,
+/// `GraphiteCore::intent_describes_instruction` — or `None` when no intent
+/// does (an authority change, a mint, a lending withdrawal: instructions the
+/// pipeline refuses whatever label they carry, since external review R2).
+///
+/// `classify_intent` guesses an intent from the name alone and defaults to
+/// "transfer"; this asks the pipeline's rule which intent, if any, the
+/// instruction can honestly carry. The mainnet conformance harness uses it to
+/// measure what an honest agent can get through, separately from what a
+/// name-based guess gets through.
+pub fn honest_intent(
+    program_id: &str,
+    instruction_name: &str,
+    security_class: &str,
+    expected_state_changes: &[String],
+) -> Option<&'static str> {
+    if security_class == crate::manifest::AUTHORITY_CHANGE_CLASS {
+        return None;
+    }
+    const INTENTS: [&str; 6] = ["swap", "stake", "close", "create", "revoke", "transfer"];
+    let describes = |intent: &&str| {
+        crate::verification::GraphiteCore::intent_describes_instruction(
+            intent,
+            program_id,
+            instruction_name,
+            security_class,
+            expected_state_changes,
+        )
+        .is_ok()
+    };
+    let name = instruction_name.to_lowercase();
+    // What an agent would call it: first an intent the instruction is NAMED
+    // for, then the intent named for its class, and only then the first
+    // intent that describes it at all. Without the first two, a transfer-class
+    // instruction of a swap program (Pump.fun `distribute_fee_to_holders`)
+    // was labelled a swap and then refused as a fake one.
+    INTENTS
+        .into_iter()
+        .filter(describes)
+        .find(|intent| {
+            crate::verification::intent_vocabulary(intent)
+                .iter()
+                .any(|w| name.contains(w))
+        })
+        .or_else(|| {
+            INTENTS
+                .into_iter()
+                .find(|intent| *intent == security_class && describes(intent))
+        })
+        .or_else(|| INTENTS.into_iter().find(describes))
+}
+
 /// Upper bound on account keys extracted per instruction (instruction account
 /// lists beyond this are truncated).
 ///

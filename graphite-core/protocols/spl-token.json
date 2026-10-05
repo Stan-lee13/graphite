@@ -347,7 +347,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": "mint"
+   "risk_class": ""
   },
   {
    "name": "FreezeAccount",
@@ -616,7 +616,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "InitializeAccount3",
@@ -703,7 +703,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "InitializeImmutableOwner",
@@ -741,7 +741,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "UiAmountToAmount",
@@ -760,7 +760,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   }
  ],
  "trust_tier": "BattleTested"

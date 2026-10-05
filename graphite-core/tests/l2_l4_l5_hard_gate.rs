@@ -2,7 +2,8 @@
 //! "The certification document claims L2/L4/L5 failures are hard gates, but
 //! current approval logic appears to rely on confidence penalties instead."
 //!
-//! GRAPHITE_FINAL_CERTIFICATION_REPORT.md's "CRITICAL #6" originally required
+//! docs/phase1-internal-validation-report-2026-08.md's "CRITICAL #6" (then
+//! GRAPHITE_FINAL_CERTIFICATION_REPORT.md) originally required
 //! `approved` to hard-require `l2_result.passed && l4_result.passed &&
 //! l5_result.passed`. A later tri-state refactor (GAP-2026-08-06-3) correctly
 //! introduced `LayerStatus::{Passed, Failed, Inconclusive}` so that an
@@ -118,12 +119,14 @@ fn l2_failed_blocks_approval_at_battle_tested_tier_and_tradingbot_threshold() {
     // instruction_discriminator is "02000000" (System Transfer) but
     // instruction_data starts with different bytes — a self-contradictory
     // input (the exact HIGH #1 "Discriminator Check Bypass" class). The bytes
-    // name another DESCRIBED System instruction (CreateAccount, tag 0), so
-    // the confidence below is that of a described instruction. Bytes naming
-    // no described instruction (`0xff…`) now score as undescribed on their
-    // own (A3-04, 2026-09-29 audit), which would hide whether the hard gate
-    // or the low score refused them.
-    input.instruction_data = Some(vec![0x00, 0x00, 0x00, 0x00, 1, 0, 0, 0, 0, 0, 0, 0]);
+    // name another DESCRIBED System instruction of the same class
+    // (TransferWithSeed, tag 11), so the confidence below is that of a
+    // described instruction and L5 has nothing to object to: only L2 fails.
+    // Bytes naming no described instruction (`0xff…`) score as undescribed on
+    // their own (A3-04), and bytes naming another class (CreateAccount) now
+    // fail L5 as well (external review R2) — either would hide whether L2's
+    // hard gate or something else refused them.
+    input.instruction_data = Some(vec![0x0b, 0x00, 0x00, 0x00, 1, 0, 0, 0, 0, 0, 0, 0]);
 
     let result = core.verify(&input).unwrap();
 
@@ -293,6 +296,59 @@ fn l5_failed_intent_mismatch_blocks_approval_at_high_confidence() {
          approved=true at confidence={}",
         result.confidence
     );
+}
+
+/// External review R2: L5 requires the program to serve the intent, the rule
+/// Check 9 applies in L7. Kamino's `withdrawQueuedLiquidity` is a `withdraw`,
+/// which the `stake` intent declares (a stake account's own withdrawal), and
+/// its name uses the stake vocabulary ("withdraw") — so neither the class
+/// table nor the vocabulary refuses a "stake" label on it. Only the program
+/// does: Kamino Lending is not a staking program.
+#[test]
+fn l5_refuses_an_intent_the_program_does_not_serve_even_when_the_class_and_words_fit() {
+    let core = GraphiteCore::new();
+    let registry = graphite_core::manifest::load_seed_manifests();
+    let kamino = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD";
+    let ix = registry
+        .get(kamino)
+        .and_then(|m| {
+            m.instructions
+                .iter()
+                .find(|i| i.name == "withdrawQueuedLiquidity")
+        })
+        .expect("Kamino withdrawQueuedLiquidity");
+    assert_eq!(ix.security_class(), "withdraw");
+    assert_eq!(
+        graphite_core::manifest::intent_declares_class("stake", ix.security_class()),
+        Some(true),
+        "the class table declares it under a stake intent"
+    );
+    let mut input = system_transfer(WalletProfile::Gaming);
+    input.program_id = kamino.to_string();
+    input.instruction_discriminator = ix.discriminator.clone();
+    input.account_addresses = (0..ix.accounts.len())
+        .map(|i| {
+            let mut key = [0u8; 32];
+            key[0] = 0x5A;
+            key[1] = i as u8 + 1;
+            bs58::encode(key).into_string()
+        })
+        .collect();
+    input.proposed_intent.intent_type = "stake".to_string();
+
+    let result = core.verify(&input).unwrap();
+    let l5 = result
+        .layers
+        .iter()
+        .find(|l| l.layer == "L5_SemanticVerification")
+        .unwrap();
+    assert_eq!(l5.status, LayerStatus::Failed, "{}", l5.reason);
+    assert!(
+        l5.reason.contains("does not serve that intent"),
+        "refused for the program, not for a class or a word: {}",
+        l5.reason
+    );
+    assert!(!result.approved);
 }
 
 // ── Inconclusive layers must NOT trigger the new gate (P12 preserved) ──────

@@ -346,8 +346,23 @@ mod tests {
             },
         ];
 
-        let result = compute_confidence(&signals, TrustTier::BattleTested);
-        assert!(result.is_ok());
+        let result = compute_confidence(&signals, TrustTier::BattleTested).unwrap();
+        // Pinned by value (W24, external review: this asserted only `is_ok`).
+        assert_eq!(result.confidence, 1.0);
+        assert!(!result.ceiling_triggered);
+
+        // The property the test is named for: a third signal added without
+        // rebalancing is refused, not scored above 1.0 or renormalised.
+        let mut unbalanced = signals.clone();
+        unbalanced.push(WeightedSignal {
+            kind: SignalKind::HistoricalVolume,
+            value: 1.0,
+            weight: 0.2,
+        });
+        assert!(matches!(
+            compute_confidence(&unbalanced, TrustTier::BattleTested),
+            Err(ConfidenceError::WeightsDoNotSumToOne { sum }) if (sum - 1.2).abs() < 1e-9
+        ));
     }
 
     /// Regression test for the `ceiling_triggered` bug found during the

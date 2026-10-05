@@ -187,3 +187,20 @@ fn a_blockhash_not_found_response_carries_no_usable_evidence() {
     assert!(r.err.is_some());
     assert_eq!(r.fee, None);
 }
+
+/// W16 (external review): every RPC states `err` — `null` for success. A
+/// response without it was read as a successful simulation, which then
+/// trained the baseline. It is an unreadable answer.
+#[test]
+fn a_simulation_without_an_err_field_is_not_a_success() {
+    let mut v = real_devnet_response();
+    assert!(
+        parse_sim(&v).is_ok(),
+        "precondition: the real response parses"
+    );
+    v.as_object_mut().unwrap().remove("err");
+    assert!(
+        parse_sim(&v).is_err(),
+        "no `err` field must not read as success"
+    );
+}

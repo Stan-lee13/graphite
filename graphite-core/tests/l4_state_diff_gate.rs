@@ -189,6 +189,31 @@ fn an_owner_reassignment_in_the_diff_fails_l4_and_blocks_the_transaction() {
     );
 }
 
+/// W24 (external review): an undeclared token debit was pinned at the
+/// state-diff level only. Through the whole pipeline: a token account the
+/// signer owns loses its balance under a System transfer that declares a
+/// debit of `from` alone — L4 fails, and the verdict is not approved.
+#[test]
+fn an_undeclared_token_debit_in_the_diff_blocks_the_transaction() {
+    let owner: [u8; 32] = bs58::decode(SIGNER).into_vec().unwrap().try_into().unwrap();
+    let account = |amount: u64| {
+        let mut d = token_account(amount, None);
+        d[32..64].copy_from_slice(&owner);
+        AccountSnapshot::from_raw(RECIPIENT, 2_039_280, SPL_TOKEN_PROGRAM, &d)
+    };
+    let result = core()
+        .verify(&transfer(Some(diff(vec![AccountDelta {
+            pubkey: RECIPIENT.to_string(),
+            before: Some(account(1_000)),
+            after: Some(account(0)),
+        }]))))
+        .unwrap();
+    let (status, reason) = l4(&result);
+    assert_eq!(status, LayerStatus::Failed, "L4 reason: {reason}");
+    assert!(reason.contains("UndeclaredTokenDebit"), "{reason}");
+    assert!(!result.approved);
+}
+
 #[test]
 fn a_delegate_granted_in_the_diff_blocks_the_transaction() {
     // The approval-drain: the transfer succeeds and quietly leaves a third

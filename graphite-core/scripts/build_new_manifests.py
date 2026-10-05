@@ -55,7 +55,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-IDLS = ROOT / "e2e-scratch" / "idls"
+IDLS = ROOT / "scripts" / "idls"
 OUT = ROOT / "protocols"
 
 TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"

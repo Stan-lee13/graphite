@@ -93,12 +93,15 @@ jobs:
       # `git status --porcelain` also catches files the run ADDED, which
       # `git diff` alone would not. Fix by committing the regenerated corpus
       # in the same change as whatever moved it.
-      - name: Regression corpus is what the generator produces
+      # W23 (external review): the check covered fixtures/corpus only, so a
+      # test writing to any other tracked path (protocols/, fixtures/artifacts)
+      # left the tree dirty and passed. Every path is checked now.
+      - name: The test run changed nothing in the tree
         run: |
-          git diff --exit-code --stat -- fixtures/corpus
-          if [ -n "$(git status --porcelain -- fixtures/corpus)" ]; then
-            echo "::error::the test run changed fixtures/corpus; commit the regenerated corpus"
-            git status --porcelain -- fixtures/corpus
+          git diff --exit-code --stat
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::the test run changed or added files; a corpus change must be committed with whatever moved it, and nothing else may be written"
+            git status --porcelain
             exit 1
           fi
       # The two configurations below were COMPILED above and never run. That is
@@ -107,24 +110,25 @@ jobs:
       # #8, 2026-09-11).
       - name: Tests — embeddable core, no features
         if: always()
-        # `--lib` deliberately. Without a feature there is no async runtime, so
-        # `verify()` is a fail-closed stub and the behavioural suite is
-        # inapplicable by construction; running it here would gate on tests that
-        # cannot pass rather than on anything true. What this DOES gate is the
-        # pure deterministic core — the parser, the state diff, the risk engine,
-        # manifest handling, content_hash — plus one assertion that the stub
-        # refuses instead of approving.
+        # `--lib` deliberately. Without a feature there is no async runtime to
+        # drive the synchronous `verify()`, so it refuses with an error naming
+        # the features to build with (`verify_async` is the whole pipeline in
+        # every build), and the behavioural suite, which calls `verify()`, is
+        # inapplicable by construction. What this DOES gate is the pure
+        # deterministic core — the parser, the state diff, the risk engine,
+        # manifest handling, content_hash — plus one assertion that the
+        # synchronous call refuses instead of approving.
         run: cargo test --locked --release --no-default-features --lib
       - name: Tests — cli feature only, no server or rpc
         if: always()
         run: cargo test --locked --release --no-default-features --features cli
       # The cli leg runs the corpus test too; its output must match as well.
-      - name: Regression corpus unchanged by the feature legs
+      - name: The feature legs changed nothing in the tree
         if: always()
         run: |
-          if [ -n "$(git status --porcelain -- fixtures/corpus)" ]; then
-            echo "::error::a test leg changed fixtures/corpus; commit the regenerated corpus"
-            git status --porcelain -- fixtures/corpus
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::a test leg changed or added files"
+            git status --porcelain
             exit 1
           fi
 
@@ -180,13 +184,15 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.23.3"
-      - name: npm advisories — agent guard, SAK adapter, TypeScript SDK, dashboard
+      - name: npm advisories — agent guard, AI SDK tools, MCP server, SAK adapter, TypeScript SDK, dashboard
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
           status=0
           for pkg in integrations/agent-guard:agent-guard \
+                     integrations/vercel-ai:vercel-ai \
+                     integrations/mcp-server:mcp-server \
                      integrations/solana-agent-kit:solana-agent-kit \
                      sdk/typescript:sdk-typescript \
                      dashboard:dashboard; do
@@ -425,7 +431,7 @@ jobs:
         run: docker rm -f graphite-ci graphite-keyless || true
 
   typescript:
-    name: TypeScript SDK, agent guard + SAK adapter
+    name: TypeScript SDK, agent guard + framework adapters
     runs-on: ubuntu-24.04
     # ~1 min warm; the SAK adapter's tree is ~1,300 packages, so a cold
     # install is the long pole. 20 is generous.
@@ -484,6 +490,23 @@ jobs:
           git diff --exit-code -- \
             ../../graphite-core/fixtures/artifacts/sak_bridge_artifact.json \
             ../../graphite-core/fixtures/artifacts/sak_bridge_corpus.json
+      - name: Vercel AI SDK tools typecheck + tests
+        working-directory: integrations/vercel-ai
+        run: |
+          # Imports the guard's sources (installed above). The tests run the
+          # tools inside the AI SDK's own tool loop with its scripted test
+          # model and loopback stand-ins: no hosted model, no network.
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
+      - name: MCP server typecheck + tests
+        working-directory: integrations/mcp-server
+        run: |
+          # Includes the stdio server started as its own process, which
+          # fails if any log line reaches the protocol on stdout.
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm test
       - name: SAK adapter typecheck + tests
         working-directory: integrations/solana-agent-kit
         run: |
@@ -586,7 +609,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.13"]
+        # Exact releases, like every other toolchain here (A6-08); a minor
+        # alone resolved to whatever patch the runner had that day (W23).
+        python: ["3.11.17", "3.13.16"]
     defaults:
       run:
         working-directory: python-ai-layer
@@ -603,3 +628,12 @@ jobs:
         run: pip install --require-hashes -r requirements-lock.txt
       - name: Tests
         run: pytest -q
+      # W23 (external review): the other lockfiles were audited and this one
+      # was not. Every pin is exact and hashed, so no resolution is needed.
+      - name: Advisory audit of the lockfile
+        if: matrix.python == '3.13.16'
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          inputs: python-ai-layer/requirements-lock.txt
+          require-hashes: true
+          no-deps: true

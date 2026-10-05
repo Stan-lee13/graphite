@@ -905,6 +905,62 @@
    "verified": true,
    "network": "mainnet",
    "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at DLfKSWq1791mLFwHDwgyv28TR6Wm6GPTa6BqJMrcAvpQ, owned by the program, declaring 15 instructions as \"doorcash\" v0.1.0; observed in 1 successful transactions in the block sample of 2026-09-22 (scripts/solana_inventory_census.py)"
+  },
+  {
+   "name": "AMM Program (TAMM6ub3)",
+   "program_id": "TAMM6ub33ij1mbetoMyVBLeKY5iP41i4UPUJQGkhfsg",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 5M6gaYGNvcucDh88a553RncswXrvoHBLFajcNNVi7HQa, owned by the program, declaring 22 instructions as \"amm_program\" v1.0.0; 45 executed mainnet instruction(s) of 5 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
+  },
+  {
+   "name": "Jito Tip Distribution (4R3gSG8B)",
+   "program_id": "4R3gSG8BpU4t19KYj8CfnbtRpnT8gtk4dvTHxVRwc2r7",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 7gs84zZoXb1x9RmkWJ1wJFY8mNQMfZuVgY8ynuuxjKwC, owned by the program, declaring 10 instructions as \"jito_tip_distribution\" v0.1.5; 14 executed mainnet instruction(s) of 2 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
+  },
+  {
+   "name": "Jito Tip Payment (T1pyyaTN)",
+   "program_id": "T1pyyaTNZsKv2WcRAB8oVnk93mLJw2XzjtVYqCsaHqt",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at A1mfg1mZiEGVqoT6yFcCDPRN28QAWpk9Tzphb8Ar2UmV, owned by the program, declaring 4 instructions as \"jito_tip_payment\" v0.1.5; 96 executed mainnet instruction(s) of 2 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
+  },
+  {
+   "name": "Locker (LocpQguc)",
+   "program_id": "LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 2ntks693dfgHkYeyufFzV8jsf2QnEWoBbLHjXBE3WxWE, owned by the program, declaring 11 instructions as \"locker\" v0.4.0; 57 executed mainnet instruction(s) of 3 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
+  },
+  {
+   "name": "Mango V4 (4MangoMj)",
+   "program_id": "4MangoMjqJ2firMokCjjGgoK8d4MXcrgL7XJaL3w6fVg",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 3foqXduY5PabCn6LjNrLo3waNf3Hy6vQgqavoVUCsUN9, owned by the program, declaring 103 instructions as \"mango_v4\" v0.24.3; 59 executed mainnet instruction(s) of 7 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
+  },
+  {
+   "name": "Tensorswap (TSWAPaqy)",
+   "program_id": "TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 378WVdHjGJigkqD2Fd8xTwRWGDXVVHirRuA2Cy1PfXzi, owned by the program, declaring 46 instructions as \"tensorswap\" v3.1.0; 23 executed mainnet instruction(s) of 2 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
+  },
+  {
+   "name": "Token Launchpad (MoonCVVN)",
+   "program_id": "MoonCVVNZFSYkqNXP6bxHLPL6QQJiMagDL3qcqUQTrG",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at 56eMZ3pRsoHtDWmfYCe7EGitYEESSeLCMpesYQzmfRwZ, owned by the program, declaring 6 instructions as \"token_launchpad\" v0.1.0; 1 executed mainnet instruction(s) of 1 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
+  },
+  {
+   "name": "Zeta (ZETAxsqB)",
+   "program_id": "ZETAxsqBRek56DhiGXrn75yj2NHU3aYUnxvHXpkf3aD",
+   "verified": true,
+   "network": "mainnet",
+   "provenance": "executable on mainnet (getAccountInfo, loader BPFLoaderUpgradeab1e11111111111111111111111); publishes its own Anchor IDL at HBkwwcMNe5BjkTixSV1Zq58PUjg6QwGyXe5pAfWvGWqg, owned by the program, declaring 107 instructions as \"zeta\" v0.1.0; 23 executed mainnet instruction(s) of 3 described instruction(s) checked against their account layouts, all consistent (graphite-r22-work/fetch_program_traffic.py and r22_ground.py, 2026-10-02); onboarded in Round 24 by explicit program id (scripts/onboard_from_inventory.py --programs)"
   }
  ]
 }

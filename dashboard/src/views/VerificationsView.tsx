@@ -93,7 +93,7 @@ export function VerificationsView() {
                   </a>
                   <div className="row-side">
                     <span className="num muted">{fmt.score(p.confidence)}</span>
-                    {p.approved ? <State kind="pass">approved</State> : <State kind="block">refused</State>}
+                    <Verdict p={p} />
                   </div>
                 </li>
               ))}
@@ -121,7 +121,7 @@ export function VerificationsView() {
                       </a>
                     </td>
                     <td className="n">{fmt.score(p.confidence)}</td>
-                    <td>{p.approved ? <State kind="pass">approved</State> : <State kind="block">refused</State>}</td>
+                    <td><Verdict p={p} /></td>
                     <td className="id">
                       <CopyId value={p.audit_trail_id} />
                     </td>
@@ -182,5 +182,26 @@ function Chart({ pts, compact }: { pts: ConfidencePoint[]; compact: boolean }) {
         {shortTime(pts[pts.length - 1].timestamp)}
       </text>
     </svg>
+  );
+}
+
+/**
+ * An approval is about bytes only when the verdict carries their digest. A
+ * descriptive approval says the request, as described, was acceptable; it
+ * does not constrain what gets signed, and is shown as such (W22).
+ */
+function Verdict({ p }: { p: ConfidencePoint }) {
+  if (!p.approved) return <State kind="block">refused</State>;
+  if (p.transaction_sha256) {
+    return (
+      <State kind="pass" title={`bound to ${p.transaction_sha256}`}>
+        approved
+      </State>
+    );
+  }
+  return (
+    <State kind="warn" title="approved as described, not bound to transaction bytes">
+      approved · descriptive
+    </State>
   );
 }

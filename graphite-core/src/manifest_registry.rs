@@ -359,10 +359,22 @@ impl ManifestRegistryEngine {
             .map(|b| tier_rank(&b.trust_tier))
             .unwrap_or(0);
         let is_promotion = tier_rank(&tier) > current_rank;
-        if is_promotion {
+        // W12 (external review, verified 2026-10-03): an UPGRADE is held to the
+        // gate too. Only a promotion was, so a second reviewer could sign a v2
+        // that loosened v1 — a control instruction retagged `transfer` — at the
+        // same tier, with no replay, and it became the manifest in force. A
+        // program's first manifest is held to it by the promotion rule; every
+        // later one by this.
+        let is_upgrade = self.records.iter().any(|r| r.program_id == program_id);
+        if is_promotion || is_upgrade {
             let (corpus, core) = regression.ok_or_else(|| {
                 RegistryError::RegressionGateBlocked(
-                    "no regression corpus supplied for a tier promotion".to_string(),
+                    if is_promotion {
+                        "no regression corpus supplied for a tier promotion"
+                    } else {
+                        "no regression corpus supplied for an upgrade of a manifest in force"
+                    }
+                    .to_string(),
                 )
             })?;
             // Replay against the manifest the submission WOULD install, not
@@ -372,8 +384,16 @@ impl ManifestRegistryEngine {
             // first submission had no manifest to replay against at all,
             // which is what made the gate unreachable for new programs and
             // motivated exempting them.
+            // W12 (external review): replayed at the tier the registry
+            // computed, which is the tier `manifests_in_force` hands the
+            // runtime — not the one the document declares. A document
+            // declaring no tier replayed at Unknown, where a fixture's tier
+            // floor refused everything, so a loosened manifest passed a gate
+            // its runtime self would fail.
+            let mut candidate = submission.manifest.clone();
+            candidate.trust_tier = tier.as_str().to_string();
             let candidate_core = core
-                .with_candidate_manifest(&submission.manifest)
+                .with_candidate_manifest(&candidate)
                 .map_err(|e| RegistryError::RegressionGateBlocked(e.to_string()))?;
             let run = replay_corpus_for_program(&candidate_core, corpus, &program_id);
             match decide_promotion(&run) {
@@ -638,6 +658,12 @@ impl ManifestRegistryEngine {
             }
             if !counted.insert(attestation.reviewer_pubkey.clone()) {
                 continue; // one attestation per reviewer per content
+            }
+            // W11 (external review): the signer attesting its own submission
+            // is not an independent reviewer; it counted as one, so one other
+            // reviewer made a manifest CommunityVerified.
+            if submission.signer_pubkey.as_deref() == Some(attestation.reviewer_pubkey.as_str()) {
+                continue;
             }
             evidence.community_verified_count += 1;
         }
@@ -1090,9 +1116,10 @@ mod tests {
         const PROGRAM: &str = NON_SEED;
         let mut engine = ManifestRegistryEngine::new();
         let mut store = SemanticGraphStore::new();
-        let (a, b) = (key(61), key(62));
+        let (a, b, c) = (key(61), key(62), key(63));
         engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
         engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
+        engine.register_reviewer(&pubkey_b58(&c), 1000).unwrap();
         let core = GraphiteCore::new();
 
         // v1.0, signed by one reviewer: OfficialManifest.
@@ -1103,10 +1130,11 @@ mod tests {
             .unwrap();
         assert!(matches!(first, RegistryDecision::Accepted { .. }));
 
-        // The same content and label, now attested by two reviewers.
+        // The same content and label, now attested by two reviewers other
+        // than its signer (W11: the signer does not attest itself).
         let hash = signed.content_hash();
         let mut attested = signed.clone();
-        attested.attestations = [&a, &b]
+        attested.attestations = [&b, &c]
             .into_iter()
             .map(|k| ReviewerAttestation {
                 reviewer_pubkey: pubkey_b58(k),
@@ -1431,6 +1459,10 @@ mod tests {
                 optional: false,
             })
             .collect();
+        // What `debits accounts.from` is: a transfer. Since external review R2
+        // an intent is compared with the instruction's class, and an
+        // unclassed instruction is not something a `transfer` declares.
+        candidate.instructions[0].risk_class = "transfer".to_string();
         let submission = sign_manifest(candidate, &signer);
 
         let mut base = GraphiteCore::new();
@@ -1570,9 +1602,19 @@ mod tests {
 
         let mut m2 = manifest(PROGRAM, "Renamed Protocol", "v2.0");
         m2.instructions[0].name = "SecondVersionOp".to_string();
+        // W12: an upgrade is held to the gate like a promotion; this one
+        // changes no verdict the corpus pins, so it passes.
+        assert!(matches!(
+            engine.submit(&mut store, sign_manifest(m2.clone(), &signer), None),
+            Err(RegistryError::RegressionGateBlocked(_))
+        ));
         engine
-            .submit(&mut store, sign_manifest(m2, &signer), None)
-            .expect("same tier is not a promotion, so no gate applies");
+            .submit(
+                &mut store,
+                sign_manifest(m2, &signer),
+                Some((&corpus, &core)),
+            )
+            .expect("an upgrade that keeps every pinned verdict is accepted");
 
         // What actually reaches verification.
         let mut registry = crate::manifest::load_seed_manifests();
@@ -1593,6 +1635,106 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    /// W11 (external review, verified 2026-10-03): a signer attesting its own
+    /// submission is not an independent reviewer.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn the_signer_does_not_attest_its_own_submission() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let (a, b) = (key(71), key(72));
+        engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
+        engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
+        let core = GraphiteCore::new();
+        let mut submission = signed_submission(NON_SEED, "v1.0", &a);
+        let hash = submission.content_hash();
+        submission.attestations = [&a, &b]
+            .into_iter()
+            .map(|k| ReviewerAttestation {
+                reviewer_pubkey: pubkey_b58(k),
+                signature_hex: sign(k, &hash),
+            })
+            .collect();
+        let corpus = onboarding_corpus(&core, &submission);
+        let decision = engine
+            .submit(&mut store, submission, Some((&corpus, &core)))
+            .unwrap();
+        assert_eq!(
+            decision,
+            RegistryDecision::Accepted {
+                trust_tier: TrustTier::OfficialManifest,
+                version_label: "v1.0".to_string(),
+            },
+            "one independent attester, not two"
+        );
+    }
+
+    /// W12 (external review, verified 2026-10-03): a second reviewer's v2 that
+    /// retags v1's control instruction as a transfer, at the same tier, was
+    /// accepted with no replay and became the manifest in force. The gate now
+    /// runs on every upgrade, at the tier the registry computes — here the
+    /// document declares none, and replaying at Unknown let it through too.
+    #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
+    #[test]
+    fn a_loosening_upgrade_at_the_same_tier_is_refused_by_the_replay() {
+        let mut engine = ManifestRegistryEngine::new();
+        let mut store = SemanticGraphStore::new();
+        let (a, b) = (key(81), key(82));
+        engine.register_reviewer(&pubkey_b58(&a), 1000).unwrap();
+        engine.register_reviewer(&pubkey_b58(&b), 1000).unwrap();
+        let core = GraphiteCore::new();
+
+        // The accounts `debits accounts.from` needs (a stub that declares
+        // none is refused by L4 as inconsistent under any class).
+        let accounts: Vec<AccountRoleDef> = [("from", true), ("to", false)]
+            .into_iter()
+            .map(|(name, is_signer)| AccountRoleDef {
+                name: name.to_string(),
+                role: "writable".to_string(),
+                is_writable: true,
+                is_signer,
+                pda_seeds: vec![],
+                expected_address: vec![],
+                optional: false,
+            })
+            .collect();
+        let mut v1 = manifest(NON_SEED, "Guarded", "v1.0");
+        v1.instructions[0].accounts = accounts.clone();
+        v1.instructions[0].risk_class = "authority".to_string();
+        let v1 = sign_manifest(v1, &a);
+        let corpus = onboarding_corpus(&core, &v1);
+        assert!(
+            !corpus.all()[0].expected_approved,
+            "precondition: v1 refuses its control instruction"
+        );
+        engine
+            .submit(&mut store, v1, Some((&corpus, &core)))
+            .unwrap();
+
+        let mut v2 = manifest(NON_SEED, "Guarded", "v2.0");
+        v2.instructions[0].accounts = accounts;
+        v2.instructions[0].risk_class = "transfer".to_string();
+        assert_eq!(v2.trust_tier, "", "the document declares no tier");
+        // Precondition: at the tier the runtime would give it, v2 approves the
+        // fixture v1 pinned as refused.
+        let mut at_runtime_tier = v2.clone();
+        at_runtime_tier.trust_tier = "OfficialManifest".to_string();
+        let input = &corpus.all()[0].input;
+        assert!(
+            core.with_candidate_manifest(&at_runtime_tier)
+                .unwrap()
+                .verify(input)
+                .unwrap()
+                .approved,
+            "precondition: the loosened manifest approves at its runtime tier"
+        );
+        assert!(matches!(
+            engine.submit(&mut store, sign_manifest(v2, &b), Some((&corpus, &core))),
+            Err(RegistryError::RegressionGateBlocked(_))
+        ));
+        assert_eq!(engine.manifests_in_force()[0].version.label, "v1.0");
     }
 
     #[test]
@@ -1621,7 +1763,7 @@ mod tests {
         let v1 = signed_submission(program, "v1.0", &signer);
         let corpus = onboarding_corpus(&core, &v1);
         // v1.0 earns a tier (a promotion, so gated); v2.0 earns the same tier
-        // and is not a promotion, so it needs no corpus.
+        // and, as an upgrade of a manifest in force, is gated too (W12).
         engine
             .submit(&mut store, v1, Some((&corpus, &core)))
             .unwrap();
@@ -1629,7 +1771,7 @@ mod tests {
             .submit(
                 &mut store,
                 signed_submission(program, "v2.0", &signer),
-                None,
+                Some((&corpus, &core)),
             )
             .unwrap();
 

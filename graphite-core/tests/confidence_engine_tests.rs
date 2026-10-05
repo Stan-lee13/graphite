@@ -39,6 +39,12 @@ fn test_ceiling_constants() {
 
     // Unknown/heuristic ceiling must be <= 0.55 (P6)
     assert!(ceilings::UNKNOWN_OR_HEURISTIC_MAX <= 0.55);
+
+    // The published values, by value.
+    assert_eq!(ceilings::UNKNOWN_OR_HEURISTIC_MAX, 0.55);
+    assert_eq!(ceilings::OFFICIAL_MANIFEST_MAX, 0.75);
+    assert_eq!(ceilings::SIMULATION_VALIDATED_MAX, 0.85);
+    assert_eq!(ceilings::COMMUNITY_OR_BATTLE_TESTED_MAX, 1.0);
 }
 
 // ============================================

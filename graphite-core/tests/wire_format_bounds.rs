@@ -242,3 +242,38 @@ fn the_bound_applies_to_lengths_throughout_the_message() {
     );
     println!("{refused} length positions refused the maximal three-byte encoding");
 }
+
+/// A v0 transfer-shaped frame: payer and program static, `loaded` addresses
+/// from one lookup table, one instruction with no accounts.
+fn v0_with_loaded(loaded: u8) -> Vec<u8> {
+    let mut b = vec![1u8];
+    b.extend([0u8; 64]);
+    b.push(0x80); // v0
+    b.extend([1, 0, 1]); // 1 signer, program read-only
+    b.push(2);
+    b.extend([7u8; 32]); // payer
+    b.extend([0u8; 32]); // the System program
+    b.extend([9u8; 32]); // blockhash
+    b.extend([1, 1, 0, 0]); // one instruction: program 1, no accounts, no data
+    b.push(1); // one lookup
+    b.extend([5u8; 32]);
+    b.push(loaded);
+    b.extend(0..loaded); // writable indexes 0..loaded
+    b.push(0); // no read-only indexes
+    b
+}
+
+/// W17 (external review): the bank locks at most 64 accounts per transaction
+/// (`TooManyAccountLocks`, after sanitize). A v0 frame over that parsed, and
+/// Graphite bound a verdict to a transaction that can never run.
+#[test]
+fn more_accounts_than_the_bank_locks_is_refused() {
+    assert!(
+        parse_transaction(&v0_with_loaded(62)).is_ok(),
+        "64 accounts in all"
+    );
+    match parse_transaction(&v0_with_loaded(63)) {
+        Err(ArtifactParseError::TooManyAccountLocks { total: 65, max: 64 }) => {}
+        other => panic!("65 accounts must be refused, got {other:?}"),
+    }
+}

@@ -16,8 +16,21 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Keypair } from "@solana/web3.js";
 import bs58 from "bs58";
-import { GraphiteGuard, IntentGroundingError, parseTransactionVersion } from "./guard.js";
-import { BLOCKED_VERDICT, mockRpc, mockService, type Loopback, type MockService } from "./loopback-mocks.js";
+import {
+  GraphiteGuard,
+  IntentGroundingError,
+  parseTransactionVersion,
+  SpendPolicyRefusal,
+  type SpendPolicy,
+} from "./guard.js";
+import {
+  BLOCKED_VERDICT,
+  mockRpc,
+  mockService,
+  tokenAccountData,
+  type Loopback,
+  type MockService,
+} from "./loopback-mocks.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 const ATTACKER = "6bSsP4p6wXqFJdD2TkYgNcVmLzHfWq7pRyA8tCzE5nBj";
@@ -43,14 +56,19 @@ interface Harness {
 }
 
 async function harness(
-  opts: { aiLayerTimeoutMs?: number; transactionVersion?: "legacy" | 1 } = {},
+  opts: {
+    aiLayerTimeoutMs?: number;
+    transactionVersion?: "legacy" | 1;
+    spendPolicy?: SpendPolicy;
+    rpc?: (wallet: Keypair) => Parameters<typeof mockRpc>[0];
+  } = {},
 ): Promise<Harness> {
-  const rpc = await mockRpc();
+  const wallet = Keypair.generate();
+  const rpc = await mockRpc(opts.rpc?.(wallet));
   const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
   const ai = await mockService();
   ai.answer.set("POST /parse", { status: 200, body: honestParse() });
-  const wallet = Keypair.generate();
   const agent = await GraphiteGuard.create({
     privateKey: bs58.encode(wallet.secretKey),
     rpcUrl: rpc.url,
@@ -58,6 +76,7 @@ async function harness(
     aiLayerUrl: ai.url,
     aiLayerTimeoutMs: opts.aiLayerTimeoutMs,
     transactionVersion: opts.transactionVersion,
+    spendPolicy: opts.spendPolicy,
   });
   return {
     agent,
@@ -426,5 +445,140 @@ test("GRAPHITE_TRANSACTION_VERSION: legacy and 1 are read, anything else refuses
   assert.equal(parseTransactionVersion("1"), 1);
   for (const bad of ["v1", "0", "2", " 1", "LEGACY"]) {
     assert.throws(() => parseTransactionVersion(bad), /REFUSING TO START/, bad);
+  }
+});
+
+test("spend policy: a transfer over the cap is refused before the RPC or the Core is contacted", async () => {
+  // REQUEST moves 1.5 SOL.
+  const h = await harness({ spendPolicy: { maxTransferLamports: 1_499_999_999n } });
+  try {
+    await assert.rejects(h.agent.executeTransfer(REQUEST), SpendPolicyRefusal);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
+    assert.equal(h.rpc.calls.length, 0, "nothing reached the RPC");
+  } finally {
+    await h.close();
+  }
+});
+
+test("spend policy: a destination outside the allowlist is refused; inside it, the transfer is verified", async () => {
+  const outside = await harness({ spendPolicy: { allowedDestinations: [ATTACKER] } });
+  try {
+    await assert.rejects(outside.agent.executeTransfer(REQUEST), /not in the allowed destinations/);
+    assert.equal(outside.rpc.calls.length, 0);
+  } finally {
+    await outside.close();
+  }
+  const inside = await harness({ spendPolicy: { maxTransferLamports: 1_500_000_000n, allowedDestinations: [DEST] } });
+  try {
+    const outcome = await inside.agent.executeTransfer(REQUEST);
+    assert.equal(outcome.executed, false, "the loopback Core blocked; the policy only narrows");
+    assert.equal(inside.core.calls.filter((c) => c.method === "POST /verify").length, 1, "within limits, the Core is asked");
+    assert.deepEqual(inside.agent.limits, { maxTransferLamports: 1_500_000_000n, allowedDestinations: [DEST] });
+  } finally {
+    await inside.close();
+  }
+});
+
+// W22 (external review, verified 2026-10-03): the spend policy bounded only
+// executeTransfer, while both framework adapters expose a swap tool. A swap's
+// outflow is whatever the bound transaction does, so it is measured there: the
+// exact unsigned bytes are simulated and the wallet's own balances read before
+// and after.
+
+const SYSTEM = "11111111111111111111111111111111";
+const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const WSOL = "So11111111111111111111111111111111111111112";
+const SOL = 1_000_000_000;
+
+function swapLedger(walletAfter: number, token?: { mint: string; before: bigint; after: bigint }) {
+  return (wallet: Keypair) => {
+    const w = wallet.publicKey.toBase58();
+    return {
+      ledger: {
+        [w]: { lamports: 10 * SOL, owner: SYSTEM },
+        ...(token
+          ? { [DEST]: { lamports: 2_039_280, owner: SPL_TOKEN, data: tokenAccountData(token.mint, w, token.before) } }
+          : {}),
+      },
+      afterSimulation: {
+        [w]: { lamports: walletAfter, owner: SYSTEM },
+        ...(token
+          ? { [DEST]: { lamports: 2_039_280, owner: SPL_TOKEN, data: tokenAccountData(token.mint, w, token.after) } }
+          : {}),
+      },
+    };
+  };
+}
+
+async function swapUnder(policy: SpendPolicy, rpc: ReturnType<typeof swapLedger>) {
+  const h = await harness({ spendPolicy: policy, rpc });
+  h.ai.answer.set("POST /parse", { status: 200, body: swapParse("swap") });
+  return h;
+}
+
+test("spend policy: a swap within the cap, measured on the transaction, goes to the Core", async () => {
+  // Spends 1 SOL less one lamport, fee included, against a cap of 1 SOL.
+  const h = await swapUnder({ maxTransferLamports: BigInt(SOL) }, swapLedger(10 * SOL - SOL + 1));
+  try {
+    const outcome = await h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet));
+    assert.equal(outcome.executed, false, "the loopback Core blocked; the policy only narrows");
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 1);
+    const sim = h.rpc.calls.find(
+      (c) => c.method === "simulateTransaction" && JSON.stringify(c.params).includes('"addresses"'),
+    );
+    assert.ok(sim, "the outflow was measured by a simulation");
+    assert.equal((sim as { signed?: boolean }).signed, false, "never signed");
+  } finally {
+    await h.close();
+  }
+});
+
+test("spend policy: a swap taking more lamports than the cap is refused before the Core is asked", async () => {
+  // Spends 1 SOL + a 5,000-lamport fee, against a cap of exactly 1 SOL.
+  const h = await swapUnder({ maxTransferLamports: BigInt(SOL) }, swapLedger(10 * SOL - SOL - 5_000));
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), (e: unknown) => {
+      assert.ok(e instanceof SpendPolicyRefusal);
+      assert.match((e as Error).message, /1000005000 lamports out of the wallet/);
+      return true;
+    });
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0, "the Core was never asked");
+  } finally {
+    await h.close();
+  }
+});
+
+test("spend policy: wrapped SOL leaving the wallet counts against the lamport cap", async () => {
+  const h = await swapUnder(
+    { maxTransferLamports: BigInt(SOL) },
+    swapLedger(10 * SOL - 5_000, { mint: WSOL, before: BigInt(2 * SOL), after: 0n }),
+  );
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /2000005000 lamports/);
+  } finally {
+    await h.close();
+  }
+});
+
+test("spend policy: a swap spending a token a lamport cap cannot price is refused", async () => {
+  const h = await swapUnder(
+    { maxTransferLamports: 100n * BigInt(SOL) },
+    swapLedger(10 * SOL - 5_000, { mint: USDC, before: 5_000_000n, after: 0n }),
+  );
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /spends 5000000 of token EPjF/);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("spend policy: a destination list alone cannot bound a swap, so the swap is refused", async () => {
+  const h = await swapUnder({ allowedDestinations: [DEST] }, swapLedger(10 * SOL - 5_000));
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /no destination to check/);
+    assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
+  } finally {
+    await h.close();
   }
 });

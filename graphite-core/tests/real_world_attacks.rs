@@ -210,7 +210,7 @@ fn test_real_stmt_003() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 6 accounts should be blocked or low confidence"
     );
 }
@@ -230,7 +230,7 @@ fn test_real_stmt_004() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 7 accounts should be blocked or low confidence"
     );
 }
@@ -250,7 +250,7 @@ fn test_real_stmt_005() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 8 accounts should be blocked or low confidence"
     );
 }
@@ -270,7 +270,7 @@ fn test_real_stmt_006() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 9 accounts should be blocked or low confidence"
     );
 }
@@ -290,7 +290,7 @@ fn test_real_stmt_007() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 10 accounts should be blocked or low confidence"
     );
 }
@@ -310,7 +310,7 @@ fn test_real_stmt_008() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 11 accounts should be blocked or low confidence"
     );
 }
@@ -330,7 +330,7 @@ fn test_real_stmt_009() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 12 accounts should be blocked or low confidence"
     );
 }
@@ -350,7 +350,7 @@ fn test_real_stmt_010() {
         result.approved, result.confidence, result.risk_verdict.status
     );
     assert!(
-        !result.approved || result.confidence < 0.6,
+        !result.approved,
         "STMT with 13 accounts should be blocked or low confidence"
     );
 }

@@ -51,7 +51,15 @@ pub struct ProposedIntent {
     pub extracted_parameters: Option<ExtractedParameters>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// What the advisory layer read out of the request text. Only `output_token`
+/// is compared with the transaction (the FakeSwap check); `amount` and
+/// `destination` are not, because Graphite verifies what the instruction does,
+/// and an agent guard binds them by building the instruction from them. A
+/// field outside this list is refused like one outside `VerificationInput`
+/// (W22, external review: `destination` was sent by the TS SDK, the agent
+/// guard and the Python layer and silently dropped here).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ExtractedParameters {
     #[serde(default)]
     pub input_token: Option<String>,
@@ -59,6 +67,13 @@ pub struct ExtractedParameters {
     pub output_token: Option<String>,
     #[serde(default)]
     pub amount: Option<String>,
+    // Skipped when absent, so every request and recorded fixture written
+    // before these fields existed serializes (and hashes) as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+    /// The kind of account a close or create names ("token", …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_type: Option<String>,
     #[serde(default)]
     pub slippage_bps: Option<i64>,
 }
@@ -597,6 +612,21 @@ pub const MAX_CPI_TRACE_NODES: usize = 4096;
 /// newline or control character in an id would otherwise reach the text
 /// log). The declared trace is bounded in depth and size for the same
 /// reason the declaration list is.
+/// The words L5's refuse-only vocabulary condition looks for, per canonical
+/// intent (see `GraphiteCore::intent_describes_instruction`).
+pub(crate) fn intent_vocabulary(canonical_intent: &str) -> &'static [&'static str] {
+    match canonical_intent {
+        "swap" => &["swap", "route", "trade", "token", "credit", "debit"],
+        "transfer" => &["transfer", "send", "debit", "credit", "move"],
+        "stake" => &["stake", "delegate", "withdraw", "deactivate", "reward"],
+        "close" => &["close", "closure", "shutdown"],
+        "create" => &["create", "allocate", "assign", "initialize"],
+        "approve" => &["approve", "delegate"],
+        "revoke" => &["revoke"],
+        _ => &[],
+    }
+}
+
 fn validate_identifiers(input: &VerificationInput) -> Result<(), VerificationError> {
     const MAX_ID: usize = 44;
     const MAX_DISC: usize = 128;
@@ -1978,6 +2008,12 @@ pub enum VerificationScope {
         /// bytes could not be parsed.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         compute_budget: Option<crate::tx_artifact::ComputeBudgetRequest>,
+        /// The message version the bytes carry, read from them: `legacy`,
+        /// `v0` or `v1` (Round 24, W22 external review: a consumer could not
+        /// tell from the verdict which format Graphite parsed). `None` when
+        /// the bytes did not parse.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message_version: Option<String>,
     },
     /// No artifact was supplied. The verdict describes what the caller SAID the
     /// transaction is. Nothing in it constrains what gets signed.
@@ -2143,7 +2179,7 @@ fn verification_scope(
                     r.push(
                         UnobservedCode::ArtifactUnparsed,
                         format!(
-                            "the structure of this artifact: it could not be parsed as a legacy or v0 Solana message ({e}), so L2 failed — Graphite makes no claim about bytes it cannot read"
+                            "the structure of this artifact: it could not be parsed as a legacy, v0 or v1 Solana transaction ({e}), so L2 failed — Graphite makes no claim about bytes it cannot read"
                         ),
                     );
                     r.push(
@@ -2156,6 +2192,7 @@ fn verification_scope(
                     );
                 }
             }
+            let parsed = crate::tx_artifact::parse_transaction(bytes).ok();
             VerificationScope::ArtifactBound {
                 // The digest of the UNSIGNED frame — identical to the raw bytes
                 // now that filled slots are refused upstream, and the same
@@ -2169,9 +2206,13 @@ fn verification_scope(
                 simulated,
                 unobserved: r.prose,
                 unobserved_codes: r.codes,
-                compute_budget: crate::tx_artifact::parse_transaction(bytes)
-                    .ok()
-                    .map(|m| crate::tx_artifact::compute_budget_request(&m)),
+                compute_budget: parsed
+                    .as_ref()
+                    .map(crate::tx_artifact::compute_budget_request),
+                message_version: parsed.as_ref().map(|m| match m.version {
+                    None => "legacy".to_string(),
+                    Some(v) => format!("v{v}"),
+                }),
             }
         }
         _ => {
@@ -2399,7 +2440,46 @@ fn load_snapshot_strict(dir: &std::path::Path) -> Result<Option<SemanticGraphSto
     })
 }
 
-fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String> {
+/// The most scans of the audit trail that run at once, across the dashboard
+/// reads, the lifecycle lookups of `/audit/event` and L8's lookups. Each
+/// parses the trail (and, for an unknown key, every archive) on the blocking
+/// pool, which every verdict's audit append also uses.
+#[cfg(feature = "rpc")]
+pub const MAX_CONCURRENT_ARCHIVE_SCANS: usize = 4;
+
+/// Run a scan of the audit trail on the blocking pool, at most
+/// [`MAX_CONCURRENT_ARCHIVE_SCANS`] at a time.
+///
+/// W21 (external review, verified 2026-10-03): the permit used to live in the
+/// async frame. A request that timed out dropped it while its scan ran on, so
+/// abandoned scans were uncounted and a caller sending unknown keys could fill
+/// the blocking pool and put every verdict's append behind them; the
+/// lifecycle and L8 lookups had no bound at all. The permit now moves into the
+/// blocking task and is released when the scan ends, whatever happened to the
+/// request. Waiting for a permit costs a task, not a thread.
+#[cfg(feature = "rpc")]
+pub(crate) async fn bounded_archive_scan<T, F>(scan: F) -> Result<T, tokio::task::JoinError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    static SCANS: std::sync::LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+        std::sync::LazyLock::new(|| {
+            std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_ARCHIVE_SCANS))
+        });
+    let permit = SCANS
+        .clone()
+        .acquire_owned()
+        .await
+        .expect("the scan semaphore is never closed");
+    tokio::task::spawn_blocking(move || {
+        let _held_until_the_scan_ends = permit;
+        scan()
+    })
+    .await
+}
+
+pub(crate) fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String> {
     use std::io::Write as _;
     use std::sync::atomic::{AtomicU64, Ordering};
     static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -2566,7 +2646,29 @@ pub struct GraphiteCore {
     /// Whether a durable-nonce transaction may pass L2 at all. Off by default;
     /// see `set_allow_durable_nonce`.
     allow_durable_nonce: bool,
+    /// Simulation observations held until their verdict is on the audit
+    /// trail; `None` records them at once. See
+    /// `defer_observations_until_recorded`.
+    pending_observations: Option<Arc<Mutex<std::collections::VecDeque<PendingObservation>>>>,
 }
+
+/// A simulation observation waiting for its verdict's audit row (W21).
+#[derive(Debug, Clone)]
+#[cfg_attr(not(feature = "rpc"), allow(dead_code))]
+struct PendingObservation {
+    audit_trail_id: String,
+    program_id: String,
+    usage: crate::simulation_integrity::ComputeUsage,
+    key: String,
+    /// Into the shadow accumulator rather than the trusted baseline.
+    shadow: bool,
+}
+
+/// The most observations held for their audit rows. A request whose append
+/// never comes (a timeout, a failed write) leaves one behind; the oldest go
+/// first, and never train anything.
+#[cfg(feature = "rpc")]
+const MAX_PENDING_OBSERVATIONS: usize = 1024;
 
 /// Hold the witness's account of a signature against the primary's.
 #[cfg(feature = "rpc")]
@@ -2707,6 +2809,7 @@ impl GraphiteCore {
             data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
+            pending_observations: None,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -2728,6 +2831,7 @@ impl GraphiteCore {
             data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
+            pending_observations: None,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
         }
     }
@@ -2746,6 +2850,7 @@ impl GraphiteCore {
             data_dir_lock: None,
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
+            pending_observations: None,
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -3336,7 +3441,7 @@ impl GraphiteCore {
                 let audit_trail_id = keys.audit_trail_id.map(str::to_owned);
                 let transaction_sha256 = keys.transaction_sha256.map(str::to_owned);
                 let content_hash = keys.content_hash.map(str::to_owned);
-                let scan = tokio::task::spawn_blocking(move || {
+                let scan = bounded_archive_scan(move || {
                     let mut cited_for_other_bytes: Option<AuditRecord> = None;
                     let mut recorded_verdicts: Option<RecordedVerdicts> = None;
                     let (found, attribution) = if let Some(digest) = &digest {
@@ -3692,8 +3797,10 @@ impl GraphiteCore {
     }
 
     /// Register a plugin programmatically (startup only).
-    pub fn register_plugin(&mut self, plugin: crate::plugin_orchestrator::PluginKind) {
-        self.plugins.register_plugin(plugin);
+    /// Returns `false` when a plugin of that name is already registered and
+    /// this one will not run (see `PluginOrchestrator::register_plugin`).
+    pub fn register_plugin(&mut self, plugin: crate::plugin_orchestrator::PluginKind) -> bool {
+        self.plugins.register_plugin(plugin)
     }
 
     /// Discover + register plugin manifests from a directory through the
@@ -3859,6 +3966,86 @@ impl GraphiteCore {
             .map_err(VerificationError::SemanticGraph)?;
         let _ = self.persist_state();
         Ok(())
+    }
+
+    /// Hold every simulation observation until the caller says its verdict
+    /// is on the audit trail (`commit_observation`), instead of recording it
+    /// during verification.
+    ///
+    /// W21 (external review, verified 2026-10-03): the server appends the
+    /// audit row after `verify_async` returns, and the baseline had already
+    /// grown. A verdict refused with 503 because the trail could not be
+    /// written, or a request that timed out before its append, still trained
+    /// the baseline that raises later confidence by up to 0.20 — a verdict
+    /// with no record still left its mark. The server turns this on; a library
+    /// caller with no trail keeps the immediate behaviour.
+    pub fn defer_observations_until_recorded(&mut self) {
+        self.pending_observations = Some(Arc::new(Mutex::new(std::collections::VecDeque::new())));
+    }
+
+    /// The verdict `audit_trail_id` is on the trail: its observation, if one
+    /// was held, trains the baseline now. Observations come only from
+    /// simulations, so this exists in the builds that simulate (`rpc`).
+    #[cfg(feature = "rpc")]
+    pub async fn commit_observation(&self, audit_trail_id: &str) {
+        let Some(pending) = &self.pending_observations else {
+            return;
+        };
+        let taken = {
+            let mut queue = pending.lock().unwrap_or_else(|e| e.into_inner());
+            queue
+                .iter()
+                .position(|o| o.audit_trail_id == audit_trail_id)
+                .and_then(|i| queue.remove(i))
+        };
+        if let Some(o) = taken {
+            if o.shadow {
+                self.graph()
+                    .record_shadow_simulation(&o.program_id, &o.usage, Some(&o.key));
+            } else {
+                self.graph()
+                    .record_simulation_keyed(&o.program_id, &o.usage, Some(&o.key));
+            }
+            self.persist_state_async().await;
+        }
+    }
+
+    /// The verdict `audit_trail_id` could not be recorded: its observation,
+    /// if one was held, is dropped.
+    pub fn discard_observation(&self, audit_trail_id: &str) {
+        if let Some(pending) = &self.pending_observations {
+            pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|o| o.audit_trail_id != audit_trail_id);
+        }
+    }
+
+    /// Record an observation now, or hold it for `commit_observation`.
+    #[cfg(feature = "rpc")]
+    async fn observe(&self, observation: PendingObservation) {
+        if let Some(pending) = &self.pending_observations {
+            let mut queue = pending.lock().unwrap_or_else(|e| e.into_inner());
+            if queue.len() >= MAX_PENDING_OBSERVATIONS {
+                queue.pop_front();
+            }
+            queue.push_back(observation);
+            return;
+        }
+        if observation.shadow {
+            self.graph().record_shadow_simulation(
+                &observation.program_id,
+                &observation.usage,
+                Some(&observation.key),
+            );
+        } else {
+            self.graph().record_simulation_keyed(
+                &observation.program_id,
+                &observation.usage,
+                Some(&observation.key),
+            );
+        }
+        self.persist_state_async().await;
     }
 
     /// The trusted simulation baseline the graph holds for a program, if any.
@@ -4253,7 +4440,9 @@ impl GraphiteCore {
     fn verify_semantic(
         &self,
         proposed_intent: &ProposedIntent,
+        program_id: &str,
         instruction_name: &str,
+        security_class: &str,
         expected_state_changes: &[String],
         manifest_found: bool,
     ) -> PipelineLayerResult {
@@ -4296,102 +4485,139 @@ impl GraphiteCore {
             );
         }
 
-        let intent = proposed_intent.intent_type.to_lowercase();
-        let ix_name = instruction_name.to_lowercase();
-        let changes_lower: Vec<String> = expected_state_changes
-            .iter()
-            .map(|c| c.to_lowercase())
-            .collect();
+        match Self::intent_describes_instruction(
+            &proposed_intent.intent_type,
+            program_id,
+            instruction_name,
+            security_class,
+            expected_state_changes,
+        ) {
+            Ok(reason) => PipelineLayerResult::new(layer_name, LayerStatus::Passed, reason),
+            Err(reason) => PipelineLayerResult::new(layer_name, LayerStatus::Failed, reason),
+        }
+    }
 
-        let (intent_keywords, mismatch_msg) = match intent.as_str() {
-            "swap" | "trade" | "exchange" => (
-                vec!["swap", "route", "trade", "token", "credit", "debit"],
-                "swap intent but instruction does not appear to be a swap",
-            ),
-            "transfer" | "send" => (
-                vec!["transfer", "send", "debit", "credit", "move"],
-                "transfer intent but instruction does not appear to be a transfer",
-            ),
-            "stake" | "delegate" => (
-                vec!["stake", "delegate", "withdraw", "deactivate", "reward"],
-                "stake intent but instruction does not appear to be a stake operation",
-            ),
-            "close" | "close_account" => (
-                vec!["close", "closure", "shutdown"],
-                "close intent but instruction does not appear to close an account",
-            ),
-            "create" | "create_account" => (
-                vec!["create", "allocate", "assign", "initialize"],
-                "create intent but instruction does not appear to create an account",
-            ),
-            // Two opposite effects, two vocabularies (A3-01): a revoke intent
-            // is never consistent with an instruction that grants.
-            "approve" => (
-                vec!["approve", "delegate"],
-                "approve intent but instruction does not appear to grant a delegate",
-            ),
-            "revoke" => (
-                vec!["revoke"],
-                "revoke intent but instruction does not appear to revoke a delegate",
-            ),
-            _ => {
-                return PipelineLayerResult::new(
-                    layer_name,
-                    LayerStatus::Failed,
-                    format!(
-                        "Unknown intent type {} - semantic verification failed (P12 fail-closed)",
-                        intent
+    /// Whether a declared intent describes an instruction — L5's whole
+    /// decision, as a function of plain values: `Ok(reason)` when it does,
+    /// `Err(reason)` when it does not (external review R2). `verify_semantic`
+    /// reports it as the L5 layer; tools that need to know which intent an
+    /// honest agent could declare for an instruction (the mainnet conformance
+    /// harness) ask the same function rather than a copy of it.
+    pub fn intent_describes_instruction(
+        intent_type: &str,
+        program_id: &str,
+        instruction_name: &str,
+        security_class: &str,
+        expected_state_changes: &[String],
+    ) -> Result<String, String> {
+        // External review R2 (2026-10-01): the intent is compared with the
+        // instruction's SECURITY CLASS, through the one table the Risk
+        // Engine's Check 9b also reads (`manifest::INTENT_DECLARES`). This
+        // layer used to match intent keywords against the instruction's name
+        // and its manifest prose, and the prose is boilerplate: the create,
+        // withdraw and close templates all say "transfers", "move" matched
+        // "remove", and a `transfer` label passed L5 for 2,065 of the 3,195
+        // manifest instructions — both `drain` instructions, Bubblegum
+        // `delegate`, SPL `MintTo` and `Burn` among them. The class is the
+        // instruction's machine-readable identity; the prose is not read.
+        let raw_intent = intent_type.trim().to_lowercase();
+        let intent = crate::risk_engine::canonical_intent(&raw_intent);
+        let ix_name = instruction_name.to_lowercase();
+
+        let declares = match crate::manifest::intent_declares_class(intent, security_class) {
+            Some(declares) => declares,
+            None => {
+                return Err(format!(
+                        "Unknown intent type {raw_intent} - semantic verification failed (P12 fail-closed)"
                     ),
                 );
             }
         };
 
         // An instruction whose NAME says it does the opposite of the intent
-        // fails, whatever its prose shares with the intent's vocabulary
-        // (A3-01, 2026-09-29 audit). SPL `Revoke` is described as removing
-        // "the delegate", so an `approve` intent found its keyword in the
-        // prose and passed; a `create` intent passed on a `CloseAccount`
-        // whose prose mentions the account's creation. The name is the
-        // instruction's identity, the prose only its description.
-        let opposites: &[&str] = match intent.as_str() {
+        // fails, whatever its class (A3-01, 2026-09-29 audit): a revoke intent
+        // is never consistent with an instruction that grants, nor a create
+        // with one that closes.
+        let opposites: &[&str] = match intent {
             "approve" => &["revoke"],
             "revoke" => &["approve"],
-            "create" | "create_account" => &["close"],
-            "close" | "close_account" => &["create", "initialize"],
+            "create" => &["close"],
+            "close" => &["create", "initialize"],
             _ => &[],
         };
         if let Some(word) = opposites.iter().find(|w| ix_name.contains(**w)) {
-            return PipelineLayerResult::new(
-                layer_name,
-                LayerStatus::Failed,
-                format!(
-                    "{mismatch_msg}: the instruction {instruction_name} is named for the opposite effect ('{word}')"
+            return Err(format!(
+                    "{intent} intent, but the instruction {instruction_name} is named for the opposite effect ('{word}')"
                 ),
             );
         }
 
-        let ix_matches = intent_keywords.iter().any(|kw| ix_name.contains(kw));
-        let changes_match = changes_lower
+        if !declares {
+            let can_declare = crate::manifest::INTENT_DECLARES
+                .iter()
+                .find(|(i, _)| *i == intent)
+                .map(|(_, classes)| {
+                    if classes.is_empty() {
+                        "no class".to_string()
+                    } else {
+                        classes
+                            .iter()
+                            .map(|c| if c.is_empty() { "(none)" } else { c })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                })
+                .unwrap_or_default();
+            return Err(format!(
+                    "a '{raw_intent}' intent cannot declare {instruction_name}, whose security class is '{}' — the intent declares only {can_declare} (R2: the intent is compared with the instruction's class, never its prose)",
+                    if security_class.is_empty() { "(none)" } else { security_class }
+                ),
+            );
+        }
+
+        // The program must serve the intent — the rule Check 9 applies in L7,
+        // applied here too so the two layers agree. A class alone is not
+        // enough: a `stake` intent declares the `transfer` class (a liquid
+        // staking deposit is one), and without this a System Transfer would
+        // pass L5 as a stake.
+        if !crate::risk_engine::program_supports_intent(program_id, intent) {
+            return Err(format!(
+                    "a '{raw_intent}' intent does not describe {instruction_name}: program {program_id} does not serve that intent"
+                ),
+            );
+        }
+
+        // A revoke declares the unclassed instructions of a token program
+        // (the program check above restricts it); the name must also say
+        // revoke, or any unclassed token instruction would be a "revoke".
+        if intent == "revoke" && !ix_name.contains("revoke") {
+            return Err(format!(
+                "revoke intent, but the instruction {instruction_name} is not a revoke"
+            ));
+        }
+
+        // The previous rule's vocabulary check, kept as a further condition
+        // that can only REFUSE. The class gate above is the decision; this
+        // keeps the change from approving anything the previous rule refused
+        // (never turn a refusal into an approval): an instruction must also
+        // carry the intent's vocabulary in its name or its manifest prose.
+        // Alone it was the R2 gap — boilerplate prose matched almost every
+        // intent — and alone it decides nothing now.
+        let vocabulary = intent_vocabulary(intent);
+        let prose_matches = expected_state_changes
             .iter()
-            .any(|c| intent_keywords.iter().any(|kw| c.contains(kw)));
-
-        if !ix_matches && !changes_match {
-            return PipelineLayerResult::new(
-                layer_name,
-                LayerStatus::Failed,
-                format!(
-                    "{}: intent={}, instruction={}, state_changes={:?}",
-                    mismatch_msg, intent, instruction_name, expected_state_changes
+            .map(|c| c.to_lowercase())
+            .any(|c| vocabulary.iter().any(|kw| c.contains(kw)));
+        if !vocabulary.iter().any(|kw| ix_name.contains(kw)) && !prose_matches {
+            return Err(format!(
+                    "a '{raw_intent}' intent: neither the name of {instruction_name} nor its declared effects use the intent's vocabulary"
                 ),
             );
         }
 
-        PipelineLayerResult::new(
-            layer_name,
-            LayerStatus::Passed,
-            format!(
-                "Semantic verification passed: intent {} consistent with instruction {}",
-                intent, instruction_name
+        Ok(format!(
+                "Semantic verification passed: a '{raw_intent}' intent declares {instruction_name} (security class '{}')",
+                if security_class.is_empty() { "(none)" } else { security_class }
             ),
         )
     }
@@ -4522,6 +4748,12 @@ impl GraphiteCore {
     ///     designed for the single-instruction case — it now also covers the
     ///     secondary case for free, for every onboarded protocol, without new
     ///     per-protocol detection logic.
+    ///   - One exception reads the declared intent (W14, Round 24): a
+    ///     declared sibling whose manifest gives it NO class has nothing for
+    ///     the checks above to act on, so it must be described by the
+    ///     transaction's intent through `manifest::INTENT_DECLARES`, as it
+    ///     would be as the primary. This refuses only; the plumbing every
+    ///     transaction carries is classed `inert` so it is never unclassed.
     ///
     /// Aggregation is deterministic: `effective_instructions` is a plain,
     /// insertion-ordered `Vec` (primary, then CPI-trace pre-order flatten,
@@ -4541,6 +4773,7 @@ impl GraphiteCore {
         effective_instructions: &[crate::tx_pattern_analysis::TransactionInstruction],
         trace_origin_range: &std::ops::Range<usize>,
         every_close_refunds_its_authority: bool,
+        declared_intent: &str,
         artifact: Option<(
             &crate::tx_artifact::ArtifactMessage,
             Option<&crate::tx_artifact::ResolvedLookups>,
@@ -4663,6 +4896,87 @@ impl GraphiteCore {
                 .get(&ix.program_id)
                 .and_then(|m| m.instruction_for(&ix.instruction_discriminator))
                 .map(|i| i.layout_for(ix.account_addresses.len()).len());
+            // External review R3 (2026-10-01): an instruction its program's
+            // manifest does not describe is unverifiable — as the primary it
+            // gets the Unknown tier and no profile approves it. As a DECLARED
+            // sibling (a top-level instruction of the bytes, which L2 holds
+            // the declaration to) it used to be judged with the empty class
+            // and an empty intent, which no check acts on: Token-2022 CPI
+            // Guard `Disable`, `Reallocate` and `WithdrawExcessLamports`
+            // beside a 0.001 SOL transfer came back Clear. It is refused the
+            // same way a declared sibling with no discriminator is. A node of
+            // a CPI trace keeps the warning: trace introspection is an
+            // observation limit, and the callee was invoked by a program the
+            // pipeline judges in its own right.
+            if risk_ctx.manifest_found && layout_len.is_none() && !trace_origin_range.contains(&idx)
+            {
+                let selector: String = ix.instruction_discriminator.chars().take(16).collect();
+                let reason = format!(
+                    "secondary instruction #{idx} (program {}): its instruction (data {selector}…) is not described by the program's manifest — an undescribed instruction of a described program cannot be verified, as a sibling no more than as the primary (R3, P12 fail-closed)",
+                    ix.program_id
+                );
+                verdict = match verdict {
+                    RiskVerdict::Passed => RiskVerdict::Blocked {
+                        pattern: crate::risk_engine::RiskPattern::UnexpectedCpi,
+                        reason,
+                    },
+                    RiskVerdict::Blocked {
+                        pattern: existing,
+                        reason: prior,
+                    } => RiskVerdict::Blocked {
+                        pattern: existing,
+                        reason: format!("{prior} | {reason}"),
+                    },
+                };
+                continue;
+            }
+            // W14 (external review, verified 2026-10-03): a DESCRIBED sibling
+            // whose manifest gives it no class was judged with the empty
+            // class and the empty intent, and no check acts on that pair —
+            // Squads `spendingLimitUse`, which pays out of a vault, came back
+            // Clear beside a 0.001 SOL transfer. As the primary it fails L5
+            // under every intent that does not declare the empty class. A
+            // declared sibling is held to the same table with the
+            // transaction's own intent: an unclassed instruction passes only
+            // where that intent describes it (a swap program's helper inside
+            // a swap). Instructions that move nothing — compute budget, memo,
+            // `SyncNative` — carry the `inert` class and are not unclassed.
+            // A CPI-trace node keeps the observation-limit treatment above.
+            if !trace_origin_range.contains(&idx) {
+                if let Some(def) = self
+                    .registry
+                    .get(&ix.program_id)
+                    .and_then(|m| m.instruction_for(&ix.instruction_discriminator))
+                    .filter(|def| def.security_class().is_empty())
+                {
+                    if let Err(why) = Self::intent_describes_instruction(
+                        declared_intent,
+                        &ix.program_id,
+                        &def.name,
+                        "",
+                        &def.expected_state_changes,
+                    ) {
+                        let reason = format!(
+                            "secondary instruction #{idx} (program {}): {} has no security class in its manifest and the transaction's declared intent does not describe it ({why}) — an unclassed instruction is declared only by an intent that covers it, as a sibling as when primary (W14, P12 fail-closed)",
+                            ix.program_id, def.name
+                        );
+                        verdict = match verdict {
+                            RiskVerdict::Passed => RiskVerdict::Blocked {
+                                pattern: crate::risk_engine::RiskPattern::PermissionEscalation,
+                                reason,
+                            },
+                            RiskVerdict::Blocked {
+                                pattern: existing,
+                                reason: prior,
+                            } => RiskVerdict::Blocked {
+                                pattern: existing,
+                                reason: format!("{prior} | {reason}"),
+                            },
+                        };
+                        continue;
+                    }
+                }
+            }
             let sibling_writable_extras = match (artifact, layout_len) {
                 (Some((message, lookups)), Some(expected))
                     if !trace_origin_range.contains(&idx) =>
@@ -6098,8 +6412,8 @@ impl GraphiteCore {
         // L7: Risk plugin findings (Constitution P8). A `Block` verdict is a
         // binary-and-blocking hard gate regardless of confidence; a `Note` is
         // a non-blocking warning. Plugins can never clear a core block — they
-        // only add evidence. A panicking plugin is isolated and contributes
-        // nothing (it cannot fabricate a block).
+        // only add evidence. A panicking plugin is isolated, and its run is a
+        // block: a security plugin that cannot reach a verdict refuses.
         let plugin_risk = self.plugins.risk_outcome(&ctx);
         let risk_verdict = if plugin_risk.blocked && matches!(risk_verdict, RiskVerdict::Passed) {
             RiskVerdict::Blocked {
@@ -6192,6 +6506,7 @@ impl GraphiteCore {
                 &effective_instructions,
                 &trace_origin_range,
                 closes.every_close_refunds_its_authority,
+                &input.proposed_intent.intent_type,
                 artifact_message
                     .as_ref()
                     .map(|m| (m, resolved_lookups.as_ref().and_then(|r| r.as_ref().ok()))),
@@ -6438,6 +6753,12 @@ impl GraphiteCore {
         // instruction, or a readable inner-instruction report.
         #[cfg_attr(not(feature = "rpc"), allow(unused_mut, unused_variables))]
         let mut observed_cpi_tree: Option<crate::tx_pattern_analysis::CpiTraceNode> = None;
+        // What each OTHER top-level instruction executed, by its index (W14).
+        #[cfg(feature = "rpc")]
+        let mut observed_sibling_trees: Vec<(
+            usize,
+            crate::tx_pattern_analysis::CpiTraceNode,
+        )> = Vec::new();
         // Graphite's OWN state diff, built from RPC. When this is Some it takes
         // precedence over anything the caller supplied — measured evidence
         // outranks a claim about evidence (P5).
@@ -6688,6 +7009,27 @@ impl GraphiteCore {
                                 }
                                 _ => None,
                             };
+                            if let (Some(message), Some(primary), Some(inner)) = (
+                                artifact_message.as_ref(),
+                                located_index,
+                                sim_res.inner_instructions.as_deref(),
+                            ) {
+                                observed_sibling_trees = (0..message.instructions.len())
+                                    .filter(|i| *i != primary)
+                                    .filter(|i| {
+                                        inner.iter().any(|x| usize::from(x.top_level_index) == *i)
+                                    })
+                                    .filter_map(|i| {
+                                        observed_cpi_tree_of(
+                                            message,
+                                            sim_res.loaded_addresses.as_ref(),
+                                            inner,
+                                            i,
+                                        )
+                                        .map(|tree| (i, tree))
+                                    })
+                                    .collect();
+                            }
                         }
                         // Round 17: `err == null` is part of completeness. A
                         // failed execution reports real-looking compute units
@@ -7392,6 +7734,94 @@ impl GraphiteCore {
             (risk_summary, risk_warnings)
         };
 
+        // W14 (external review, verified 2026-10-03): what each OTHER
+        // top-level instruction executed, judged as that instruction's own.
+        // The simulator's callees were checked as one set against the
+        // PRIMARY's allowed CPIs and root, and the CPI-trace rules ran on the
+        // primary's tree only: under a Jupiter route (a trusted root that may
+        // call the token programs), a sibling program's token CPI outside its
+        // own manifest passed, and a sibling's re-entry or sweep was never
+        // looked at. A declared sibling's `cpi_targets` are the caller's
+        // word; these are what ran.
+        #[cfg(feature = "rpc")]
+        let (risk_summary, risk_warnings) = {
+            let mut summary = risk_summary;
+            let mut warnings = risk_warnings;
+            if let Some(message) = artifact_message.as_ref() {
+                let mut known: Vec<String> = crate::tx_pattern_analysis::system_programs();
+                known.extend(
+                    self.registry
+                        .list()
+                        .iter()
+                        .map(|m| m.protocol.program_id.clone()),
+                );
+                for (index, tree) in &observed_sibling_trees {
+                    let Some(top) = message.instructions.get(*index) else {
+                        continue;
+                    };
+                    let ctx =
+                        self.instruction_risk_context(&top.program_id, &hex::encode(&top.data));
+                    let mut callees: Vec<String> = Vec::new();
+                    let mut stack: Vec<&crate::tx_pattern_analysis::CpiTraceNode> =
+                        tree.children.iter().collect();
+                    while let Some(n) = stack.pop() {
+                        callees.push(n.program_id.clone());
+                        stack.extend(n.children.iter());
+                    }
+                    callees.sort();
+                    callees.dedup();
+                    callees.retain(|c| *c != top.program_id);
+                    let cpi_blocked = if ctx.manifest_found {
+                        crate::risk_engine::unexpected_cpi_target(&callees, &ctx.allowed_cpis)
+                            .or_else(|| {
+                                crate::risk_engine::token_cpi_from_untrusted_root(
+                                    &top.program_id,
+                                    &callees,
+                                    &ctx.allowed_cpis,
+                                )
+                            })
+                    } else {
+                        None
+                    };
+                    if let Some(RiskVerdict::Blocked { pattern, reason }) = cpi_blocked {
+                        summary.status = "Blocked".to_string();
+                        summary.findings.push(RiskFinding {
+                            pattern: format!("{pattern:?}"),
+                            reason: format!(
+                                "top-level instruction #{index} (program {}) executed: {reason}",
+                                top.program_id
+                            ),
+                        });
+                    }
+                    if !tree.children.is_empty() {
+                        for f in crate::tx_pattern_analysis::analyze_observed_cpi_trace(
+                            tree,
+                            &known,
+                            ctx.manifest_found,
+                        ) {
+                            let reason = format!(
+                                "observed CPI trace of top-level instruction #{index} (program {}): {}",
+                                top.program_id, f.reason
+                            );
+                            match f.severity {
+                                crate::tx_pattern_analysis::PatternSeverity::Blocked => {
+                                    summary.status = "Blocked".to_string();
+                                    summary.findings.push(RiskFinding {
+                                        pattern: f.pattern.clone(),
+                                        reason,
+                                    });
+                                }
+                                crate::tx_pattern_analysis::PatternSeverity::Warning => {
+                                    warnings.push(reason);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            (summary, warnings)
+        };
+
         // A quarantined program is a hard block, not merely a tier downgrade.
         //
         // Forcing the tier to Unknown alone is not enough: a permissive profile
@@ -7527,10 +7957,18 @@ impl GraphiteCore {
             d.provenance = crate::state_diff::DiffProvenance::CallerSupplied;
             d
         });
+        // W15 (external review, verified 2026-10-03): a protocol plugin's
+        // rules describe an unmanifested program's effects for the
+        // structural check below, but a DIFF of what happened is compared
+        // with the manifest's own declaration only. A plugin rule such as
+        // "reassigns accounts owner" excused UndeclaredOwnerReassignment,
+        // UndeclaredAccountClosure and UndeclaredTokenDebit — a plugin
+        // disarming L4, which P8 forbids (a plugin vetoes or annotates).
+        let diff_declared = &risk_expected_state_changes;
         let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {
             (Some(diff), _) => Self::verify_state_from_diff(
                 diff,
-                &expected_state_changes,
+                diff_declared,
                 &accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas),
                 privileges_grounded,
                 fee_payer_for_diff.as_deref(),
@@ -7543,7 +7981,7 @@ impl GraphiteCore {
             (None, Some(diff)) => {
                 let from_diff = Self::verify_state_from_diff(
                     diff,
-                    &expected_state_changes,
+                    diff_declared,
                     &accounts_for_state_diff(&resolution.resolved_accounts, &effective_metas),
                     privileges_grounded,
                     fee_payer_for_diff.as_deref(),
@@ -7677,7 +8115,9 @@ impl GraphiteCore {
         // L5: Semantic Verification
         let l5_result = self.verify_semantic(
             &input.proposed_intent,
+            &input.program_id,
             &instruction_name,
+            &manifest_risk_class,
             &expected_state_changes,
             manifest_found,
         );
@@ -7894,7 +8334,7 @@ impl GraphiteCore {
         // flagged-simulation case (already folded into risk_summary as a
         // hard Block), must not be reducible to a confidence penalty that a
         // high trust tier or a loose wallet profile threshold can absorb.
-        // GRAPHITE_FINAL_CERTIFICATION_REPORT.md's "CRITICAL #6" originally
+        // docs/phase1-internal-validation-report-2026-08.md's "CRITICAL #6" originally
         // required exactly this hard gate; the later GAP-2026-08-06-3
         // tri-state refactor correctly preserved the confidence PENALTY
         // (so Inconclusive layers never wrongly penalize) but silently
@@ -8012,16 +8452,19 @@ impl GraphiteCore {
                     .findings
                     .iter()
                     .all(|f| f.pattern == "SimulationSpoofing" || f.pattern.ends_with(":warning"));
+                let observation = |shadow: bool| PendingObservation {
+                    audit_trail_id: audit_id.clone(),
+                    program_id: input.program_id.clone(),
+                    usage: usage.clone(),
+                    key: key.to_string(),
+                    shadow,
+                };
                 if sim_flagged == Some(true) {
                     if !structural_layer_failed && blocked_only_by_the_flag {
-                        self.graph()
-                            .record_shadow_simulation(&input.program_id, &usage, Some(key));
-                        self.persist_state_async().await;
+                        self.observe(observation(true)).await;
                     }
                 } else if !structural_layer_failed && risk_summary.status == "Clear" {
-                    self.graph()
-                        .record_simulation_keyed(&input.program_id, &usage, Some(key));
-                    self.persist_state_async().await;
+                    self.observe(observation(false)).await;
                 }
             }
         }
@@ -8871,6 +9314,34 @@ mod tests {
         let err = serde_json::from_value::<VerificationInput>(body)
             .expect_err("a misspelled field must not be dropped silently");
         assert!(err.to_string().contains("signedTransaction"), "{err}");
+    }
+
+    /// W22 (external review): the parameters every client sends are part of
+    /// the schema, and one that is not is refused like any other unknown
+    /// field. `destination` used to be dropped without a word.
+    #[test]
+    fn extracted_parameters_are_the_schema_every_client_sends() {
+        let body = |params: serde_json::Value| {
+            let mut v: serde_json::Value =
+                serde_json::from_str(include_str!("../../examples/verify-input.json")).unwrap();
+            v["proposed_intent"]["extracted_parameters"] = params;
+            serde_json::from_value::<VerificationInput>(v)
+        };
+        let parsed = body(serde_json::json!({
+            "input_token": "SOL", "amount": "1.5", "account_type": "token",
+            "destination": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR", "slippage_bps": 50
+        }))
+        .expect("what the TS SDK, the agent guard and the Python layer send");
+        let params = parsed.proposed_intent.extracted_parameters.unwrap();
+        assert_eq!(
+            params.destination.as_deref(),
+            Some("8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR")
+        );
+        assert_eq!(params.account_type.as_deref(), Some("token"));
+        let err =
+            body(serde_json::json!({ "recipient": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR" }))
+                .expect_err("a parameter outside the schema must not be dropped silently");
+        assert!(err.to_string().contains("recipient"), "{err}");
     }
 
     /// A2-09 (2026-09-29 audit): an RPC diff without the simulator's balance

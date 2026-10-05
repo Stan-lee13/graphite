@@ -163,6 +163,8 @@ struct Knobs {
     units: u64,
     /// Inner instructions: the program index each CPI called.
     inner_program_indexes: Vec<u8>,
+    /// The top-level instruction they ran under (`innerInstructions[].index`).
+    inner_top_level_index: u8,
     /// Bytes served by `getTransaction`, per signature.
     chain: Vec<(String, Vec<u8>)>,
 }
@@ -173,6 +175,7 @@ impl Default for Knobs {
             sim_err: None,
             units: 150,
             inner_program_indexes: vec![],
+            inner_top_level_index: 0,
             chain: vec![],
         }
     }
@@ -227,7 +230,11 @@ fn cluster(knobs: Shared) -> String {
                     let inner_groups = if inner.is_empty() {
                         "[]".to_string()
                     } else {
-                        format!(r#"[{{"index":0,"instructions":[{}]}}]"#, inner.join(","))
+                        format!(
+                            r#"[{{"index":{},"instructions":[{}]}}]"#,
+                            k.inner_top_level_index,
+                            inner.join(",")
+                        )
                     };
                     format!(
                         r#"{{"jsonrpc":"2.0","id":1,"result":{{"context":{{"slot":1}},"value":{{
@@ -737,6 +744,75 @@ async fn an_observed_cpi_target_the_caller_omitted_is_judged_like_a_declared_one
     knobs.lock().unwrap().inner_program_indexes = vec![];
     let r = core.verify_async(&describe(tx_a())).await.unwrap();
     assert!(r.approved, "{}", r.summary);
+}
+
+/// W14 (external review, verified 2026-10-03): what a declared sibling
+/// EXECUTED is judged by its own manifest. The simulator's callees were
+/// checked as one set against the primary's allowed CPIs and root, so a
+/// sibling's call outside its own manifest passed whenever the primary's
+/// manifest allowed it. Here the sibling is a memo (whose manifest allows no
+/// CPI) that the simulation shows calling SPL Token.
+#[tokio::test]
+async fn a_siblings_executed_cpis_are_judged_by_its_own_manifest() {
+    const MEMO: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+    const TOKEN: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+    let dest = strings(&corpus_entry("legacy_single_transfer")["static_keys"])[1].clone();
+    // Legacy message: payer (signer, writable), dest (writable), then System,
+    // Memo and Token read-only. Ix 0: System Transfer; ix 1: memo "hi".
+    let mut message = vec![1u8, 0, 3, 5];
+    for k in [
+        payer_b58(),
+        dest.clone(),
+        SYSTEM.to_string(),
+        MEMO.to_string(),
+        TOKEN.to_string(),
+    ] {
+        message.extend(bs58::decode(k).into_vec().unwrap());
+    }
+    message.extend([7u8; 32]);
+    message.push(2);
+    message.extend([2, 2, 0, 1, 12]);
+    message.extend(transfer_data(2_000_000));
+    message.extend([3, 0, 2, b'h', b'i']);
+    let mut artifact = vec![1u8];
+    artifact.extend([0u8; 64]);
+    artifact.extend(message);
+
+    let mut input = describe(artifact);
+    input.account_addresses = vec![payer_b58(), dest];
+    input.transaction_instructions =
+        vec![graphite_core::tx_pattern_analysis::TransactionInstruction {
+            program_id: MEMO.to_string(),
+            instruction_discriminator: "6869".to_string(),
+            account_addresses: vec![],
+            cpi_targets: vec![],
+        }];
+    let sibling_finding = |r: &VerificationResult| {
+        r.risk_verdict
+            .findings
+            .iter()
+            .any(|f| f.reason.contains("top-level instruction #1") && f.reason.contains(MEMO))
+    };
+
+    let knobs: Shared = Arc::default();
+    let core = core_at(&cluster(Arc::clone(&knobs)));
+    {
+        let mut k = knobs.lock().unwrap();
+        k.inner_program_indexes = vec![4];
+        k.inner_top_level_index = 1;
+    }
+    let r = core.verify_async(&input).await.unwrap();
+    assert!(
+        sibling_finding(&r),
+        "the memo's Token CPI was not judged as the memo's: {:?}",
+        r.risk_verdict
+    );
+    assert!(!r.approved);
+
+    // Control: the memo executed nothing.
+    knobs.lock().unwrap().inner_program_indexes = vec![];
+    let r = core.verify_async(&input).await.unwrap();
+    assert!(!sibling_finding(&r), "{:?}", r.risk_verdict);
 }
 
 // ─── F-16-11: every verdict on record ───────────────────────────────────────

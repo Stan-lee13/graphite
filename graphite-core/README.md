@@ -9,7 +9,7 @@ The Rust verification engine — the heart of Graphite.
 | `account_resolution` | PDA derivation (Solana hash-chain algorithm), account role validation | L1 |
 | `verification` | 8-layer pipeline orchestrator (L1–L8) — implements L2 Instruction Verification and L4 State Verification inline | L2/L4 |
 | `transaction_builder` | Canonical serialization, compute budget estimate | — |
-| `risk_engine` | 10 of the 12 detection patterns in 16 checks, hard gate (the other two come from `tx_pattern_analysis`; `PluginBlock` names a plugin veto) | L7 |
+| `risk_engine` | 10 of the 12 detection patterns in 17 checks, hard gate (the other two come from `tx_pattern_analysis`; `PluginBlock` names a plugin veto) | L7 |
 | `confidence_engine` | Weighted signal scoring + trust tier ceilings | L6 |
 | `policy_engine` | Per-wallet profile thresholds (Treasury, TradingBot, Gaming, Enterprise) | L6 |
 | `simulation_integrity` | 3-signal z-score (compute, writes, CPI hops) with Welford's algorithm + MAD baseline | L3 |
@@ -56,7 +56,7 @@ cargo run --release --bin graphite -- benchmark
 
 ## Protocol Manifests
 
-129 JSON manifests in `protocols/`, 3,195 instructions. Each carries the program
+137 JSON manifests in `protocols/`, 3,504 instructions. Each carries the program
 ID, trust tier, instructions with discriminators, expected accounts and allowed
 CPI targets. Ninety-six of them were generated in Round 18 from each program's
 **own on-chain Anchor IDL** — the account the program itself owns — after the

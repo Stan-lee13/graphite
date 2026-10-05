@@ -1422,7 +1422,16 @@ fn main() {
     // The refusals Graphite makes on purpose, beyond the runtime. Any other
     // reason is a transaction the runtime would run and Graphite would not
     // look at — an outage class, reported as a failure so it is looked at.
-    let deliberate = ["TooLarge", "UnsupportedVersion"];
+    // `TooManyAccountLocks` and `DuplicateAccountKey` are refused by the bank
+    // after sanitize (`validate_account_locks`), so the sanitizer accepts what
+    // can never run; Graphite refuses them at the same point it refuses
+    // everything else.
+    let deliberate = [
+        "TooLarge",
+        "UnsupportedVersion",
+        "TooManyAccountLocks",
+        "DuplicateAccountKey",
+    ];
     let unexpected: Vec<&String> = tally
         .graphite_stricter
         .keys()
