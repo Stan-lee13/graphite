@@ -121,6 +121,17 @@ submitted — and nothing is signed under a residual the operator has not accept
   (`IntentGroundingError`), and the parse must echo the text it was given. The intent
   sent to the Core is the grounded one, so the Core's transaction-versus-intent check no
   longer compares the AI's output with itself.
+- **A swap is grounded the same way, and then held to it (Round 25, second external
+  review).** `groundSwapRequest` reads the amount and both tokens from the user's text
+  ("swap <amount> <token> for <token>" or "buy <token> with <amount> <token>"; one amount;
+  symbols from `KNOWN_TOKEN_MINTS`, any other token by its mint address) and the AI layer's
+  reading must agree on all three. The exact transaction is then simulated and must spend no
+  more than the requested amount of the requested token (plus 0.01 SOL for fees and rent),
+  spend no other token, and deliver the requested token (`assertSwapEffectMatches`), before
+  the Core is asked. A request that says what it receives but not what it spends is refused.
+- **A request that negates or cancels what it names is refused** (`assertAffirmative`):
+  "Don't send 1 SOL to …", "Never swap …", "Cancel the transfer …". Grounding establishes
+  what a request names; this establishes that it asks for it. Rephrase to act.
 - Durable-nonce shapes are refused at build: `lastValidBlockHeight` does not bound them.
 - **The operator's spend limits (`spend-policy.ts`, Round 24).** Graphite cannot know
   whether a person wanted a request; the amount bounds the damage when a model was talked
@@ -128,8 +139,10 @@ submitted — and nothing is signed under a residual the operator has not accept
   `GRAPHITE_ALLOWED_DESTINATIONS` lists where a transfer may go; a malformed value is a
   startup error. A transfer is checked on its grounded amount and destination before
   anything is built. A swap is checked on what the exact transaction takes out of the
-  wallet, measured by simulating it (`measureWalletOutflow`: lamports including the fee
-  and wrapped SOL, and every token account the wallet owns): over the cap is refused, a
+  wallet, from ONE simulation of its bytes (`measureWalletEffect`: the simulation's own pre-
+  and post-balances, lamports including the fee and wrapped SOL, and every token account the
+  wallet owns; Round 25 replaced a separate account read that a concurrent deposit could
+  mask): over the cap is refused, a
   swap that spends any other token is refused because a lamport cap cannot price it, and
   with an allowlist but no cap every swap is refused, because a swap has no destination
   to check. Limits only narrow; nothing here can make a refused transaction executable.

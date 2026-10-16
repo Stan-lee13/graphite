@@ -11,7 +11,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 **Current status, in one place: [docs/CURRENT.md](docs/CURRENT.md).** Every dated report under `docs/` is a historical record and points there.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1849_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1913_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-137-blue?style=flat-square)](docs/protocol-coverage.md)
@@ -19,6 +19,55 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 [![Version](https://img.shields.io/badge/Version-v0.2.0--beta-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
 
 </div>
+
+---
+
+## For Judges and Reviewers: Graphite in Five Minutes
+
+**What it is.** A verification gate between an AI agent and its Solana key. The agent says what it is
+doing ("Swap 1 SOL for USDC"); Graphite parses the exact transaction bytes, simulates them, diffs the
+account state they change, and approves only if the transaction does what the request said, with
+the reason for every refusal. No model is in the decision path.
+
+**See it refuse something (about two minutes, after one build):**
+
+```bash
+cd graphite-core
+cargo build --release --bin graphite
+# A token transfer that also calls an unverified program: refused, layer by layer, with reasons.
+./target/release/graphite explain --file ../examples/verify-malicious.json
+# Real mainnet exploit transactions and benign ones, scored.
+./target/release/graphite benchmark
+```
+
+**See an agent get talked into it and stopped** (the agent guard, the signing boundary every
+integration uses; loopback mocks, no network, no keys):
+
+```bash
+cd integrations/agent-guard
+npm ci --ignore-scripts
+npm test
+```
+
+Among the 195 tests: "Swap 1 SOL for USDC" handed a route that spends 2 SOL, 100 SOL, USDT, or
+delivers BONK is refused before Graphite is asked; "Don't send 1.5 SOL to …" is refused, not
+executed; a model's reading of the request that disagrees with the user's own words is refused;
+nothing is ever signed before the verdict.
+
+**Why you can believe the numbers:**
+
+| Claim | Evidence |
+|---|---|
+| It behaves on real traffic | 48,855 executed mainnet transactions from four days, run through the whole pipeline on their real bytes: 0 parse failures, 0 verify errors, every changed verdict attributed ([round report](docs/round24-the-intent-is-the-class-2026-10-03.md); samples by slot list and SHA-256 in [`tools/mainnet-sample/SAMPLES.md`](tools/mainnet-sample/SAMPLES.md)) |
+| Its fixes are real | every security fix has a test that fails without it, and each fix was reverted once to prove the test catches it ([`AUDIT/01-findings.md`](AUDIT/01-findings.md), break log) |
+| It parses what the network runs | a runtime oracle compares Graphite's parser with the validator's own decoder on ~628,500 generated frames per CI seed: never looser |
+| Agents can use it today | SolanaAgentKit, the Vercel AI SDK and an MCP server, all signing through [`integrations/agent-guard`](integrations/agent-guard/README.md) |
+| It covers real protocols | 137 manifests, 3,504 instructions, 113 with a measured `BattleTested` tier ([coverage](docs/protocol-coverage.md)) |
+
+**What it is not, yet:** independently audited (every review here is internal engineering work
+plus one external review, answered item by item), or publicly deployed. A fresh instance approves
+nothing until it has earned simulation evidence from an RPC; that is deliberate. Open items are
+listed, with their measured cost, in [`AUDIT/FINAL.md`](AUDIT/FINAL.md).
 
 ---
 
@@ -66,13 +115,13 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,849 tests — zero setup (1,864 total; 15 ignored: network- or
+# Run 1,913 tests — zero setup (1,925 total; 12 ignored: network- or
 # sample-dependent, plus one soak benchmark, run explicitly with --ignored)
-cargo test --release
-# summed across the test binaries: 1849 passed; 0 failed; 15 ignored
+cargo test --release --all-features
+# summed across the test binaries: 1913 passed; 0 failed; 12 ignored
 
 # The same gate CI runs on the feature matrix: the library with no features
-# (341 tests) and the cli-only build (1,594) must pass too.
+# (356 tests) and the cli-only build (1,643) must pass too.
 cargo test --release --no-default-features --lib
 cargo test --release --no-default-features --features cli
 

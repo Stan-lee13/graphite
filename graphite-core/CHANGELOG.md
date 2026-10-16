@@ -3,6 +3,17 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 25 — the swap is the one asked for] — 2026-10-16
+
+Report: `docs/round25-the-swap-is-the-one-asked-for-2026-10-16.md`. Findings: `AUDIT/01-findings.md` (second external review, E1–E10). Internal engineering work, not an independent audit.
+
+- **Agent guard: a swap is grounded and held to the request (E1).** `groundSwapRequest` reads the amount and both tokens from the user's text and requires the AI layer's reading to agree; `assertSwapEffectMatches` requires the simulated transaction to spend no more than that amount of that token (plus `SWAP_SOL_OVERHEAD_LAMPORTS`), spend no other token, and deliver the requested one, before the Core is asked. `KNOWN_TOKEN_MINTS` (SOL, USDC, USDT, JUP, BONK, mSOL, JitoSOL; checked against Jupiter's verified list), any other token by mint address.
+- **Agent guard: negated requests refused (E2).** `assertAffirmative` on every transfer and swap.
+- **Agent guard: one-snapshot effect, bounded reads, exact lamports (E4–E6).** `measureWalletEffect` replaces `measureWalletOutflow` and reads the simulation's own pre/post balances and token balances; `readJsonBounded` (32 MiB) on every raw JSON-RPC answer; `exactLamports` refuses non-safe integers.
+- **L8: the witness supplies the bytes (E3, E3b).** `audit_execution` asks every source that reports the signature for its bytes, primary first; a missing or unbound answer is recorded and the next source asked; an approved record is not reconciled as executed while a source served substituted bytes.
+- **Wire: `TooManyInstructions` (E8).** Legacy and v0 messages with more than `MAX_INSTRUCTION_TRACE_LENGTH` (64) top-level instructions are refused at parse; the runtime oracle lists it as deliberate. The 12-signature packet limit (E7) is implied by the 1232-byte bound and pinned by a test.
+- **Tooling and docs (E9, E10).** The nine version-0 onboarding scripts say on every run that their output excludes v1; `docs/CURRENT.md` no longer says the guard cannot build v1. README: a five-minute section for judges and reviewers.
+
 ## [Round 24 — the intent is the class] — 2026-10-03
 
 Report: `docs/round24-the-intent-is-the-class-2026-10-03.md`. Findings: `AUDIT/01-findings.md` (external review section, Round 24 table); roadmap gap: `AUDIT/02-roadmap-gap.md`. Internal engineering work, not an independent audit.

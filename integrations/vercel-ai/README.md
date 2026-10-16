@@ -54,6 +54,10 @@ bounds hold whatever it writes:
   SOL included) before it is signed; over the cap is refused, and so is a swap that spends
   any other token, which a lamport cap cannot price. A destination allowlist bounds
   transfers only, so with an allowlist and no cap every swap is refused.
+- **The swap must be the one the user asked for.** The amount and both tokens are read
+  from the request's own text, and the simulated transaction must spend no more than that
+  amount of that token, spend nothing else, and deliver the requested token. A request that
+  negates or cancels what it names ("don't swap …") is refused.
 - **`GRAPHITE_TOOL_APPROVAL`** marks every fund-moving tool `user-approval`, so the AI SDK
   asks a person before the tool runs. The SDK enforces it where the application passes it
   to `generateText`/`streamText`; a tool cannot force its caller to, which is why the cap

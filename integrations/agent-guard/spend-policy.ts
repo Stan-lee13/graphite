@@ -91,7 +91,7 @@ export function assertTransferAllowed(policy: SpendPolicy, destination: string, 
 /** What a swap takes out of the wallet, measured on the transaction itself. */
 export interface MeasuredOutflow {
   lamports: bigint;
-  tokens: readonly { mint: string; account: string; amount: bigint }[];
+  tokens: readonly { mint: string; amount: bigint }[];
 }
 
 /**
@@ -114,7 +114,7 @@ export function assertSwapAllowed(policy: SpendPolicy, outflow: MeasuredOutflow)
   const priced = outflow.tokens.find((t) => t.amount > 0n);
   if (priced !== undefined) {
     throw new SpendPolicyRefusal(
-      `the swap spends ${priced.amount} of token ${priced.mint} from ${priced.account}, which a lamport cap ` +
+      `the swap spends ${priced.amount} of token ${priced.mint} from the wallet's token accounts, which a lamport cap ` +
         "(GRAPHITE_MAX_TRANSFER_LAMPORTS) cannot bound",
     );
   }

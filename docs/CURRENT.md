@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-03, after Round 24 — external review R2/R3 and W11–W25 (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-10-16, after Round 25 — the second external review, E1–E10 (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -274,10 +274,13 @@ transaction under the stated threat model, and no external party has yet tried.
   (Round 24, R2-c).** Since R2 an intent declares only the security classes
   `manifest::INTENT_DECLARES` lists, so these are refused whatever label they
   carry: 219 of 48,855 executed mainnet transactions (roadmap R-M14).
-- **Graphite does not bind amounts.** `ExtractedParameters.amount` is carried,
-  not compared; lamports leaving the signer's wallet under a declared debit are
-  disclosed (`SignerLamportsOutsideDeclaredDebit`), not refused. The agent
-  guard's spend cap bounds a transfer's amount and a swap's simulated outflow.
+- **The Core does not bind amounts; the agent guard does.** `ExtractedParameters.amount`
+  is carried, not compared, by the Core; lamports leaving the signer's wallet under a
+  declared debit are disclosed (`SignerLamportsOutsideDeclaredDebit`), not refused. The
+  agent guard binds a transfer to the amount and destination in the user's text, and a
+  swap to the amount and both tokens in it, checked against a simulation of the exact
+  bytes (Round 25); its spend cap bounds both. A direct `/verify` caller binds them
+  itself. A swap's output amount is not compared with a minimum.
 - **A lookup table's freshness and a registry record's signatures are not
   checked** (Round 24, W17-c, W11-c); see `SECURITY.md`.
 - **The Token-2022 model replays what the simulator reports it executed.**
@@ -330,10 +333,11 @@ transaction under the stated threat model, and no external party has yet tried.
 - **The runtime oracle covers what it generates.** Agave's `wincode` decode
   path is not a second oracle; the generator is seeded and structure-aware,
   not coverage-guided.
-- **The reference bridge builds legacy and v0, not v1.** v0 through lookup
-  tables since Round 22, with every signing guarantee of the legacy path;
-  web3.js 1.x cannot compile v1, and Graphite verifies v1 bytes from any
-  builder that can.
+- **The agent guard's public API is still web3.js 1.x.** It builds legacy, v0
+  (lookup tables, Round 22) and v1 (R-P8, compiled and signed through
+  `@solana/kit`), but `GraphiteGuard`'s `Connection` and public types are
+  web3.js 1.x, whose own RPC reads are not bounded the way the guard's raw
+  JSON-RPC reads are (`readJsonBounded`, Round 25). Roadmap R-M15.
 - **Manifests are grounded where programs were seen running.** 383 of the 3,195
   manifest instructions of the Round 22 registry have been observed executing (three block samples plus
   2,998 per-program transactions); the rest are grounded in their programs'
@@ -398,18 +402,18 @@ transaction under the stated threat model, and no external party has yet tried.
 
 ## Numbers (as of this page's commit)
 
-1,908 Rust tests passing in the all-features build (135 binaries; 12 ignored:
+1,913 Rust tests passing in the all-features build (135 binaries; 12 ignored:
 network- or sample-dependent, plus one soak benchmark; for Round 24 the mainnet
 conformance test was run on four days of samples against `eb17aa5` and this
-round, under both label sets); 356 in the featureless library build; 1,641 in
-the cli-only build; 183 TypeScript tests in the agent guard, 6 in the SAK
+round, under both label sets); 356 in the featureless library build; 1,643 in
+the cli-only build; 195 TypeScript tests in the agent guard, 6 in the SAK
 adapter, 7 in the Vercel AI adapter, 8 in the MCP server; 38 in the TypeScript
 SDK (34 hermetic, 4 against a live server — run in CI's container job); 45 Go;
 35 Python; 7 dashboard; the runtime oracle over the corpus and ~628,500 frames
 per CI seed, bincode and wincode, legacy, v0 and v1, never looser than agave.
 Clippy `-D warnings` (all three feature legs) and fmt clean on rustc 1.98.1.
 Reproduced from `cargo test` / `npm test` / `go test` / `pytest` output on
-2026-10-05, not estimated. CI for the
+2026-10-16, not estimated. CI for the
 commit is the GitHub Actions run for that SHA — the runs endpoint, not the
 combined-status endpoint.
 
@@ -417,6 +421,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-16 | [round25-the-swap-is-the-one-asked-for-2026-10-16.md](round25-the-swap-is-the-one-asked-for-2026-10-16.md) | A second external review (E1–E10): the guard grounded that a request asked for a swap, not which one — now the amount and both tokens come from the user's text and the simulated transaction is held to them; negated requests refused; the spend cap reads one simulation snapshot; the guard's RPC reads bounded and its lamports exact; L8 asks the witness for the bytes, so neither a primary without them nor one serving substituted bytes can silence a blocked transaction's alarm; more than 64 top-level instructions refused in every format. One item (the legacy 12-signature limit) not a finding |
 | 2026-10-03 | [round24-the-intent-is-the-class-2026-10-03.md](round24-the-intent-is-the-class-2026-10-03.md) | External review R2/R3 reproduced on `eb17aa5` (a `transfer` label got L5 Passed and L7 Clear for Squads drains, Bubblegum `delegate`, `MintTo`/`Burn`) and fixed with one intent-to-class table; control changes by name, delegation, switch and admin signer; W11–W25 verified and fixed or documented; the Vercel AI SDK and MCP integrations; eight more manifests (137 / 3,504, 113 battle-tested). Four days of mainnet: 302 newly refused, 0 freed, 0 approved; one more P1 (R3-b) found by that measurement and fixed |
 | 2026-10-01 | [round23-the-audit-closed-at-the-root-2026-09-30.md](round23-the-audit-closed-at-the-root-2026-09-30.md) | A six-area audit of the whole repository at `3327fcf` (`AUDIT/`): no P0, four P1s (a close with a trailing byte, hand-overs as primary and as sibling, quarantine of the primary only), 20 P2s and 54 P3s, each fixed at its root with a test that fails on `3327fcf`. A review of the fixes found what they broke (F1–F15), and the full suite and a native-manifest sweep found three more: staking refused as a hand-over (F16), a fixture without account names (F17), and a durable-nonce opt-in that could never approve (F18). Four days of mainnet against `3327fcf`: 461 transactions freed, 9 newly refused. Verdict in `AUDIT/FINAL.md`: a supervised pilot, not independently audited |
 | 2026-09-27 | [round22-the-rest-of-the-list-2026-09-27.md](round22-the-rest-of-the-list-2026-09-27.md) | Round 21's open items, each measured first. A transfer hook that runs a program is bounded by the bytes (nothing Token-2022 can hand it signs; every writable one is its own) and no longer blocks on sight; the fee landing margin is removed — a pending schedule is always judged; privileges are the runtime's (agave's demotion); Anchor's absent optional accounts recognised (676 slots from IDLs and traffic); every manifest grounded in 2,998 of its programs' own transactions — Jupiter's token-account pins, a placeholder Stake manifest and a swapped BPF Loader layout rebuilt from their interfaces, sixteen remaining-account interfaces declared (45,253 of 45,282 executed instructions clean); declared siblings counted by their writable extras like the primary (live mainnet RPC: risk Clear 24 → 33 of 40). The bridge builds v0. 71% of drainer refusals are bots' own IDL-less programs; the heuristic stays. Three days of mainnet: 230 Blocked → Clear, 0 the other way |

@@ -472,6 +472,10 @@ fn every_byte_level_mutation_is_read_the_same_way_on_both_sides() {
                     ArtifactParseError::TooManyAccountLocks { .. } => {
                         "more accounts than the bank locks"
                     }
+                    // The runtime's 64-entry instruction trace (2026-10-16).
+                    ArtifactParseError::TooManyInstructions { .. } => {
+                        "more instructions than the trace holds"
+                    }
                     // Round 19: the bank's lock validation, which neither
                     // web3.js nor sanitize applies.
                     ArtifactParseError::DuplicateAccountKey { .. } => "account loaded twice",

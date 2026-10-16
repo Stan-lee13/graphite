@@ -6,6 +6,19 @@ Downloads a recent real transaction per target program (getSignaturesForAddress
 actually consumes, and writes it to tests/fixtures/. The result is genuine
 on-chain data — proof the parser handles real transaction shapes.
 """
+
+# VERSION 0 ONLY (scripts/README.md, "Which tools see v1"): this one-off
+# onboarding/census script asks the RPC for maxSupportedTransactionVersion 0
+# and parses the `json` encoding's legacy/v0 shape, so every v1 transaction is
+# left out of what it reads. Its output is for reviewing a manifest, never for
+# measuring traffic; it says so on every run.
+import sys as _v0_sys
+
+print(
+    "[graphite] version-0 tool: v1 transactions are excluded from this output; "
+    "do not use it to measure traffic (scripts/README.md).",
+    file=_v0_sys.stderr,
+)
 import json
 import sys
 import urllib.request

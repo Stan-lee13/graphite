@@ -239,6 +239,9 @@ function approvePayload(wallet: Keypair) {
   };
 }
 
+/** The wallet's account for what a swap delivers (a fixed, valid address). */
+const OUT_ACCOUNT = "p2Yicb86aZig616Eav2VWG9vuXR5mEqhtzshZYBxzsV";
+
 /** A payload addressed to Jupiter V6 (its contents are the Core's to judge). */
 function jupiterPayload(wallet: Keypair) {
   return {
@@ -247,6 +250,7 @@ function jupiterPayload(wallet: Keypair) {
     accounts: [
       { pubkey: wallet.publicKey.toBase58(), isSigner: true, isWritable: true },
       { pubkey: DEST, isSigner: false, isWritable: true },
+      { pubkey: OUT_ACCOUNT, isSigner: false, isWritable: true },
     ],
     instructionData: [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14],
   };
@@ -297,7 +301,7 @@ test("A5-01: executeSwap refuses a request whose text does not ask for a swap", 
 });
 
 test("A5-01: the Core is told swap, not the AI layer's wording of it", async () => {
-  const h = await harness();
+  const h = await harness({ rpc: swapLedger(10 * SOL - SOL - 5_000) });
   try {
     h.ai.answer.set("POST /parse", { status: 200, body: swapParse("exchange") });
     const outcome = await h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet));
@@ -487,15 +491,28 @@ test("spend policy: a destination outside the allowlist is refused; inside it, t
 
 const SYSTEM = "11111111111111111111111111111111";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const USDT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+const BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
+const JUP = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN";
 const WSOL = "So11111111111111111111111111111111111111112";
 const SOL = 1_000_000_000;
 
-function swapLedger(walletAfter: number, token?: { mint: string; before: bigint; after: bigint }) {
+/**
+ * A swap as the RPC would simulate it: the wallet's lamports before (10 SOL by
+ * default) and after, a token account it spends from (`DEST`), and the account
+ * it receives into (`OUT_ACCOUNT`, created by the route; 150 USDC by default).
+ */
+function swapLedger(
+  walletAfter: number,
+  token?: { mint: string; before: bigint; after: bigint },
+  received: { mint: string; amount: bigint } | null = { mint: USDC, amount: 150_000_000n },
+  walletBefore: number = 10 * SOL,
+) {
   return (wallet: Keypair) => {
     const w = wallet.publicKey.toBase58();
     return {
       ledger: {
-        [w]: { lamports: 10 * SOL, owner: SYSTEM },
+        [w]: { lamports: walletBefore, owner: SYSTEM },
         ...(token
           ? { [DEST]: { lamports: 2_039_280, owner: SPL_TOKEN, data: tokenAccountData(token.mint, w, token.before) } }
           : {}),
@@ -505,7 +522,11 @@ function swapLedger(walletAfter: number, token?: { mint: string; before: bigint;
         ...(token
           ? { [DEST]: { lamports: 2_039_280, owner: SPL_TOKEN, data: tokenAccountData(token.mint, w, token.after) } }
           : {}),
+        ...(received
+          ? { [OUT_ACCOUNT]: { lamports: 2_039_280, owner: SPL_TOKEN, data: tokenAccountData(received.mint, w, received.amount) } }
+          : {}),
       },
+      decimals: { [USDC]: 6, [USDT]: 6, [BONK]: 5 },
     };
   };
 }
@@ -523,11 +544,14 @@ test("spend policy: a swap within the cap, measured on the transaction, goes to 
     const outcome = await h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet));
     assert.equal(outcome.executed, false, "the loopback Core blocked; the policy only narrows");
     assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 1);
-    const sim = h.rpc.calls.find(
-      (c) => c.method === "simulateTransaction" && JSON.stringify(c.params).includes('"addresses"'),
+    const sims = h.rpc.calls.filter((c) => c.method === "simulateTransaction");
+    assert.ok(sims.length >= 1, "the effect was measured by a simulation");
+    assert.ok(sims.every((c) => (c as { signed?: boolean }).signed === false), "never signed");
+    assert.equal(
+      h.rpc.calls.filter((c) => c.method === "getMultipleAccounts").length,
+      0,
+      "the balances are the simulation's own, not a separate read",
     );
-    assert.ok(sim, "the outflow was measured by a simulation");
-    assert.equal((sim as { signed?: boolean }).signed, false, "never signed");
   } finally {
     await h.close();
   }
@@ -563,7 +587,7 @@ test("spend policy: wrapped SOL leaving the wallet counts against the lamport ca
 test("spend policy: a swap spending a token a lamport cap cannot price is refused", async () => {
   const h = await swapUnder(
     { maxTransferLamports: 100n * BigInt(SOL) },
-    swapLedger(10 * SOL - 5_000, { mint: USDC, before: 5_000_000n, after: 0n }),
+    swapLedger(10 * SOL - 5_000, { mint: USDC, before: 5_000_000n, after: 0n }, { mint: JUP, amount: 1_000_000n }),
   );
   try {
     await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /spends 5000000 of token EPjF/);
@@ -580,5 +604,171 @@ test("spend policy: a destination list alone cannot bound a swap, so the swap is
     assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
   } finally {
     await h.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// External review (2026-10-16): the swap path grounded only that the request
+// asks for A swap on a swap program. "Swap 1 SOL for USDC" signed whatever
+// route it was handed if the Core found the route well-formed, and "Don't
+// send 5 SOL to <address>" was a transfer of 5 SOL. Each case below goes
+// through the whole executeSwap / executeTransfer path; "the Core was asked"
+// is the step after every guard check.
+
+function coreAsked(h: Harness): number {
+  return h.core.calls.filter((c) => c.method === "POST /verify").length;
+}
+
+function parse(text: string, params: Record<string, string>, intent_type = "swap") {
+  return { intent_type, raw_natural_language: text, confidence_of_parse: 0.99, extracted_parameters: params };
+}
+
+async function swapCase(
+  text: string,
+  params: Record<string, string>,
+  rpc: ReturnType<typeof swapLedger>,
+): Promise<Harness> {
+  const h = await harness({ rpc });
+  h.ai.answer.set("POST /parse", { status: 200, body: parse(text, params) });
+  return h;
+}
+
+const SOL_FOR_USDC = { input_token: "SOL", output_token: "USDC", amount: "1" };
+/** 1 SOL, the 5,000-lamport fee and the new account's rent leave the wallet. */
+const HONEST_AFTER = 10 * SOL - SOL - 5_000 - 2_039_280;
+
+test("swap grounding: an honest swap of the requested amount and tokens goes to the Core", async () => {
+  for (const text of ["Swap 1 SOL for USDC", "Swap 1 SOL for USDC with 1% slippage", "Buy USDC with 1 SOL"]) {
+    const h = await swapCase(text, SOL_FOR_USDC, swapLedger(HONEST_AFTER));
+    try {
+      const outcome = await h.agent.executeSwap(text, jupiterPayload(h.wallet));
+      assert.equal(outcome.executed, false, "the loopback Core blocked");
+      assert.equal(coreAsked(h), 1, text);
+    } finally {
+      await h.close();
+    }
+  }
+});
+
+test("swap grounding: a route spending more SOL than requested is refused before the Core", async () => {
+  // 2 SOL, and 100 SOL, for a request of 1 SOL.
+  for (const [before, after] of [
+    [10 * SOL, 8 * SOL - 5_000],
+    [200 * SOL, 100 * SOL - 5_000],
+  ]) {
+    const h = await swapCase(SWAP_REQUEST, SOL_FOR_USDC, swapLedger(after, undefined, undefined, before));
+    try {
+      await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), (e: unknown) => {
+        assert.ok(e instanceof IntentGroundingError, String(e));
+        assert.match((e as Error).message, /takes \d+ lamports of SOL out of the wallet, more than 1000000000/);
+        return true;
+      });
+      assert.equal(coreAsked(h), 0);
+    } finally {
+      await h.close();
+    }
+  }
+});
+
+test("swap grounding: a route delivering BONK for a USDC request is refused", async () => {
+  const h = await swapCase(SWAP_REQUEST, SOL_FOR_USDC, swapLedger(HONEST_AFTER, undefined, { mint: BONK, amount: 9n }));
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /asks for USDC; the transaction delivers none of it/);
+    assert.equal(coreAsked(h), 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("swap grounding: a route spending USDT for a SOL request is refused", async () => {
+  const h = await swapCase(
+    SWAP_REQUEST,
+    SOL_FOR_USDC,
+    swapLedger(10 * SOL - 5_000, { mint: USDT, before: 5_000_000n, after: 0n }),
+  );
+  try {
+    await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /spends 5000000 base units of Es9v/);
+    assert.equal(coreAsked(h), 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("swap grounding: a token-for-token swap is held to the token amount requested", async () => {
+  const text = "Swap 150 USDC for SOL";
+  const params = { input_token: "USDC", output_token: "SOL", amount: "150" };
+  // Spends 150 USDC and receives SOL: goes to the Core.
+  let h = await swapCase(text, params, swapLedger(10 * SOL + SOL / 2, { mint: USDC, before: 150_000_000n, after: 0n }, null));
+  try {
+    await h.agent.executeSwap(text, jupiterPayload(h.wallet));
+    assert.equal(coreAsked(h), 1);
+  } finally {
+    await h.close();
+  }
+  // Spends 200 USDC for a request of 150: refused.
+  h = await swapCase(text, params, swapLedger(10 * SOL + SOL / 2, { mint: USDC, before: 200_000_000n, after: 0n }, null));
+  try {
+    await assert.rejects(h.agent.executeSwap(text, jupiterPayload(h.wallet)), /150 USDC \(150000000 base units\); the transaction takes 200000000/);
+    assert.equal(coreAsked(h), 0);
+  } finally {
+    await h.close();
+  }
+});
+
+test("swap grounding: an AI reading that disagrees with the text is refused before anything is built", async () => {
+  for (const [params, why] of [
+    [{ ...SOL_FOR_USDC, amount: "100" }, /read the amount as "100"; the request says "1"/],
+    [{ ...SOL_FOR_USDC, output_token: "BONK" }, /read the token received as "BONK"; the request asks for USDC/],
+    [{ ...SOL_FOR_USDC, input_token: "USDT" }, /read the token spent as "USDT"; the request spends SOL/],
+  ] as const) {
+    const h = await swapCase(SWAP_REQUEST, params, swapLedger(HONEST_AFTER));
+    try {
+      await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), why);
+      assert.equal(coreAsked(h), 0);
+      assert.equal(h.rpc.calls.length, 0, "nothing reached the RPC");
+    } finally {
+      await h.close();
+    }
+  }
+});
+
+test("swap grounding: a request that does not say what it spends is refused", async () => {
+  for (const text of ["Buy 5 SOL with USDT", "Swap SOL for USDC", "Swap 1 SOL for USDC and 2 SOL for BONK"]) {
+    const h = await swapCase(text, SOL_FOR_USDC, swapLedger(HONEST_AFTER));
+    try {
+      await assert.rejects(h.agent.executeSwap(text, jupiterPayload(h.wallet)), IntentGroundingError);
+      assert.equal(coreAsked(h), 0, text);
+    } finally {
+      await h.close();
+    }
+  }
+});
+
+test("negation: a request that negates or cancels what it names is refused, transfer and swap", async () => {
+  for (const text of [
+    `Don't send 1.5 SOL to ${DEST}`,
+    `do not transfer 1.5 SOL to ${DEST}`,
+    `Never send 1.5 SOL to ${DEST}`,
+    `Cancel the transfer of 1.5 SOL to ${DEST}`,
+    `I said don\u2019t send 1.5 SOL to ${DEST}`,
+  ]) {
+    const h = await harness();
+    try {
+      h.ai.answer.set("POST /parse", { status: 200, body: honestParse(text) });
+      await assert.rejects(h.agent.executeTransfer(text), /negates or cancels/, text);
+      assert.equal(coreAsked(h), 0, text);
+    } finally {
+      await h.close();
+    }
+  }
+  for (const text of ["Don't swap 1 SOL for USDC", "do not trade 1 SOL for USDC", "Never swap 1 SOL for USDC", "Don't buy USDC with 1 SOL"]) {
+    const h = await swapCase(text, SOL_FOR_USDC, swapLedger(HONEST_AFTER));
+    try {
+      await assert.rejects(h.agent.executeSwap(text, jupiterPayload(h.wallet)), /negates or cancels/, text);
+      assert.equal(coreAsked(h), 0, text);
+      assert.equal(h.rpc.calls.length, 0, text);
+    } finally {
+      await h.close();
+    }
   }
 });

@@ -43,6 +43,10 @@ approves is signed and submitted on whatever cluster `SOLANA_RPC_URL` names.
   built. A swap's outflow is measured by simulating the exact transaction (lamports out of
   the wallet, fee and wrapped SOL included) before it is signed: over the cap is refused,
   and so is a swap that spends any other token, which a lamport cap cannot price.
+- **The swap must be the one the user asked for.** The amount and both tokens are read
+  from the request's own text, and the simulated transaction must spend no more than that
+  amount of that token, spend nothing else, and deliver the requested token. A request that
+  negates or cancels what it names ("don't send …") is refused.
 - **A person confirms every fund-moving call** (`GRAPHITE_MCP_CONFIRMATION=elicit`, the
   default): the server asks through MCP elicitation, showing the request the guard will act
   on. A client that cannot elicit is refused, not executed for. Running without a person in

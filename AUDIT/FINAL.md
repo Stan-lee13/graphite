@@ -1,8 +1,9 @@
-# AUDIT FINAL — verdict (2026-10-03, after Round 24)
+# AUDIT FINAL — verdict (2026-10-16, after Round 25)
 
 **Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
 fixed in Round 23. An external review of the result followed (R1–R26 with W1–W26); its items were
-re-verified one at a time and answered through `eb17aa5` and Round 24. **Internal engineering
+re-verified one at a time and answered through `eb17aa5` and Round 24; a second external review
+(E1–E10) was answered in Round 25. **Internal engineering
 work by the maintainer and AI engineering agents, plus one external review answered here. Not an
 independent third-party audit and not a certification.** The independent audit remains an owner
 decision (R-M4).
@@ -38,6 +39,7 @@ This is **not** a "0 issues" verdict.
 | Audit areas A1–A6 (Round 23) | 0 | 4 | 20 | 54 | 3 owner decisions, 3 coverage gaps |
 | Review of the fixes and the suite (F1–F18) | 0 | 1 candidate (F3) | 5 | 9 | 2 test-quality, 2 nits, 1 rejected (F6) |
 | External review R1–R12 and W1–W26 | 0 | 4 (R2; R3 and W14-a, which completes it; R3-b, from this round's measurement) | 15 (R1; 13 in Round 24, one disclosed rather than refused; R11 open) | 22 (21 fixed; W7 open) | R4–R10 fixed (documents, schemas, bridge); W24 test quality; 6 documented limitations; owner items |
+| Second external review E1–E10 (Round 25) | 0 | 1 by mechanism (E1: a swap not held to the request) | 3 (E2, E3b, E4) | 5 (E3, E5, E6, E8, E9) and 1 documentation (E10) | E7 not a finding |
 
 - The R2 and R3 cases each got **L5 Passed and L7 Clear** on `eb17aa5`, measured in its own build.
   The review's recipe, with seeded evidence and a simulation, reported `approved: true` for one of
@@ -49,18 +51,19 @@ This is **not** a "0 issues" verdict.
 
 ## Evidence
 
-- **Tests:** 1,908 Rust tests pass in the all-features suite (135 binaries, 12 ignored: network-
-  or sample-dependent, plus one soak benchmark), 356 in the featureless library build and 1,641
-  in the cli-only build. The TypeScript suites pass: 183 in the agent guard, 34 in the SDK (4 more
+- **Tests:** 1,913 Rust tests pass in the all-features suite (135 binaries, 12 ignored: network-
+  or sample-dependent, plus one soak benchmark), 356 in the featureless library build and 1,643
+  in the cli-only build. The TypeScript suites pass: 195 in the agent guard, 34 in the SDK (4 more
   need a live server), 7 in the Vercel AI adapter, 8 in the MCP server, 6 in the SolanaAgentKit
   adapter and 7 in the dashboard. Go passes 45 and Python 35. Clippy `-D warnings` is clean on
   all three feature legs, and fmt is clean. The runtime oracle is never looser than agave on
   both CI seeds. Every fixed finding has a named test that fails before the fix
   (`01-findings.md`).
-- **Deliberate breaks:** 103 of 103 caught. B01–B59 are from Round 23; B60–B103 are from
-  Round 24 (R2, R3, R3-b and W11–W25). B62 and B99 were missed on their first run because their
-  tests did not exercise the reverted rule; each test was corrected and the break caught. The
-  TypeScript breaks TSB1–TSB5 were 5 of 5 caught.
+- **Deliberate breaks:** 107 of 107 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
+  Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8). B62 and B99 were
+  missed on their first run because their tests did not exercise the reverted rule; each test was
+  corrected and the break caught. TypeScript: 11 of 11 caught (TSB1–TSB5 in Round 24, TSB6–TSB11
+  in Round 25).
 - **Real traffic:** 48,855 executed mainnet transactions from four days, with sample hashes
   recorded. Under the labels `eb17aa5` was measured with: 0 parse failures, 0 verify errors, 302
   newly refused (0.62%), **0 refused-to-Clear**, 0 approved before or after. Under honest labels,

@@ -41,6 +41,8 @@ import {
   type TransactionInstruction,
 } from "@solana/web3.js";
 import { messageOf, readSignatureCount, V1_PREFIX } from "./artifact.js";
+import type { WalletEffect } from "./intent-grounding.js";
+export type { WalletEffect };
 import {
   compileUnsignedWithKit,
   MAX_COMPUTE_UNIT_LIMIT,
@@ -201,7 +203,7 @@ export class RpcSimulator {
     if (!response.ok) {
       throw new Error(`[RpcSimulator] v1 sizing simulation: HTTP ${response.status}`);
     }
-    const body = (await response.json()) as {
+    const body = (await readJsonBounded(response)) as {
       error?: { message?: string };
       result?: { value?: { err?: unknown; unitsConsumed?: unknown; loadedAccountsDataSize?: unknown } };
     };
@@ -321,78 +323,47 @@ export class RpcSimulator {
   }
 
   /**
-   * What the exact transaction would take out of the wallet: the wallet's own
-   * lamports (fee included) and the balance of every token account the wallet
-   * owns among `accounts`, each read before and after an unsigned simulation
-   * of `wire` — the bytes that will be signed, not a description of them.
-   * Wrapped SOL counts as lamports. Refuses (throws) rather than reporting a
-   * number it did not read: a failed simulation, an account the RPC does not
-   * return, or a wallet token account it cannot decode.
+   * What the exact transaction does to the wallet, from ONE simulation of its
+   * unsigned bytes: the RPC's `preBalances`/`postBalances` and
+   * `preTokenBalances`/`postTokenBalances` of the same run, at the same slot.
+   *
+   * External review (2026-10-16): this used to read the wallet's accounts
+   * with `getMultipleAccounts` and compare them with the simulation's
+   * post-state. The two reads are not one snapshot: a deposit landing between
+   * them made a 50 SOL spend look like no outflow at all, under a 1 SOL cap.
+   * Both sides now come from the simulation itself.
+   *
+   * The fee payer is static key 0, and the guard builds every transaction
+   * with its own wallet as fee payer, so `preBalances[0]` is the wallet's
+   * lamports. Token balances carry their owner, so only the wallet's own token
+   * accounts count, wherever they sit in the account list (lookup tables
+   * included). Wrapped SOL counts as SOL. Refuses (throws) rather than
+   * reporting what it did not read: a failed simulation, missing or uneven
+   * balance arrays, a balance that is not an exact integer, or a token balance
+   * without an owner.
    */
-  async measureWalletOutflow(params: {
-    wire: Uint8Array;
-    wallet: string;
-    accounts: readonly string[];
-  }): Promise<WalletOutflow> {
+  async measureWalletEffect(params: { wire: Uint8Array; wallet: string }): Promise<WalletEffect> {
     assertEverySignatureSlotEmpty(params.wire);
-    const addresses = [...new Set([params.wallet, ...params.accounts])];
-    const pre = await this.rpc<{ value?: (RpcAccount | null)[] }>("getMultipleAccounts", [
-      addresses,
-      { encoding: "base64", commitment: "confirmed" },
-    ]);
     const sim = await this.rpc<{
-      value?: { err?: unknown; accounts?: (RpcAccount | null)[] | null };
+      value?: {
+        err?: unknown;
+        preBalances?: unknown;
+        postBalances?: unknown;
+        preTokenBalances?: unknown;
+        postTokenBalances?: unknown;
+      };
     }>("simulateTransaction", [
       Buffer.from(params.wire).toString("base64"),
-      {
-        encoding: "base64",
-        sigVerify: false,
-        replaceRecentBlockhash: true,
-        commitment: "confirmed",
-        accounts: { encoding: "base64", addresses },
-      },
+      { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" },
     ]);
-    const before = pre.value;
     const value = sim.value;
-    if (!Array.isArray(before) || before.length !== addresses.length) {
-      throw new Error("[RpcSimulator] the RPC did not return every account the outflow is measured on. REFUSING.");
-    }
-    if (!value || !("err" in value)) throw new Error("[RpcSimulator] outflow simulation: no result. REFUSING.");
+    if (!value || !("err" in value)) throw new Error("[RpcSimulator] effect simulation: no result. REFUSING.");
     if (value.err !== null) {
       throw new Error(
-        `[RpcSimulator] outflow simulation failed: ${JSON.stringify(value.err).slice(0, 160)}. REFUSING.`,
+        `[RpcSimulator] effect simulation failed: ${JSON.stringify(value.err).slice(0, 160)}. REFUSING.`,
       );
     }
-    const after = value.accounts;
-    if (!Array.isArray(after) || after.length !== addresses.length) {
-      throw new Error("[RpcSimulator] the simulation did not return the post-state of every account. REFUSING.");
-    }
-    const walletBefore = before[0];
-    if (!walletBefore) throw new Error("[RpcSimulator] the wallet account does not exist. REFUSING.");
-    let lamports = positiveDecrease(BigInt(walletBefore.lamports), BigInt(after[0]?.lamports ?? 0));
-    const tokens: WalletOutflow["tokens"] = [];
-    for (let i = 1; i < addresses.length; i++) {
-      const b = before[i];
-      if (!b || !TOKEN_PROGRAMS.has(b.owner)) continue;
-      const data = Buffer.from(b.data[0], "base64");
-      if (data.length < TOKEN_ACCOUNT_BASE_LEN) continue; // a mint or a multisig, not a token account
-      if (new PublicKey(data.subarray(32, 64)).toBase58() !== params.wallet) continue;
-      const mint = new PublicKey(data.subarray(0, 32)).toBase58();
-      const a = after[i];
-      let postAmount = 0n;
-      if (a && TOKEN_PROGRAMS.has(a.owner)) {
-        const post = Buffer.from(a.data[0], "base64");
-        if (post.length < TOKEN_ACCOUNT_BASE_LEN) {
-          throw new Error(`[RpcSimulator] ${addresses[i]} is not a token account after the simulation. REFUSING.`);
-        }
-        postAmount = post.readBigUInt64LE(64);
-      }
-      const spent = positiveDecrease(data.readBigUInt64LE(64), postAmount);
-      if (spent === 0n) continue;
-      if (mint === WRAPPED_SOL_MINT) lamports += spent;
-      else tokens.push({ mint, account: addresses[i], amount: spent });
-    }
-    return { lamports, tokens };
+    return walletEffectOf(value, params.wallet);
   }
 
   private async rpc<T>(method: string, params: unknown[]): Promise<T> {
@@ -404,7 +375,7 @@ export class RpcSimulator {
       signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) throw new Error(`[RpcSimulator] ${method}: HTTP ${response.status}. REFUSING.`);
-    const body = (await response.json()) as { error?: { message?: string }; result?: T };
+    const body = (await readJsonBounded(response)) as { error?: { message?: string }; result?: T };
     if (body.error || body.result === undefined) {
       throw new Error(`[RpcSimulator] ${method} refused by the RPC: ${body.error?.message ?? "no result"}. REFUSING.`);
     }
@@ -412,28 +383,127 @@ export class RpcSimulator {
   }
 }
 
-interface RpcAccount {
-  lamports: number;
-  owner: string;
-  data: [string, string];
+/**
+ * The most bytes one RPC answer may carry: the Core's own bound
+ * (`rpc_client::MAX_RPC_RESPONSE_BYTES`, 32 MiB). External review
+ * (2026-10-16): the guard parsed whatever an RPC sent with
+ * `response.json()`, so a hostile or broken endpoint could hand the signing
+ * process an answer of any size.
+ */
+export const MAX_RPC_RESPONSE_BYTES = 32 * 1024 * 1024;
+
+/** Read a JSON answer, refusing one larger than `max` bytes before it is parsed. */
+export async function readJsonBounded(response: Response, max: number = MAX_RPC_RESPONSE_BYTES): Promise<unknown> {
+  const declared = response.headers.get("content-length");
+  if (declared !== null && Number(declared) > max) {
+    await response.body?.cancel();
+    throw new Error(`[RpcSimulator] the RPC answer declares ${declared} bytes, over the ${max}-byte bound. REFUSING.`);
+  }
+  if (!response.body) throw new Error("[RpcSimulator] the RPC answer has no body. REFUSING.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      throw new Error(`[RpcSimulator] the RPC answer exceeds the ${max}-byte bound. REFUSING.`);
+    }
+    chunks.push(value);
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  return JSON.parse(text);
 }
 
-/** What one transaction takes out of the wallet (see `measureWalletOutflow`). */
-export interface WalletOutflow {
-  /** Lamports, the fee and wrapped SOL included. */
-  lamports: bigint;
-  /** Every other token balance the wallet's own accounts lose. */
-  tokens: { mint: string; account: string; amount: bigint }[];
-}
-
-const TOKEN_PROGRAMS = new Set([
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-]);
-/** mint(32) owner(32) amount(8) …: the SPL Token account layout Token-2022 extends. */
-const TOKEN_ACCOUNT_BASE_LEN = 165;
 export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
 
-function positiveDecrease(before: bigint, after: bigint): bigint {
-  return before > after ? before - after : 0n;
+/**
+ * A lamport balance from an RPC answer, exactly. JSON numbers lose integer
+ * precision past 2^53, silently (external review, 2026-10-16: lamports were a
+ * JavaScript `number`); a balance that is not a safe integer is refused, never
+ * rounded.
+ */
+export function exactLamports(v: unknown, what: string): bigint {
+  if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0) {
+    throw new Error(`[RpcSimulator] ${what} is ${JSON.stringify(v)}, not an exact lamport balance. REFUSING.`);
+  }
+  return BigInt(v);
+}
+
+interface TokenBalanceEntry {
+  accountIndex: number;
+  mint: string;
+  owner: string;
+  amount: bigint;
+  decimals: number;
+}
+
+function tokenBalances(v: unknown, which: string): TokenBalanceEntry[] {
+  if (!Array.isArray(v)) {
+    throw new Error(`[RpcSimulator] the simulation did not report ${which}; a swap's effect cannot be read without it. REFUSING.`);
+  }
+  return v.map((e: unknown, i) => {
+    const t = e as { accountIndex?: unknown; mint?: unknown; owner?: unknown; uiTokenAmount?: { amount?: unknown; decimals?: unknown } };
+    const amount = t?.uiTokenAmount?.amount;
+    const decimals = t?.uiTokenAmount?.decimals;
+    if (
+      !Number.isSafeInteger(t?.accountIndex) ||
+      typeof t?.mint !== "string" ||
+      typeof t?.owner !== "string" ||
+      typeof amount !== "string" ||
+      !/^\d{1,20}$/.test(amount) ||
+      !Number.isSafeInteger(decimals)
+    ) {
+      throw new Error(`[RpcSimulator] ${which}[${i}] is not a complete token balance (index, mint, owner, amount, decimals). REFUSING.`);
+    }
+    return {
+      accountIndex: t.accountIndex as number,
+      mint: t.mint,
+      owner: t.owner,
+      amount: BigInt(amount),
+      decimals: decimals as number,
+    };
+  });
+}
+
+/** The wallet's effect from one simulation's balances (pure; see `measureWalletEffect`). */
+export function walletEffectOf(
+  value: { preBalances?: unknown; postBalances?: unknown; preTokenBalances?: unknown; postTokenBalances?: unknown },
+  wallet: string,
+): WalletEffect {
+  const pre = value.preBalances;
+  const post = value.postBalances;
+  if (!Array.isArray(pre) || !Array.isArray(post) || pre.length === 0 || pre.length !== post.length) {
+    throw new Error(
+      "[RpcSimulator] the simulation did not report even preBalances and postBalances (an RPC on Agave " +
+        "2.1 or later does); a transaction's effect is not read from two separate reads. REFUSING.",
+    );
+  }
+  let solOut = exactLamports(pre[0], "the fee payer's pre-balance") - exactLamports(post[0], "the fee payer's post-balance");
+  const tokenDelta = new Map<string, bigint>();
+  const decimals = new Map<string, number>();
+  const add = (entries: TokenBalanceEntry[], sign: 1n | -1n) => {
+    for (const e of entries) {
+      if (e.owner !== wallet) continue;
+      if (e.accountIndex >= pre.length) {
+        throw new Error(`[RpcSimulator] a token balance names account ${e.accountIndex} of ${pre.length}. REFUSING.`);
+      }
+      const known = decimals.get(e.mint);
+      if (known !== undefined && known !== e.decimals) {
+        throw new Error(`[RpcSimulator] ${e.mint} is reported with ${known} and ${e.decimals} decimals. REFUSING.`);
+      }
+      decimals.set(e.mint, e.decimals);
+      if (e.mint === WRAPPED_SOL_MINT) {
+        solOut += sign * e.amount;
+      } else {
+        tokenDelta.set(e.mint, (tokenDelta.get(e.mint) ?? 0n) - sign * e.amount);
+      }
+    }
+  };
+  // Held before and gone after counts as leaving; arriving counts as received.
+  add(tokenBalances(value.preTokenBalances, "preTokenBalances"), 1n);
+  add(tokenBalances(value.postTokenBalances, "postTokenBalances"), -1n);
+  return { solOut, tokenDelta, decimals };
 }

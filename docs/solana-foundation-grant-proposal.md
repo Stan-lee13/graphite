@@ -37,7 +37,7 @@ What exists today, all in the repository:
   outflow measured by simulating the exact transaction.
 - **SDKs** for TypeScript and Go, a Python advisory layer that cannot override the core, and
   a React dashboard.
-- **Tests:** 1,908 Rust tests in the all-features suite, plus 183 in the agent guard, 34 in the
+- **Tests:** 1,913 Rust tests in the all-features suite, plus 195 in the agent guard, 34 in the
   TypeScript SDK, 15 across the Vercel AI and MCP adapters, 6 in the SolanaAgentKit adapter,
   Go and Python suites, and 7 in the dashboard. A runtime oracle compares Graphite's parser
   with the validator's own decoder on about 628,500 generated frames per CI seed.

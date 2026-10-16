@@ -244,3 +244,196 @@ async fn a_witness_sighting_of_a_blocked_transaction_alarms_even_when_the_primar
         failures.join("\n")
     );
 }
+
+// ---------------------------------------------------------------------------
+// External review (2026-10-16): the primary REPORTS the signature but cannot
+// produce its bytes (getTransaction null or failing), or produces bytes that
+// are not the signature's. The bytes were fetched from the primary alone, so
+// with no caller key there was nothing to join the blocked record by, and a
+// blocked transaction the witness had seen reconciled as "nothing to
+// reconcile" — or, with substituted bytes, as Unavailable whatever the keys.
+
+fn record_with(log: &AuditLog, signed: &[u8], id: &str, approved: bool) -> AuditRecord {
+    let mut r = record_blocked_unappended(signed);
+    r.audit_trail_id = id.to_string();
+    r.approved = approved;
+    if approved {
+        r.risk_status = "Clear".to_string();
+        r.policy_verdict = "Approved".to_string();
+    }
+    assert!(log.append(&r));
+    r
+}
+
+fn record_blocked_unappended(signed: &[u8]) -> AuditRecord {
+    AuditRecord {
+        event_type: LifecycleEvent::Verification,
+        timestamp: graphite_core::durable::now_utc_rfc3339(),
+        audit_trail_id: "gr-r25".to_string(),
+        content_hash: "48c65c638aceb5de".to_string(),
+        transaction_sha256: Some(artifact_sha256_of_signed(signed).unwrap()),
+        program_id: SYSTEM.to_string(),
+        instruction_name: "Transfer".to_string(),
+        protocol_name: "System Program".to_string(),
+        manifest_version: Some("1.0.0".to_string()),
+        approved: false,
+        confidence: 0.3,
+        risk_status: "Blocked".to_string(),
+        policy_verdict: "Rejected".to_string(),
+        l3_status: "inconclusive".to_string(),
+        l8_status: "inconclusive".to_string(),
+        wallet_profile: None,
+    }
+}
+
+/// The same transfer with a different blockhash, signed: a real transaction,
+/// but not the one the audited signature belongs to.
+fn another_signed_transfer() -> Vec<u8> {
+    use ed25519_dalek::Signer;
+    let mut frame = signed_transfer();
+    let msg_len = message_bytes(&frame).unwrap().len();
+    let msg_start = frame.len() - msg_len;
+    // The blockhash sits after the header and the keys; flipping the last
+    // message byte changes the instruction data instead, which is just as
+    // much another transaction.
+    let last = frame.len() - 1;
+    frame[last] ^= 0x01;
+    let sig = payer().sign(&frame[msg_start..]);
+    frame[1..65].copy_from_slice(&sig.to_bytes());
+    frame
+}
+
+/// A primary that reports the signature confirmed and answers getTransaction
+/// with `tx` (an HTTP status and body).
+fn confirmed_primary(tx: (u16, String)) -> String {
+    cluster(Arc::new(move |method| match method {
+        "getSignatureStatuses" => (200, status_body(777, "finalized")),
+        "getTransaction" => tx.clone(),
+        _ => (200, r#"{"jsonrpc":"2.0","id":1,"result":null}"#.to_string()),
+    }))
+}
+
+fn honest_witness(signed: &[u8]) -> String {
+    let signed = signed.to_vec();
+    cluster(Arc::new(move |method| match method {
+        "getSignatureStatuses" => (200, status_body(777, "finalized")),
+        "getTransaction" => (200, tx_body(&signed, 777)),
+        _ => (200, r#"{"jsonrpc":"2.0","id":1,"result":null}"#.to_string()),
+    }))
+}
+
+const NO_KEYS: ExecutionKeys<'static> = ExecutionKeys {
+    audit_trail_id: None,
+    transaction_sha256: None,
+    content_hash: None,
+};
+
+#[tokio::test]
+async fn a_primary_without_the_bytes_does_not_hide_a_blocked_transaction_the_witness_saw() {
+    let signed = signed_transfer();
+    let sig = bs58::encode(&signed[1..65]).into_string();
+    let null = (200, r#"{"jsonrpc":"2.0","id":1,"result":null}"#.to_string());
+    let failing = (500, r#"{"error":"getTransaction unavailable"}"#.to_string());
+    for (label, tx) in [
+        ("getTransaction returns null", null),
+        ("getTransaction fails", failing),
+    ] {
+        let (log, dir) = temp_log("r25-null-bytes");
+        record_with(&log, &signed, "gr-r25-blocked", false);
+        let mut core = GraphiteCore::new();
+        core.attach_rpc_client(client(&confirmed_primary(tx)));
+        core.attach_inclusion_witness(client(&honest_witness(&signed)))
+            .unwrap();
+        let audit = core.audit_execution(&sig, NO_KEYS, Some(&log)).await;
+        assert!(
+            matches!(audit.chain_status, ExecutionVerification::Confirmed { .. }),
+            "{label}: precondition — the primary reports the signature"
+        );
+        assert_eq!(
+            audit.chain_transaction_sha256.as_deref(),
+            Some(artifact_sha256_of_signed(&signed).unwrap().as_str()),
+            "{label}: the witness's bound bytes give the digest"
+        );
+        assert_eq!(
+            audit.reconciliation,
+            ExecutionReconciliation::BlockedButExecuted,
+            "{label}: {:?}",
+            audit.chain_bytes_unavailable
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[tokio::test]
+async fn substituted_bytes_from_the_primary_do_not_silence_the_witness() {
+    let signed = signed_transfer();
+    let sig = bs58::encode(&signed[1..65]).into_string();
+    let other = another_signed_transfer();
+    assert_ne!(
+        other[1..65],
+        signed[1..65],
+        "precondition: another signature"
+    );
+    let substituted = (200, tx_body(&other, 777));
+
+    // A blocked record: the witness's bound bytes find it, and it alarms.
+    let (log, dir) = temp_log("r25-substituted-blocked");
+    record_with(&log, &signed, "gr-r25-sub-blocked", false);
+    let mut core = GraphiteCore::new();
+    core.attach_rpc_client(client(&confirmed_primary(substituted.clone())));
+    core.attach_inclusion_witness(client(&honest_witness(&signed)))
+        .unwrap();
+    let audit = core.audit_execution(&sig, NO_KEYS, Some(&log)).await;
+    assert!(
+        audit.chain_bytes_rejected.is_some(),
+        "the substitution is recorded"
+    );
+    assert_eq!(
+        audit.reconciliation,
+        ExecutionReconciliation::BlockedButExecuted
+    );
+    let _ = std::fs::remove_dir_all(dir);
+
+    // An approved record: sources that disagree about the bytes conclude nothing.
+    let (log, dir) = temp_log("r25-substituted-approved");
+    record_with(&log, &signed, "gr-r25-sub-approved", true);
+    let mut core = GraphiteCore::new();
+    core.attach_rpc_client(client(&confirmed_primary(substituted)));
+    core.attach_inclusion_witness(client(&honest_witness(&signed)))
+        .unwrap();
+    let audit = core.audit_execution(&sig, NO_KEYS, Some(&log)).await;
+    assert!(
+        matches!(
+            audit.reconciliation,
+            ExecutionReconciliation::Unavailable { .. }
+        ),
+        "{:?}",
+        audit.reconciliation
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn an_approved_transaction_is_reconciled_from_the_witnesss_bound_bytes() {
+    let signed = signed_transfer();
+    let sig = bs58::encode(&signed[1..65]).into_string();
+    let (log, dir) = temp_log("r25-approved-witness-bytes");
+    record_with(&log, &signed, "gr-r25-approved", true);
+    let mut core = GraphiteCore::new();
+    core.attach_rpc_client(client(&confirmed_primary((
+        200,
+        r#"{"jsonrpc":"2.0","id":1,"result":null}"#.to_string(),
+    ))));
+    core.attach_inclusion_witness(client(&honest_witness(&signed)))
+        .unwrap();
+    let audit = core.audit_execution(&sig, NO_KEYS, Some(&log)).await;
+    assert_eq!(
+        audit.reconciliation,
+        ExecutionReconciliation::ApprovedAndExecuted
+    );
+    assert!(
+        audit.chain_bytes_unavailable.is_none(),
+        "the miss is superseded"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}

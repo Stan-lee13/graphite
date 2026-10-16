@@ -40,8 +40,24 @@ import bs58 from "bs58";
 import { RpcSimulator, assertEverySignatureSlotEmpty } from "./rpc-simulator.js";
 export { RpcSimulator, assertEverySignatureSlotEmpty };
 // Round 19 (F-19-C5): the AI layer's answer is checked against the user's text.
-import { assertEcho, groundSwapIntent, groundTransferIntent, IntentGroundingError } from "./intent-grounding.js";
-export { assertEcho, groundSwapIntent, groundTransferIntent, IntentGroundingError };
+import {
+  assertAffirmative,
+  assertEcho,
+  assertSwapEffectMatches,
+  groundSwapIntent,
+  groundSwapRequest,
+  groundTransferIntent,
+  IntentGroundingError,
+} from "./intent-grounding.js";
+export {
+  assertAffirmative,
+  assertEcho,
+  assertSwapEffectMatches,
+  groundSwapIntent,
+  groundSwapRequest,
+  groundTransferIntent,
+  IntentGroundingError,
+};
 // The operator's spending limits, checked before anything is built.
 import {
   assertSwapAllowed,
@@ -885,6 +901,10 @@ export class GraphiteGuard {
       intent_type: groundSwapIntent(naturalLanguage, proposedIntent.intent_type, payload.programId),
       raw_natural_language: naturalLanguage,
     };
+    // Which swap: the amount and both tokens, read from the user's own text
+    // and agreed by the AI layer's reading (external review, 2026-10-16).
+    // Before this, "Swap 1 SOL for USDC" was any swap on a swap program.
+    const groundedSwap = groundSwapRequest(naturalLanguage, params);
     const accountAddresses = payload.accounts.map((a) => a.pubkey);
     // P1 fix (2026-09-05 audit): the bound payload already carries the REAL
     // per-account isSigner/isWritable flags (that's what buildInstructionFromPayload
@@ -898,17 +918,23 @@ export class GraphiteGuard {
       [buildInstructionFromPayload(payload)],
       payload.addressLookupTableAddresses ?? [],
     );
-    // The operator's limits, on what this exact transaction would take out of
-    // the wallet — measured by simulating the bytes that will be signed, not
-    // read from the request, whose amount is whatever the model wrote.
-    if (this.spendPolicy.maxTransferLamports !== undefined || this.spendPolicy.allowedDestinations !== undefined) {
-      const outflow = await this.simulator.measureWalletOutflow({
-        wire: boundSwap.artifactBytes,
-        wallet: this.walletPublicKey,
-        accounts: payload.accounts.filter((a) => a.isWritable).map((a) => a.pubkey),
-      });
-      assertSwapAllowed(this.spendPolicy, outflow);
-    }
+    // What this exact transaction does to the wallet, from one simulation of
+    // the bytes that will be signed (pre- and post-balances of the same run),
+    // never from the request, whose amounts are whatever the model wrote.
+    // First the operator's limits, then the request itself: no more than the
+    // requested amount of the requested token, no other token, and the
+    // requested token delivered.
+    const effect = await this.simulator.measureWalletEffect({
+      wire: boundSwap.artifactBytes,
+      wallet: this.walletPublicKey,
+    });
+    assertSwapAllowed(this.spendPolicy, {
+      lamports: effect.solOut > 0n ? effect.solOut : 0n,
+      tokens: [...effect.tokenDelta]
+        .filter(([, delta]) => delta < 0n)
+        .map(([mint, delta]) => ({ mint, amount: -delta })),
+    });
+    assertSwapEffectMatches(groundedSwap, effect);
     const verification = await this.verifyTransaction({
       // No Jupiter default: groundSwapIntent has already refused a payload
       // without a swap program.

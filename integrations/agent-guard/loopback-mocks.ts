@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import bs58 from "bs58";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, VersionedTransaction } from "@solana/web3.js";
 
 export interface RecordedCall {
   /** JSON-RPC method, or `METHOD /path` for the REST stand-ins. */
@@ -124,6 +124,16 @@ export function tokenAccountData(mint: string, owner: string, amount: bigint): U
   return data;
 }
 
+const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+/** The static account keys of a base64 legacy or v0 wire transaction (v1: none). */
+function staticKeysOf(wire: unknown): string[] {
+  if (typeof wire !== "string") return [];
+  const bytes = Buffer.from(wire, "base64");
+  if (bytes[0] === 0x81) return [];
+  return VersionedTransaction.deserialize(bytes).message.staticAccountKeys.map((k) => k.toBase58());
+}
+
 /** A blockhash the stand-in hands out — 32 bytes of 0x07, base58. */
 export const MOCK_BLOCKHASH = bs58.encode(new Uint8Array(32).fill(7));
 
@@ -141,6 +151,8 @@ export async function mockRpc(
      */
     ledger?: Record<string, MockAccount>;
     afterSimulation?: Record<string, MockAccount | null>;
+    /** Decimals the simulation reports per mint (default 6). */
+    decimals?: Record<string, number>;
   } = {},
 ): Promise<Loopback> {
   const encode = (a: MockAccount | null | undefined) =>
@@ -173,6 +185,28 @@ export async function mockRpc(
             | { accounts?: { addresses?: string[] } }
             | undefined;
           const requested = config?.accounts?.addresses;
+          // As an Agave RPC answers: lamports and token balances of every
+          // account the transaction references, before and after, from one run.
+          const keys = staticKeysOf((req as { params?: unknown[] }).params?.[0]);
+          const before = (k: string) => opts.ledger?.[k];
+          const after = (k: string) =>
+            opts.afterSimulation && k in opts.afterSimulation ? opts.afterSimulation[k] : opts.ledger?.[k];
+          const tokenBalance = (state: (k: string) => MockAccount | null | undefined) =>
+            keys.flatMap((k, accountIndex) => {
+              const a = state(k);
+              const data = a?.data;
+              if (!a || a.owner !== SPL_TOKEN_PROGRAM || !data || data.length < 165) return [];
+              const mint = bs58.encode(data.subarray(0, 32));
+              const amount = new DataView(data.buffer, data.byteOffset).getBigUint64(64, true).toString();
+              const decimals = opts.decimals?.[mint] ?? 6;
+              return [{
+                accountIndex,
+                mint,
+                owner: bs58.encode(data.subarray(32, 64)),
+                programId: SPL_TOKEN_PROGRAM,
+                uiTokenAmount: { amount, decimals, uiAmountString: amount },
+              }];
+            });
           return ok({
             context: { slot: 1 },
             value: {
@@ -192,6 +226,10 @@ export async function mockRpc(
                   )
                 : null,
               unitsConsumed: opts.unitsConsumed ?? 150,
+              preBalances: keys.map((k) => before(k)?.lamports ?? 0),
+              postBalances: keys.map((k) => after(k)?.lamports ?? 0),
+              preTokenBalances: tokenBalance(before),
+              postTokenBalances: tokenBalance(after),
               ...(opts.loadedAccountsDataSize === null
                 ? {}
                 : { loadedAccountsDataSize: opts.loadedAccountsDataSize ?? 2_048 }),

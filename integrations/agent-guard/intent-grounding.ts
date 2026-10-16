@@ -57,6 +57,29 @@ const LEADING_QUOTING = /^[(\["'`]+/;
  */
 const NUMERIC_LITERAL = /(?<![0-9A-Za-z.])\d+(?:\.\d+)?(?![0-9A-Za-z]|\.\d)/g;
 
+/**
+ * A word that negates, cancels or withholds the request (external review,
+ * 2026-10-16). "Don't send 5 SOL to <address>" has one address, one amount and
+ * the word SOL, and every other check accepted it: grounding established WHAT
+ * the request names, never that the user asked for it. A request that carries
+ * any of these words is refused, not interpreted. It costs a rephrase ("Send
+ * 1 SOL to A, not B" already refused for its two addresses); guessing which
+ * half of a negated sentence the user meant costs funds.
+ */
+const NEGATION =
+  /(?<![0-9A-Za-z])(?:not|no|never|don'?t|dont|do\s+not|won'?t|shouldn'?t|mustn'?t|cancel(?:s|led|ling)?|stop|abort|undo|instead)(?![0-9A-Za-z])|n['\u2019]t(?![0-9A-Za-z])/i;
+
+/** Refuse a request that negates, cancels or withholds what it names. */
+export function assertAffirmative(input: string): void {
+  const m = NEGATION.exec(input);
+  if (m) {
+    throw new IntentGroundingError(
+      `The request contains ${JSON.stringify(m[0])}, which negates or cancels what it names; a ` +
+        "transaction is only built for a request that plainly asks for it.",
+    );
+  }
+}
+
 const LAMPORTS_PER_SOL = 1_000_000_000n;
 const U64_MAX = (1n << 64n) - 1n;
 
@@ -199,6 +222,7 @@ export function groundTransferIntent(
   if (!/(?<![0-9A-Za-z])SOL(?![0-9A-Za-z])/i.test(input)) {
     throw new IntentGroundingError("The request does not name SOL as the token to transfer.");
   }
+  assertAffirmative(input);
 
   return { destination, amountText, lamports };
 }
@@ -248,5 +272,240 @@ export function groundSwapIntent(input: string, aiIntentType: unknown, programId
         "manifest tags as a swap program; a swap is only built against a program that swaps.",
     );
   }
+  assertAffirmative(input);
   return "swap";
+}
+
+// ---------------------------------------------------------------------------
+// What a swap is asked to do, and whether the transaction does it.
+//
+// External review (2026-10-16): `groundSwapIntent` established that the
+// request asks for A swap, on a swap program — not THIS swap. "Swap 1 SOL for
+// USDC" signed a route that spent 100 SOL, or bought BONK, or spent USDT,
+// whenever the Core found the route itself well-formed; the operator's cap
+// bounded the loss but did not tie it to the request. The amount and the two
+// tokens are now read from the user's text, checked against the AI layer's
+// reading, and compared with what the exact transaction does to the wallet
+// in a simulation of its bytes.
+
+/**
+ * Symbols the guard resolves without a mint address, each checked against
+ * Jupiter's verified token list on 2026-10-16 (USDC and USDT also appear in
+ * this repository's own mainnet fixtures). Any other token is named by its
+ * mint address in the request. A symbol is never resolved by asking anyone.
+ */
+export const KNOWN_TOKEN_MINTS: Readonly<Record<string, string>> = {
+  SOL: "So11111111111111111111111111111111111111112",
+  WSOL: "So11111111111111111111111111111111111111112",
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  JUP: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+  BONK: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+  MSOL: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+  JITOSOL: "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+};
+/** Native SOL and wrapped SOL are one asset to a wallet. */
+export const NATIVE_MINT = "So11111111111111111111111111111111111111112";
+
+/** A token as the request names it: its mint, and the word the user wrote. */
+export interface NamedToken {
+  mint: string;
+  written: string;
+}
+
+export interface GroundedSwap {
+  /** The amount literal, exactly as the user wrote it. */
+  amountText: string;
+  /** What is spent: `amountText` of this token. */
+  input: NamedToken;
+  /** What must arrive. */
+  output: NamedToken;
+}
+
+/** A token word: a symbol of 2-10 letters and digits, or a mint address. */
+const TOKEN_WORD = "([A-Za-z][A-Za-z0-9]{1,9}|[1-9A-HJ-NP-Za-km-z]{32,44})";
+const AMOUNT = "(\\d+(?:\\.\\d+)?)";
+/** "swap 1 SOL for USDC" — the amount is what is spent. */
+const SPEND_FIRST = new RegExp(
+  `(?<![0-9A-Za-z])(?:swap|trade|exchange|convert|sell)\\s+${AMOUNT}\\s+${TOKEN_WORD}\\s+(?:for|to|into)\\s+${TOKEN_WORD}(?![0-9A-Za-z])`,
+  "gi",
+);
+/** "buy USDC with 1 SOL" — the amount is still what is spent. */
+const BUY_WITH = new RegExp(
+  `(?<![0-9A-Za-z])buy\\s+${TOKEN_WORD}\\s+(?:with|using)\\s+${AMOUNT}\\s+${TOKEN_WORD}(?![0-9A-Za-z])`,
+  "gi",
+);
+/** A percentage ("with 1% slippage") is a constraint, never an amount. */
+const PERCENTAGE = /(?<![0-9A-Za-z.])\d+(?:\.\d+)?\s*%/g;
+
+function namedToken(word: string): NamedToken {
+  if (ADDRESS_SHAPE.test(word)) return { mint: word, written: word };
+  const mint = KNOWN_TOKEN_MINTS[word.toUpperCase()];
+  if (!mint) {
+    throw new IntentGroundingError(
+      `"${word}" is not a token symbol the guard resolves (${Object.keys(KNOWN_TOKEN_MINTS).join(", ")}); ` +
+        "name any other token by its mint address.",
+    );
+  }
+  return { mint, written: word };
+}
+
+function sameToken(ai: unknown, named: NamedToken): boolean {
+  if (typeof ai !== "string") return false;
+  if (ai === named.mint || ai === named.written) return true;
+  return KNOWN_TOKEN_MINTS[ai.toUpperCase()] === named.mint;
+}
+
+/**
+ * Read the swap the user asked for: one amount, the token it is of, and the
+ * token to receive, from the text itself; the AI layer's reading must agree
+ * on all three. Two grammars, both stating what is spent: "swap <amount>
+ * <in> for <out>" and "buy <out> with <amount> <in>". "Buy 5 SOL with USDT"
+ * names what is received, not what is spent, so nothing would bound the
+ * spend: it is refused, to be rephrased.
+ */
+export function groundSwapRequest(
+  input: string,
+  params: { amount?: unknown; input_token?: unknown; output_token?: unknown } | undefined,
+): GroundedSwap {
+  assertAffirmative(input);
+  const matches: { amountText: string; inWord: string; outWord: string }[] = [];
+  for (const m of input.matchAll(SPEND_FIRST)) matches.push({ amountText: m[1], inWord: m[2], outWord: m[3] });
+  for (const m of input.matchAll(BUY_WITH)) matches.push({ amountText: m[2], inWord: m[3], outWord: m[1] });
+  if (matches.length !== 1) {
+    throw new IntentGroundingError(
+      matches.length === 0
+        ? 'The request does not state what it spends: write "swap <amount> <token> for <token>" or ' +
+            '"buy <token> with <amount> <token>".'
+        : `The request describes ${matches.length} swaps; a swap is only built when it describes one.`,
+    );
+  }
+  const numbers = [...new Set(input.replace(PERCENTAGE, " ").match(NUMERIC_LITERAL) ?? [])];
+  if (numbers.length !== 1) {
+    throw new IntentGroundingError(
+      `The request contains ${numbers.length} distinct amounts; a swap is only built when it names exactly one.`,
+    );
+  }
+  const { amountText, inWord, outWord } = matches[0];
+  const inputToken = namedToken(inWord);
+  const outputToken = namedToken(outWord);
+  if (inputToken.mint === outputToken.mint) {
+    throw new IntentGroundingError(`The request swaps ${inWord} for ${outWord}, the same token.`);
+  }
+  if (params?.amount !== amountText) {
+    throw new IntentGroundingError(
+      `The AI layer read the amount as ${JSON.stringify(params?.amount ?? null)}; the request says "${amountText}".`,
+    );
+  }
+  if (!sameToken(params?.input_token, inputToken)) {
+    throw new IntentGroundingError(
+      `The AI layer read the token spent as ${JSON.stringify(params?.input_token ?? null)}; the request spends ${inWord}.`,
+    );
+  }
+  if (!sameToken(params?.output_token, outputToken)) {
+    throw new IntentGroundingError(
+      `The AI layer read the token received as ${JSON.stringify(params?.output_token ?? null)}; the request asks for ${outWord}.`,
+    );
+  }
+  return { amountText, input: inputToken, output: outputToken };
+}
+
+/**
+ * What one transaction does to the wallet, from ONE simulation of its exact
+ * bytes (the RPC's pre- and post-balances of the same run).
+ */
+export interface WalletEffect {
+  /**
+   * Native SOL leaving the wallet, in lamports: its own account (fee and rent
+   * included) plus the wrapped SOL in token accounts it owns. Negative when
+   * the wallet gains SOL.
+   */
+  solOut: bigint;
+  /** Every other mint's net change across the wallet's token accounts (positive = received). */
+  tokenDelta: ReadonlyMap<string, bigint>;
+  /** Each mint's decimals, as the simulation reports them. */
+  decimals: ReadonlyMap<string, number>;
+}
+
+/**
+ * What a swap may spend in native SOL beyond the amount requested: the
+ * transaction fee, a priority fee, and rent for the token accounts a route
+ * creates (about 0.002 SOL each). 0.01 SOL. A route that needs more than this
+ * is refused, not trusted; the operator's cap still bounds the total.
+ */
+export const SWAP_SOL_OVERHEAD_LAMPORTS = 10_000_000n;
+
+/** A decimal amount of a token with `decimals` places, in base units, exactly. */
+export function tokenAmountToBaseUnits(text: string, decimals: number): bigint {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!m || !Number.isSafeInteger(decimals) || decimals < 0 || decimals > 18) {
+    throw new IntentGroundingError(`The amount "${text}" cannot be read with ${decimals} decimals.`);
+  }
+  const fraction = m[2] ?? "";
+  if (fraction.length > decimals) {
+    throw new IntentGroundingError(
+      `The amount "${text}" has more decimal places than the token's ${decimals}.`,
+    );
+  }
+  const units = BigInt(m[1]) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0") || "0");
+  if (units === 0n) throw new IntentGroundingError(`The amount "${text}" is zero.`);
+  if (units > U64_MAX) throw new IntentGroundingError(`The amount "${text}" does not fit in a u64.`);
+  return units;
+}
+
+/**
+ * Refuse a swap transaction that does not do what the request asked: spend
+ * no more than the requested amount of the requested token (plus
+ * `SWAP_SOL_OVERHEAD_LAMPORTS` of SOL), spend no other token, and deliver the
+ * requested token. The output amount is not compared: a request rarely states
+ * one, and the route's own minimum is the Core's to read.
+ */
+export function assertSwapEffectMatches(grounded: GroundedSwap, effect: WalletEffect): void {
+  const inMint = grounded.input.mint;
+  const outMint = grounded.output.mint;
+  const name = (t: NamedToken) => t.written;
+  if (inMint === NATIVE_MINT) {
+    const requested = solLiteralToLamports(grounded.amountText);
+    if (effect.solOut > requested + SWAP_SOL_OVERHEAD_LAMPORTS) {
+      throw new IntentGroundingError(
+        `The request spends ${grounded.amountText} ${name(grounded.input)}; the transaction takes ` +
+          `${effect.solOut} lamports of SOL out of the wallet, more than ${requested} plus ` +
+          `${SWAP_SOL_OVERHEAD_LAMPORTS} for fees and rent.`,
+      );
+    }
+  } else {
+    const decimals = effect.decimals.get(inMint);
+    if (decimals === undefined) {
+      throw new IntentGroundingError(
+        `The transaction touches none of the wallet's ${name(grounded.input)} accounts, so it cannot be spending what the request names.`,
+      );
+    }
+    const requested = tokenAmountToBaseUnits(grounded.amountText, decimals);
+    const spent = -(effect.tokenDelta.get(inMint) ?? 0n);
+    if (spent > requested) {
+      throw new IntentGroundingError(
+        `The request spends ${grounded.amountText} ${name(grounded.input)} (${requested} base units); ` +
+          `the transaction takes ${spent}.`,
+      );
+    }
+    if (effect.solOut > SWAP_SOL_OVERHEAD_LAMPORTS) {
+      throw new IntentGroundingError(
+        `The request spends ${name(grounded.input)}, not SOL; the transaction also takes ${effect.solOut} ` +
+          `lamports of SOL out of the wallet, more than ${SWAP_SOL_OVERHEAD_LAMPORTS} for fees and rent.`,
+      );
+    }
+  }
+  for (const [mint, delta] of effect.tokenDelta) {
+    if (delta < 0n && mint !== inMint) {
+      throw new IntentGroundingError(
+        `The transaction spends ${-delta} base units of ${mint}, a token the request does not spend.`,
+      );
+    }
+  }
+  const received = outMint === NATIVE_MINT ? -effect.solOut : (effect.tokenDelta.get(outMint) ?? 0n);
+  if (received <= 0n) {
+    throw new IntentGroundingError(
+      `The request asks for ${name(grounded.output)}; the transaction delivers none of it to the wallet.`,
+    );
+  }
 }

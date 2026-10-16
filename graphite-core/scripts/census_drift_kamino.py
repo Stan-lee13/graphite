@@ -10,6 +10,19 @@ reported. This is the live ground-truth cross-check behind the C27 manifests.
 
 Usage: python scripts/census_drift_kamino.py [max_txs_per_program]
 """
+
+# VERSION 0 ONLY (scripts/README.md, "Which tools see v1"): this one-off
+# onboarding/census script asks the RPC for maxSupportedTransactionVersion 0
+# and parses the `json` encoding's legacy/v0 shape, so every v1 transaction is
+# left out of what it reads. Its output is for reviewing a manifest, never for
+# measuring traffic; it says so on every run.
+import sys as _v0_sys
+
+print(
+    "[graphite] version-0 tool: v1 transactions are excluded from this output; "
+    "do not use it to measure traffic (scripts/README.md).",
+    file=_v0_sys.stderr,
+)
 import hashlib
 import json
 import sys

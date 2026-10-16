@@ -3350,68 +3350,80 @@ impl GraphiteCore {
         let mut chain_bytes_rejected: Option<String> = None;
         let mut chain_bytes_unavailable: Option<String> = None;
         let mut chain_inconsistent: Option<String> = None;
-        let bytes_source: Option<(&SolanaRpcClient, u64, bool, &str)> = match &chain_status {
-            ExecutionVerification::Confirmed { slot, success, .. } => self
-                .rpc_client
-                .as_ref()
-                .map(|c| (c, *slot, *success, "the RPC")),
-            _ => match (&self.inclusion_witness, &witness_status) {
-                (Some(w), Some(status)) => Some((w, status.slot, status.success, "the witness")),
-                _ => None,
-            },
-        };
-        let chain_transaction_sha256 = match bytes_source {
-            Some((client, status_slot, status_success, who)) => {
-                let fetched = within_budget(&budget, client.get_chain_transaction(signature))
-                    .await
-                    .unwrap_or(Err(crate::rpc_client::RpcError::Timeout(budget.total())));
-                match fetched {
-                    Ok(Some(tx)) => {
-                        if let Some(slot) = tx.slot {
-                            if slot != status_slot {
-                                chain_inconsistent = Some(format!(
-                                    "{who}'s getSignatureStatuses places {signature} in slot {status_slot}; its getTransaction places it in slot {slot}"
-                                ));
-                            }
-                        }
-                        if let Some(succeeded) = tx.succeeded {
-                            if succeeded != status_success && chain_inconsistent.is_none() {
-                                chain_inconsistent = Some(format!(
-                                    "{who}'s getSignatureStatuses reports {signature} as {}; its getTransaction reports it as {}",
-                                    if status_success { "succeeded" } else { "failed" },
-                                    if succeeded { "succeeded" } else { "failed" }
-                                ));
-                            }
-                        }
-                        match crate::tx_artifact::bound_artifact_sha256(&tx.bytes, signature) {
-                            Ok(digest) => Some(digest),
-                            Err(e) => {
-                                tracing::warn!(
-                                    "L8: chain bytes for {signature} are not bound to it: {e}"
-                                );
-                                chain_bytes_rejected = Some(format!(
-                                    "{who} returned bytes for {signature} that are not bound to it: {e}"
-                                ));
-                                None
-                            }
+        //
+        // External review (2026-10-16): when the primary reported the
+        // signature but its `getTransaction` returned nothing, the witness
+        // was never asked for the bytes, so a blocked transaction the caller
+        // cited by no key reconciled as "nothing to reconcile" although the
+        // witness had seen it. A source that has no bytes, or bytes that fail
+        // the binding, no longer ends the search: the next source that reports
+        // the signature is asked. Binding is what makes bytes trustworthy, so a
+        // later source's bound bytes decide; a rejection is still recorded,
+        // and while one source served bytes that are not bound to the
+        // signature, no APPROVED record is reconciled as executed (a blocked
+        // one still alarms — a primary serving substituted bytes must not be
+        // able to silence the witness).
+        let mut bytes_sources: Vec<(&SolanaRpcClient, u64, bool, &str)> = Vec::new();
+        if let ExecutionVerification::Confirmed { slot, success, .. } = &chain_status {
+            if let Some(c) = self.rpc_client.as_ref() {
+                bytes_sources.push((c, *slot, *success, "the RPC"));
+            }
+        }
+        if let (Some(w), Some(status)) = (&self.inclusion_witness, &witness_status) {
+            bytes_sources.push((w, status.slot, status.success, "the witness"));
+        }
+        let mut chain_transaction_sha256: Option<String> = None;
+        for (client, status_slot, status_success, who) in bytes_sources {
+            let fetched = within_budget(&budget, client.get_chain_transaction(signature))
+                .await
+                .unwrap_or(Err(crate::rpc_client::RpcError::Timeout(budget.total())));
+            match fetched {
+                Ok(Some(tx)) => {
+                    if let Some(slot) = tx.slot {
+                        if slot != status_slot {
+                            chain_inconsistent = Some(format!(
+                                "{who}'s getSignatureStatuses places {signature} in slot {status_slot}; its getTransaction places it in slot {slot}"
+                            ));
                         }
                     }
-                    Ok(None) => {
-                        chain_bytes_unavailable = Some(format!(
-                            "{who}'s getSignatureStatuses reports {signature} as included but its getTransaction returned null for it"
-                        ));
-                        None
+                    if let Some(succeeded) = tx.succeeded {
+                        if succeeded != status_success && chain_inconsistent.is_none() {
+                            chain_inconsistent = Some(format!(
+                                "{who}'s getSignatureStatuses reports {signature} as {}; its getTransaction reports it as {}",
+                                if status_success { "succeeded" } else { "failed" },
+                                if succeeded { "succeeded" } else { "failed" }
+                            ));
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!("L8: getTransaction for {signature} failed: {e}");
-                        chain_bytes_unavailable =
-                            Some(format!("{who}'s getTransaction failed: {e}"));
-                        None
+                    match crate::tx_artifact::bound_artifact_sha256(&tx.bytes, signature) {
+                        Ok(digest) => chain_transaction_sha256 = Some(digest),
+                        Err(e) => {
+                            tracing::warn!(
+                                "L8: chain bytes for {signature} are not bound to it: {e}"
+                            );
+                            chain_bytes_rejected = Some(format!(
+                                "{who} returned bytes for {signature} that are not bound to it: {e}"
+                            ));
+                            continue;
+                        }
                     }
+                    break;
+                }
+                Ok(None) => {
+                    chain_bytes_unavailable = Some(format!(
+                        "{who}'s getSignatureStatuses reports {signature} as included but its getTransaction returned null for it"
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!("L8: getTransaction for {signature} failed: {e}");
+                    chain_bytes_unavailable = Some(format!("{who}'s getTransaction failed: {e}"));
                 }
             }
-            None => None,
-        };
+        }
+        if chain_transaction_sha256.is_some() {
+            // The bytes came from a later source; the earlier miss is history.
+            chain_bytes_unavailable = None;
+        }
         if let Some(why) = &chain_inconsistent {
             tracing::warn!("L8: the RPC contradicts itself about {signature}: {why}");
         }
@@ -3434,7 +3446,7 @@ impl GraphiteCore {
         // could stall every other request on a two-worker deployment.
         let lookup = match audit {
             None => None,
-            Some(_) if chain_bytes_rejected.is_some() => None,
+            Some(_) if chain_bytes_rejected.is_some() && chain_transaction_sha256.is_none() => None,
             Some(log) => {
                 let log = log.clone();
                 let digest = chain_transaction_sha256.clone();
@@ -3570,11 +3582,11 @@ impl GraphiteCore {
                     reason: reason.clone(),
                 }
             }
-            _ if chain_bytes_rejected.is_some() => ExecutionReconciliation::Unavailable {
-                reason: chain_bytes_rejected
-                    .clone()
-                    .unwrap_or_default(),
-            },
+            _ if chain_bytes_rejected.is_some() && chain_transaction_sha256.is_none() => {
+                ExecutionReconciliation::Unavailable {
+                    reason: chain_bytes_rejected.clone().unwrap_or_default(),
+                }
+            }
             (_, None) if no_keys && chain_transaction_sha256.is_none() => {
                 ExecutionReconciliation::Unavailable {
                     reason: "no content_hash, transaction_sha256 or audit_trail_id supplied and the chain's bytes were not available — nothing to reconcile against".to_string(),
@@ -3633,6 +3645,15 @@ impl GraphiteCore {
                 } else if let Some(why) = &chain_inconsistent {
                     ExecutionReconciliation::Unavailable {
                         reason: format!("the RPC contradicts itself about this signature: {why}"),
+                    }
+                } else if let Some(why) = &chain_bytes_rejected {
+                    // Another source's bytes bound; this one served bytes that
+                    // do not. Sources that disagree about which transaction a
+                    // signature is support no positive conclusion.
+                    ExecutionReconciliation::Unavailable {
+                        reason: format!(
+                            "the inclusion sources disagree about the bytes of this signature: {why}"
+                        ),
                     }
                 } else if witness_dissents {
                     ExecutionReconciliation::Unavailable {

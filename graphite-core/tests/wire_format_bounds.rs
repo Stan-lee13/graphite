@@ -277,3 +277,63 @@ fn more_accounts_than_the_bank_locks_is_refused() {
         other => panic!("65 accounts must be refused, got {other:?}"),
     }
 }
+
+/// A legacy transfer-shaped frame with `n` top-level instructions, each
+/// calling the System program with no accounts and no data (3 bytes each).
+fn legacy_with_instructions(n: usize) -> Vec<u8> {
+    let mut b = vec![1u8];
+    b.extend([0u8; 64]);
+    b.extend([1, 0, 1]); // 1 signer, program read-only
+    b.push(2);
+    b.extend([7u8; 32]); // payer
+    b.extend([0u8; 32]); // the System program
+    b.extend([9u8; 32]); // blockhash
+    assert!(n < 128, "one-byte compact length");
+    b.push(n as u8);
+    for _ in 0..n {
+        b.extend([1, 0, 0]);
+    }
+    b
+}
+
+/// External review (2026-10-16): v1 refused more than 64 top-level
+/// instructions; legacy and v0 did not, though the runtime's instruction
+/// trace holds 64 in all and 65 fit in a packet with room to spare.
+#[test]
+fn more_top_level_instructions_than_the_trace_holds_is_refused() {
+    assert!(
+        parse_transaction(&legacy_with_instructions(64)).is_ok(),
+        "64 instructions"
+    );
+    match parse_transaction(&legacy_with_instructions(65)) {
+        Err(ArtifactParseError::TooManyInstructions { count: 65, max: 64 }) => {}
+        other => panic!("65 instructions must be refused, got {other:?}"),
+    }
+}
+
+/// External review (2026-10-16) asked for the packet parser's 12-signature
+/// limit (`MAX_SIGNATURES_PER_PACKET`) on legacy and v0. It is the packet
+/// size divided by a signature and its signer's key (1232 / 96), so the
+/// 1232-byte bound already refuses a thirteenth signer: the smallest
+/// 13-signer legacy frame is 1321 bytes. Pinned so it stays true.
+#[test]
+fn a_thirteenth_signer_does_not_fit_in_a_legacy_packet() {
+    let mut b = vec![13u8];
+    b.extend([0u8; 13 * 64]);
+    b.extend([13, 0, 1]);
+    b.push(14);
+    for i in 0..14u8 {
+        b.extend([i + 1; 32]);
+    }
+    b.extend([9u8; 32]);
+    b.extend([1, 13, 0, 0]);
+    assert_eq!(b.len(), 1321);
+    assert!(
+        matches!(
+            parse_transaction(&b),
+            Err(ArtifactParseError::TooLarge { .. })
+        ),
+        "{:?}",
+        parse_transaction(&b)
+    );
+}

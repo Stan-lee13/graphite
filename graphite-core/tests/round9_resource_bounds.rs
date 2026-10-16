@@ -198,15 +198,29 @@ fn an_artifact_larger_than_a_solana_packet_is_refused_before_it_is_parsed() {
 #[test]
 fn a_packet_sized_artifact_at_maximum_instruction_count_is_cheap() {
     let core = GraphiteCore::with_registry(load_seed_manifests());
-    // The largest number of these siblings that still fits in 1232 bytes.
+    // The largest number of these siblings in a frame the parser accepts.
+    // It used to be what fits in 1232 bytes (254 siblings); since the second
+    // external review (2026-10-16) a legacy or v0 frame with more than the
+    // runtime's 64-entry instruction trace is refused at parse, so the worst
+    // case the pipeline examines is the largest frame within both bounds.
     let mut n = 0;
     loop {
         let (raw, _) = transaction_with_siblings(n + 1);
-        if raw.len() > MAX_TRANSACTION_BYTES {
+        if raw.len() > MAX_TRANSACTION_BYTES || parse_transaction(&raw).is_err() {
             break;
         }
         n += 1;
     }
+    // What a packet could hold beyond that is refused before anything scans it.
+    let mut packet_max = n;
+    while transaction_with_siblings(packet_max + 1).0.len() <= MAX_TRANSACTION_BYTES {
+        packet_max += 1;
+    }
+    assert!(packet_max > n, "a packet holds more instructions than the trace");
+    assert!(matches!(
+        parse_transaction(&transaction_with_siblings(packet_max).0),
+        Err(ArtifactParseError::TooManyInstructions { max: 64, .. })
+    ));
     let (raw, keys) = transaction_with_siblings(n);
     assert!(raw.len() <= MAX_TRANSACTION_BYTES);
     // The declared list is bounded separately; fill it to the bound with

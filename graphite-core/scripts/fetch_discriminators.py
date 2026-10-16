@@ -5,6 +5,19 @@ For each target program, fetch recent transactions, pull the raw instruction
 bytes (base64), and report the first 8 bytes (Anchor discriminator) or first
 byte (native variant) for instructions invoking the target program.
 """
+
+# VERSION 0 ONLY (scripts/README.md, "Which tools see v1"): this one-off
+# onboarding/census script asks the RPC for maxSupportedTransactionVersion 0
+# and parses the `json` encoding's legacy/v0 shape, so every v1 transaction is
+# left out of what it reads. Its output is for reviewing a manifest, never for
+# measuring traffic; it says so on every run.
+import sys as _v0_sys
+
+print(
+    "[graphite] version-0 tool: v1 transactions are excluded from this output; "
+    "do not use it to measure traffic (scripts/README.md).",
+    file=_v0_sys.stderr,
+)
 import base64
 import json
 import urllib.request

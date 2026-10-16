@@ -114,6 +114,13 @@ pub enum ArtifactParseError {
     /// to (W17, external review).
     #[error("{total} account keys (static and loaded); the runtime locks at most {max} per transaction (TooManyAccountLocks)")]
     TooManyAccountLocks { total: usize, max: usize },
+    /// More top-level instructions than the runtime's instruction trace
+    /// holds (`MAX_INSTRUCTION_TRACE_LENGTH`, top-level and CPI together). The
+    /// sanitizer accepts such a legacy or v0 message; it can only fail when it
+    /// runs, so it is not a transaction to bind a verdict to (external review,
+    /// 2026-10-16; v1 refuses the same count by its own rule).
+    #[error("{count} top-level instructions; the runtime's instruction trace holds at most {max} (MaxInstructionTraceLengthExceeded)")]
+    TooManyInstructions { count: usize, max: usize },
     #[error("account key {key} appears at static positions {first} and {second}; the runtime refuses a transaction that loads an account twice (AccountLoadedTwice)")]
     DuplicateAccountKey {
         key: String,
@@ -189,6 +196,9 @@ pub const MAX_V1_TRANSACTION_BYTES: usize = 4096;
 
 /// `v1::MAX_SIGNATURES`.
 pub const V1_MAX_SIGNATURES: usize = 12;
+/// agave's `MAX_INSTRUCTION_TRACE_LENGTH`: every instruction a transaction
+/// runs, top-level and CPI, in one trace of at most 64.
+pub const MAX_INSTRUCTION_TRACE_LENGTH: usize = 64;
 /// `v1::MAX_ADDRESSES`.
 pub const V1_MAX_ADDRESSES: usize = 64;
 /// `v1::MAX_INSTRUCTIONS`.
@@ -856,6 +866,12 @@ pub fn parse_transaction(bytes: &[u8]) -> Result<ArtifactMessage, ArtifactParseE
     };
 
     let instruction_count = r.compact_u16("instruction count")?;
+    if instruction_count > MAX_INSTRUCTION_TRACE_LENGTH {
+        return Err(ArtifactParseError::TooManyInstructions {
+            count: instruction_count,
+            max: MAX_INSTRUCTION_TRACE_LENGTH,
+        });
+    }
     let mut instructions = Vec::with_capacity(instruction_count.min(64));
     for index in 0..instruction_count {
         let program_index = r.u8("instruction program index")? as usize;

@@ -1425,12 +1425,15 @@ fn main() {
     // `TooManyAccountLocks` and `DuplicateAccountKey` are refused by the bank
     // after sanitize (`validate_account_locks`), so the sanitizer accepts what
     // can never run; Graphite refuses them at the same point it refuses
-    // everything else.
+    // everything else. `TooManyInstructions` is a legacy or v0 message with
+    // more top-level instructions than the runtime's 64-entry instruction
+    // trace: sanitize accepts it, and it can only fail when it runs.
     let deliberate = [
         "TooLarge",
         "UnsupportedVersion",
         "TooManyAccountLocks",
         "DuplicateAccountKey",
+        "TooManyInstructions",
     ];
     let unexpected: Vec<&String> = tally
         .graphite_stricter
