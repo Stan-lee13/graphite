@@ -257,10 +257,11 @@ struct Row {
     reason: String,
 }
 
-#[test]
-#[ignore = "network sample — fetch with fetch_mainnet.py, then set GRAPHITE_MAINNET_SAMPLE"]
-fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
-    let doc = sample();
+/// Every row of a sample through the whole pipeline, artifact-bound. With
+/// `honest`, each manifested instruction is declared with the intent L5's own
+/// rule says describes it (external review R2) instead of the name-based
+/// guess. Deterministic: the same sample gives the same rows, in order.
+fn measure(doc: &serde_json::Value, honest: bool) -> (Tally, Vec<Row>) {
     let rows = doc["rows"].as_array().expect("rows array");
     assert!(
         !rows.is_empty(),
@@ -381,10 +382,7 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
         // the instruction — instead of the name-based guess, and count the
         // instructions no intent describes. Measures what an honest agent can
         // get through, separately from the guess's label.
-        let intent = match (
-            std::env::var("GRAPHITE_MAINNET_HONEST_INTENT").is_ok(),
-            found,
-        ) {
+        let intent = match (honest, found) {
             (true, Some(def)) => match graphite_core::live_corpus::honest_intent(
                 &ix.program_id,
                 &def.name,
@@ -617,7 +615,22 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
         });
     }
 
-    // ── The report ──────────────────────────────────────────────────────────
+    (t, verdicts)
+}
+
+/// The six-column verdict file the round reports diff (`verdict_diff.py`).
+fn verdict_tsv(verdicts: &[Row]) -> String {
+    let mut out = String::new();
+    for r in verdicts {
+        out.push_str(&format!(
+            "{}\t{}\t{}\t{}\t{}\t{}\n",
+            r.slot, r.program, r.disc, r.l2, r.risk, r.approved
+        ));
+    }
+    out
+}
+
+fn report(t: &Tally, honest: bool) {
     println!("\n=== Graphite against unseen mainnet traffic ===");
     println!("transactions in sample        {}", t.rows);
     println!("  of which version 1          {:>6}", t.v1_rows);
@@ -639,7 +652,7 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
         t.verify_error.values().sum::<usize>(),
         t.verify_error
     );
-    if std::env::var("GRAPHITE_MAINNET_HONEST_INTENT").is_ok() {
+    if honest {
         println!(
             "  honest intents; manifested instructions no intent describes {:>6}",
             t.no_honest_intent
@@ -675,6 +688,15 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
     for (p, n) in top.iter().take(12) {
         println!("    {n:>6}  {p}");
     }
+}
+
+#[test]
+#[ignore = "network sample — fetch with fetch_mainnet.py, then set GRAPHITE_MAINNET_SAMPLE"]
+fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
+    let doc = sample();
+    let honest = std::env::var("GRAPHITE_MAINNET_HONEST_INTENT").is_ok();
+    let (t, verdicts) = measure(&doc, honest);
+    report(&t, honest);
 
     if let Ok(path) = std::env::var("GRAPHITE_MAINNET_REASONS") {
         let (nl, tab) = (char::from(10u8), char::from(9u8));
@@ -691,17 +713,13 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
 
     // Machine-readable, for the old-vs-new differential.
     if let Ok(path) = std::env::var("GRAPHITE_MAINNET_VERDICTS") {
-        let mut out = String::new();
-        for r in &verdicts {
-            out.push_str(&format!(
-                "{}\t{}\t{}\t{}\t{}\t{}\n",
-                r.slot, r.program, r.disc, r.l2, r.risk, r.approved
-            ));
-        }
-        let _ = std::fs::write(path, out);
+        let _ = std::fs::write(path, verdict_tsv(&verdicts));
     }
+    check_invariants(&t);
+}
 
-    // ── The invariants ──────────────────────────────────────────────────────
+/// What every measured sample must satisfy.
+fn check_invariants(t: &Tally) {
     assert!(
         t.verified > 500,
         "only {} transactions reached a verdict — the probe is not measuring enough real \
@@ -729,5 +747,88 @@ fn real_mainnet_traffic_is_not_refused_for_contradicting_itself() {
          executed (>1%) — a frame that ran on mainnet is one Graphite has to be able to read: \
          {:?}",
         t.parse_failed
+    );
+}
+
+// ── The committed blocks (roadmap R-P2/R-P3) ─────────────────────────────────
+//
+// The published numbers come from samples too large to commit; this is the
+// slice that is: the last two finalized blocks of the 2026-09-23 sample
+// (slots 449808325 and 449808725, 2,284 transactions as the chain executed
+// them, legacy, v0 and v1), written by
+// `tools/mainnet-sample/make_committed_subset.py`, which refuses any source
+// file whose hash `tools/mainnet-sample/SAMPLES.md` does not record. It runs
+// on every `cargo test`, with no network and no `#[ignore]`.
+
+const COMMITTED_BLOCKS: &str =
+    include_str!("../fixtures/mainnet/sample-2026-09-23-last-2-blocks.json");
+
+/// SHA-256 of the verdict file the committed blocks produce. A change to ANY
+/// verdict changes it. That is the point: a verdict on real traffic changes
+/// only on purpose. When it changes, diff the verdicts (`GRAPHITE_MAINNET_SAMPLE`
+/// pointed at the committed file, `GRAPHITE_MAINNET_VERDICTS`, then
+/// `verdict_diff.py`), attribute every changed row in the round's report, and
+/// update this pin in the same commit.
+// Pinned 2026-10-16. Cross-checked: the same two blocks' rows of the full
+// 2026-09-23 conformance run of Round 24's final code (`verdicts_r24E`, 2,277
+// rows) hash to the same value, so the committed slice reproduces the
+// published measurement row for row.
+const COMMITTED_VERDICTS_SHA256: &str =
+    "ff1bcff8f08bcf570789613b3927bec11acd471f2244b21e4b80b093533c8992";
+
+#[test]
+fn the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run() {
+    let doc: serde_json::Value =
+        serde_json::from_str(COMMITTED_BLOCKS).expect("the committed blocks are JSON");
+    assert_eq!(
+        doc["source_sha256"].as_str(),
+        Some("e954fe3fb584899ecfd30bf42ae55774fd1bb3e426a9ccf9a0ce0bc3523d6feb"),
+        "the committed blocks name the 2026-09-23 sample of SAMPLES.md"
+    );
+    assert_eq!(
+        doc["slots"],
+        serde_json::json!([449808325u64, 449808725u64])
+    );
+    let rows = doc["rows"].as_array().expect("rows");
+    assert_eq!(rows.len(), 2_284);
+    assert_eq!(doc["count"].as_u64(), Some(rows.len() as u64));
+
+    let (t, verdicts) = measure(&doc, false);
+    report(&t, false);
+    check_invariants(&t);
+    assert!(
+        t.parse_failed.is_empty(),
+        "a frame the chain executed did not parse: {:?}",
+        t.parse_failed
+    );
+    assert!(
+        t.verify_error.is_empty(),
+        "verify returned an error: {:?}",
+        t.verify_error
+    );
+    assert_eq!(
+        t.approved, 0,
+        "offline, with no earned evidence, nothing is approved"
+    );
+
+    // Deterministic (Constitution P2): the same bytes give the same verdicts.
+    let tsv = verdict_tsv(&verdicts);
+    let (_, again) = measure(&doc, false);
+    assert_eq!(
+        tsv,
+        verdict_tsv(&again),
+        "two runs over the same blocks disagree"
+    );
+
+    use sha2::Digest;
+    let digest = hex::encode(sha2::Sha256::digest(tsv.as_bytes()));
+    println!(
+        "[committed blocks] {} verdicts, sha256 {digest}",
+        verdicts.len()
+    );
+    assert_eq!(
+        digest, COMMITTED_VERDICTS_SHA256,
+        "a verdict on the committed mainnet blocks changed. Diff it (see COMMITTED_VERDICTS_SHA256), \
+         attribute every changed row, and update the pin in the same commit."
     );
 }

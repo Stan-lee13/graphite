@@ -59,6 +59,7 @@ nothing is ever signed before the verdict.
 | Claim | Evidence |
 |---|---|
 | It behaves on real traffic | 48,855 executed mainnet transactions from four days, run through the whole pipeline on their real bytes: 0 parse failures, 0 verify errors, every changed verdict attributed ([round report](docs/round24-the-intent-is-the-class-2026-10-03.md); samples by slot list and SHA-256 in [`tools/mainnet-sample/SAMPLES.md`](tools/mainnet-sample/SAMPLES.md)) |
+| You can rerun it, offline | two of those blocks (2,284 transactions) are committed and run on every `cargo test`: the verdict file's SHA-256 is pinned and equals the full measurement's for the same rows, so the same input gives the same output on your machine (`tests/mainnet_conformance.rs`, [`SAMPLES.md`](tools/mainnet-sample/SAMPLES.md)) |
 | Its fixes are real | every security fix has a test that fails without it, and each fix was reverted once to prove the test catches it ([`AUDIT/01-findings.md`](AUDIT/01-findings.md), break log) |
 | It parses what the network runs | a runtime oracle compares Graphite's parser with the validator's own decoder on ~628,500 generated frames per CI seed: never looser |
 | Agents can use it today | SolanaAgentKit, the Vercel AI SDK and an MCP server, all signing through [`integrations/agent-guard`](integrations/agent-guard/README.md) |

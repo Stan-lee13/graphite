@@ -3,6 +3,11 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 26 — real traffic on every commit] — 2026-10-16
+
+- **Committed mainnet blocks, gated in CI (roadmap R-P2/R-P3).** `fixtures/mainnet/sample-2026-09-23-last-2-blocks.json`: the last two finalized blocks of the 2026-09-23 sample (2,284 executed transactions, legacy, v0 and v1), written by `tools/mainnet-sample/make_committed_subset.py` (refuses a source whose SHA-256 `SAMPLES.md` does not record; whole blocks by position). `mainnet_conformance::the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run` runs them through the whole pipeline on every `cargo test`: 0 parse failures, 0 verify errors, two runs identical, the verdict file's SHA-256 pinned — and that pin equals the hash of the same 2,277 rows of the full-sample run. The conformance loop is now `measure(doc, honest)`, shared by both tests.
+- **Advisories published after Round 24, fixed:** `quinn-proto` 0.11.17 → 0.11.19 (RUSTSEC-2026-0338/0340/0343) and `rustls` 0.23.45 → 0.23.46 (RUSTSEC-2026-0346/0347/0348) in `Cargo.lock`; npm overrides `@modelcontextprotocol/sdk` 1.31.0 and `proxy-addr` 2.0.8 in the SAK adapter (GHSA-6qxp-vccf-f47h, GHSA-jqcg-44mw-7w3h), `source-map-js` 1.2.2 in the dashboard (GHSA-68fv-2mgg-jv7q).
+
 ## [Round 25 — the swap is the one asked for] — 2026-10-16
 
 Report: `docs/round25-the-swap-is-the-one-asked-for-2026-10-16.md`. Findings: `AUDIT/01-findings.md` (second external review, E1–E10). Internal engineering work, not an independent audit.

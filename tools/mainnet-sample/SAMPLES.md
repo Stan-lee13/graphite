@@ -31,3 +31,21 @@ the other 48,855, which are the rows the round reports compare.
 
 `tests/mainnet_conformance.rs` prints the SHA-256 of the sample it measured,
 so a run's output names its input.
+
+## The committed slice, run on every commit
+
+`graphite-core/fixtures/mainnet/sample-2026-09-23-last-2-blocks.json` is the last
+two blocks of the 2026-09-23 sample (slots 449808325 and 449808725, 2,284
+transactions as the chain executed them: legacy, v0 and v1), written by
+`make_committed_subset.py`, which refuses a source whose hash is not in the
+table above and chooses whole blocks by position, never rows by content.
+Regenerating it gives the same bytes (SHA-256
+`79681f646cda8c3c85da686b27450dda3c69bd0691acc6714b654ab33a4515b0`).
+
+`tests/mainnet_conformance.rs::the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run`
+runs it through the whole pipeline on every `cargo test`, with no network and no
+`#[ignore]`: 0 parse failures, 0 verify errors, two runs identical, and the
+SHA-256 of the verdict file pinned. That pin was cross-checked against the
+full-sample run of Round 24's final code: the same 2,277 rows hash to the same
+value. A change to any verdict on these blocks fails CI until it is attributed
+and the pin updated in the same commit.

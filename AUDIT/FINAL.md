@@ -59,8 +59,9 @@ This is **not** a "0 issues" verdict.
   all three feature legs, and fmt is clean. The runtime oracle is never looser than agave on
   both CI seeds. Every fixed finding has a named test that fails before the fix
   (`01-findings.md`).
-- **Deliberate breaks:** 107 of 107 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
-  Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8). B62 and B99 were
+- **Deliberate breaks:** 108 of 108 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
+  Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
+  (the committed mainnet blocks catch a verdict change). B62 and B99 were
   missed on their first run because their tests did not exercise the reverted rule; each test was
   corrected and the break caught. TypeScript: 11 of 11 caught (TSB1–TSB5 in Round 24, TSB6–TSB11
   in Round 25).
@@ -101,7 +102,6 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 
 - protocol upgrade detection (R-M1);
 - a persisted archive index (R-M11);
-- a committed mainnet subset gated in CI (R-P2/R-P3);
 - the guard off `@solana/web3.js` 1.x (R-M15);
 - scheduled mutation, fuzz and coverage runs (R-P11/12/15). Rust coverage is not measured.
 

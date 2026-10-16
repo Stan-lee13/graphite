@@ -68,7 +68,9 @@ Measured on real mainnet:        19,458 transactions fetched 2026-09-23 (12,134 
                                  transactions with a manifested primary are newly refused (AUDIT R2-c).
                                  The samples are not in the repo (gitignored); since Round 24 they are fetched
                                  by slot list and their SHA-256 is recorded in tools/mainnet-sample/SAMPLES.md,
-                                 so a re-run can be checked against these files
+                                 so a re-run can be checked against these files. Since Round 26 two of the
+                                 blocks (2,284 transactions) ARE committed and run on every cargo test with
+                                 the verdict file's SHA-256 pinned (equal to the full run's for those rows)
 Manifest coverage of the chain:  137 manifests / 3,504 instructions (129 / 3,195 when the sample below was measured). On a 10,617-transaction mainnet sample
                                  fetched on 2026-09-23 (not in the repo),
                                  44.0% of non-vote transactions have a manifested primary program, up from 20.8%

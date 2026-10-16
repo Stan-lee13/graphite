@@ -27,7 +27,9 @@
     "langsmith": "0.6.3",
     "hono": "4.13.12",
     "ip-address": "10.7.2",
-    "qs": "6.16.0"
+    "qs": "6.16.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
+    "proxy-addr": "2.0.8"
   },
   "license": "MIT"
 }
