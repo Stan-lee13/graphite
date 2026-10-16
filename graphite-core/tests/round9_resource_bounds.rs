@@ -216,7 +216,10 @@ fn a_packet_sized_artifact_at_maximum_instruction_count_is_cheap() {
     while transaction_with_siblings(packet_max + 1).0.len() <= MAX_TRANSACTION_BYTES {
         packet_max += 1;
     }
-    assert!(packet_max > n, "a packet holds more instructions than the trace");
+    assert!(
+        packet_max > n,
+        "a packet holds more instructions than the trace"
+    );
     assert!(matches!(
         parse_transaction(&transaction_with_siblings(packet_max).0),
         Err(ArtifactParseError::TooManyInstructions { max: 64, .. })
