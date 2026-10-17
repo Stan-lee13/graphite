@@ -51,17 +51,17 @@ This is **not** a "0 issues" verdict.
 
 ## Evidence
 
-- **Tests:** 1,913 Rust tests pass in the all-features suite (135 binaries, 12 ignored: network-
-  or sample-dependent, plus one soak benchmark), 356 in the featureless library build and 1,643
+- **Tests:** 1,923 Rust tests pass in the all-features suite (136 binaries, 12 ignored: network-
+  or sample-dependent, plus one soak benchmark), 356 in the featureless library build and 1,644
   in the cli-only build. The TypeScript suites pass: 195 in the agent guard, 34 in the SDK (4 more
   need a live server), 7 in the Vercel AI adapter, 8 in the MCP server, 6 in the SolanaAgentKit
   adapter and 7 in the dashboard. Go passes 45 and Python 35. Clippy `-D warnings` is clean on
   all three feature legs, and fmt is clean. The runtime oracle is never looser than agave on
   both CI seeds. Every fixed finding has a named test that fails before the fix
   (`01-findings.md`).
-- **Deliberate breaks:** 108 of 108 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
+- **Deliberate breaks:** 111 of 111 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
   Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
-  (the committed mainnet blocks catch a verdict change). B62 and B99 were
+  (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection). B62 and B99 were
   missed on their first run because their tests did not exercise the reverted rule; each test was
   corrected and the break caught. TypeScript: 11 of 11 caught (TSB1–TSB5 in Round 24, TSB6–TSB11
   in Round 25).
@@ -100,7 +100,6 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 
 **Open engineering:**
 
-- protocol upgrade detection (R-M1);
 - a persisted archive index (R-M11);
 - the guard off `@solana/web3.js` 1.x (R-M15);
 - scheduled mutation, fuzz and coverage runs (R-P11/12/15). Rust coverage is not measured.

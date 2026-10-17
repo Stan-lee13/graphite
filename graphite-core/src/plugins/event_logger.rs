@@ -270,6 +270,7 @@ mod tests {
 
     fn fake_result(approved: bool) -> VerificationResult {
         VerificationResult {
+            program_upgrades: Vec::new(),
             approved,
             confidence: 0.7,
             breakdown: vec![],

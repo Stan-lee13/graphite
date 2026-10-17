@@ -157,7 +157,7 @@ fix reverted once to prove its test fails without it. Status of every guarantee:
 - [x] **The audit closed at the root (Round 23)** and **the bridge on `@solana/kit` (R-P8, 2026-10-02):** see `AUDIT/` and the Round 23 report
 - [x] **The intent is the class (Round 24):** external review R2/R3 reproduced on `eb17aa5` and fixed — one intent-to-class table read by L5 and the Risk Engine; control changes by name, delegation grant, switch and admin signer, primary and sibling alike; W11–W25 verified and fixed or documented; Vercel AI SDK and MCP integrations over the agent guard, whose cap bounds swaps by their simulated outflow; 137 manifests / 3,504 instructions, 113 battle-tested; four days of mainnet: 302 newly refused, 0 freed, 0 approved
 - [x] **Message version 1 parsed (Round 19):** never looser than agave's decoder (runtime oracle, both CI seeds, zero looser frames); 3,302 of 3,302 real mainnet v1 transactions read and bound
-- [x] 1,913 Rust tests after Round 25 (356 featureless, 1,643 cli-only), 195 in the agent guard, 6 in the SAK adapter, 7 Vercel AI, 8 MCP, 38 in the TS SDK (4 live), 45 Go, 35 Python, 7 dashboard (1,849 after the 2026-09-29 audit round); CI green on each round's closing commit, not on every commit: run #155 on `58a9ad8` failed the runtime-oracle job and `8d30931` (#156) fixed it
+- [x] 1,923 Rust tests after Round 27 (356 featureless, 1,644 cli-only), 195 in the agent guard, 6 in the SAK adapter, 7 Vercel AI, 8 MCP, 38 in the TS SDK (4 live), 45 Go, 35 Python, 7 dashboard (1,849 after the 2026-09-29 audit round); CI green on each round's closing commit, not on every commit: run #155 on `58a9ad8` failed the runtime-oracle job and `8d30931` (#156) fixed it
 
 ## Phase 3 (Production) — what gates it
 

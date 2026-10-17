@@ -273,6 +273,32 @@ pub struct SemanticGraphStore {
     /// The same for each shadow accumulator.
     #[serde(default)]
     shadow_observed: HashMap<String, ObservationMemory>,
+    /// Roadmap R-M1: the deployment of each manifested program as Graphite
+    /// last saw it (the loader's deploy slot and upgrade authority), so an
+    /// upgrade is noticed the first time a transaction reaches the program
+    /// after it. Omitted from the snapshot while empty.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    deployments: HashMap<String, ObservedDeployment>,
+}
+
+/// A program's code as Graphite last saw it (roadmap R-M1).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ObservedDeployment {
+    /// The slot the loader says the code was last deployed at.
+    pub deploy_slot: u64,
+    /// Who may replace the code (`None`: no one).
+    pub upgrade_authority: Option<String>,
+}
+
+/// What a deployment observation says about the previous one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeploymentChange {
+    /// The first time Graphite has seen this program's deployment.
+    First,
+    /// The same code under the same authority.
+    Same,
+    /// Redeployed, or its upgrade authority changed, since it was last seen.
+    Changed { previous: ObservedDeployment },
 }
 
 impl SemanticGraphStore {
@@ -441,6 +467,26 @@ impl SemanticGraphStore {
     /// observability/dashboard reads — never mutated.
     pub fn baselines(&self) -> &HashMap<String, ComputeBaseline> {
         &self.baselines
+    }
+
+    /// Record a program's current deployment and say how it compares with
+    /// the last one seen. The record is replaced on a change, so each upgrade
+    /// is reported once.
+    pub fn observe_deployment(
+        &mut self,
+        program_id: &str,
+        now: ObservedDeployment,
+    ) -> DeploymentChange {
+        match self.deployments.insert(program_id.to_string(), now.clone()) {
+            None => DeploymentChange::First,
+            Some(previous) if previous == now => DeploymentChange::Same,
+            Some(previous) => DeploymentChange::Changed { previous },
+        }
+    }
+
+    /// The deployment last seen for a program.
+    pub fn observed_deployment(&self, program_id: &str) -> Option<&ObservedDeployment> {
+        self.deployments.get(program_id)
     }
 
     /// Get Behavior record for a program ID (latest version — reflects

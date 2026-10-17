@@ -561,6 +561,59 @@ pub struct AccountState {
     pub data: Vec<u8>,
 }
 
+/// The BPF Upgradeable Loader (loader-v3).
+pub const UPGRADEABLE_LOADER: &str = "BPFLoaderUpgradeab1e11111111111111111111111";
+/// `UpgradeableLoaderState::Program`: a u32 tag (2) and the ProgramData address.
+const PROGRAM_ACCOUNT_HEADER: usize = 4 + 32;
+/// `UpgradeableLoaderState::ProgramData`: a u32 tag (3), the deploy slot
+/// (u64) and the upgrade authority (`Option<Pubkey>`: one byte, then 32).
+const PROGRAMDATA_HEADER: usize = 4 + 8 + 1 + 32;
+
+/// What the chain says about a program's code right now (roadmap R-M1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProgramDeployment {
+    /// Owned by the upgradeable loader: the slot its code was last deployed
+    /// at, and who may replace it (`None`: no one — the program is final).
+    Upgradeable {
+        programdata: String,
+        deploy_slot: u64,
+        upgrade_authority: Option<String>,
+    },
+    /// Owned by another loader or a builtin's loader: its code cannot be
+    /// replaced through the upgradeable loader.
+    NotUpgradeable { owner: String },
+    /// No account at that address.
+    Missing,
+}
+
+/// The ProgramData address a loader-v3 `Program` account names.
+pub fn decode_program_account(data: &[u8]) -> Option<String> {
+    if data.len() < PROGRAM_ACCOUNT_HEADER || data[..4] != 2u32.to_le_bytes() {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&data[4..36]);
+    Some(Pubkey::from_bytes(key).to_base58())
+}
+
+/// The deploy slot and upgrade authority of a loader-v3 `ProgramData` header.
+pub fn decode_programdata_header(data: &[u8]) -> Option<(u64, Option<String>)> {
+    if data.len() < 13 || data[..4] != 3u32.to_le_bytes() {
+        return None;
+    }
+    let slot = u64::from_le_bytes(data[4..12].try_into().ok()?);
+    let authority = match data[12] {
+        0 => None,
+        1 if data.len() >= PROGRAMDATA_HEADER => {
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&data[13..45]);
+            Some(Pubkey::from_bytes(key).to_base58())
+        }
+        _ => return None,
+    };
+    Some((slot, authority))
+}
+
 /// How far the cluster has committed to a transaction, as
 /// `getSignatureStatuses` reports it in `confirmationStatus`.
 ///
@@ -1287,15 +1340,29 @@ impl SolanaRpcClient {
         &self,
         pubkeys: &[String],
     ) -> Result<(Option<u64>, Vec<Option<AccountState>>), RpcError> {
+        self.get_multiple_accounts_sliced(pubkeys, None).await
+    }
+
+    /// `get_multiple_accounts_at`, reading only `(offset, length)` of each
+    /// account's data when `slice` is set (`dataSlice`): a program's
+    /// ProgramData account holds its whole binary, and a deployment check
+    /// needs its first 45 bytes.
+    async fn get_multiple_accounts_sliced(
+        &self,
+        pubkeys: &[String],
+        slice: Option<(usize, usize)>,
+    ) -> Result<(Option<u64>, Vec<Option<AccountState>>), RpcError> {
         const CHUNK: usize = 100;
         let mut out: Vec<Option<AccountState>> = Vec::with_capacity(pubkeys.len());
         let mut slot: Option<u64> = None;
         let mut slots_agree = true;
         for chunk in pubkeys.chunks(CHUNK) {
-            let params = serde_json::json!([
-                chunk,
-                {"encoding":"base64","commitment":self.config.commitment}
-            ]);
+            let mut config =
+                serde_json::json!({"encoding":"base64","commitment":self.config.commitment});
+            if let Some((offset, length)) = slice {
+                config["dataSlice"] = serde_json::json!({"offset": offset, "length": length});
+            }
+            let params = serde_json::json!([chunk, config]);
             let body = serde_json::json!({
                 "jsonrpc":"2.0","id":1,"method":"getMultipleAccounts","params":params
             });
@@ -1321,6 +1388,80 @@ impl SolanaRpcClient {
             }
         }
         Ok((if slots_agree { slot } else { None }, out))
+    }
+
+    /// What the BPF Upgradeable Loader says about each program's code now
+    /// (roadmap R-M1): the slot it was last deployed at and who may replace
+    /// it. Two batched reads, each of a header only (`dataSlice`): the
+    /// program accounts (36 bytes: the loader's `Program` tag and the
+    /// ProgramData address), then their ProgramData accounts (45 bytes: tag,
+    /// deploy slot, upgrade authority). An answer that does not decode as the
+    /// loader's layout is an error, never a guess.
+    pub async fn get_program_deployments(
+        &self,
+        programs: &[String],
+    ) -> Result<Vec<ProgramDeployment>, RpcError> {
+        let (_, accounts) = self
+            .get_multiple_accounts_sliced(programs, Some((0, PROGRAM_ACCOUNT_HEADER)))
+            .await?;
+        let mut out = Vec::with_capacity(programs.len());
+        let mut programdata: Vec<String> = Vec::new();
+        for (program, account) in programs.iter().zip(&accounts) {
+            match account {
+                None => out.push(ProgramDeployment::Missing),
+                Some(a) if a.owner != UPGRADEABLE_LOADER => {
+                    out.push(ProgramDeployment::NotUpgradeable {
+                        owner: a.owner.clone(),
+                    })
+                }
+                Some(a) => {
+                    let address = decode_program_account(&a.data).ok_or_else(|| {
+                        RpcError::InvalidResponse(format!(
+                            "{program} is owned by the upgradeable loader but its account is not a Program"
+                        ))
+                    })?;
+                    programdata.push(address.clone());
+                    out.push(ProgramDeployment::Upgradeable {
+                        programdata: address,
+                        deploy_slot: 0,
+                        upgrade_authority: None,
+                    });
+                }
+            }
+        }
+        if programdata.is_empty() {
+            return Ok(out);
+        }
+        let (_, headers) = self
+            .get_multiple_accounts_sliced(&programdata, Some((0, PROGRAMDATA_HEADER)))
+            .await?;
+        let mut headers = headers.into_iter();
+        for entry in out.iter_mut() {
+            if let ProgramDeployment::Upgradeable {
+                programdata,
+                deploy_slot,
+                upgrade_authority,
+            } = entry
+            {
+                let header = headers.next().flatten().ok_or_else(|| {
+                    RpcError::InvalidResponse(format!("ProgramData {programdata} does not exist"))
+                })?;
+                if header.owner != UPGRADEABLE_LOADER {
+                    return Err(RpcError::InvalidResponse(format!(
+                        "ProgramData {programdata} is not owned by the upgradeable loader"
+                    )));
+                }
+                let (slot, authority) =
+                    decode_programdata_header(&header.data).ok_or_else(|| {
+                        RpcError::InvalidResponse(format!(
+                            "ProgramData {programdata} does not decode as the loader's ProgramData"
+                        ))
+                    })?;
+                *deploy_slot = slot;
+                *upgrade_authority = authority;
+            }
+        }
+        Ok(out)
     }
 
     /// Simulate a transaction and ask the RPC for the post-execution state of
@@ -1686,6 +1827,48 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    /// R-M1: the loader-v3 layouts, byte for byte, and a refusal for anything else.
+    #[test]
+    fn the_upgradeable_loader_headers_decode_exactly() {
+        let mut program = 2u32.to_le_bytes().to_vec();
+        program.extend([7u8; 32]);
+        assert_eq!(
+            decode_program_account(&program),
+            Some(Pubkey::from_bytes([7u8; 32]).to_base58())
+        );
+        assert_eq!(decode_program_account(&program[..35]), None, "short");
+        let mut buffer = program.clone();
+        buffer[..4].copy_from_slice(&1u32.to_le_bytes());
+        assert_eq!(
+            decode_program_account(&buffer),
+            None,
+            "a Buffer is not a Program"
+        );
+
+        let mut header = 3u32.to_le_bytes().to_vec();
+        header.extend(451_887_084u64.to_le_bytes());
+        header.push(1);
+        header.extend([9u8; 32]);
+        assert_eq!(
+            decode_programdata_header(&header),
+            Some((451_887_084, Some(Pubkey::from_bytes([9u8; 32]).to_base58())))
+        );
+        let mut final_program = header[..12].to_vec();
+        final_program.push(0);
+        assert_eq!(
+            decode_programdata_header(&final_program),
+            Some((451_887_084, None))
+        );
+        let mut bad_option = header.clone();
+        bad_option[12] = 2;
+        assert_eq!(decode_programdata_header(&bad_option), None);
+        assert_eq!(
+            decode_programdata_header(&header[..44]),
+            None,
+            "authority cut short"
+        );
+    }
 
     /// Minimal in-process HTTP server for deterministic RPC tests (no network).
     /// Serves one response per connection; `responses` is `(status, body)`.

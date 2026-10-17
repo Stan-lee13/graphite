@@ -11,7 +11,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 **Current status, in one place: [docs/CURRENT.md](docs/CURRENT.md).** Every dated report under `docs/` is a historical record and points there.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
-[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1913_passing-brightgreen?style=flat-square)](graphite-core/tests/)
+[![Rust Tests](https://img.shields.io/badge/Rust_Tests-1923_passing-brightgreen?style=flat-square)](graphite-core/tests/)
 [![Status](https://img.shields.io/badge/Status-security--hardened_alpha-orange?style=flat-square)](docs/CURRENT.md)
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-137-blue?style=flat-square)](docs/protocol-coverage.md)
@@ -116,13 +116,13 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,913 tests — zero setup (1,925 total; 12 ignored: network- or
+# Run 1,923 tests — zero setup (1,935 total; 12 ignored: network- or
 # sample-dependent, plus one soak benchmark, run explicitly with --ignored)
 cargo test --release --all-features
-# summed across the test binaries: 1913 passed; 0 failed; 12 ignored
+# summed across the test binaries: 1923 passed; 0 failed; 12 ignored
 
 # The same gate CI runs on the feature matrix: the library with no features
-# (356 tests) and the cli-only build (1,643) must pass too.
+# (356 tests) and the cli-only build (1,644) must pass too.
 cargo test --release --no-default-features --lib
 cargo test --release --no-default-features --features cli
 
@@ -344,6 +344,7 @@ unauthenticated instance — and even then only on a loopback address.
 | `GRAPHITE_AUDIT_ROTATE_BYTES` | `67108864` (64 MiB) | Rotate the active audit file at this size, bounding disk growth and the dashboard's per-poll scan cost. `0` disables rotation. |
 | `GRAPHITE_AUDIT_MAX_ARCHIVES` | `0` (keep all) | Rotated archives to retain. The default keeps the complete audit trail (P9); set a limit only if you accept that the oldest history is deleted. |
 | `GRAPHITE_ALLOW_DURABLE_NONCE` | `0` | `1` permits durable-nonce transactions, which never expire, and only after the nonce account is verified on-chain. Refused at L2 by default. Process-wide. |
+| `GRAPHITE_QUARANTINE_ON_UPGRADE` | `0` | With an RPC attached, Graphite always notices when a manifested program is redeployed or handed to a new upgrade authority (reported on the verdict as `program_upgrades`, on `/health`, and as `graphite_program_upgrades_detected_total`). `1` also quarantines the program until the operator reviews the manifest and lifts it. Any value other than `0`/`1`/`true`/`false` refuses to start. |
 | `GRAPHITE_PLUGINS_DIR` | *(unset)* | Directory of plugin manifests to activate (the review gate: pending or rejected manifests are skipped). A directory that fails to load is a startup error, never a silent removal of the checks it carried. The in-tree built-in plugins are active regardless. |
 | `GRAPHITE_PLUGIN_EVENTS_FILE` | *(unset)* | Append every verification event to this JSON-lines file, for observability. |
 | `GRAPHITE_REGISTRY_STATE` | `registry_state.json` | Manifest Registry state (reviewers, accepted community submissions), shared by the server and `graphite registry` / `graphite verify`. Accepted community manifests are merged into the verifying core at startup. A corrupt file is logged loudly, never silently reset. |

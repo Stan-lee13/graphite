@@ -106,6 +106,7 @@ fn max_evidence() -> BehaviorEvidence {
 /// (Constitution P12). Shared by `run` and `run_seeded`.
 fn fail_closed_result(input: &VerificationInput) -> graphite_core::VerificationResult {
     graphite_core::verification::VerificationResult {
+        program_upgrades: Vec::new(),
         approved: false,
         confidence: 0.0,
         breakdown: vec![],

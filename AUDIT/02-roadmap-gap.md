@@ -65,7 +65,7 @@ Each has named tests; see the audit table.
 
 | # | Goal | Recommendation | Class |
 |---|---|---|---|
-| R-M1 | Protocol upgrade detection (a ProgramData slot watch) | Read the loader's ProgramData `slot`, persist `last_deploy_slot` per manifested program, and add an audit row, a `/health` entry and a metric. Quarantine only behind an operator flag | NOW |
+| R-M1 | Protocol upgrade detection (a ProgramData slot watch) | **Done (Round 27, 2026-10-16).** With an RPC, every manifested program a transaction invokes has its deployment read from the BPF Upgradeable Loader (two batched header reads, `dataSlice`, under the RPC budget) and compared with the last one seen, which is persisted in the semantic graph. A redeploy or a new upgrade authority is reported once on the verdict (`program_upgrades`, a `ProgramUpgraded` warning), on `/health` and as `graphite_program_upgrades_detected_total`; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also quarantines the program. What remains: the first sighting is the baseline, so an upgrade before Graphite first sees a program is not one it can report; earned evidence (baselines, tiers) is not reset by an upgrade | `tests/rm1_program_upgrade_detection.rs`; break B109 |
 | R-M2 | P13 schema and version gate between releases | A snapshot of the result's field set plus the schema; a change requires a version bump and a CHANGELOG entry. The whole-response contract test added this round is the first half | NOW |
 | R-M4 | Independent third-party audit | — | OWNER + SPEND + EXT |
 | R-M5 | Branch protection on `main` | Until then every CI gate is advisory | OWNER |

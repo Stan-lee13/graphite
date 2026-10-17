@@ -86,7 +86,7 @@ When run via `cargo run --release --bin graphite -- server --port 7331`, the HTT
 - **Audit trail** — append-only JSONL (`audit.jsonl` in `GRAPHITE_DATA_DIR`), every record synced to the device before the response; a verdict that cannot be recorded is refused with `503`; rotation is a rename and every reader covers the archives
 - **Health and metrics** — `/health` (open) reports `degraded_reasons`, audit and rotation counters and snapshot health; `/metrics` (keyed) exports Prometheus counters
 - **L8 and lifecycle** — `POST /verify/execution` reconciles a signature against the recorded verdict across the whole trail; `POST /audit/event` records caller-reported signing/submission/confirmation/finalization as attestations
-- **Operator switches** — `/admin/quarantine` (the separate operator key `GRAPHITE_ADMIN_API_KEY`; disabled without it — Round 19), `GRAPHITE_WALLET_PROFILE`, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_ALLOW_DURABLE_NONCE`; all default closed
+- **Operator switches** — `/admin/quarantine` (the separate operator key `GRAPHITE_ADMIN_API_KEY`; disabled without it — Round 19), `GRAPHITE_WALLET_PROFILE`, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_ALLOW_DURABLE_NONCE`, `GRAPHITE_QUARANTINE_ON_UPGRADE` (quarantine a program found redeployed since last seen; detection itself is always on with an RPC); all default closed
 - **Graceful shutdown**; `X-Forwarded-For` only honored behind an explicit trusted-proxy flag
 - **Live L3** when `GRAPHITE_RPC_URL` is set — `simulateTransaction` runs with real compute feeding the trusted baseline accumulator (live-validated on Solana devnet, C40)
 - **Live L8** — execution verification reports honest on-chain status (Confirmed/Unknown/Unavailable), live-validated against mainnet RPC (C40)

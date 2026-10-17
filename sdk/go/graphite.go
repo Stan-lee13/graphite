@@ -340,6 +340,10 @@ type VerificationResult struct {
 	SimulationDivergence *float64              `json:"simulation_divergence,omitempty"`
 	Summary              string                `json:"summary"`
 	Layers               []PipelineLayerResult `json:"layers,omitempty"`
+	// ProgramUpgrades lists programs this transaction invokes that were
+	// redeployed, or handed to a new upgrade authority, since Graphite last
+	// saw them (roadmap R-M1). Empty when none were.
+	ProgramUpgrades []ProgramUpgrade `json:"program_upgrades,omitempty"`
 	// Scope is what this verdict is BOUND to, and what it did not observe.
 	//
 	// It makes Graphite's central promise checkable instead of assumed: the
@@ -388,6 +392,18 @@ type VerificationScope struct {
 	// "v0" or "v1" (Round 24). Empty when they did not parse, and from
 	// servers older than Round 24.
 	MessageVersion string `json:"message_version,omitempty"`
+}
+
+// ProgramUpgrade is a program whose deployment changed since Graphite last
+// saw it (roadmap R-M1).
+type ProgramUpgrade struct {
+	ProgramID                string  `json:"program_id"`
+	PreviousDeploySlot       uint64  `json:"previous_deploy_slot"`
+	DeploySlot               uint64  `json:"deploy_slot"`
+	PreviousUpgradeAuthority *string `json:"previous_upgrade_authority"`
+	UpgradeAuthority         *string `json:"upgrade_authority"`
+	// Quarantined says whether GRAPHITE_QUARANTINE_ON_UPGRADE withdrew it.
+	Quarantined bool `json:"quarantined"`
 }
 
 // ComputeBudgetRequest is a transaction's compute-budget request: the v1

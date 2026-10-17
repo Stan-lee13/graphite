@@ -248,6 +248,12 @@ export interface VerificationResult {
   /** 8-layer pipeline results (L1-L8) */
   layers?: PipelineLayerResult[];
   /**
+   * Roadmap R-M1: programs this transaction invokes that were redeployed, or
+   * handed to a new upgrade authority, since Graphite last saw them. Absent
+   * when none were (or no RPC is attached, or the server predates it).
+   */
+  program_upgrades?: ProgramUpgrade[];
+  /**
    * What this verdict is BOUND to, and what it did not observe.
    *
    * This is the field that makes Graphite's central promise checkable instead
@@ -328,6 +334,17 @@ export const INHERENT_UNOBSERVED: ReadonlySet<UnobservedCode> = new Set<Unobserv
   "program_semantics",
   "inner_instructions",
 ]);
+
+/** A program whose deployment changed since Graphite last saw it (roadmap R-M1). */
+export interface ProgramUpgrade {
+  program_id: string;
+  previous_deploy_slot: number;
+  deploy_slot: number;
+  previous_upgrade_authority: string | null;
+  upgrade_authority: string | null;
+  /** Whether the operator's GRAPHITE_QUARANTINE_ON_UPGRADE withdrew it from trust. */
+  quarantined: boolean;
+}
 
 /** `scope.kind === "artifact_bound"`: the verdict is tied to concrete bytes. */
 export interface ArtifactBoundScope {

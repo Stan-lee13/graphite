@@ -3,6 +3,14 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [Round 27 — a protocol upgrade is noticed] — 2026-10-16
+
+Report: `docs/round26-27-real-traffic-and-upgrades-2026-10-16.md`. Roadmap R-M1 (external reviews R11, W5, W6).
+
+- **Upgrade detection.** `SolanaRpcClient::get_program_deployments` reads each program's loader-v3 `Program` account and its `ProgramData` header (two batched `getMultipleAccounts`, `dataSlice` 36 and 45 bytes: never a program binary); `rpc_client::decode_program_account` / `decode_programdata_header`; `ProgramDeployment`. `SemanticGraphStore::observe_deployment` keeps the last deployment seen per program (persisted with the snapshot, omitted while empty) and says First / Same / Changed. With an RPC, every manifested program a verification invokes is checked under the RPC budget: a redeploy or a new upgrade authority is reported once on the verdict (`VerificationResult::program_upgrades`, a `ProgramUpgraded` warning in the summary), counted (`program_upgrades_detected`, `/health` `program_upgrades`, `graphite_program_upgrades_detected_total`). An answer that cannot be read records nothing and changes nothing.
+- **`GRAPHITE_QUARANTINE_ON_UPGRADE`** (`GraphiteCore::set_quarantine_on_upgrade`): `1` quarantines the upgraded program through the ordinary, durable quarantine, before the verdict's own quarantine gate; values other than `0`/`1`/`true`/`false` refuse to start.
+- Schema (`program_upgrades`), TypeScript and Go types.
+
 ## [Round 26 — real traffic on every commit] — 2026-10-16
 
 - **Committed mainnet blocks, gated in CI (roadmap R-P2/R-P3).** `fixtures/mainnet/sample-2026-09-23-last-2-blocks.json`: the last two finalized blocks of the 2026-09-23 sample (2,284 executed transactions, legacy, v0 and v1), written by `tools/mainnet-sample/make_committed_subset.py` (refuses a source whose SHA-256 `SAMPLES.md` does not record; whole blocks by position). `mainnet_conformance::the_committed_mainnet_blocks_give_the_recorded_verdicts_every_run` runs them through the whole pipeline on every `cargo test`: 0 parse failures, 0 verify errors, two runs identical, the verdict file's SHA-256 pinned — and that pin equals the hash of the same 2,277 rows of the full-sample run. The conformance loop is now `measure(doc, honest)`, shared by both tests.

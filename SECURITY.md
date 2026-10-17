@@ -221,6 +221,20 @@ applies to decompressed chunks — 65 KB inflating to 64 MiB is refused at 32 Mi
 the rate limiter at its million-bucket bound (452 ns per check, measured); `audit_trail_id`
 spoofing (a fabricated id resolves to nothing and is never rescued by a coarser key).
 
+## Real Traffic on Every Commit, and Upgrades Noticed (2026-10-16; Rounds 26–27)
+
+- **Two finalized mainnet blocks run on every commit (R-P2/R-P3).** 2,284 executed
+  transactions, committed, through the whole pipeline with the verdict file's SHA-256 pinned (and
+  equal to the full measurement's for the same rows). A verdict change on real traffic fails CI
+  until it is attributed.
+- **A protocol upgrade is noticed (R-M1).** With an RPC, a manifested program redeployed, or
+  handed to a new upgrade authority, since Graphite last saw it is reported on the verdict, on
+  `/health` and in the metrics; `GRAPHITE_QUARANTINE_ON_UPGRADE=1` also withdraws it from trust
+  until the operator reviews the manifest. Limits: the first sighting is the baseline, and
+  evidence earned on the old code is not reset by an upgrade.
+- **Advisories published after Round 24 fixed** in the Rust lockfile (`quinn-proto`, `rustls`) and
+  by npm overrides (SAK adapter, dashboard).
+
 ## The Swap Is the One Asked For (2026-10-16; Round 25)
 
 A second external review of `d95d37a` listed ten items; each was checked against the code before

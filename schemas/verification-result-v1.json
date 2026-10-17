@@ -286,6 +286,23 @@
         "null"
       ]
     },
+    "program_upgrades": {
+      "description": "Roadmap R-M1: programs this transaction invokes whose deployment changed (redeployed, or handed to a new upgrade authority) since Graphite last saw them, read from the BPF Upgradeable Loader with an RPC attached. Absent when none did. Reported, not refused, unless the operator set GRAPHITE_QUARANTINE_ON_UPGRADE (then `quarantined` is true and the verdict is blocked as a quarantined program).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["program_id", "previous_deploy_slot", "deploy_slot", "previous_upgrade_authority", "upgrade_authority", "quarantined"],
+        "properties": {
+          "program_id": { "type": "string" },
+          "previous_deploy_slot": { "type": "integer", "minimum": 0 },
+          "deploy_slot": { "type": "integer", "minimum": 0 },
+          "previous_upgrade_authority": { "type": ["string", "null"] },
+          "upgrade_authority": { "type": ["string", "null"] },
+          "quarantined": { "type": "boolean" }
+        }
+      }
+    },
     "layers": {
       "type": "array",
       "items": {

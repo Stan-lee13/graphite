@@ -269,7 +269,7 @@ Both names are now aliases of a single canonical `TRUSTED_COMPOSABILITY_PROGRAMS
 - **P5:** Simulation is evidence, not truth — RPC-derived numbers come only from canonical response fields, are bounded, and can lower or fail a verdict; a caller-supplied diff can only fail L4, never pass it
 - **P9:** The audit trail is append-only, every record is synced to the device before the response, a verdict that cannot be recorded is refused (`503`), and every reader covers rotated archives
 - **P12:** Unknown protocols capped at 0.55 confidence — hard-coded, not overridable; anything Graphite cannot observe is disclosed as unobserved, never assumed
-- **P14:** Recorded tradeoffs — operator opt-ins (`GRAPHITE_ALLOW_DURABLE_NONCE`, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, the SAK swap opt-out phrase) are named, logged at startup, and default off
+- **P14:** Recorded tradeoffs — operator opt-ins (`GRAPHITE_ALLOW_DURABLE_NONCE`, `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`, `GRAPHITE_QUARANTINE_ON_UPGRADE`, the SAK swap opt-out phrase) are named, logged at startup, and default off
 - **P16:** No public performance claim without reproducible benchmark
 
 ## Server (HTTP API)

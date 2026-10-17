@@ -88,6 +88,7 @@ fn run(input: VerificationInput) -> graphite_core::VerificationResult {
     GraphiteCore::new().verify(&input).unwrap_or_else(|e| {
         // Verification error — construct a blocked result (fail-closed P12)
         graphite_core::verification::VerificationResult {
+            program_upgrades: Vec::new(),
             approved: false,
             confidence: 0.0,
             breakdown: vec![],

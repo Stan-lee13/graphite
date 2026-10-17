@@ -676,6 +676,21 @@ pub fn dev_mode_from_env() -> bool {
         .unwrap_or(false)
 }
 
+/// `GRAPHITE_QUARANTINE_ON_UPGRADE` (roadmap R-M1): unset, empty, `0` or
+/// `false` is off; `1` or `true` is on; anything else refuses to start, so a
+/// typo is never a silent "off".
+fn quarantine_on_upgrade_from(value: Option<&str>) -> Result<bool, String> {
+    match value.map(str::trim) {
+        None | Some("") | Some("0") => Ok(false),
+        Some("1") => Ok(true),
+        Some(v) if v.eq_ignore_ascii_case("true") => Ok(true),
+        Some(v) if v.eq_ignore_ascii_case("false") => Ok(false),
+        Some(v) => Err(format!(
+            "GRAPHITE_QUARANTINE_ON_UPGRADE={v:?} is not 1, true, 0 or false. REFUSING TO START."
+        )),
+    }
+}
+
 pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
@@ -714,6 +729,21 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
         .map(|v| v.trim() == "1" || v.trim().eq_ignore_ascii_case("true"))
         .unwrap_or(false);
     core.set_allow_durable_nonce(allow_durable_nonce);
+
+    // Roadmap R-M1: a program redeployed since Graphite last saw it is always
+    // reported; quarantining it as well is the operator's decision. A value
+    // other than 1/true/0/false is a startup error, never a silent "off".
+    let quarantine_on_upgrade = quarantine_on_upgrade_from(
+        std::env::var("GRAPHITE_QUARANTINE_ON_UPGRADE")
+            .ok()
+            .as_deref(),
+    )?;
+    core.set_quarantine_on_upgrade(quarantine_on_upgrade);
+    if quarantine_on_upgrade {
+        tracing_log(
+            "a program redeployed since Graphite last saw it is QUARANTINED until the operator lifts it (GRAPHITE_QUARANTINE_ON_UPGRADE=1)",
+        );
+    }
     if allow_durable_nonce {
         tracing_log(
             "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
@@ -2230,6 +2260,12 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
         // Whether L8 has a second, independent source for inclusion
         // (Round 12). `false` means every reconciliation rests on one RPC.
         "inclusion_witness": state.core.has_inclusion_witness(),
+        // Roadmap R-M1: programs found redeployed since last seen, and whether
+        // an upgrade quarantines the program.
+        "program_upgrades": {
+            "detected": state.core.program_upgrades_detected(),
+            "quarantine_on_upgrade": state.core.quarantine_on_upgrade(),
+        },
     }))
 }
 
@@ -2359,6 +2395,12 @@ async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
         "Audit records successfully appended.",
         "counter",
         audit.map(|h| h.writes_ok).unwrap_or(0),
+    );
+    push(
+        "graphite_program_upgrades_detected_total",
+        "Manifested programs found redeployed, or with a new upgrade authority, since Graphite last saw them (roadmap R-M1).",
+        "counter",
+        state.core.program_upgrades_detected(),
     );
     push(
         "graphite_audit_writes_failed_total",
@@ -4350,6 +4392,40 @@ mod tests {
         assert!(
             body.contains("graphite_rate_limited_total"),
             "the rate-limit counter must stay exported alongside it"
+        );
+    }
+
+    #[test]
+    fn the_quarantine_on_upgrade_flag_is_read_strictly() {
+        for (v, want) in [
+            (None, false),
+            (Some(""), false),
+            (Some("0"), false),
+            (Some("false"), false),
+            (Some("1"), true),
+            (Some(" TRUE "), true),
+        ] {
+            assert_eq!(quarantine_on_upgrade_from(v), Ok(want), "{v:?}");
+        }
+        for v in ["yes", "on", "2", "ture"] {
+            assert!(quarantine_on_upgrade_from(Some(v)).is_err(), "{v}");
+        }
+    }
+
+    /// Roadmap R-M1: an operator sees how many programs were found upgraded,
+    /// and whether an upgrade quarantines, on `/health` and in the metrics.
+    #[tokio::test]
+    async fn health_and_metrics_report_program_upgrades() {
+        let (state, _dir) = test_state();
+        let app = build_app(state, vec![]);
+        let (status, health) = get_json(&app, "/health").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(health["program_upgrades"]["detected"], 0);
+        assert_eq!(health["program_upgrades"]["quarantine_on_upgrade"], false);
+        let (_, metrics) = get_text(&app, "/metrics").await;
+        assert!(
+            metrics.contains("graphite_program_upgrades_detected_total 0"),
+            "{metrics}"
         );
     }
 

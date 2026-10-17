@@ -37,7 +37,7 @@ What exists today, all in the repository:
   outflow measured by simulating the exact transaction.
 - **SDKs** for TypeScript and Go, a Python advisory layer that cannot override the core, and
   a React dashboard.
-- **Tests:** 1,913 Rust tests in the all-features suite, plus 195 in the agent guard, 34 in the
+- **Tests:** 1,923 Rust tests in the all-features suite, plus 195 in the agent guard, 34 in the
   TypeScript SDK, 15 across the Vercel AI and MCP adapters, 6 in the SolanaAgentKit adapter,
   Go and Python suites, and 7 in the dashboard. A runtime oracle compares Graphite's parser
   with the validator's own decoder on about 628,500 generated frames per CI seed.
@@ -122,8 +122,9 @@ What this evidence is not:
 
 - Onboard the programs that dominate the unmanifested share of agent and mainnet traffic,
   each from its program's own interface. Each gets a mainnet measurement before it earns a tier.
-- Watch for protocol upgrades (ProgramData and upgrade authority), so a manifest cannot
-  silently outlive the program it describes (roadmap R-M1).
+- Extend the upgrade watch (built in Round 27: a redeploy or new upgrade authority is noticed
+  and reported, and can quarantine the program) to re-measure an upgraded program's manifest
+  against its new traffic automatically.
 - Grow the labelled real-exploit set and publish the corpus and method as an open benchmark.
 - **Exit:** the measured share of mainnet transactions with a manifested program rises, and the
   measurement is published with its samples.
@@ -159,8 +160,10 @@ What this evidence is not:
 
 - **The audit may find serious issues.** That is the point of Milestone 1. The budget assumes
   fixes at the root, each with a test.
-- **Manifest upkeep.** Programs upgrade. Milestone 2's upgrade watch and the registry's replay
-  gate exist for this, and a stale manifest refuses rather than approves.
+- **Manifest upkeep.** Programs upgrade. Graphite notices a redeploy the first time a
+  transaction reaches the program after it and reports it on the verdict; an operator can have
+  it quarantine the program until the manifest is reviewed. The registry's replay gate checks
+  every manifest change. Re-measuring an upgraded manifest automatically is Milestone 2.
 - **Adoption.** Verification protects only the agents that route through it, which is what
   Milestone 3 is for.
 

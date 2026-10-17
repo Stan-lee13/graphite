@@ -2287,6 +2287,12 @@ pub struct VerificationResult {
     pub simulation_divergence: Option<f64>,
     #[serde(default)]
     pub layers: Vec<PipelineLayerResult>,
+    /// Roadmap R-M1: programs this transaction invokes whose deployment
+    /// changed (redeployed, or a new upgrade authority) since Graphite last
+    /// saw them. Empty, and absent from the JSON, when none did or no RPC is
+    /// attached.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub program_upgrades: Vec<ProgramUpgrade>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -2650,6 +2656,26 @@ pub struct GraphiteCore {
     /// trail; `None` records them at once. See
     /// `defer_observations_until_recorded`.
     pending_observations: Option<Arc<Mutex<std::collections::VecDeque<PendingObservation>>>>,
+    /// Roadmap R-M1: withdraw a program from trust when its deployment changed
+    /// since Graphite last saw it. Off by default; see
+    /// `set_quarantine_on_upgrade`.
+    quarantine_on_upgrade: bool,
+    /// Roadmap R-M1: upgrades noticed since this core started.
+    program_upgrades_detected: Arc<std::sync::atomic::AtomicU64>,
+}
+
+/// A program redeployed, or handed to a new upgrade authority, since Graphite
+/// last saw it (roadmap R-M1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramUpgrade {
+    pub program_id: String,
+    pub previous_deploy_slot: u64,
+    pub deploy_slot: u64,
+    pub previous_upgrade_authority: Option<String>,
+    pub upgrade_authority: Option<String>,
+    /// Whether the operator's `GRAPHITE_QUARANTINE_ON_UPGRADE` withdrew it
+    /// from trust.
+    pub quarantined: bool,
 }
 
 /// A simulation observation waiting for its verdict's audit row (W21).
@@ -2810,6 +2836,8 @@ impl GraphiteCore {
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
             pending_observations: None,
+            quarantine_on_upgrade: false,
+            program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -2832,6 +2860,8 @@ impl GraphiteCore {
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
             pending_observations: None,
+            quarantine_on_upgrade: false,
+            program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             plugins: crate::plugin_orchestrator::PluginOrchestrator::new(),
         }
     }
@@ -2851,6 +2881,8 @@ impl GraphiteCore {
             rpc_budget: DEFAULT_RPC_BUDGET,
             allow_durable_nonce: false,
             pending_observations: None,
+            quarantine_on_upgrade: false,
+            program_upgrades_detected: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             plugins: crate::plugin_orchestrator::PluginOrchestrator::with_builtin_plugins(),
         }
     }
@@ -3172,6 +3204,102 @@ impl GraphiteCore {
     /// because the opt-in is "allowed once verified", not "allowed".
     pub fn set_allow_durable_nonce(&mut self, allow: bool) {
         self.allow_durable_nonce = allow;
+    }
+
+    /// Quarantine a program the first time a transaction reaches it after its
+    /// deployment changed (roadmap R-M1; operator decision, P14).
+    ///
+    /// Graphite always notices an upgrade (with an RPC attached) and reports
+    /// it on the verdict (`program_upgrades`), on `/health` and in the
+    /// metrics. Whether it also withdraws the program from trust is the
+    /// operator's choice: a manifest written for the old code may not
+    /// describe the new code, but protocols upgrade routinely, and refusing
+    /// every one of them until someone reviews it is an outage only the
+    /// operator can choose. When set, the quarantine is an ordinary one —
+    /// recorded, durable, and lifted by the operator after review.
+    pub fn set_quarantine_on_upgrade(&mut self, quarantine: bool) {
+        self.quarantine_on_upgrade = quarantine;
+    }
+
+    /// Whether an upgrade quarantines the program (`set_quarantine_on_upgrade`).
+    pub fn quarantine_on_upgrade(&self) -> bool {
+        self.quarantine_on_upgrade
+    }
+
+    /// Program upgrades noticed since this core started (roadmap R-M1).
+    pub fn program_upgrades_detected(&self) -> u64 {
+        self.program_upgrades_detected
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Record the deployments read for `programs` and return the ones that
+    /// changed since they were last seen (roadmap R-M1). The first sighting
+    /// of a program is its baseline; a change is reported once, and, when the
+    /// operator asked for it, quarantines the program before this verdict's
+    /// quarantine gate runs.
+    #[cfg(feature = "rpc")]
+    async fn note_deployments(
+        &self,
+        programs: &[String],
+        deployments: Vec<crate::rpc_client::ProgramDeployment>,
+    ) -> Vec<ProgramUpgrade> {
+        use crate::semantic_graph_store::{DeploymentChange, ObservedDeployment};
+        let mut upgrades = Vec::new();
+        let mut store_changed = false;
+        for (program, deployment) in programs.iter().zip(deployments) {
+            let crate::rpc_client::ProgramDeployment::Upgradeable {
+                deploy_slot,
+                upgrade_authority,
+                ..
+            } = deployment
+            else {
+                continue;
+            };
+            let now = ObservedDeployment {
+                deploy_slot,
+                upgrade_authority: upgrade_authority.clone(),
+            };
+            let change = self.graph().observe_deployment(program, now);
+            match change {
+                DeploymentChange::Same => {}
+                DeploymentChange::First => store_changed = true,
+                DeploymentChange::Changed { previous } => {
+                    store_changed = true;
+                    self.program_upgrades_detected
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let quarantined = self.quarantine_on_upgrade
+                        && self
+                            .graph()
+                            .quarantine(
+                                program,
+                                format!(
+                                    "upgraded since Graphite last saw it (deploy slot {} -> {deploy_slot}, upgrade authority {} -> {}); review the manifest against the new code, then lift the quarantine",
+                                    previous.deploy_slot,
+                                    previous.upgrade_authority.as_deref().unwrap_or("none"),
+                                    upgrade_authority.as_deref().unwrap_or("none"),
+                                ),
+                            )
+                            .is_ok();
+                    tracing::warn!(
+                        "program {program} upgraded: deploy slot {} -> {deploy_slot}{}",
+                        previous.deploy_slot,
+                        if quarantined { "; quarantined" } else { "" }
+                    );
+                    upgrades.push(ProgramUpgrade {
+                        program_id: program.clone(),
+                        previous_deploy_slot: previous.deploy_slot,
+                        deploy_slot,
+                        previous_upgrade_authority: previous.upgrade_authority,
+                        upgrade_authority,
+                        quarantined,
+                    });
+                }
+            }
+        }
+        if store_changed {
+            self.persist_state_async().await;
+        }
+        upgrades
     }
 
     pub fn set_rpc_budget(&mut self, budget: std::time::Duration) {
@@ -7860,6 +7988,44 @@ impl GraphiteCore {
         // declared siblings and CPIs, the declared trace, the artifact's own
         // top-level instructions and, with RPC, every callee the simulator
         // executed.
+        // Roadmap R-M1: has a manifested program this transaction invokes been
+        // redeployed, or had its upgrade authority changed, since Graphite
+        // last saw it? Read from the loader (two batched header reads, under
+        // the RPC budget). An answer that cannot be read records nothing and
+        // changes nothing: it is neither a refusal nor an approval.
+        #[cfg(feature = "rpc")]
+        let program_upgrades: Vec<ProgramUpgrade> = match &self.rpc_client {
+            None => Vec::new(),
+            Some(client) => {
+                let registry = self.registry();
+                let mut programs: Vec<String> = invoked_programs(
+                    input,
+                    artifact_message.as_ref(),
+                    observed_cpi_programs.as_deref(),
+                    observed_cpi_tree.as_ref(),
+                )
+                .into_iter()
+                .filter(|p| registry.get(p).is_some())
+                .collect();
+                programs.sort();
+                programs.dedup();
+                if programs.is_empty() {
+                    Vec::new()
+                } else {
+                    match within_budget(&budget, client.get_program_deployments(&programs)).await {
+                        Ok(Ok(deployments)) => self.note_deployments(&programs, deployments).await,
+                        Ok(Err(e)) => {
+                            tracing::warn!("R-M1: the program deployments could not be read: {e}");
+                            Vec::new()
+                        }
+                        Err(()) => Vec::new(),
+                    }
+                }
+            }
+        };
+        #[cfg(not(feature = "rpc"))]
+        let program_upgrades: Vec<ProgramUpgrade> = Vec::new();
+
         let quarantined_hits: Vec<(String, String)> = {
             #[cfg(feature = "rpc")]
             let observed: (
@@ -8087,6 +8253,19 @@ impl GraphiteCore {
         #[cfg(feature = "rpc")]
         let mut risk_warnings = risk_warnings;
         risk_warnings.append(&mut privilege_notes);
+        for u in &program_upgrades {
+            risk_warnings.push(format!(
+                "ProgramUpgraded: {} was redeployed or handed to a new upgrade authority since Graphite last saw it (deploy slot {} -> {}){}",
+                u.program_id,
+                u.previous_deploy_slot,
+                u.deploy_slot,
+                if u.quarantined {
+                    "; withdrawn from trust until the operator reviews it"
+                } else {
+                    "; its manifest describes the code that was deployed before"
+                }
+            ));
+        }
         let risk_summary = if deferred_write_escalations.is_empty() {
             risk_summary
         } else {
@@ -8795,6 +8974,7 @@ impl GraphiteCore {
             summary,
             simulation_flagged: sim_flagged,
             simulation_divergence: sim_divergence,
+            program_upgrades,
             layers: vec![
                 // L1: Account Resolution — resolve all required accounts/PDAs
                 // ARCHITECTURE.md 3.12: "Resolve all required accounts/PDAs"
