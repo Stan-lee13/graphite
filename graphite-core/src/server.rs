@@ -953,6 +953,9 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
                         max_archives.to_string()
                     }
                 ));
+                // Check or build every archive's index before the first L8
+                // lookup needs it (R-M11, Round 28).
+                log.warm_archive_indexes_in_background();
                 Some(log)
             }
             Err(e) => {
@@ -6003,7 +6006,16 @@ mod tests {
         let app = build_app(state, vec![]);
         use tower::ServiceExt;
 
-        for ev in ["verification", "construction", "simulation"] {
+        // `operator_action` too (R-P14, Round 28): the list is written out
+        // here rather than read from `LifecycleEvent::emission`, so a change
+        // to that table that makes a self-observed event reportable fails
+        // here instead of passing with it.
+        for ev in [
+            "verification",
+            "construction",
+            "simulation",
+            "operator_action",
+        ] {
             let resp = app
                 .clone()
                 .oneshot(lifecycle_request(serde_json::json!({
@@ -6017,6 +6029,171 @@ mod tests {
                 axum::http::StatusCode::BAD_REQUEST,
                 "a caller must not be able to write a {ev} record"
             );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// R-P14 (Round 28): every lifecycle event reaches the audit trail
+    /// where `LifecycleEvent::emission` says it does.
+    ///
+    /// - `LifecycleEvent::ALL` is the enum serde derives: the
+    ///   unknown-variant error lists every variant, so one missing from the
+    ///   list fails here.
+    /// - A caller-reported event is accepted at `/audit/event` and is on
+    ///   disk; every other event is refused there, so the trail holds only
+    ///   what Graphite observed under those names.
+    /// - A Graphite row is written by its route: `/verify` and
+    ///   `/admin/quarantine` are driven, and the row read back.
+    /// - A stage recorded on the verification row has its field there,
+    ///   filled.
+    /// - Every route named is one the server serves.
+    #[tokio::test]
+    async fn every_lifecycle_event_reaches_the_trail() {
+        use crate::durable::Emission;
+        let names: Vec<String> = LifecycleEvent::ALL
+            .iter()
+            .map(|e| {
+                serde_json::to_value(e)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        let err = serde_json::from_str::<LifecycleEvent>("\"not_a_lifecycle_event\"")
+            .unwrap_err()
+            .to_string();
+        // "unknown variant `x`, expected one of `a`, `b`, ... at line 1"
+        let mut derived: Vec<String> = err
+            .split("expected one of ")
+            .nth(1)
+            .expect("serde lists the variants")
+            .split('`')
+            .skip(1)
+            .step_by(2)
+            .map(String::from)
+            .collect();
+        let mut listed = names.clone();
+        listed.sort();
+        derived.sort();
+        assert_eq!(
+            listed, derived,
+            "LifecycleEvent::ALL must list every variant"
+        );
+
+        let (state, dir, operator_key) = keyed_state();
+        let app = build_app(state, vec![]);
+        let signature = bs58::encode([0x22u8; 64]).into_string();
+        let rows = |dir: &std::path::Path| -> Vec<serde_json::Value> {
+            std::fs::read_to_string(audit_path(dir))
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|l| serde_json::from_str(l).ok())
+                .collect()
+        };
+        let routes = [
+            "/verify",
+            "/audit/event",
+            "/verify/execution",
+            "/admin/quarantine",
+        ];
+        let mut verification_row: Option<serde_json::Value> = None;
+        for (event, name) in LifecycleEvent::ALL.into_iter().zip(&names) {
+            // The caller-reporting endpoint refuses every event Graphite
+            // observes itself, and takes every one it does not.
+            let (status, body) = post_json(
+                &app,
+                "/audit/event",
+                Some(VERIFY_TEST_KEY),
+                serde_json::json!({
+                    "event_type": name,
+                    "content_hash": "48c65c638aceb5de",
+                    "transaction_signature": signature,
+                    "reported_by": "r-p14",
+                }),
+            )
+            .await;
+            match event.emission() {
+                Emission::CallerReported { also_observed } => {
+                    assert_eq!(status, axum::http::StatusCode::OK, "{name}: {body}");
+                    assert!(
+                        rows(&dir).iter().any(|r| r["event_type"] == *name.as_str()),
+                        "{name} is not on the trail"
+                    );
+                    if let Some(route) = also_observed {
+                        assert!(routes.contains(&route), "{name}: {route} is not a route");
+                    }
+                }
+                Emission::GraphiteRow { route } => {
+                    assert_eq!(
+                        status,
+                        axum::http::StatusCode::BAD_REQUEST,
+                        "a caller must not write a {name} row: {body}"
+                    );
+                    assert!(routes.contains(&route), "{name}: {route} is not a route");
+                    let (status, body) = match route {
+                        "/verify" => {
+                            post_json(
+                                &app,
+                                "/verify",
+                                Some(VERIFY_TEST_KEY),
+                                serde_json::json!({
+                                    "proposed_intent": {
+                                        "intent_type": "transfer",
+                                        "raw_natural_language": "Transfer 1 SOL to friend",
+                                        "confidence_of_parse": 0.95
+                                    },
+                                    "program_id": SYSTEM,
+                                    "protocol_version": "1.0.0",
+                                    "instruction_discriminator": "02000000",
+                                    "account_addresses": [
+                                        "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                                        "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+                                    ],
+                                    "wallet_profile": "TradingBot"
+                                }),
+                            )
+                            .await
+                        }
+                        "/admin/quarantine" => {
+                            post_json(
+                                &app,
+                                "/admin/quarantine",
+                                Some(&operator_key),
+                                serde_json::json!({"program_id": SYSTEM, "reason": "r-p14"}),
+                            )
+                            .await
+                        }
+                        other => panic!("{name}: no driver for {other}; add one here"),
+                    };
+                    assert_eq!(status, axum::http::StatusCode::OK, "{route}: {body}");
+                    let row = rows(&dir)
+                        .into_iter()
+                        .rev()
+                        .find(|r| r["event_type"] == *name.as_str())
+                        .unwrap_or_else(|| panic!("{route} wrote no {name} row"));
+                    if event == LifecycleEvent::Verification {
+                        verification_row = Some(row);
+                    }
+                }
+                Emission::OnTheVerificationRow { .. } => {
+                    assert_eq!(
+                        status,
+                        axum::http::StatusCode::BAD_REQUEST,
+                        "a caller must not write a {name} row: {body}"
+                    );
+                }
+            }
+        }
+        let row = verification_row.expect("the verification row was written");
+        for event in LifecycleEvent::ALL {
+            if let Emission::OnTheVerificationRow { field } = event.emission() {
+                let value = row[field].as_str().unwrap_or_default();
+                assert!(
+                    !value.trim().is_empty(),
+                    "{event:?} is recorded as `{field}` on the verification row, which is empty: {row}"
+                );
+            }
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

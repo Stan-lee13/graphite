@@ -1,4 +1,4 @@
-# AUDIT FINAL — verdict (2026-10-16, after Round 25)
+# AUDIT FINAL — verdict (2026-10-17, after Round 28)
 
 **Scope:** the whole repository, audited in six areas at `3327fcf` ([`00-map.md`](00-map.md)) and
 fixed in Round 23. An external review of the result followed (R1–R26 with W1–W26); its items were
@@ -51,17 +51,18 @@ This is **not** a "0 issues" verdict.
 
 ## Evidence
 
-- **Tests:** 1,923 Rust tests pass in the all-features suite (136 binaries, 12 ignored: network-
-  or sample-dependent, plus one soak benchmark), 356 in the featureless library build and 1,644
+- **Tests:** 1,934 Rust tests pass in the all-features suite (137 binaries, 13 ignored: network-
+  or sample-dependent, plus two soak benchmarks), 363 in the featureless library build and 1,654
   in the cli-only build. The TypeScript suites pass: 195 in the agent guard, 34 in the SDK (4 more
   need a live server), 7 in the Vercel AI adapter, 8 in the MCP server, 6 in the SolanaAgentKit
   adapter and 7 in the dashboard. Go passes 45 and Python 35. Clippy `-D warnings` is clean on
   all three feature legs, and fmt is clean. The runtime oracle is never looser than agave on
   both CI seeds. Every fixed finding has a named test that fails before the fix
   (`01-findings.md`).
-- **Deliberate breaks:** 111 of 111 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
+- **Deliberate breaks:** 125 of 125 Rust breaks caught: B01–B59 from Round 23, B60–B103 from
   Round 24 (R2, R3, R3-b and W11–W25), B104–B107 from Round 25 (E3, E3b, E8), B108 from Round 26
-  (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection). B62 and B99 were
+  (the committed mainnet blocks catch a verdict change), B109–B111 from Round 27 (upgrade detection), B112–B125 from Round 28 (the archive index, the
+  emission table, the contract gate). B62 and B99 were
   missed on their first run because their tests did not exercise the reverted rule; each test was
   corrected and the break caught. TypeScript: 11 of 11 caught (TSB1–TSB5 in Round 24, TSB6–TSB11
   in Round 25).
@@ -80,6 +81,8 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 **Owner decisions** (code cannot close them):
 
 - branch protection on `main` (R-M5): until it is on, every CI gate is advisory;
+- tagging `0.3.0-beta`: the contract gate found two caller-side schema breaks shipped under
+  `v0.2.0-beta` (R28-1), so the crate's version is bumped and the CHANGELOG names both;
 - the crate's publish flag (A6-15) and a disclosure mailbox for `SECURITY.md` (A6-36);
 - an independent third-party audit (R-M4); deployment, TLS, DNS and monitoring (R-M6).
 
@@ -100,7 +103,6 @@ Recorded, not hidden. Each is in `01-findings.md` or `02-roadmap-gap.md` with it
 
 **Open engineering:**
 
-- a persisted archive index (R-M11);
 - the guard off `@solana/web3.js` 1.x (R-M15);
 - scheduled mutation, fuzz and coverage runs (R-P11/12/15). Rust coverage is not measured.
 

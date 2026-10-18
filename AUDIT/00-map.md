@@ -101,7 +101,7 @@ Invariants the whole design rests on:
   - branch protection (owner);
   - manifest coverage for programs with no IDL;
   - the `content_hash` rename;
-  - a persisted archive index;
+  - a persisted archive index (done in Round 28);
   - mainnet deployment.
 
 ## 5. Audit checklist (one row per component; each audit area ticks its rows in `01-findings.md`)

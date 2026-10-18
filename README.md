@@ -16,7 +16,7 @@ Graphite sits between an AI agent's intent and the wallet's execution. It verifi
 [![Clippy](https://img.shields.io/badge/Clippy-0_warnings-brightgreen?style=flat-square)](graphite-core/)
 [![Protocols](https://img.shields.io/badge/Protocol_Manifests-137-blue?style=flat-square)](docs/protocol-coverage.md)
 [![Risk Patterns](https://img.shields.io/badge/Risk_Patterns-12-red?style=flat-square)](graphite-core/src/risk_engine.rs)
-[![Version](https://img.shields.io/badge/Version-v0.2.0--beta-orange?style=flat-square)](https://github.com/Stan-lee13/graphite/releases)
+[![Version](https://img.shields.io/badge/Version-0.3.0--beta%20(unreleased)-orange?style=flat-square)](graphite-core/CHANGELOG.md)
 
 </div>
 
@@ -116,13 +116,13 @@ cd graphite
 cd graphite-core
 cargo build --release
 
-# Run 1,923 tests — zero setup (1,935 total; 12 ignored: network- or
-# sample-dependent, plus one soak benchmark, run explicitly with --ignored)
+# Run 1,934 tests — zero setup (1,947 total; 13 ignored: network- or
+# sample-dependent, plus two soak benchmarks, run explicitly with --ignored)
 cargo test --release --all-features
-# summed across the test binaries: 1923 passed; 0 failed; 12 ignored
+# summed across the test binaries: 1934 passed; 0 failed; 13 ignored
 
 # The same gate CI runs on the feature matrix: the library with no features
-# (356 tests) and the cli-only build (1,644) must pass too.
+# (363 tests) and the cli-only build (1,654) must pass too.
 cargo test --release --no-default-features --lib
 cargo test --release --no-default-features --features cli
 
@@ -385,7 +385,10 @@ the response is sent (≈1.5 ms per record measured on an NTFS SSD; `File::flush
 is a no-op for an unbuffered file and was what the code called before
 2026-09-12). Rotation renames the active file; the read APIs and L8
 reconciliation cover every archive plus the active file, so a verdict never
-disappears from Graphite's own view by rotating out. Every append runs on
+disappears from Graphite's own view by rotating out. Each archive has a
+persisted index, checked against the archive's SHA-256, so a lookup into the
+archives is a few seeks rather than a pass over each (2.2 ms against 822 ms
+for three 64 MiB archives). Every append runs on
 tokio's blocking pool, so a slow disk flush holds a blocking thread, not one of
 the async workers that serve other requests.
 

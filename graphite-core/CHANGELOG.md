@@ -3,6 +3,25 @@
 All notable changes to Graphite Core are documented here.
 Layer names follow `graphite-engineering-skill/ARCHITECTURE.md` section 3.12 as the canonical source.
 
+## [0.3.0-beta] — unreleased (the contract since v0.2.0-beta)
+
+The crate's version moves from `0.2.0-beta`, the last release tag, because the published contract broke after that tag under the same version (Constitution P13). `tests/contract_version_gate.rs` (Round 28) found both breaks by diffing the schemas against `v0.2.0-beta`; it fails the build whenever a break has no version bump or is not named in this section. Tagging the release remains the owner's decision.
+
+Breaking for a caller (`schemas/proposed-intent-v1.json`, which the caller writes):
+
+- `proposed-intent-v1.json:extracted_parameters` is closed: a parameter the Core does not read is refused, not dropped (`#[serde(deny_unknown_fields)]`, external review W22, Round 24). Before, `destination` was sent by the SDKs and silently ignored, so the request a caller thought was checked was not the one judged.
+- `proposed-intent-v1.json:intent_type` no longer lists `lend` (`5fd1dc3`, 2026-08-14). The engine never accepted it: the schema advertised an intent every verification refused. The values the Core accepts were added at the same time (`trade`, `exchange`, `send`, `delegate`, `close`, `close_account`, `create`, `create_account`, `approve`, `revoke`).
+
+Not breaking for a consumer (`schemas/verification-result-v1.json`, which Graphite writes): every change since the tag adds a field, narrows a type (`policy_verdict` is always a string) or requires a field that was always present. Nothing was removed or widened.
+
+## [Round 28 — the archives are indexed, the lifecycle is exhaustive, the contract is gated] — 2026-10-17
+
+Report: `docs/round28-archive-index-lifecycle-contract-2026-10-17.md`. Roadmap R-M11, R-P14 and R-M2.
+
+- **Persisted archive index (R-M11).** Each rotated audit archive gets a binary, sorted index in `<log>-index/<archive>.idx` (`src/durable/archive_index.rs`): per verification key the last offset and the approved and refused counts, per lifecycle key its offsets, a header with the archive's length and SHA-256, and a trailing SHA-256 of the file. It is searched by seeking and never loaded into memory. `count_verifications`, `find_verification` and the archive half of `lifecycle_history` answer from it. An index is checked against its archive once per process; one that does not check is rebuilt, an offset that does not read back as its record discards the index and scans, and an index that cannot be written leaves the archive scanned without a rebuild on every lookup. Rotation writes the new archive's index from the active file's indexes on a background thread, with no parse; the server checks every archive's index in the background at start (`AuditLog::warm_archive_indexes_in_background`); pruning removes an archive's index, and a sweep removes indexes of archives that are gone and temporary files of a stopped write. Measured on three 64 MiB archives: a count went from 822 ms (scan) to 2.2 ms.
+- **Every lifecycle event has an emitter (R-P14).** `LifecycleEvent::emission` is one `match` with no wildcard (`Emission::OnTheVerificationRow`, `GraphiteRow`, `CallerReported`), and `is_self_observed` is read from it. `LifecycleEvent::ALL` is checked against the variants serde derives. `server::tests::every_lifecycle_event_reaches_the_trail` drives every emitter and reads each row back. Construction and simulation are recorded on the verification row (`content_hash`, `l3_status`), not as rows of their own; the documentation no longer names a `GraphiteCore::record_lifecycle_event` that does not exist.
+- **The contract gate (R-M2).** `tests/contract_version_gate.rs` diffs both published schemas against the last release tag, by who writes each document, and requires a version bump and a CHANGELOG entry naming every break. CI checks out the whole history and sets `GRAPHITE_CONTRACT_GATE_REQUIRED=1`. Version `0.3.0-beta` (above).
+
 ## [Round 27 — a protocol upgrade is noticed] — 2026-10-16
 
 Report: `docs/round26-27-real-traffic-and-upgrades-2026-10-16.md`. Roadmap R-M1 (external reviews R11, W5, W6).

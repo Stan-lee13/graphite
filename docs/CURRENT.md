@@ -5,7 +5,7 @@ other file in `docs/` is a dated record of what was true when it was written;
 each carries a banner pointing here. When this file and a report disagree,
 this file is current and the report is history.
 
-Updated: 2026-10-16, after Rounds 25–27 — the second external review (E1–E10), committed mainnet blocks in CI, protocol upgrade detection (see `git log -1 -- docs/CURRENT.md`).
+Updated: 2026-10-17, after Round 28 — persisted archive indexes, the lifecycle emission table, the P13 contract gate and version `0.3.0-beta` (see `git log -1 -- docs/CURRENT.md`).
 If that commit is not HEAD, later commits may have moved things;
 `git log --oneline -- docs/CURRENT.md` shows when this page last changed.
 
@@ -321,9 +321,12 @@ transaction under the stated threat model, and no external party has yet tried.
   today's coverage is "the protocols Graphite knows", not "Solana".
 - **Single-tenant.** One verify key (plus an optional operator key for `/admin/*`), one profile pin, one trail, one semantic
   graph per process. Tenant isolation is process isolation.
-- **Archive lookups are scans.** The L8 / lifecycle join is indexed for the
-  active file; a key older than the last rotation costs one pass over each
-  archive.
+- **An archive's index costs one read of the archive per process.** Every
+  L8 and lifecycle lookup is indexed, in the active file and in each rotated
+  archive (Round 28, R-M11); an archive's index is checked against the
+  archive's SHA-256 once per process (1.8 s for three 64 MiB archives,
+  done in the background at start), and an archive whose index cannot be
+  written is scanned on each lookup.
 - **L8's inclusion evidence is as independent as the RPCs it is given.** A
   `processed` status, a self-contradicting RPC or a malformed status draws no
   positive conclusion; with `GRAPHITE_RPC_WITNESS_URL` two independent
@@ -398,16 +401,16 @@ transaction under the stated threat model, and no external party has yet tried.
 | `content_hash` → a name that says it is an instruction-level identifier | Open (it is the 64-bit AuditBind key, not the authoritative binding) | Engineering |
 | Runtime-decoder oracle over the mutation corpus | Done (Round 12: `tools/runtime-oracle`, in CI) | — |
 | Coverage-guided fuzzing of `parse_transaction` | Open (the `wincode` oracle and the v1 format are done: Round 19) | Engineering |
-| Persisted archive index for the L8 / lifecycle join | Open | Engineering |
+| Persisted archive index for the L8 / lifecycle join | **Done (Round 28)**: a count over three 64 MiB archives went from 822 ms to 2.2 ms | — |
 | Shared rate limiter for a horizontally deployed Graphite (single-instance today; 452 ns/check at one million buckets) | Open | Engineering |
 | Second-source inclusion check for L8 | Done for an independent RPC (Round 12: `GRAPHITE_RPC_WITNESS_URL`); light-client proof open | Engineering |
 
 ## Numbers (as of this page's commit)
 
-1,923 Rust tests passing in the all-features build (136 binaries; 12 ignored:
-network- or sample-dependent, plus one soak benchmark; for Round 24 the mainnet
+1,934 Rust tests passing in the all-features build (137 binaries; 13 ignored:
+network- or sample-dependent, plus two soak benchmarks; for Round 24 the mainnet
 conformance test was run on four days of samples against `eb17aa5` and this
-round, under both label sets); 356 in the featureless library build; 1,644 in
+round, under both label sets); 363 in the featureless library build; 1,654 in
 the cli-only build; 195 TypeScript tests in the agent guard, 6 in the SAK
 adapter, 7 in the Vercel AI adapter, 8 in the MCP server; 38 in the TypeScript
 SDK (34 hermetic, 4 against a live server — run in CI's container job); 45 Go;
@@ -423,6 +426,7 @@ combined-status endpoint.
 
 | Date | Report | What it records |
 |---|---|---|
+| 2026-10-17 | [round28-archive-index-lifecycle-contract-2026-10-17.md](round28-archive-index-lifecycle-contract-2026-10-17.md) | Each rotated audit archive has a persisted index, checked against the archive's SHA-256, and a count over three 64 MiB archives went from 822 ms to 2.2 ms (R-M11, W10); every lifecycle event names its emitter in an exhaustive `match` a test drives end to end, and `operator_action` is now pinned as unforgeable (R-P14, R28-2); the published schemas are diffed against the last release tag, whose first run found two caller-side breaks since `v0.2.0-beta` under the same version, so the crate is `0.3.0-beta` (R-M2, R28-1) |
 | 2026-10-16 | [round26-27-real-traffic-and-upgrades-2026-10-16.md](round26-27-real-traffic-and-upgrades-2026-10-16.md) | Two finalized mainnet blocks (2,284 executed transactions) committed and run through the whole pipeline on every `cargo test`, the verdict file's SHA-256 pinned and equal to the full measurement's (R-P2/R-P3); protocol upgrades noticed: with an RPC, a manifested program redeployed or handed to a new upgrade authority since last seen is reported on the verdict, on `/health` and in the metrics, and quarantined if the operator set `GRAPHITE_QUARANTINE_ON_UPGRADE` (R-M1); advisories published after Round 24 fixed (`quinn-proto`, `rustls`, three npm) |
 | 2026-10-16 | [round25-the-swap-is-the-one-asked-for-2026-10-16.md](round25-the-swap-is-the-one-asked-for-2026-10-16.md) | A second external review (E1–E10): the guard grounded that a request asked for a swap, not which one — now the amount and both tokens come from the user's text and the simulated transaction is held to them; negated requests refused; the spend cap reads one simulation snapshot; the guard's RPC reads bounded and its lamports exact; L8 asks the witness for the bytes, so neither a primary without them nor one serving substituted bytes can silence a blocked transaction's alarm; more than 64 top-level instructions refused in every format. One item (the legacy 12-signature limit) not a finding |
 | 2026-10-03 | [round24-the-intent-is-the-class-2026-10-03.md](round24-the-intent-is-the-class-2026-10-03.md) | External review R2/R3 reproduced on `eb17aa5` (a `transfer` label got L5 Passed and L7 Clear for Squads drains, Bubblegum `delegate`, `MintTo`/`Burn`) and fixed with one intent-to-class table; control changes by name, delegation, switch and admin signer; W11–W25 verified and fixed or documented; the Vercel AI SDK and MCP integrations; eight more manifests (137 / 3,504, 113 battle-tested). Four days of mainnet: 302 newly refused, 0 freed, 0 approved; one more P1 (R3-b) found by that measurement and fixed |

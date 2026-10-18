@@ -43,6 +43,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history with its tags: the P13 contract gate
+          # (tests/contract_version_gate.rs, Round 28) diffs the published
+          # schemas against the last release tag.
+          fetch-depth: 0
       # Pinned to a commit of the `stable` branch (2026-09-12). The action
       # used to read the toolchain from the ref name, so with a SHA it is
       # named explicitly — and named as the exact release the container is
@@ -86,6 +90,10 @@ jobs:
         # Cargo.toml fails here instead of being silently re-resolved, so the
         # tests run against the dependency versions the image ships.
         run: cargo test --locked --release
+        env:
+          # Without the tags the contract gate cannot run; here that fails
+          # instead of being skipped.
+          GRAPHITE_CONTRACT_GATE_REQUIRED: "1"
       # `corpus_persists_and_reloads_identically` (tests/regression_corpus.rs)
       # writes the regression corpus back into fixtures/corpus, which is
       # tracked. If the generator and the committed corpus disagree, the test

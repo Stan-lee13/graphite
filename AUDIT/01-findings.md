@@ -458,16 +458,16 @@ A second, external review of `0921647` listed further items (R1–R26). Each is 
 | R8 | **CONFIRMED at runtime, FIXED** | a test walking the bridge object found `walletKeypair` with the secret key bytes; the key is now an ES `#private` field and the test passes; the gated wallet's claim is narrowed (the key still enters the process through its environment or config) |
 | R9 | **FIXED** | the live L3 test requests version 1; since R-P8 phase 4 the two web3.js tools request version 1 too (web3.js 1.99 decodes v1; read live) and report how many v1 transactions they read, pinned by `env-names.test.ts`; `graphite-core/scripts/README.md` records which tools see v1 (nine one-off Python onboarding scripts stay at version 0 and may not be used to measure traffic) |
 | R10 | **CONFIRMED, FIXED** (R-P8 phases 1-2) | the bridge compiles and signs through `@solana/kit` 8.4.0 and builds v1 (`transactionVersion: 1`), with both limits measured by an unsigned simulation; `messageOf` ports the Core's `parse_v1`; the corpus carries two bridge-built v1 shapes and 1,238 v1 mutations, read the same way by both sides (`v1-transaction.test.ts`, `tests/sak_bridge_corpus.rs`); 9/9 TypeScript breaks caught |
-| R11 | **CONFIRMED, OPEN** | no ProgramData-slot or upgrade-authority watch in the Core. Roadmap R-M1 |
+| R11 | **CONFIRMED, FIXED** (Round 27, roadmap R-M1) | with an RPC, each manifested program a verification invokes has its loader-v3 deployment read and compared with the last one seen; a redeploy or a new upgrade authority is reported on the verdict, `/health` and the metrics, and `GRAPHITE_QUARANTINE_ON_UPGRADE=1` quarantines it (`tests/rm1_program_upgrade_detection.rs`; breaks B109–B111). An upgrade before the first sighting is not reportable |
 | R12 | **ADDRESSED** | R1, R2 and R3 are each pinned by tests that fail on `eb17aa5` |
 | W1 | covered by R1 | the `Confirmed` arm was the only path from RPC or witness output to an approval-flavoured L8 answer found by reading `audit_execution`; lifecycle `verdict_on_record` is resolved and recorded with its key, never as an execution |
 | W2, W4 | **FIXED** (R-P8 phases 1-3) | W2 = R10 above. W4: the signing package (`integrations/agent-guard`) no longer depends on `solana-agent-kit`, so the gated `bigint-buffer` advisory is confined to the SAK adapter's lockfile; the guard's lockfile has no high or critical advisory and an empty allowlist. Four moderate advisories (`uuid`, `stream-json`, through `@solana/web3.js` 1.x's `jayson`) remain in the guard, recorded in `agent-guard.allow` |
 | W3 | **FIXED** (R-P8 phase 4) | R9 above: every tool that publishes or gates a number requests version 1 |
-| W5, W6 | **OPEN** | R11 / roadmap R-M1; manifest lineage is recorded as `manifest_version` on each audit row |
+| W5, W6 | **FIXED** (Round 27, with R11) | the upgrade is noticed; re-measuring the manifest against the new code is not automatic. Manifest lineage is recorded as `manifest_version` on each audit row |
 | W7 | **OPEN** | roadmap R-M13 (measured cost: 9 of 48,855 executed transactions) |
 | W8 | **OPEN** | A2-08 (documented limitation) |
 | W9 | **OWNER** | R-M9 |
-| W10 | **OPEN** | R-M11 |
+| W10 | **FIXED** (Round 28, roadmap R-M11) | each rotated archive has a persisted, checked index; see the Round 28 section below |
 | W13 | **OPEN** | R-M10 |
 | W20 | **VERIFIED SOUND** for profile thresholds | Custom `min_confidence` that is NaN, infinite or outside [0, 1] is refused in both `server.rs` and `policy_engine.rs` |
 | W26 | **FIXED** (one example) | `examples/verify-input.json` carried 50,000 "battle tested" transactions in `behavior_evidence`, which the Core ignores by design; the example no longer suggests it matters |
@@ -532,7 +532,7 @@ reports were leads, not evidence: every item kept here was reproduced or traced 
 | W18/19-f | documented limitation | Lamports leaving the signer's wallet under a declared debit are disclosed, not refused; Graphite does not bind amounts. | `SECURITY.md` |
 | W25-d | documented limitation | The holdout's benign labels are "the program is manifested", the P10 gate replays the same set, and the benchmark and holdout have no v0 or v1 rows. | `SECURITY.md` |
 | R2-c | documented limitation (measured) | An honest agent has no intent for a withdrawal, a fee or reward claim, or a close on a protocol program: `stake` declares `withdraw` only on staking programs, and `close`/`create` are served only by the token programs, System, ATA, Metaplex, Pump.fun and Jupiter DCA. Under honest labels, 219 of 48,855 executed mainnet transactions are newly refused against `eb17aa5`, all with a manifested primary: 59 pump AMM `close_user_volume_accumulator`, 41 durable-nonce transactions the harness labels by their nonce advance, 29 Pyth `updatePriceFeed` keeper calls, 30 Meteora DLMM liquidity calls, and withdrawals and fee claims (Raydium CLMM `decrease_liquidity_v2`, creator-fee claims). Before R2 a `transfer` label cleared these by matching prose. | roadmap R-M14 (an intent for withdrawals and claims, and per-program `close`/`create` support from the manifest, each judged at L4 by where the funds go) |
-| W9, W10, W13 | owner / roadmap | as listed in the status table above | R-M9, R-M11, R-M10 |
+| W9, W13 | owner / roadmap | as listed in the status table above | R-M9, R-M10 |
 
 ## Second external review (2026-10-16, Round 25)
 
@@ -559,11 +559,44 @@ baselines, the archive index, owner configuration, P12, the schema gate, reviewe
 committed mainnet fixtures, mutation/fuzz/coverage gates, web3.js in the guard, `bigint-buffer`,
 the independent audit) matches `02-roadmap-gap.md`, where each is recorded with its class.
 
+## Round 28: three roadmap items, and what closing them found (2026-10-17)
+
+Three open roadmap items that need no owner decision were closed: the persisted archive index
+(R-M11, external review W10), the lifecycle-emission lint (R-P14) and the P13 contract gate (R-M2).
+Building them found three things.
+
+| ID | Class | Finding | Fix |
+|---|---|---|---|
+| R28-1 | P3 (process; Constitution P13) | The published contract broke after the `v0.2.0-beta` tag under the same version, with no CHANGELOG entry naming the break. A caller written against the tag's `proposed-intent-v1.json` could send an `extracted_parameters` field the Core now refuses (`deny_unknown_fields`, W22, Round 24), or the intent `lend`, which the schema listed until `5fd1dc3` and the engine never accepted. Nothing compared the schemas between versions, so neither was caught. The gate written for R-M2 found both on its first run. | `tests/contract_version_gate.rs` diffs both schemas against the last release tag. Its rules depend on who writes each document: for Graphite's output, removing, widening or opening breaks; for the caller's input, removing, narrowing, requiring or closing breaks. A break needs a version bump and a CHANGELOG section naming the path. The crate is `0.3.0-beta`, and the CHANGELOG's `0.3.0-beta` section names both breaks. CI checks out the history and sets `GRAPHITE_CONTRACT_GATE_REQUIRED=1`. Breaks B124, B125. |
+| R28-2 | test quality | `a_caller_cannot_forge_a_self_observed_event` named `verification`, `construction` and `simulation`, not `operator_action`. That a caller cannot write "quarantine lifted" into the trail rested on `is_self_observed` alone, with no test naming the event. | The test names all four self-observed events, written out rather than read from `LifecycleEvent::emission`, so a change to that table that makes one reportable fails. Break B121. |
+| R28-3 | P3 (documentation) | `LifecycleEvent`'s documentation sent a reader to `GraphiteCore::record_lifecycle_event`, which does not exist. | The comment names `POST /audit/event` and `LifecycleEvent::emission`. |
+
+**R-M11.** Each rotated archive has an index at `<log>-index/<archive>.idx`. It is binary,
+fixed-width and sorted, and searched by seeking, so none of it is held in memory. It is checked
+against the archive once per process (magic, version, length, the file's trailing SHA-256, and the
+archive's length and SHA-256), and rebuilt when it does not check. A lookup still reads its record
+back from the archive and matches it. An offset that does not read back discards the index and
+scans. An index that cannot be written leaves its archive scanned on each lookup, without a
+rebuild each time. Measured on three 64 MiB archives (144,322 records each): a count took
+822 ms by scanning and takes 2.2 ms from the indexes, and a miss takes 3.5 ms. Building the three
+indexes from a parse took 6.7 s and checking them after a restart 1.8 s. Rotation writes the new
+archive's index from the active file's indexes without a parse, and the server checks every archive
+in the background at start. The index files are about a quarter of the archives' size (49 MB for
+192 MiB). Tests: seven in `durable::tests`; breaks B112–B120.
+
+**R-P14.** `LifecycleEvent::emission` says where every event reaches the trail, in a `match` with
+no wildcard, so a new event does not compile without an emitter. `is_self_observed` is read from
+it. `LifecycleEvent::ALL` is checked against the variants serde derives.
+`server::tests::every_lifecycle_event_reaches_the_trail` drives every emitter (`/verify`,
+`/admin/quarantine`, `/audit/event`) and reads each row back. Construction and simulation are
+recorded on the verification row (`content_hash`, `l3_status`), not as rows of their own. That is a
+recorded choice, not a gap closed. Breaks B121–B123.
+
 ## Break log
 
 Every fix was reverted once, alone, with the tree otherwise unchanged, and its named test re-run; the fix was then restored and the tree checked clean. The harness is `graphite-audit-work/audit_breaks.py` (outside the repository): each break is an exact text edit validated against the current sources before it runs, and a break whose test still passes is reported MISSED.
 
-**111 breaks, 111 caught** (B01–B59 in Round 23, B60–B103 in Round 24, B104–B107 in Round 25, B108 in Round 26: the committed mainnet blocks catch a verdict change, B109–B111 in Round 27: upgrade detection), plus the TypeScript breaks TSB1–TSB11 (11 of 11 caught; TSB6–TSB11 are Round 25's swap grounding, negation, wallet-owner filter, response bound and exact lamports). One test was vacuous on its first run and is recorded as such: B54 (A4-11) still passed with the lock removed, because the audit log's own file mutex makes the race need microsecond timing. The test now holds the window between the history read and the append open for one dedicated trail id (`cfg(test)` only), and fails without the lock. In Round 24, B62 and B99 were missed on their first run, because each test did not exercise the reverted rule; B62's test was re-pointed to one that does and B99's was strengthened with cases only the reverted step decides, and both were then caught. B15 is caught by the test process aborting (a stack overflow prints no FAILED line), which the harness counts only when the test was running.
+**125 breaks, 125 caught** (B01–B59 in Round 23, B60–B103 in Round 24, B104–B107 in Round 25, B108 in Round 26: the committed mainnet blocks catch a verdict change, B109–B111 in Round 27: upgrade detection, B112–B125 in Round 28: the archive index, the emission table and the contract gate), plus the TypeScript breaks TSB1–TSB11 (11 of 11 caught; TSB6–TSB11 are Round 25's swap grounding, negation, wallet-owner filter, response bound and exact lamports). One test was vacuous on its first run and is recorded as such: B54 (A4-11) still passed with the lock removed, because the audit log's own file mutex makes the race need microsecond timing. The test now holds the window between the history read and the append open for one dedicated trail id (`cfg(test)` only), and fails without the lock. In Round 24, B62 and B99 were missed on their first run, because each test did not exercise the reverted rule; B62's test was re-pointed to one that does and B99's was strengthened with cases only the reverted step decides, and both were then caught. B15 is caught by the test process aborting (a stack overflow prints no FAILED line), which the harness counts only when the test was running.
 
 | Break | Finding | What was reverted | Test | Result |
 |---|---|---|---|---|
@@ -678,3 +711,17 @@ Every fix was reverted once, alone, with the tree otherwise unchanged, and its n
 | B109 | R-M1 | a redeploy is not a change (`src/semantic_graph_store.rs`) | `rm1_program_upgrade_detection::a_redeployed_program_is_reported_once_and_not_refused_by_default` | caught |
 | B110 | R-M1 | the operator's quarantine-on-upgrade flag ignored (`src/verification.rs`) | `rm1_program_upgrade_detection::with_the_operator_flag_an_upgrade_quarantines_the_program` | caught |
 | B111 | R-M1 | the loader reads not limited to the headers (`src/rpc_client.rs`) | `rm1_program_upgrade_detection::a_redeployed_program_is_reported_once_and_not_refused_by_default` | caught |
+| B112 | R-M11 | a count no longer answered from the archive index (`src/durable.rs`) | `lib::durable::tests::archive_lookups_answer_from_a_persisted_index_across_restart` | caught |
+| B113 | R-M11 | a lookup no longer answered from the archive index (`src/durable.rs`) | `lib::durable::tests::archive_lookups_answer_from_a_persisted_index_across_restart` | caught |
+| B114 | R-M11 | an indexed record returned without being matched (`src/durable.rs`) | `lib::durable::tests::an_indexed_archive_offset_that_does_not_read_back_is_never_an_answer` | caught |
+| B115 | R-M11 | the index not checked against the archive's SHA-256 (`src/durable/archive_index.rs`) | `lib::durable::tests::an_archive_index_that_does_not_check_is_rebuilt` | caught |
+| B116 | R-M11 | the index file's trailer not checked (`src/durable/archive_index.rs`) | `lib::durable::tests::an_archive_index_that_does_not_check_is_rebuilt` | caught |
+| B117 | R-M11 | rotation does not hand the active file's indexes to the archive (`src/durable.rs`) | `lib::durable::tests::a_rotated_archive_is_indexed_from_the_active_indexes_without_a_parse` | caught |
+| B118 | R-M11 | an index that cannot be had is not remembered, so every lookup rebuilds (`src/durable.rs`) | `lib::durable::tests::an_unwritable_archive_index_falls_back_to_one_scan_per_lookup` | caught |
+| B119 | R-M11 | pruning leaves the archive's index: the direct removal and the sweep, both reverted (`src/durable.rs`) | `lib::durable::tests::pruning_an_archive_removes_its_index` | caught |
+| B120 | R-M11 | the sweep keeps a stopped write's temporary file (`src/durable.rs`) | `lib::durable::tests::warming_the_archive_indexes_checks_every_archive_and_sweeps_stale_files` | caught |
+| B121 | R-P14 | an operator action made caller-reportable in the emission table (`src/durable.rs`) | `lib::server::tests::a_caller_cannot_forge_a_self_observed_event` | caught |
+| B122 | R-P14 | `LifecycleEvent::ALL` missing a variant (`src/durable.rs`) | `lib::server::tests::every_lifecycle_event_reaches_the_trail` | caught |
+| B123 | R-P14 | a stage recorded under a field the verification row does not fill (`src/durable.rs`) | `lib::server::tests::every_lifecycle_event_reaches_the_trail` | caught |
+| B124 | R-M2 | closing an input object not counted as a break (`tests/contract_version_gate.rs`) | `contract_version_gate::the_breaking_rules_follow_who_writes_the_document` | caught |
+| B125 | R-M2 | the CHANGELOG no longer names a break (`CHANGELOG.md`) | `contract_version_gate::the_contract_breaks_only_with_a_version_bump_and_a_changelog_entry` | caught |

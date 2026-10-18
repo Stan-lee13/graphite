@@ -22,7 +22,7 @@ The Rust verification engine — the heart of Graphite.
 | `plugins` | Built-in plugins: FakeRewardsDrainer (L7 risk), VerificationEventLogger (analytics) | L7/L8 |
 | `benchmark` | P16-compliant benchmark suite (18 scored cases + 2 baseline comparisons + plugin overhead) | — |
 | `cli` | CLI interface (clap) | — |
-| `durable` | Append-only audit trail (P4/P9): `sync_data` per record, rotation by rename, archives read by every consumer, health counters | — |
+| `durable` | Append-only audit trail (P4/P9): `sync_data` per record, rotation by rename, archives read by every consumer through persisted, checked indexes (`src/durable/archive_index.rs`), the lifecycle emission table, health counters | — |
 | `tx_artifact` | Wire-format parser (legacy, v0 and — since Round 19 — v1): canonical compact-u16, header privileges, lookup-table resolution, runtime account numbering, durable-nonce detection, `message_bytes`, `simulation_identity` (the baseline's observation key: signatures and blockhash zeroed) | L1/L2 |
 | `state_diff` | Pre/post account diff; SPL Token / Token-2022 decoding; Token-2022 extension classification (fail-closed on unreadable regions) | L4 |
 | `solana_types` | PDA derivation, base58, 32-byte pubkeys — no `solana-sdk` dependency | — |

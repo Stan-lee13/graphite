@@ -21,6 +21,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+mod archive_index;
+use archive_index::ArchiveIndex;
+
 /// Default size at which the ACTIVE audit file is rotated (64 MiB).
 ///
 /// Rotation exists for two reasons found by the 2026-09-05 production audit:
@@ -137,6 +140,34 @@ pub struct AuditLog {
     /// rotation was introduced to remove. Entries are validated by file
     /// length and dropped when the archive is pruned.
     archive_stats: Arc<Mutex<HashMap<PathBuf, ArchiveStats>>>,
+    /// Each archive's persisted index (R-M11, Round 28), once checked
+    /// against the archive in this process, or the fact that it cannot be
+    /// had (an unwritable index directory, two keys with one digest), so a
+    /// build is not retried on every lookup. Holds no entries of the index:
+    /// those are read from disk by seeking (`archive_index.rs`).
+    archive_indexes: Arc<Mutex<HashMap<PathBuf, IndexState>>>,
+    /// Held while an archive's index is checked or built, so two lookups
+    /// never build the same index at once.
+    index_build: Arc<Mutex<()>>,
+    /// Archives parsed to build their index. A structural witness for
+    /// tests: once an archive is indexed, no lookup moves it.
+    archive_index_builds: Arc<AtomicU64>,
+    /// Archives passed over line by line by a lookup, a count or a
+    /// lifecycle history, because no checked index could answer. The same
+    /// kind of witness.
+    archive_scans: Arc<AtomicU64>,
+    /// Background index jobs not yet finished: the rotated archive's index
+    /// written from the active file's indexes, the start-up check of every
+    /// archive, and the sweep after pruning.
+    index_jobs: Arc<AtomicU64>,
+}
+
+/// Whether an archive's index can answer, as checked in this process.
+#[derive(Debug, Clone)]
+enum IndexState {
+    Ready(ArchiveIndex),
+    /// No index could be checked or built for an archive of this length.
+    Unavailable(u64),
 }
 
 /// A point-in-time view of audit-log health, surfaced by /health and /metrics.
@@ -302,10 +333,14 @@ fn sync_dir(path: &Path) {
 /// knows when those happened. Graphite therefore does not, and must not,
 /// synthesize `Signing`/`Submission`/`Confirmation`/`Finalization` events on
 /// its own: an audit trail that fabricates events it never witnessed is worse
-/// than one that admits the gap. Those four are recorded through
-/// `GraphiteCore::record_lifecycle_event` / the server's audit-event endpoint,
-/// by the component that actually performed them, keyed to the same
-/// `content_hash` so the whole lifecycle reconciles.
+/// than one that admits the gap. Those four are recorded through the
+/// server's audit-event endpoint (`POST /audit/event`), by the component
+/// that actually performed them, keyed to the same `content_hash` so the
+/// whole lifecycle reconciles.
+///
+/// Where each event reaches the trail is `LifecycleEvent::emission`, one
+/// `match` with no wildcard: a new event does not compile until it says
+/// (R-P14, Round 28).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleEvent {
@@ -335,19 +370,82 @@ pub enum LifecycleEvent {
     OperatorAction,
 }
 
+/// Where a lifecycle event reaches the audit trail (Constitution P9;
+/// roadmap R-P14, Round 28).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Emission {
+    /// Graphite observes the stage inside a verification and records it on
+    /// that verification's row, not on a row of its own. `field` is the
+    /// row's field that carries it.
+    OnTheVerificationRow { field: &'static str },
+    /// Graphite performs the stage and writes the row itself, at `route`.
+    GraphiteRow { route: &'static str },
+    /// The caller performs the stage and reports it at `POST /audit/event`,
+    /// where it is written as an attestation. `also_observed` names the
+    /// route where Graphite writes one from its own observation.
+    CallerReported { also_observed: Option<&'static str> },
+}
+
 impl LifecycleEvent {
+    /// Every lifecycle event. `every_lifecycle_event_reaches_the_trail`
+    /// checks this list against the enum serde derives, so a variant left
+    /// out of it fails the build's tests.
+    pub const ALL: [LifecycleEvent; 8] = [
+        LifecycleEvent::Construction,
+        LifecycleEvent::Simulation,
+        LifecycleEvent::Verification,
+        LifecycleEvent::Signing,
+        LifecycleEvent::Submission,
+        LifecycleEvent::Confirmation,
+        LifecycleEvent::Finalization,
+        LifecycleEvent::OperatorAction,
+    ];
+
+    /// Where this event reaches the trail.
+    ///
+    /// No wildcard arm, on purpose: a new lifecycle stage does not compile
+    /// until it is given an emitter here, and
+    /// `server::tests::every_lifecycle_event_reaches_the_trail` drives every
+    /// emitter this names and reads the row back.
+    ///
+    /// Construction and simulation have no row of their own. A verification
+    /// is the only path that constructs or simulates, and its row records
+    /// both: the instruction plan it judged (`content_hash`) and the
+    /// simulation layer's state (`l3_status`). A separate row for each would
+    /// be two more device syncs per verdict carrying nothing the
+    /// verification row does not.
+    pub const fn emission(self) -> Emission {
+        match self {
+            LifecycleEvent::Construction => Emission::OnTheVerificationRow {
+                field: "content_hash",
+            },
+            LifecycleEvent::Simulation => Emission::OnTheVerificationRow { field: "l3_status" },
+            LifecycleEvent::Verification => Emission::GraphiteRow { route: "/verify" },
+            LifecycleEvent::Signing => Emission::CallerReported {
+                also_observed: None,
+            },
+            LifecycleEvent::Submission => Emission::CallerReported {
+                also_observed: None,
+            },
+            LifecycleEvent::Confirmation => Emission::CallerReported {
+                also_observed: Some("/verify/execution"),
+            },
+            LifecycleEvent::Finalization => Emission::CallerReported {
+                also_observed: None,
+            },
+            LifecycleEvent::OperatorAction => Emission::GraphiteRow {
+                route: "/admin/quarantine",
+            },
+        }
+    }
+
     /// True for the events Graphite itself witnesses and emits.
     ///
     /// The complement is caller-reported: Graphite has no way to observe it
-    /// and must not invent it.
+    /// and must not invent it. Read from `emission`, so the two cannot
+    /// disagree.
     pub fn is_self_observed(&self) -> bool {
-        matches!(
-            self,
-            LifecycleEvent::Construction
-                | LifecycleEvent::Simulation
-                | LifecycleEvent::Verification
-                | LifecycleEvent::OperatorAction
-        )
+        !matches!(self.emission(), Emission::CallerReported { .. })
     }
 }
 
@@ -882,6 +980,11 @@ impl AuditLog {
             rotations_ok: Arc::new(AtomicU64::new(0)),
             rotations_failed: Arc::new(AtomicU64::new(0)),
             archive_stats: Arc::new(Mutex::new(HashMap::new())),
+            archive_indexes: Arc::new(Mutex::new(HashMap::new())),
+            index_build: Arc::new(Mutex::new(())),
+            archive_index_builds: Arc::new(AtomicU64::new(0)),
+            archive_scans: Arc::new(AtomicU64::new(0)),
+            index_jobs: Arc::new(AtomicU64::new(0)),
             active_index: Arc::new(Mutex::new(active_index)),
             lifecycle_index: Arc::new(Mutex::new(lifecycle_index)),
             active_counts: Arc::new(Mutex::new(active_counts)),
@@ -1002,6 +1105,260 @@ impl AuditLog {
         if let Ok(mut cache) = self.archive_stats.lock() {
             cache.retain(|p, _| present.contains(p));
         }
+        if let Ok(mut indexes) = self.archive_indexes.lock() {
+            indexes.retain(|p, _| present.contains(p));
+        }
+    }
+
+    /// Where the archives' indexes are kept: `<log>-index/` beside the log.
+    /// Not `<log>.…`, which `archives()` would list as an archive.
+    fn index_dir(&self) -> Option<PathBuf> {
+        let dir = self.path.parent()?;
+        let stem = self.path.file_name()?.to_str()?;
+        Some(dir.join(format!("{stem}-index")))
+    }
+
+    /// The checked index of one archive, building it from one parse of the
+    /// archive when there is none on disk or the one there does not check.
+    ///
+    /// Checked once per process per archive: the archive's SHA-256 is
+    /// computed (one read, no parse) and compared with the one the index
+    /// was built from, and the index file's own trailer with its bytes.
+    /// `None` when no index can be had; the caller scans the archive, as
+    /// before Round 28.
+    fn archive_index(&self, archive: &Path) -> Option<ArchiveIndex> {
+        let len = std::fs::metadata(archive).ok()?.len();
+        if let Some(answer) = self.cached_index(archive, len) {
+            return answer;
+        }
+        let _building = match self.index_build.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        // Another lookup, or a background job, may have checked or built it
+        // while this one waited.
+        if let Some(answer) = self.cached_index(archive, len) {
+            return answer;
+        }
+        let state = self.check_or_build_index(archive, len);
+        let answer = match &state {
+            IndexState::Ready(index) => Some(index.clone()),
+            IndexState::Unavailable(_) => None,
+        };
+        self.remember_index(archive, state);
+        answer
+    }
+
+    /// What this process already knows about an archive's index at its
+    /// current length: `Some(Some(_))` a checked index, `Some(None)` none to
+    /// be had, `None` not yet looked at.
+    fn cached_index(&self, archive: &Path, len: u64) -> Option<Option<ArchiveIndex>> {
+        let indexes = match self.archive_indexes.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        match indexes.get(archive) {
+            Some(IndexState::Ready(index)) if index.archive_len == len => Some(Some(index.clone())),
+            Some(IndexState::Unavailable(at)) if *at == len => Some(None),
+            _ => None,
+        }
+    }
+
+    fn remember_index(&self, archive: &Path, state: IndexState) {
+        let mut indexes = match self.archive_indexes.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        indexes.insert(archive.to_path_buf(), state);
+    }
+
+    /// Run an index job on its own thread, counted in `index_jobs` until it
+    /// returns or panics. A thread that cannot be started leaves the work to
+    /// the first lookup that needs it.
+    fn spawn_index_job(&self, job: impl FnOnce(&AuditLog) + Send + 'static) {
+        struct Done(Arc<AtomicU64>);
+        impl Drop for Done {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+        self.index_jobs.fetch_add(1, Ordering::SeqCst);
+        let log = self.clone();
+        let done = Done(self.index_jobs.clone());
+        let spawned = std::thread::Builder::new()
+            .name("graphite-audit-index".to_string())
+            .spawn(move || {
+                let _done = done;
+                job(&log);
+            });
+        if let Err(e) = spawned {
+            // The closure, and its `Done`, were dropped with the error.
+            tracing::warn!(
+                "audit archive index job could not start ({e}); the first lookup does the work"
+            );
+        }
+    }
+
+    /// Check or build every archive's index, newest first, on a background
+    /// thread, after removing index files no archive needs. The server
+    /// calls this at start so the first L8 lookup after a restart does not
+    /// pay for checking every archive (measured: 1.8 s for three 64 MiB
+    /// archives, against 2 ms for an indexed count).
+    pub fn warm_archive_indexes_in_background(&self) {
+        self.spawn_index_job(|log| {
+            log.sweep_index_dir();
+            for archive in log.archives().iter().rev() {
+                let _ = log.archive_index(archive);
+            }
+        });
+    }
+
+    /// Write a just-rotated archive's index from the indexes the active file
+    /// kept while it was written, so nothing is parsed. Used only when those
+    /// indexes account for exactly the archive's bytes, the same rule the
+    /// active counts are answered by; otherwise the first lookup builds the
+    /// index from a parse.
+    fn index_rotated_archive(&self, archive: PathBuf, indexes: ActiveIndexes) {
+        self.spawn_index_job(move |log| {
+            let _building = match log.index_build.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let (last, lifecycle, counts) = indexes;
+            let Ok((sha256, len)) = archive_index::file_sha256(&archive) else {
+                return;
+            };
+            if counts.len != len || log.cached_index(&archive, len).is_some() {
+                return;
+            }
+            let Some(index_path) = log
+                .index_dir()
+                .and_then(|dir| archive_index::index_path(&dir, &archive))
+            else {
+                return;
+            };
+            let source = archive_index::IndexSource {
+                last: &last,
+                counts: &counts.by_key,
+                lifecycle: &lifecycle,
+            };
+            match archive_index::write(&index_path, len, &sha256, source) {
+                Ok(index) => log.remember_index(&archive, IndexState::Ready(index)),
+                Err(e) => tracing::warn!(
+                    "audit archive index {} could not be written ({e}); the first lookup retries",
+                    index_path.display()
+                ),
+            }
+        });
+    }
+
+    /// Remove index files that describe no archive on disk (pruned while
+    /// its index was being written) and temporary files a stopped process
+    /// left. Under the build lock, so no file being written is removed.
+    fn sweep_index_dir(&self) {
+        let Some(dir) = self.index_dir() else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return;
+        };
+        let _building = match self.index_build.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let Some(log_dir) = self.path.parent() else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let stale = if name.contains(".idx.tmp-") {
+                true
+            } else if let Some(archive) = name.strip_suffix(".idx") {
+                !log_dir.join(archive).exists()
+            } else {
+                false
+            };
+            if stale {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+
+    /// Wait until no background index job is running (tests).
+    #[cfg(test)]
+    fn wait_for_index_jobs(&self) {
+        let start = std::time::Instant::now();
+        while self.index_jobs.load(Ordering::SeqCst) > 0 {
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(60),
+                "background index jobs did not finish"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    fn check_or_build_index(&self, archive: &Path, len: u64) -> IndexState {
+        let unavailable = IndexState::Unavailable(len);
+        let Some(index_path) = self
+            .index_dir()
+            .and_then(|dir| archive_index::index_path(&dir, archive))
+        else {
+            return unavailable;
+        };
+        let Ok((sha256, hashed_len)) = archive_index::file_sha256(archive) else {
+            return unavailable;
+        };
+        if hashed_len != len {
+            return unavailable;
+        }
+        if let Some(index) = archive_index::open_checked(&index_path, len, &sha256) {
+            return IndexState::Ready(index);
+        }
+        if index_path.exists() {
+            tracing::warn!(
+                "audit archive index {} does not check against its archive; rebuilding it",
+                index_path.display()
+            );
+        }
+        self.archive_index_builds.fetch_add(1, Ordering::Relaxed);
+        let (last, lifecycle, counts) = build_indexes(archive);
+        // The parse must have read the bytes that were hashed.
+        if counts.len != len {
+            return unavailable;
+        }
+        let source = archive_index::IndexSource {
+            last: &last,
+            counts: &counts.by_key,
+            lifecycle: &lifecycle,
+        };
+        match archive_index::write(&index_path, len, &sha256, source) {
+            Ok(index) => IndexState::Ready(index),
+            Err(e) => {
+                tracing::warn!(
+                    "audit archive index {} could not be written ({e}); that archive is scanned on each lookup",
+                    index_path.display()
+                );
+                unavailable
+            }
+        }
+    }
+
+    /// Forget an archive's index after it answered something its archive
+    /// does not hold, and remove the file, so the next lookup checks the
+    /// archive again and rebuilds.
+    fn discard_archive_index(&self, archive: &Path) {
+        if let Ok(mut indexes) = self.archive_indexes.lock() {
+            indexes.remove(archive);
+        }
+        if let Some(path) = self
+            .index_dir()
+            .and_then(|dir| archive_index::index_path(&dir, archive))
+        {
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     /// Rotate the active file if it has grown past `rotate_bytes`.
@@ -1102,21 +1459,23 @@ impl AuditLog {
             Ok(fresh) => {
                 *file = fresh;
                 // The active file is empty now; every offset the index
-                // holds points into the archive.
-                match self.active_index.lock() {
-                    Ok(mut g) => g.clear(),
-                    Err(poisoned) => poisoned.into_inner().clear(),
-                }
-                match self.lifecycle_index.lock() {
-                    Ok(mut g) => g.clear(),
-                    Err(poisoned) => poisoned.into_inner().clear(),
-                }
+                // holds points into the archive, and becomes the archive's
+                // own index (R-M11).
+                let last = match self.active_index.lock() {
+                    Ok(mut g) => std::mem::take(&mut *g),
+                    Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+                };
+                let lifecycle = match self.lifecycle_index.lock() {
+                    Ok(mut g) => std::mem::take(&mut *g),
+                    Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+                };
                 // The fresh file holds nothing and accounts for zero bytes;
                 // the rotated records are counted from the archive.
-                match self.active_counts.lock() {
-                    Ok(mut g) => *g = ActiveCounts::default(),
-                    Err(poisoned) => *poisoned.into_inner() = ActiveCounts::default(),
-                }
+                let counts = match self.active_counts.lock() {
+                    Ok(mut g) => std::mem::take(&mut *g),
+                    Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+                };
+                self.index_rotated_archive(archive.clone(), (last, lifecycle, counts));
                 match self.last_rotation.lock() {
                     Ok(mut g) => *g = Some(std::time::Instant::now()),
                     Err(poisoned) => *poisoned.into_inner() = Some(std::time::Instant::now()),
@@ -1146,13 +1505,25 @@ impl AuditLog {
             return;
         }
         let mut archives = self.archives();
+        let pruned = archives.len() > self.max_archives;
         while archives.len() > self.max_archives {
             let oldest = archives.remove(0);
             if let Err(e) = std::fs::remove_file(&oldest) {
                 tracing::warn!("audit archive prune failed for {}: {}", oldest.display(), e);
+            } else if let Some(index) = self
+                .index_dir()
+                .and_then(|dir| archive_index::index_path(&dir, &oldest))
+            {
+                // An index outlives nothing it describes.
+                let _ = std::fs::remove_file(index);
             }
         }
         self.forget_missing_archives(&archives);
+        // An index being written while its archive was pruned can land
+        // after the removal above; the sweep removes it.
+        if pruned {
+            self.spawn_index_job(|log| log.sweep_index_dir());
+        }
     }
 
     /// The most recent `tail` records the selector keeps, oldest-first, from
@@ -1270,7 +1641,8 @@ impl AuditLog {
     ///
     /// The active file's share comes from `active_counts` (Round 22): it was
     /// a substring pass over the whole active file on every L8 lookup with a
-    /// chain digest. The archives are still scanned.
+    /// chain digest. Each archive's share comes from its persisted index
+    /// (R-M11, Round 28); an archive without one is scanned.
     pub fn count_verifications(&self, key: VerificationKey<'_>) -> (usize, usize) {
         let wanted = key.value().trim();
         if wanted.is_empty() {
@@ -1278,7 +1650,8 @@ impl AuditLog {
         }
         let mut approved = 0usize;
         let mut refused = 0usize;
-        let mut tally = |file: File| {
+        let tally = |file: File| {
+            let (mut approved, mut refused) = (0usize, 0usize);
             for_each_line(file, |line| {
                 if !line.contains(wanted) {
                     return;
@@ -1293,6 +1666,7 @@ impl AuditLog {
                     }
                 }
             });
+            (approved, refused)
         };
         // The active file, from the counts, under the append lock so no write
         // can land between reading the file's length and reading the counts
@@ -1301,8 +1675,8 @@ impl AuditLog {
         // a file changed by something other than this log — the active file
         // is recounted, the counts replaced by what it holds, and the
         // disagreement logged. Never an answer from counts the file
-        // contradicts. The archives are immutable and are scanned
-        // ("Archive lookups are scans", SECURITY.md).
+        // contradicts. The archives are immutable and answer from their
+        // indexes.
         let (archives, active) = {
             let file = match self.file.lock() {
                 Ok(g) => g,
@@ -1333,9 +1707,30 @@ impl AuditLog {
             drop(file);
             (archives, active)
         };
+        let index_key = key.index_key();
         for archive in archives {
-            if let Ok(file) = File::open(archive) {
-                tally(file);
+            if let Some(index) = self.archive_index(&archive) {
+                match index.verification(&index_key) {
+                    Ok(Some(entry)) => {
+                        approved += entry.approved as usize;
+                        refused += entry.refused as usize;
+                        continue;
+                    }
+                    Ok(None) => continue,
+                    Err(e) => {
+                        tracing::error!(
+                            "audit archive index for {} could not be read ({e}); scanning the archive",
+                            archive.display()
+                        );
+                        self.discard_archive_index(&archive);
+                    }
+                }
+            }
+            self.archive_scans.fetch_add(1, Ordering::Relaxed);
+            if let Ok(file) = File::open(&archive) {
+                let (a, r) = tally(file);
+                approved += a;
+                refused += r;
             }
         }
         (approved + active.0, refused + active.1)
@@ -1402,8 +1797,34 @@ impl AuditLog {
             self.archives()
         };
         // Not in the active file. The archives are immutable and searched
-        // newest-first.
+        // newest-first, each by its index (R-M11, Round 28). An indexed
+        // offset is read back from the archive and matched before it is an
+        // answer; one that does not read back discards the index and scans
+        // the archive, never answering from a broken index.
         for archive in archives.iter().rev() {
+            if let Some(index) = self.archive_index(archive) {
+                match index.verification(&index_key) {
+                    Ok(None) => continue,
+                    Ok(Some(entry)) => {
+                        if let Some(r) =
+                            read_record_at(archive, entry.last_offset).filter(|r| key.matches(r))
+                        {
+                            return Some(r);
+                        }
+                        tracing::error!(
+                            "audit archive index: offset {} for {wanted} did not read back as its record in {}; scanning the archive",
+                            entry.last_offset,
+                            archive.display()
+                        );
+                    }
+                    Err(e) => tracing::error!(
+                        "audit archive index for {} could not be read ({e}); scanning the archive",
+                        archive.display()
+                    ),
+                }
+                self.discard_archive_index(archive);
+            }
+            self.archive_scans.fetch_add(1, Ordering::Relaxed);
             if let Ok(file) = File::open(archive) {
                 if let Some(r) = find_in(file) {
                     return Some(r);
@@ -1559,6 +1980,13 @@ impl AuditLog {
         let Some(archive) = newest_archive else {
             return rows;
         };
+        // The archive's rows, by its index (R-M11, Round 28) when it has
+        // one and every indexed row reads back as a row for this key.
+        if let Some(mut found) = self.lifecycle_rows_from_index(&archive, &key) {
+            found.extend(rows);
+            return bound_history(found);
+        }
+        self.archive_scans.fetch_add(1, Ordering::Relaxed);
         let Ok(file) = File::open(&archive) else {
             return rows;
         };
@@ -1588,6 +2016,68 @@ impl AuditLog {
         // than truncating the newest away.
         found.extend(rows);
         bound_history(found)
+    }
+
+    /// An archive's lifecycle rows for `key`, from its index, bounded like a
+    /// scan's. `None` when the archive has no checked index or an indexed
+    /// row does not read back as a row for the key; that index is discarded
+    /// and the caller scans.
+    ///
+    /// Each key's offsets were bounded when the index was built
+    /// (`push_lifecycle_offset`: the first rows kept, the latest rolling),
+    /// and the union of bounded lists, bounded again, keeps the same rows
+    /// as bounding the union of every row: each of the union's first and
+    /// last rows is among the first or last rows of its own key.
+    fn lifecycle_rows_from_index(
+        &self,
+        archive: &Path,
+        key: &LifecycleKey<'_>,
+    ) -> Option<Vec<LifecycleEventRecord>> {
+        let index = self.archive_index(archive)?;
+        let mut offsets = Vec::new();
+        for k in key.index_keys() {
+            match index.lifecycle_offsets(&k) {
+                Ok(found) => offsets.extend(found),
+                Err(e) => {
+                    tracing::error!(
+                        "audit archive index for {} could not be read ({e}); scanning the archive",
+                        archive.display()
+                    );
+                    self.discard_archive_index(archive);
+                    return None;
+                }
+            }
+        }
+        offsets.sort_unstable();
+        offsets.dedup();
+        let offsets = bound_history(offsets);
+        let mut rows = Vec::with_capacity(offsets.len());
+        if offsets.is_empty() {
+            return Some(rows);
+        }
+        let mut file = File::open(archive).ok()?;
+        for offset in offsets {
+            use std::io::Seek;
+            let mut line = String::new();
+            let read = file
+                .seek(std::io::SeekFrom::Start(offset))
+                .and_then(|_| BufReader::new(&mut file).read_line(&mut line));
+            match read
+                .ok()
+                .and_then(|_| lifecycle_row(line.trim_end().as_bytes()))
+            {
+                Some(r) if key.matches(&r) => rows.push(r),
+                _ => {
+                    tracing::error!(
+                        "audit archive index: lifecycle offset {offset} in {} did not read back as a row for its key; scanning the archive",
+                        archive.display()
+                    );
+                    self.discard_archive_index(archive);
+                    return None;
+                }
+            }
+        }
+        Some(rows)
     }
 
     /// Returns true when the line is written AND synced to the storage device.
@@ -1702,6 +2192,17 @@ impl AuditLog {
         self.rotate_if_needed(&mut file);
         true
     }
+}
+
+/// The verification record on the line at `offset` of `path`, if that line
+/// is one.
+fn read_record_at(path: &Path, offset: u64) -> Option<AuditRecord> {
+    use std::io::Seek;
+    let mut file = File::open(path).ok()?;
+    file.seek(std::io::SeekFrom::Start(offset)).ok()?;
+    let mut line = String::new();
+    BufReader::new(file).read_line(&mut line).ok()?;
+    serde_json::from_str::<AuditRecord>(line.trim_end()).ok()
 }
 
 /// Whether a non-empty file's last byte is something other than a newline.
@@ -3224,6 +3725,498 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(history.len(), MAX_LIFECYCLE_HISTORY);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+    // ── R-M11 (Round 28): the archives answer from a persisted index ────
+
+    fn index_builds(log: &AuditLog) -> u64 {
+        log.archive_index_builds.load(Ordering::Relaxed)
+    }
+
+    fn archive_scans(log: &AuditLog) -> u64 {
+        log.archive_scans.load(Ordering::Relaxed)
+    }
+
+    /// Write `lines` as a rotated archive named for `seq`, as rotation would
+    /// have left it.
+    fn write_archive(dir: &Path, seq: u32, lines: &[String]) -> PathBuf {
+        let path = dir.join(format!("audit.jsonl.{:013}-{seq:06}", 1_700_000_000_000u64));
+        let mut body = String::new();
+        for l in lines {
+            body.push_str(l);
+            body.push('\n');
+        }
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    fn line_of<T: serde::Serialize>(r: &T) -> String {
+        serde_json::to_string(r).unwrap()
+    }
+
+    fn index_files(dir: &Path) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(dir.join("audit.jsonl-index"))
+            .map(|d| d.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
+        v.sort();
+        v
+    }
+
+    /// Three archives: the first holds 300 verifications of distinct ids
+    /// (so the binary search crosses many entries), the second and third
+    /// verifications of one transaction and lifecycle rows.
+    fn three_archives(dir: &Path) -> Vec<PathBuf> {
+        let mut first: Vec<String> = (0..300)
+            .map(|i| {
+                line_of(&rec_with(
+                    &format!("gr-a{i:03}"),
+                    &format!("c{i:015x}"),
+                    "P",
+                    i % 3 == 0,
+                ))
+            })
+            .collect();
+        first.push(line_of(&counted("gr-t0", true)));
+        let second = vec![
+            line_of(&counted("gr-t1", false)),
+            line_of(&lifecycle(LifecycleEvent::Signing, "gr-t1", None)),
+            line_of(&counted("gr-t2", true)),
+        ];
+        let third = vec![
+            line_of(&counted("gr-t3", true)),
+            line_of(&lifecycle(
+                LifecycleEvent::Submission,
+                "gr-t3",
+                Some("sig-t3"),
+            )),
+        ];
+        vec![
+            write_archive(dir, 0, &first),
+            write_archive(dir, 1, &second),
+            write_archive(dir, 2, &third),
+        ]
+    }
+
+    /// R-M11: a count, a lookup and a lifecycle history over rotated
+    /// archives each answer from the archives' persisted indexes. Every
+    /// archive is parsed once, to build its index, and never scanned by a
+    /// lookup; a restart reads the indexes back instead of parsing anything.
+    ///
+    /// Before Round 28 each of these calls was a pass over every archive
+    /// (`archive_scans` here); the answers are the same.
+    #[test]
+    fn archive_lookups_answer_from_a_persisted_index_across_restart() {
+        let dir = counts_dir("rm11-index");
+        let archives = three_archives(&dir);
+        let path = audit_path(&dir);
+        let tx = VerificationKey::TransactionSha256(COUNTED_TX);
+        let answers = |log: &AuditLog| {
+            assert_eq!(log.count_verifications(tx), (3, 1));
+            assert_eq!(
+                log.count_verifications(VerificationKey::ContentHash("00000000000000aa")),
+                (3, 1)
+            );
+            for i in [0usize, 1, 150, 298, 299] {
+                let id = format!("gr-a{i:03}");
+                let found = log
+                    .find_verification(VerificationKey::AuditTrailId(&id))
+                    .expect("an archived record must be found");
+                assert_eq!(found.audit_trail_id, id);
+                assert_eq!(found.approved, i % 3 == 0);
+                assert_eq!(
+                    log.count_verifications(VerificationKey::AuditTrailId(&id)),
+                    if i % 3 == 0 { (1, 0) } else { (0, 1) }
+                );
+            }
+            // The newest record under the digest is in the newest archive.
+            assert_eq!(log.find_verification(tx).unwrap().audit_trail_id, "gr-t3");
+            assert!(log
+                .find_verification(VerificationKey::AuditTrailId("gr-nowhere"))
+                .is_none());
+            assert_eq!(
+                log.count_verifications(VerificationKey::AuditTrailId("gr-nowhere")),
+                (0, 0)
+            );
+            let history = log.lifecycle_history(LifecycleKey {
+                audit_trail_id: Some("gr-t3"),
+                transaction_sha256: None,
+                transaction_signature: Some("sig-t3"),
+            });
+            assert_eq!(history.len(), 1);
+            assert_eq!(history[0].event_type, LifecycleEvent::Submission);
+        };
+        {
+            let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+            answers(&log);
+            assert_eq!(
+                index_builds(&log),
+                3,
+                "each archive is parsed once, to build its index"
+            );
+            assert_eq!(
+                archive_scans(&log),
+                0,
+                "no lookup may scan an indexed archive"
+            );
+            answers(&log);
+            assert_eq!(index_builds(&log), 3);
+            assert_eq!(archive_scans(&log), 0);
+        }
+        let files = index_files(&dir);
+        assert_eq!(files.len(), 3, "one index file per archive: {files:?}");
+        for a in &archives {
+            let name = format!("{}.idx", a.file_name().unwrap().to_str().unwrap());
+            assert!(files.iter().any(|f| f.ends_with(&name)), "{name} missing");
+        }
+        // Restart: the indexes are read back and checked, not rebuilt.
+        let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+        answers(&log);
+        assert_eq!(
+            index_builds(&log),
+            0,
+            "a restart must not reparse an indexed archive"
+        );
+        assert_eq!(archive_scans(&log), 0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An index that does not check against its archive is never answered
+    /// from. A flipped byte, a truncated file, another version, and an
+    /// archive whose bytes changed under an index of the same length are
+    /// each rebuilt from the archive, and the answers are the archive's.
+    #[test]
+    fn an_archive_index_that_does_not_check_is_rebuilt() {
+        let dir = counts_dir("rm11-check");
+        let archives = three_archives(&dir);
+        let path = audit_path(&dir);
+        let tx = VerificationKey::TransactionSha256(COUNTED_TX);
+        {
+            let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+            assert_eq!(log.count_verifications(tx), (3, 1));
+        }
+        let files = index_files(&dir);
+        assert_eq!(files.len(), 3);
+        // 1. A flipped byte inside the entries: the trailer disagrees.
+        let mut bytes = std::fs::read(&files[0]).unwrap();
+        let mid = bytes.len() / 2;
+        bytes[mid] ^= 0x01;
+        std::fs::write(&files[0], &bytes).unwrap();
+        // 2. A truncated file.
+        let bytes = std::fs::read(&files[1]).unwrap();
+        std::fs::write(&files[1], &bytes[..bytes.len() - 7]).unwrap();
+        // 3. Another format version, with the trailer recomputed so only
+        //    the version is wrong.
+        let mut bytes = std::fs::read(&files[2]).unwrap();
+        bytes[8..12].copy_from_slice(&(archive_index::VERSION + 1).to_le_bytes());
+        let n = bytes.len();
+        let trailer: [u8; 32] = {
+            use sha2::Digest;
+            sha2::Sha256::digest(&bytes[..n - 32]).into()
+        };
+        bytes[n - 32..].copy_from_slice(&trailer);
+        std::fs::write(&files[2], &bytes).unwrap();
+        {
+            let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+            assert_eq!(log.count_verifications(tx), (3, 1));
+            assert_eq!(
+                index_builds(&log),
+                3,
+                "every index that does not check is rebuilt"
+            );
+            assert_eq!(archive_scans(&log), 0);
+        }
+        // 4. The archive changed and kept its length, which a length check
+        //    alone would miss: the newest archive's record moves to another
+        //    transaction digest of the same width.
+        let body = std::fs::read_to_string(&archives[2]).unwrap();
+        let other = "b".repeat(64);
+        std::fs::write(&archives[2], body.replacen(COUNTED_TX, &other, 1)).unwrap();
+        let log = AuditLog::open_with_rotation(&path, 0, 0).unwrap();
+        assert_eq!(
+            log.count_verifications(tx),
+            (2, 1),
+            "the count must be the archive's, not a stale index's"
+        );
+        assert_eq!(
+            log.count_verifications(VerificationKey::TransactionSha256(&other)),
+            (1, 0)
+        );
+        assert_eq!(index_builds(&log), 1, "only the changed archive is rebuilt");
+        assert_eq!(archive_scans(&log), 0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An indexed offset that does not read back as its record (the archive
+    /// changed under an index already checked in this process) is never the
+    /// answer. The archive is scanned, the right record returned, and the
+    /// index discarded so the next lookup rebuilds it.
+    #[test]
+    fn an_indexed_archive_offset_that_does_not_read_back_is_never_an_answer() {
+        let dir = counts_dir("rm11-readback");
+        let a = line_of(&rec_with("gr-x1", "00000000000000c1", "P", true));
+        let b = line_of(&rec_with("gr-x2", "00000000000000c2", "P", true));
+        assert_eq!(a.len(), b.len(), "the swap must keep the archive's length");
+        let archive = write_archive(&dir, 0, &[a.clone(), b.clone()]);
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        let x1 = VerificationKey::AuditTrailId("gr-x1");
+        assert_eq!(log.find_verification(x1).unwrap().audit_trail_id, "gr-x1");
+        assert_eq!(index_builds(&log), 1);
+        // Swap the two lines in place. The length is the same, so the
+        // checked index stays cached, and its offset for gr-x1 now holds
+        // gr-x2.
+        std::fs::write(&archive, format!("{b}\n{a}\n")).unwrap();
+        let found = log
+            .find_verification(x1)
+            .expect("the scan finds the record");
+        assert_eq!(found.audit_trail_id, "gr-x1");
+        assert_eq!(archive_scans(&log), 1, "a broken offset scans the archive");
+        assert!(index_files(&dir).is_empty(), "and discards the index");
+        // The next lookup checks the archive again and rebuilds.
+        assert_eq!(log.find_verification(x1).unwrap().audit_trail_id, "gr-x1");
+        assert_eq!(index_builds(&log), 2);
+        assert_eq!(archive_scans(&log), 1);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// An index that cannot be written leaves the archive scanned, with the
+    /// right answer, and is not rebuilt on every lookup: a parse per lookup
+    /// would cost more than the scan it replaces.
+    #[test]
+    fn an_unwritable_archive_index_falls_back_to_one_scan_per_lookup() {
+        let dir = counts_dir("rm11-unwritable");
+        three_archives(&dir);
+        // A file where the index directory would be.
+        std::fs::write(dir.join("audit.jsonl-index"), b"not a directory").unwrap();
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        let tx = VerificationKey::TransactionSha256(COUNTED_TX);
+        assert_eq!(log.count_verifications(tx), (3, 1));
+        assert_eq!(index_builds(&log), 3);
+        assert_eq!(archive_scans(&log), 3);
+        assert_eq!(log.count_verifications(tx), (3, 1));
+        assert_eq!(
+            index_builds(&log),
+            3,
+            "an index that cannot be written is not retried"
+        );
+        assert_eq!(archive_scans(&log), 6);
+        assert_eq!(
+            log.find_verification(VerificationKey::AuditTrailId("gr-a150"))
+                .unwrap()
+                .audit_trail_id,
+            "gr-a150"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Pruning an archive removes its index with it, and the counts stop
+    /// including it.
+    #[test]
+    fn pruning_an_archive_removes_its_index() {
+        let dir = counts_dir("rm11-prune");
+        let path = audit_path(&dir);
+        let log = AuditLog::open_with_rotation(&path, 1, 2).unwrap();
+        let tx = VerificationKey::TransactionSha256(COUNTED_TX);
+        for i in 0..2 {
+            assert!(log.append(&counted(&format!("gr-p{i}"), true)));
+        }
+        assert_eq!(log.count_verifications(tx), (2, 0));
+        log.wait_for_index_jobs();
+        assert_eq!(index_files(&dir).len(), 2);
+        assert!(log.append(&counted("gr-p2", false)));
+        let archives = archives_in(&dir);
+        assert_eq!(archives.len(), 2, "retention keeps two archives");
+        assert_eq!(log.count_verifications(tx), (1, 1));
+        log.wait_for_index_jobs();
+        let names: Vec<String> = archives
+            .iter()
+            .map(|a| format!("{}.idx", a.file_name().unwrap().to_str().unwrap()))
+            .collect();
+        let files = index_files(&dir);
+        assert_eq!(files.len(), 2, "{files:?}");
+        for f in &files {
+            let name = f.file_name().unwrap().to_str().unwrap().to_string();
+            assert!(
+                names.contains(&name),
+                "{name} describes an archive no longer on disk"
+            );
+        }
+        assert_eq!(archive_scans(&log), 0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// R-M11's cost, measured: three 64 MiB archives counted by scanning
+    /// (the pre-Round-28 path, forced here by an unwritable index
+    /// directory), by building their indexes, from the indexes, and after a
+    /// restart. Prints the numbers the round report records. Run with
+    /// `cargo test --release --lib -- --ignored archive_index_cost --nocapture`.
+    #[test]
+    #[ignore = "benchmark: writes 192 MiB of archives"]
+    fn archive_index_cost_on_64_mib_archives() {
+        use std::time::Instant;
+        let dir = counts_dir("rm11-cost");
+        let mut per_archive = 0usize;
+        for seq in 0..3u32 {
+            let mut body = String::with_capacity(DEFAULT_ROTATE_BYTES as usize + 4096);
+            let mut i = 0usize;
+            while (body.len() as u64) < DEFAULT_ROTATE_BYTES {
+                let mut r = rec_with(
+                    &format!("gr-{seq}-{i:08}"),
+                    &format!("{:016x}", i % 4096),
+                    "P",
+                    i.is_multiple_of(2),
+                );
+                r.transaction_sha256 = Some(format!("{:064x}", seq as usize * 10_000_000 + i));
+                body.push_str(&line_of(&r));
+                body.push('\n');
+                i += 1;
+            }
+            // One record of the counted transaction per archive.
+            body.push_str(&line_of(&counted(&format!("gr-c{seq}"), true)));
+            body.push('\n');
+            per_archive = i + 1;
+            let path = dir.join(format!("audit.jsonl.{:013}-{seq:06}", 1_700_000_000_000u64));
+            std::fs::write(path, body).unwrap();
+        }
+        let tx = VerificationKey::TransactionSha256(COUNTED_TX);
+        let median = |mut v: Vec<f64>| {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+
+        let blocker = dir.join("audit.jsonl-index");
+        std::fs::write(&blocker, b"x").unwrap();
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        let first = Instant::now();
+        assert_eq!(log.count_verifications(tx), (3, 0));
+        let failed_build = ms(first);
+        let scans: Vec<f64> = (0..3)
+            .map(|_| {
+                let t = Instant::now();
+                assert_eq!(log.count_verifications(tx), (3, 0));
+                ms(t)
+            })
+            .collect();
+        let scan = median(scans);
+        drop(log);
+        std::fs::remove_file(&blocker).unwrap();
+
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        let t = Instant::now();
+        assert_eq!(log.count_verifications(tx), (3, 0));
+        let build = ms(t);
+        let counts: Vec<f64> = (0..200)
+            .map(|_| {
+                let t = Instant::now();
+                assert_eq!(log.count_verifications(tx), (3, 0));
+                ms(t)
+            })
+            .collect();
+        let misses: Vec<f64> = (0..200)
+            .map(|_| {
+                let t = Instant::now();
+                assert!(log
+                    .find_verification(VerificationKey::AuditTrailId("gr-nowhere"))
+                    .is_none());
+                ms(t)
+            })
+            .collect();
+        assert_eq!(archive_scans(&log), 0);
+        drop(log);
+
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        let t = Instant::now();
+        assert_eq!(log.count_verifications(tx), (3, 0));
+        let restart = ms(t);
+        assert_eq!(index_builds(&log), 0);
+        let index_bytes: u64 = index_files(&dir)
+            .iter()
+            .map(|f| std::fs::metadata(f).unwrap().len())
+            .sum();
+        eprintln!(
+            "R-M11 cost over 3 archives of 64 MiB ({per_archive} records each):\n  \
+             scan count (pre-Round-28 path): {scan:.1} ms (median of 3; first with a failed build {failed_build:.1} ms)\n  \
+             first count, building 3 indexes: {build:.1} ms\n  \
+             indexed count: {:.3} ms (median of 200)\n  \
+             indexed miss: {:.3} ms (median of 200)\n  \
+             first count after a restart (hash check): {restart:.1} ms\n  \
+             index files: {index_bytes} bytes",
+            median(counts),
+            median(misses),
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Rotation hands the active file's indexes to the archive it rotated
+    /// into: the archive's index is written from them on a background
+    /// thread, with no parse of the archive, and answers exactly as a
+    /// parse would have.
+    #[test]
+    fn a_rotated_archive_is_indexed_from_the_active_indexes_without_a_parse() {
+        let dir = counts_dir("rm11-rotate");
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 1, 0).unwrap();
+        let tx = VerificationKey::TransactionSha256(COUNTED_TX);
+        for (i, approved) in [true, false, true].into_iter().enumerate() {
+            assert!(log.append(&counted(&format!("gr-r{i}"), approved)));
+        }
+        assert!(log.append_lifecycle(&lifecycle(LifecycleEvent::Signing, "gr-r2", None)));
+        log.wait_for_index_jobs();
+        assert_eq!(archives_in(&dir).len(), 4);
+        assert_eq!(
+            index_files(&dir).len(),
+            4,
+            "every rotated archive is indexed"
+        );
+        assert_eq!(log.count_verifications(tx), (2, 1));
+        assert_eq!(
+            log.find_verification(VerificationKey::AuditTrailId("gr-r1"))
+                .map(|r| r.approved),
+            Some(false)
+        );
+        let history = log.lifecycle_history(LifecycleKey {
+            audit_trail_id: Some("gr-r2"),
+            transaction_sha256: None,
+            transaction_signature: None,
+        });
+        assert_eq!(history.len(), 1);
+        assert_eq!(index_builds(&log), 0, "no archive may be parsed");
+        assert_eq!(archive_scans(&log), 0);
+        // The same indexes, checked by a fresh process.
+        drop(log);
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        assert_eq!(log.count_verifications(tx), (2, 1));
+        assert_eq!(index_builds(&log), 0);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The start-up warm-up checks or builds every archive's index before
+    /// any lookup needs it, and removes index files no archive needs: a
+    /// temporary file a stopped process left and the index of an archive
+    /// that is gone.
+    #[test]
+    fn warming_the_archive_indexes_checks_every_archive_and_sweeps_stale_files() {
+        let dir = counts_dir("rm11-warm");
+        three_archives(&dir);
+        let index_dir = dir.join("audit.jsonl-index");
+        std::fs::create_dir_all(&index_dir).unwrap();
+        let orphan = index_dir.join("audit.jsonl.0000000000001-000000.idx");
+        let temp = index_dir.join("audit.jsonl.0000000000002-000000.idx.tmp-1-0");
+        std::fs::write(&orphan, b"orphan").unwrap();
+        std::fs::write(&temp, b"temp").unwrap();
+        let log = AuditLog::open_with_rotation(audit_path(&dir), 0, 0).unwrap();
+        log.warm_archive_indexes_in_background();
+        log.wait_for_index_jobs();
+        assert_eq!(index_builds(&log), 3);
+        assert!(!orphan.exists(), "an index of no archive is removed");
+        assert!(
+            !temp.exists(),
+            "a stopped write's temporary file is removed"
+        );
+        assert_eq!(index_files(&dir).len(), 3);
+        let tx = VerificationKey::TransactionSha256(COUNTED_TX);
+        assert_eq!(log.count_verifications(tx), (3, 1));
+        assert_eq!(index_builds(&log), 3, "the lookup found every index ready");
+        assert_eq!(archive_scans(&log), 0);
         std::fs::remove_dir_all(&dir).ok();
     }
 }
