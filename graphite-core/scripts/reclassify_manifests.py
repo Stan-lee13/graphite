@@ -25,7 +25,8 @@ Round 29 (audit 2026-10-20). Two findings, one deterministic rule set:
          instructions left unclassed are SPL Token's and Token-2022's
          `Revoke`: the revoke intent declares exactly the empty class
          (`manifest::INTENT_DECLARES`), so a class there would make revoking
-         a delegate unverifiable.
+         a delegate unverifiable. Metaplex Token Metadata's `Revoke` (added in
+         the same round) is left unclassed for the same reason.
 
 Only `risk_class` and, for generated instructions whose class changes, the
 generator's own class phrase in `expected_state_changes` are edited; every
@@ -65,7 +66,11 @@ PHRASES["withdraws funds and transfers them out of the pool to the involved acco
 EXPLICIT_MAPS = ("marinade.json", "spl-stake-pool.json")
 
 # Instructions left unclassed on purpose (see the module docstring).
-UNCLASSED_BY_DESIGN = {("spl-token.json", "Revoke"), ("token-2022.json", "Revoke")}
+UNCLASSED_BY_DESIGN = {
+    ("spl-token.json", "Revoke"),
+    ("token-2022.json", "Revoke"),
+    ("metaplex-token-metadata.json", "Revoke"),
+}
 
 # (manifest, instruction) -> (class, why). Classed by hand: the rules above
 # give a different answer and the program says otherwise. Reported in full by

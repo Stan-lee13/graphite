@@ -80,11 +80,49 @@ def category_of(idl_name, instruction_names):
     return ""
 
 
+REPORT = HERE / "out" / "onboarding_report.json"
+
+
+def write_report(written, skipped):
+    """Write the onboarding report so that it describes the CURRENT tree.
+
+    Round 29 (audit 2026-10-20, LOW-6): the report is the record of this
+    tool's runs, and it was read as a list of the onboarded manifests. It
+    listed two files that had since been removed (`hylo-router-hyrout.json`,
+    `burn-and-claim-abrn44.json`) and did not say that it covers only the
+    manifests THIS tool wrote (55 of the 137 present) — none of the ones
+    built by `build_manifests.py`, `build_new_manifests.py`, the rebuild
+    scripts or by hand. Entries whose manifest no longer exists move to
+    `removed_since_onboarding`; the note states the scope with counts read
+    from the tree.
+    """
+    present = {f.name for f in OUT.glob("*.json")} - {"verified_program_ids.json", "battle_tested_evidence.json"}
+    kept = [list(w) for w in written if w[0] in present]
+    removed = [list(w) for w in written if w[0] not in present]
+    note = (
+        "Record of scripts/onboard_from_inventory.py runs: the manifests THIS tool wrote from "
+        "programs' own on-chain IDLs (columns: file, program id, name, instructions when written, "
+        "sampled successful transactions), and the census candidates it skipped with the reason. "
+        f"{len(kept)} of the {len(present)} manifests in protocols/ were written by it; the others "
+        "come from build_manifests.py, build_new_manifests.py, the rebuild_* scripts and hand "
+        "curation. Instruction counts are as written; merge_onchain_idl.py may have added more since. "
+        "Refresh without network: python3 graphite-core/scripts/onboard_from_inventory.py --refresh-report"
+    )
+    out = {"note": note, "written": kept, "removed_since_onboarding": removed, "skipped": [list(x) for x in skipped]}
+    REPORT.write_text(json.dumps(out, indent=1), encoding="utf-8", newline="\n")
+
+
 def main():
     # `--programs <id> ...` onboards exactly those programs (each still has to
     # clear every gate above), for protocols the usage census did not sample;
     # otherwise the top `limit` of the census are considered.
+    # `--refresh-report` rewrites the report against the current tree and
+    # touches nothing else (no network).
     args = sys.argv[1:]
+    if args == ["--refresh-report"]:
+        prev = json.loads(REPORT.read_text(encoding="utf-8"))
+        write_report(prev["written"] + prev.get("removed_since_onboarding", []), prev["skipped"])
+        return
     explicit = args[1:] if args and args[0] == "--programs" else None
     limit = int(args[0]) if args and explicit is None else (len(explicit) if explicit else 90)
     index = {p["program_id"]: p for p in json.loads(IDX.read_text(encoding="utf-8"))["programs"]}
@@ -177,16 +215,15 @@ def main():
               f"{p['successful_txs']:6d} sampled txs  {name}", flush=True)
 
     print(f"\n{len(written)} manifests written, {len(skipped)} candidates skipped")
-    report = HERE / "out" / "onboarding_report.json"
-    if explicit is not None and report.exists():
+    if explicit is not None and REPORT.exists():
         # An explicit run adds to the record of the census runs; it does not
         # replace it. Entries for the named programs are superseded.
-        prev = json.loads(report.read_text(encoding="utf-8"))
+        prev = json.loads(REPORT.read_text(encoding="utf-8"))
         named = set(explicit)
-        written = [w for w in prev["written"] if w[1] not in named] + written
+        written = [w for w in prev["written"] + prev.get("removed_since_onboarding", [])
+                   if w[1] not in named] + written
         skipped = [s for s in prev["skipped"] if s[0] not in named] + skipped
-    report.write_text(json.dumps({"written": written, "skipped": skipped}, indent=1),
-                      encoding="utf-8", newline="\n")
+    write_report(written, skipped)
 
 
 if __name__ == "__main__":

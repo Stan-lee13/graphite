@@ -4,21 +4,30 @@
   protocols/*.json                  - what Graphite can name
   protocols/battle_tested_evidence.json - what mainnet showed about each one
   scripts/out/inventory_census.json - what mainnet was actually running
+  scripts/out/mainnet_sample_named.json - the full-pipeline figure recorded by
+                                      tools/mainnet-sample
 
-Nothing in the generated page is typed by hand, which is the point: the
+No figure in the generated page is typed by hand, which is the point: the
 protocol table in the docs went stale twice before (README listed Drift and
 Kamino as OfficialManifest while the manifests said BattleTested, and Raydium
 AMM V4 the other way round). `tests/docs_match_the_registry.rs` re-runs the
 comparison in CI.
+
+Round 29 (audit 2026-10-20, LOW-6): the full-pipeline figures ("44.0% (1,498 of
+3,405)", "20.8%") were string literals in this file, and every render stamped
+the day it ran, so rendering twice on different days produced different pages
+from the same data. The figures now come from `mainnet_sample_named.json` and
+the page carries no render date: the same inputs give the same bytes.
 """
+import argparse
 import json
-import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 PROTOCOLS = HERE.parent / "protocols"
 CENSUS = HERE / "out" / "inventory_census.json"
+SAMPLE = HERE / "out" / "mainnet_sample_named.json"
 OUT = ROOT / "docs" / "protocol-coverage.md"
 
 VOTE = "Vote111111111111111111111111111111111111111"
@@ -85,6 +94,9 @@ def coverage(census, covered):
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Render docs/protocol-coverage.md")
+    ap.add_argument("--out", default=str(OUT), help="where to write the page (default: %(default)s)")
+    out = Path(ap.parse_args().out)
     manifests = load_manifests()
     ev_path = PROTOCOLS / "battle_tested_evidence.json"
     ev = json.loads(ev_path.read_text(encoding="utf-8"))
@@ -111,8 +123,6 @@ def main():
     lines.append("> `protocols/battle_tested_evidence.json` and `scripts/out/inventory_census.json`.")
     lines.append("> Do not edit by hand — `tests/docs_match_the_registry.rs` compares this page to")
     lines.append("> the loaded registry, and a hand edit fails CI.")
-    lines.append("")
-    lines.append(f"Rendered: {time.strftime('%Y-%m-%d', time.gmtime())}")
     lines.append("")
     lines.append("## In one line")
     lines.append("")
@@ -184,13 +194,20 @@ def main():
             "for."
         )
         lines.append("")
+        sample = json.loads(SAMPLE.read_text(encoding="utf-8"))
+        nv = sample["non_vote_transactions_with_verdict"]
+        named = sample["non_vote_primary_program_named"]
+        base = sample["baseline_non_vote_primary_program_named"]
         lines.append(
             "The figure that matters most is measured by a different instrument, because it is "
             "the engine's own answer rather than a count over a block: `tools/mainnet-sample` "
-            "runs whole finalized blocks through the full pipeline. On 10,617 transactions from "
-            "8 blocks on 2026-09-22, the share of NON-VOTE transactions whose primary program "
-            "Graphite can name was **44.0%** (1,498 of 3,405); on the **same sample** against "
-            "the 33-manifest registry Round 18 started from, it was **20.8%** (708 of 3,405)."
+            f"runs whole finalized blocks through the full pipeline. On {sample['transactions']:,} "
+            f"transactions from {sample['blocks']} blocks on {sample['measured_on']}, against the "
+            f"{sample['registry_manifests']}-manifest registry of that day, the share of NON-VOTE "
+            "transactions whose primary program Graphite can name was "
+            f"**{100.0 * named / nv:.1f}%** ({named:,} of {nv:,}); on the **same sample** against "
+            f"the {sample['baseline_registry_manifests']}-manifest registry Round 18 started from, "
+            f"it was **{100.0 * base / nv:.1f}%** ({base:,} of {nv:,})."
         )
         lines.append("")
         vers = census.get("transaction_versions", {})
@@ -242,8 +259,8 @@ def main():
         "`scripts/fetch_onchain_idls.py` then `scripts/onboard_from_inventory.py`."
     )
     lines.append("")
-    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"wrote {OUT}: {len(manifests)} manifests, {total_ix} instructions, {len(battle)} battle-tested")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {out}: {len(manifests)} manifests, {total_ix} instructions, {len(battle)} battle-tested")
 
 
 if __name__ == "__main__":
