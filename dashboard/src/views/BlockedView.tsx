@@ -3,14 +3,20 @@
 // reached the pipeline. Both are audited rather than dropped.
 
 import { api } from "../api";
+import { refusalTotals, windowLabel } from "../figures";
 import { hrefFor } from "../router";
 import { useLayout, usePolling } from "../usePolling";
-import { CopyId, Empty, Fault, Figure, PageHead, Section, Skeleton, State, fmt, relTime, shortTime } from "../ui";
+import { CopyId, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, fmt, pollFault, relTime, shortTime } from "../ui";
+
+/** Rows drawn per table; the rest of the returned window is counted, not drawn. */
+const SHOWN = 100;
 
 export function BlockedView() {
   const layout = useLayout();
-  const { data, error } = usePolling(() => api.policyViolations(), 5000);
-  if (error) return <Fault error={error} />;
+  const polled = usePolling(() => api.policyViolations(), 5000);
+  const fault = pollFault(polled);
+  if (fault) return <Fault error={fault} />;
+  const data = polled.data;
   const loading = !data;
 
   const blocked = [...(data?.violations ?? [])].sort(
@@ -21,25 +27,48 @@ export function BlockedView() {
   );
   const byRisk = blocked.filter((v) => v.risk_status === "Blocked").length;
   const latest = blocked[0]?.timestamp ?? rejected[0]?.timestamp;
+  // Round 29 (audit 2026-10-20, D1): the Core returns its newest 200 of each
+  // list. The totals are the server's; the risk/policy split is over what
+  // came back, and says so.
+  const totals = data ? refusalTotals(data) : { refused: 0, rejected: 0, rejectedAtLeast: false };
+  const refusedWin = windowLabel(blocked.length, totals.refused);
+  const shownOf = (shown: number, total: number, atLeast = false) =>
+    shown < total || atLeast ? `newest ${fmt.int(shown)} of ${atLeast ? "≥ " : ""}${fmt.int(total)}` : fmt.int(total);
 
   return (
     <>
       <PageHead title="Blocked" desc="Transactions the gate refused, and requests it could not read." />
 
+      <Freshness sources={[polled]} />
+
       <div className="figures">
-        <Figure label="Refused" value={loading ? "—" : fmt.int(blocked.length)} tone={blocked.length > 0 ? "block" : "idle"} sub={loading ? undefined : `${byRisk} on risk, ${blocked.length - byRisk} on policy`} />
-        <Figure label="Rejected" value={loading ? "—" : fmt.int(rejected.length)} tone={rejected.length > 0 ? "warn" : "idle"} sub="malformed or oversized" />
+        <Figure
+          label="Refused"
+          value={loading ? "—" : fmt.int(totals.refused)}
+          tone={totals.refused > 0 ? "block" : "idle"}
+          sub={loading ? undefined : `${refusedWin}: ${byRisk} on risk, ${blocked.length - byRisk} on policy`}
+        />
+        <Figure
+          label="Rejected"
+          value={loading ? "—" : `${totals.rejectedAtLeast ? "≥ " : ""}${fmt.int(totals.rejected)}`}
+          tone={totals.rejected > 0 ? "warn" : "idle"}
+          sub="malformed or oversized"
+        />
         <Figure label="Most recent" value={loading ? "—" : latest ? relTime(latest) : "none"} tone={latest ? undefined : "idle"} />
       </div>
 
-      <Section title="Refused transactions" meta={loading ? undefined : fmt.int(blocked.length)} flush>
+      <Section
+        title="Refused transactions"
+        meta={loading ? undefined : shownOf(Math.min(SHOWN, blocked.length), totals.refused)}
+        flush
+      >
         {loading ? (
           <Skeleton rows={5} cols={6} />
         ) : blocked.length === 0 ? (
           <Empty title="Nothing refused" hint="Every verification so far met its policy floor and raised no risk finding." />
         ) : layout === "phone" ? (
           <ul className="rows">
-            {blocked.slice(0, 100).map((v) => (
+            {blocked.slice(0, SHOWN).map((v) => (
               <li key={v.audit_trail_id} className="row">
                 <a className="row-main" href={hrefFor("programs", v.program_id)}>
                   <span className="row-title">
@@ -71,7 +100,7 @@ export function BlockedView() {
               </tr>
             </thead>
             <tbody>
-              {blocked.slice(0, 100).map((v) => (
+              {blocked.slice(0, SHOWN).map((v) => (
                 <tr key={v.audit_trail_id}>
                   <td className="t" title={v.timestamp}>
                     {shortTime(v.timestamp)}
@@ -99,14 +128,18 @@ export function BlockedView() {
         )}
       </Section>
 
-      <Section title="Rejected requests" meta={loading ? undefined : fmt.int(rejected.length)} flush>
+      <Section
+        title="Rejected requests"
+        meta={loading ? undefined : shownOf(Math.min(SHOWN, rejected.length), totals.rejected, totals.rejectedAtLeast)}
+        flush
+      >
         {loading ? (
           <Skeleton rows={3} cols={4} />
         ) : rejected.length === 0 ? (
           <Empty title="No rejected requests" hint="Malformed payloads, oversized bodies and probes would appear here. They are audited, never silently dropped." />
         ) : layout === "phone" ? (
           <ul className="rows">
-            {rejected.slice(0, 100).map((e, i) => (
+            {rejected.slice(0, SHOWN).map((e, i) => (
               <li key={`${e.timestamp}-${i}`} className="row">
                 <div className="row-main">
                   <span className="row-title">
@@ -133,7 +166,7 @@ export function BlockedView() {
               </tr>
             </thead>
             <tbody>
-              {rejected.slice(0, 100).map((e, i) => (
+              {rejected.slice(0, SHOWN).map((e, i) => (
                 <tr key={`${e.timestamp}-${i}`}>
                   <td className="t" title={e.timestamp}>
                     {shortTime(e.timestamp)}

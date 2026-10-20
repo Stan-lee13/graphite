@@ -3,13 +3,15 @@
 import { api } from "../api";
 import { hrefFor } from "../router";
 import { useLayout, usePolling } from "../usePolling";
-import { CopyId, Empty, Fault, Figure, PageHead, Section, Skeleton, TierBadge, fmt } from "../ui";
+import { CopyId, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, TierBadge, fmt, pollFault } from "../ui";
 
 export function RegistryView() {
   const layout = useLayout();
-  const { data, error } = usePolling(() => api.registry(), 5000);
+  const registry = usePolling(() => api.registry(), 5000);
   const graph = usePolling(() => api.graph(), 30000);
-  if (error) return <Fault error={error} />;
+  const fault = pollFault(registry);
+  if (fault) return <Fault error={fault} />;
+  const data = registry.data;
   const loading = !data;
 
   const records = data?.records ?? [];
@@ -20,6 +22,8 @@ export function RegistryView() {
   return (
     <>
       <PageHead title="Registry" desc="Manifests accepted through the reviewed submission path. Records are appended, never rewritten." />
+
+      <Freshness sources={[registry]} />
 
       <div className="figures">
         <Figure label="Submissions" value={loading ? "—" : fmt.int(data.record_count)} />

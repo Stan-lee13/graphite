@@ -1,6 +1,5 @@
 // Round 19 (F-19-C6): a malformed escape in the hash must not throw out of
-// the router. Run: npm test (node --test with type stripping; no extra
-// dependency).
+// the router. Run: npm test (`tsx --test`, with node:test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { hrefFor, parseHash } from "./router.ts";

@@ -13,7 +13,7 @@ import { useMemo } from "react";
 import { api, type GraphEdge, type GraphNode } from "../api";
 import { hrefFor, navigate } from "../router";
 import { useLayout, usePolling } from "../usePolling";
-import { CopyId, Detail, Empty, Fault, Figure, PageHead, Section, Skeleton, State, TierBadge, fmt, shortId } from "../ui";
+import { CopyId, Detail, Empty, Fault, Figure, Freshness, PageHead, Section, Skeleton, State, TierBadge, fmt, pollFault, shortId } from "../ui";
 import { ProgramDetail } from "./ProgramsView";
 
 const W = 1000;
@@ -123,19 +123,24 @@ function edgePath(a: Placed, b: Placed) {
 
 export function GraphView({ selected }: { selected?: string }) {
   const mode = useLayout();
-  const { data, error } = usePolling(() => api.graph(), 5000);
+  const graph = usePolling(() => api.graph(), 5000);
+  const data = graph.data;
   const top = usePolling(() => api.topProtocols(), 10000);
   const manifests = usePolling(() => api.manifests(), 30000);
 
   const g = useMemo(() => (data ? layout(data.nodes, data.edges) : null), [data]);
 
-  if (error) return <Fault error={error} />;
+  const fault = pollFault(graph);
+  if (fault) return <Fault error={fault} />;
   const loading = !data || !g;
 
   const edges = data?.edges ?? [];
   const node = selected && g ? (g.all.find((n) => n.program_id === selected) ?? null) : null;
   const undeclared = g ? g.all.length - (data?.nodes.length ?? 0) : 0;
-  const withTraffic = g ? g.all.filter((n) => n.battle_tested_tx_count > 0).length : 0;
+  // Round 29 (audit 2026-10-20, D10): `battle_tested_tx_count` is the
+  // mainnet census figure from battle_tested_evidence.json, not traffic this
+  // Core has seen; it was labelled "With traffic" / "has traffic".
+  const withCensus = g ? g.all.filter((n) => n.battle_tested_tx_count > 0).length : 0;
   const maxFan = g && g.columns.length ? Math.max(1, ...[...g.placed.values()].map((p) => p.fanIn)) : 1;
   const nameOf = new Map((g?.all ?? []).map((n) => [n.program_id, n.name]));
   const observedBy = new Map((top.data?.top ?? []).map((t) => [t.program_id, t.observed_verifications]));
@@ -146,11 +151,18 @@ export function GraphView({ selected }: { selected?: string }) {
     <>
       <PageHead title="Call graph" desc="Which programs declare cross-program invocation into which. Left calls right." />
 
+      <Freshness sources={[graph]} />
+
       <div className="figures">
         <Figure label="Programs" value={loading ? "—" : fmt.int(g.all.length)} />
         <Figure label="CPI edges" value={loading ? "—" : fmt.int(edges.length)} />
         <Figure label="Undeclared callees" value={loading ? "—" : fmt.int(undeclared)} tone={undeclared > 0 ? "warn" : "idle"} sub="reached by CPI, no manifest" />
-        <Figure label="With traffic" value={loading ? "—" : fmt.int(withTraffic)} tone={withTraffic === 0 ? "idle" : undefined} />
+        <Figure
+          label="With mainnet census"
+          value={loading ? "—" : fmt.int(withCensus)}
+          tone={withCensus === 0 ? "idle" : undefined}
+          sub="battle-tested evidence, not traffic here"
+        />
       </div>
 
       <Section title="Topology" meta={node ? node.name : loading ? undefined : "Select a program"}>
@@ -266,7 +278,7 @@ export function GraphView({ selected }: { selected?: string }) {
                 <i className="mark" aria-hidden="true" /> registered
               </span>
               <span>
-                <i className="mark hot" aria-hidden="true" /> has traffic
+                <i className="mark hot" aria-hidden="true" /> in the mainnet census
               </span>
               <span>
                 <i className="mark undeclared" aria-hidden="true" /> undeclared callee
@@ -316,7 +328,7 @@ export function GraphView({ selected }: { selected?: string }) {
           ) : (
             <ProgramDetail
               node={node}
-              observed={observedBy.get(node.program_id) ?? 0}
+              observed={observedBy.get(node.program_id)}
               manifest={manifests.data?.find((m) => m.protocol.program_id === node.program_id) ?? null}
               manifestsLoading={!manifests.data && !manifests.error}
               nameOf={nameOf}

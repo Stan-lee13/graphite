@@ -4,9 +4,14 @@
 // Where the Core lives and which key unlocks it are decided at runtime, not at
 // build time: the console is a static bundle that any operator can point at
 // their own Core from the Connect screen. Both settings live in this
-// browser's localStorage and nowhere else — never in a URL, never in a log.
+// browser and nowhere else — never in a URL, never in a log; the key is kept
+// for this tab only unless the operator asks for it to be remembered
+// (connection.ts).
 
-import { fetchFromCore, insecureBaseReason } from "./transport";
+import { createConnectionStore, normaliseBase, type Connection } from "./connection";
+import { fetchFromCore, insecureBaseReason, type CoreResponse } from "./transport";
+
+export { normaliseBase, storageGet, storageSet, type Connection } from "./connection";
 
 export interface GraphNode {
   program_id: string;
@@ -76,7 +81,12 @@ export interface ErrorViolation {
 export interface PolicyViolations {
   violations: PolicyViolation[];
   error_violations: ErrorViolation[];
+  /** Every refused verification on the trail plus the rejected requests
+   *  returned in `error_violations` (server.rs policy_violations_handler). */
   count: number;
+  /** Whole-trail totals, when a Core reports them separately. */
+  violation_count?: number;
+  error_count?: number;
 }
 
 export interface TopProtocol {
@@ -180,67 +190,19 @@ export type Metrics = Map<string, number>;
 // ---------------------------------------------------------------------------
 // Connection settings
 
-export interface Connection {
-  /** Origin of the Core, e.g. `http://127.0.0.1:7331`. Empty means same
-   *  origin (the dev proxy, or a Core serving the built console itself). */
-  base: string;
-  /** The operator key (`GRAPHITE_API_KEY`). Empty for a dev-mode Core. */
-  key: string;
-}
-
-const BASE_STORAGE = "graphite.core";
-const KEY_STORAGE = "graphite.key";
-
 /** The shortest key the Core will start with; mirrors `MIN_API_KEY_CHARS`. */
 export const MIN_KEY_CHARS = 32;
 
-const buildDefault = (import.meta.env.VITE_GRAPHITE_API as string | undefined) ?? "";
+const store = createConnectionStore({
+  local: () => window.localStorage,
+  session: () => window.sessionStorage,
+  buildDefault: (import.meta.env.VITE_GRAPHITE_API as string | undefined) ?? "",
+});
 
-function read(k: string): string | null {
-  try {
-    return localStorage.getItem(k);
-  } catch {
-    return null;
-  }
-}
-function write(k: string, v: string): void {
-  try {
-    if (v) localStorage.setItem(k, v);
-    else localStorage.removeItem(k);
-  } catch {
-    /* private mode or blocked storage: the setting lives for this page only */
-  }
-}
-
-let connection: Connection = {
-  base: normaliseBase(read(BASE_STORAGE) ?? buildDefault),
-  key: read(KEY_STORAGE) ?? "",
-};
-
-const listeners = new Set<() => void>();
-
-export function getConnection(): Connection {
-  return connection;
-}
-
-export function setConnection(next: Connection): void {
-  connection = { base: normaliseBase(next.base), key: next.key.trim() };
-  write(BASE_STORAGE, connection.base);
-  write(KEY_STORAGE, connection.key);
-  for (const l of listeners) l();
-}
-
-export function onConnectionChange(l: () => void): () => void {
-  listeners.add(l);
-  return () => listeners.delete(l);
-}
-
-/** Trim, drop a trailing slash and a trailing `/api` so either form works. */
-export function normaliseBase(raw: string): string {
-  let b = raw.trim().replace(/\/+$/, "");
-  if (b.endsWith("/api")) b = b.slice(0, -4);
-  return b;
-}
+export const getConnection = (): Connection => store.get();
+export const setConnection = (next: Connection): void => store.set(next);
+export const forgetKey = (): void => store.forgetKey();
+export const onConnectionChange = (l: () => void): (() => void) => store.onChange(l);
 
 // ---------------------------------------------------------------------------
 // Errors that the interface can act on
@@ -293,14 +255,15 @@ function authHeaders(key: string): Record<string, string> {
   return h;
 }
 
-async function request(path: string, conn: Connection = connection): Promise<Response> {
+async function request(path: string, conn: Connection = getConnection()): Promise<CoreResponse> {
   // Round 19 (F-19-C6): checked on every request, before `fetch`, so the key
   // never leaves over cleartext to another machine — see transport.ts.
   const insecure = insecureBaseReason(conn.base, window.location.origin);
   if (insecure !== null) throw new ApiError("insecure", path, undefined, insecure);
-  let resp: Response;
+  let resp: CoreResponse;
   try {
-    // A5-04: a redirect rejects here and is reported as no response.
+    // A5-04: a redirect rejects here and is reported as no response; so does
+    // a request that outlives its deadline (Round 29, D3).
     resp = await fetchFromCore(`${conn.base}${path}`, authHeaders(conn.key));
   } catch {
     throw new ApiError("network", path);
@@ -314,7 +277,11 @@ async function request(path: string, conn: Connection = connection): Promise<Res
 
 async function getJson<T>(path: string): Promise<T> {
   const resp = await request(path);
-  return (await resp.json()) as T;
+  try {
+    return JSON.parse(resp.text) as T;
+  } catch {
+    throw new ApiError("server", path, resp.status, `The Core answered ${path} with something that is not JSON.`);
+  }
 }
 
 /** Parse the Prometheus text exposition into name → value. */
@@ -349,7 +316,7 @@ export const api = {
   topProtocols: () => getJson<TopProtocols>("/api/protocols/top"),
   registry: () => getJson<RegistryState>("/api/registry"),
   manifests: () => getJson<Manifest[]>("/manifests"),
-  metrics: async () => parseMetrics(await (await request("/metrics")).text()),
+  metrics: async () => parseMetrics((await request("/metrics")).text),
 };
 
 // ---------------------------------------------------------------------------
@@ -370,13 +337,14 @@ export interface ConnectionReport {
 /**
  * Two probes, in order. `/health` proves the URL is a Core and that the
  * browser is allowed to talk to it (CORS). `/api/protocols/top` is the
- * cheapest key-guarded route, so its status is the verdict on the key.
+ * cheapest key-guarded route, so its status is the verdict on the key — on
+ * that one route; the report says so rather than vouching for every route.
  */
 export async function testConnection(conn: Connection): Promise<ConnectionReport> {
-  const c = { base: normaliseBase(conn.base), key: conn.key.trim() };
+  const c = { base: normaliseBase(conn.base), key: conn.key.trim(), remember: conn.remember };
   const report: ConnectionReport = { reachable: false, authorized: false };
   try {
-    const h = (await (await request("/health", { ...c, key: "" })).json()) as Health;
+    const h = JSON.parse((await request("/health", { ...c, key: "" })).text) as Health;
     report.reachable = true;
     report.version = h.version;
     report.degraded = h.degraded === true;
