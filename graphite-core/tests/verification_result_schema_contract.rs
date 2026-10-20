@@ -52,6 +52,9 @@ const KEYWORDS: &[&str] = &[
     "additionalProperties",
     "items",
     "oneOf",
+    "if",
+    "then",
+    "else",
 ];
 
 fn type_matches(t: &str, v: &Value) -> bool {
@@ -82,6 +85,15 @@ fn pattern_matches(p: &str, s: &str) -> bool {
 
 /// Validate `v` against `s`, pushing every violation onto `errors`.
 fn validate(v: &Value, s: &Value, path: &str, errors: &mut Vec<String>) {
+    check(v, s, path, true, errors)
+}
+
+/// The validator. `declare_all` is direction 2 (every emitted field is
+/// declared). It is off inside `if`/`then`/`else`, whose `properties` name
+/// only the fields a condition is about (audit 2026-10-20: an approval is
+/// Clear and "Approved", a layer's `passed` is its `status`), so the rest of
+/// the object is not "undeclared" there.
+fn check(v: &Value, s: &Value, path: &str, declare_all: bool, errors: &mut Vec<String>) {
     let Some(obj) = s.as_object() else {
         errors.push(format!("{path}: the schema node is not an object"));
         return;
@@ -143,7 +155,7 @@ fn validate(v: &Value, s: &Value, path: &str, errors: &mut Vec<String>) {
         }
         if let Some(items) = obj.get("items") {
             for (i, item) in a.iter().enumerate() {
-                validate(item, items, &format!("{path}[{i}]"), errors);
+                check(item, items, &format!("{path}[{i}]"), declare_all, errors);
             }
         }
     }
@@ -159,12 +171,13 @@ fn validate(v: &Value, s: &Value, path: &str, errors: &mut Vec<String>) {
         if let Some(props) = obj.get("properties").and_then(Value::as_object) {
             for (k, val) in o {
                 match props.get(k) {
-                    Some(ps) => validate(val, ps, &format!("{path}.{k}"), errors),
+                    Some(ps) => check(val, ps, &format!("{path}.{k}"), declare_all, errors),
                     // Direction 2: every emitted field is declared, whether or
                     // not the object is closed.
-                    None => errors.push(format!(
+                    None if declare_all => errors.push(format!(
                         "{path}: emits `{k}`, which the schema does not declare"
                     )),
+                    None => {}
                 }
             }
         }
@@ -173,10 +186,11 @@ fn validate(v: &Value, s: &Value, path: &str, errors: &mut Vec<String>) {
                 let declared = obj.get("properties").and_then(Value::as_object);
                 for (k, val) in o {
                     if declared.is_none_or(|d| !d.contains_key(k)) {
-                        validate(
+                        check(
                             val,
                             &Value::Object(ap.clone()),
                             &format!("{path}.{k}"),
+                            declare_all,
                             errors,
                         );
                     }
@@ -189,7 +203,7 @@ fn validate(v: &Value, s: &Value, path: &str, errors: &mut Vec<String>) {
         let mut why = Vec::new();
         for (i, b) in branches.iter().enumerate() {
             let mut e = Vec::new();
-            validate(v, b, path, &mut e);
+            check(v, b, path, declare_all, &mut e);
             if e.is_empty() {
                 matched.push(i);
             } else {
@@ -202,6 +216,14 @@ fn validate(v: &Value, s: &Value, path: &str, errors: &mut Vec<String>) {
                 matched.len(),
                 why.join(" | ")
             ));
+        }
+    }
+    if let Some(cond) = obj.get("if") {
+        let mut e = Vec::new();
+        check(v, cond, path, false, &mut e);
+        let branch = if e.is_empty() { "then" } else { "else" };
+        if let Some(b) = obj.get(branch) {
+            check(v, b, &format!("{path}<{branch}>"), false, errors);
         }
     }
 }
@@ -284,6 +306,15 @@ fn real_results() -> Vec<(&'static str, Value)> {
         &[FROM, TO],
     );
 
+    // An approval, so the schema's approval branch is checked against a
+    // real one: the descriptive transfer under a Custom profile with no
+    // confidence floor (the library does not clamp; the server would).
+    let mut approved = descriptive.clone();
+    approved.wallet_profile = graphite_core::policy_engine::WalletProfile::Custom {
+        min_confidence: 0.0,
+        min_trust_tier: graphite_core::confidence_engine::TrustTier::Unknown,
+    };
+
     let core = GraphiteCore::new();
     let mut out = Vec::new();
     for (label, i) in [
@@ -291,6 +322,7 @@ fn real_results() -> Vec<(&'static str, Value)> {
         ("descriptive", descriptive),
         ("blocked", blocked),
         ("unknown_program", unknown),
+        ("approved", approved),
     ] {
         let r = core.verify(&i).expect("verification must complete");
         out.push((
@@ -406,6 +438,64 @@ fn the_validator_rejects_what_it_should() {
     let mut bad_enum = good.clone();
     bad_enum["trust_tier"] = Value::from("Omnipotent");
     assert!(!errors_of(&bad_enum).is_empty());
+}
+
+/// Audit 2026-10-20 (SDK/schema drift): the schema was looser than what the
+/// Core emits. It did not require `scope` or `layers`, accepted an approval
+/// beside a Blocked risk verdict, a resolved account without `identity`, and
+/// a layer reporting `passed: true` with `status: "failed"`. Each is refused
+/// now, and a real result still passes (the test above).
+#[test]
+fn the_schema_holds_the_invariants_the_core_emits() {
+    let results = real_results();
+    let by = |l: &str| results.iter().find(|(x, _)| *x == l).unwrap().1.clone();
+    let approved = by("approved");
+    let blocked = by("blocked");
+    assert_eq!(
+        approved["approved"], true,
+        "control: a real approval ({})",
+        approved["summary"]
+    );
+    assert!(errors_of(&approved).is_empty() && errors_of(&blocked).is_empty());
+
+    let refused = |what: &str, v: &Value, needle: &str| {
+        let e = errors_of(v);
+        assert!(
+            e.iter().any(|e| e.contains(needle)),
+            "{what}: expected a violation mentioning {needle:?}, got {e:?}"
+        );
+    };
+    for field in ["scope", "layers", "manifest_version", "simulation_flagged"] {
+        let mut v = approved.clone();
+        v.as_object_mut().unwrap().remove(field);
+        refused(&format!("no {field}"), &v, field);
+    }
+    let mut v = approved.clone();
+    v["risk_verdict"]["status"] = Value::from("Blocked");
+    refused("approved beside Blocked", &v, "risk_verdict.status");
+    let mut v = approved.clone();
+    v["policy_verdict"] = Value::from("Rejected");
+    refused("approved beside Rejected", &v, "policy_verdict");
+    let mut v = blocked.clone();
+    v["policy_verdict"] = Value::from("Approved");
+    refused("blocked beside Approved", &v, "policy_verdict");
+    let mut v = approved.clone();
+    v["resolved_accounts"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("identity");
+    refused("an account without identity", &v, "identity");
+    let mut v = approved.clone();
+    v["layers"][0]["status"] = Value::from("failed");
+    v["layers"][0]["passed"] = Value::from(true);
+    refused("passed beside failed", &v, "passed");
+    let mut v = approved.clone();
+    v["layers"][0]["status"] = Value::from("passed");
+    v["layers"][0]["passed"] = Value::from(false);
+    refused("not passed beside passed", &v, "passed");
+    let mut v = approved.clone();
+    v["scope"]["unobserved_codes"] = Value::Array(vec![]);
+    refused("no codes", &v, "unobserved_codes");
 }
 
 /// R5 (external review of the 2026-09-29 audit): both schemas named

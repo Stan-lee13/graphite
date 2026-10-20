@@ -45,11 +45,11 @@
     "findings": []
   },
   "policy_verdict": "Rejected",
-  "audit_trail_id": "gr-622ce548dab9f32d-00000002",
+  "audit_trail_id": "gr-b9da6dcad9c6ab8b-00000000",
   "content_hash": "48c65c638aceb5de",
   "transaction": {
     "program_id": "11111111111111111111111111111111",
-    "protocol_version": "",
+    "protocol_version": "1.0.0",
     "instruction_name": "Transfer",
     "instruction_discriminator": "02000000",
     "instruction_count": 1,
@@ -72,10 +72,28 @@
     "data_hex": "",
     "data_len": 0
   },
+  "scope": {
+    "kind": "descriptive",
+    "unobserved": [
+      "no signed transaction was supplied, so nothing here constrains what is actually signed",
+      "the transaction's other instructions — an approved instruction can be submitted alongside any number of unexamined ones",
+      "the fee payer, the recent blockhash, and the signer set",
+      "the transaction's real effects: with no artifact there is nothing to simulate, so L3 and L4 have no measurement to work from",
+      "per-account signer/writable flags were not supplied (real_account_metas), so privilege escalation within the account list is not checked"
+    ],
+    "unobserved_codes": [
+      "no_artifact",
+      "other_instructions",
+      "fee_payer_blockhash_signers",
+      "no_real_effects",
+      "privileges_absent"
+    ]
+  },
   "resolved_accounts": [
     {
       "address": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
       "role": "signer",
+      "name": "from",
       "is_pda": false,
       "is_signer": true,
       "is_writable": true,
@@ -88,6 +106,7 @@
     {
       "address": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
       "role": "writable",
+      "name": "to",
       "is_pda": false,
       "is_signer": false,
       "is_writable": true,
@@ -111,7 +130,7 @@
       "layer": "L1_AccountResolution",
       "passed": true,
       "status": "passed",
-      "reason": "Resolved 2 account(s), manifest found"
+      "reason": "Resolved 2 account(s), manifest found; identity confirmed for 0 of 2 — the manifest declares no PDA seeds or fixed addresses for this instruction, so every account is accepted in the position the caller supplied it; per-account signer/writable flags were neither supplied nor derivable, so privilege escalation within the account list was not checked"
     },
     {
       "layer": "L2_InstructionVerification",
@@ -123,37 +142,37 @@
       "layer": "L3_SimulationVerification",
       "passed": false,
       "status": "inconclusive",
-      "reason": "Phase 1: simulation not checked (no baseline or insufficient samples) \u00e2\u20ac\u201d active when a trusted baseline exists"
+      "reason": "No simulation: no RPC endpoint configured (set GRAPHITE_RPC_URL).                                  Compute usage cannot be verified, so no divergence verdict is                                  possible (P12: no evidence, no verdict)."
     },
     {
       "layer": "L4_StateVerification",
-      "passed": true,
-      "status": "passed",
-      "reason": "State verification passed: 2 state change(s) consistent with 2 account(s)"
+      "passed": false,
+      "status": "inconclusive",
+      "reason": "State not observed: no pre/post diff; 2 declared state change(s) are structurally consistent with 2 account(s) — a consistency check on the declarations, not a verification of state"
     },
     {
       "layer": "L5_SemanticVerification",
       "passed": true,
       "status": "passed",
-      "reason": "Semantic verification passed: intent transfer consistent with instruction Transfer"
+      "reason": "Semantic verification passed: a 'transfer' intent declares Transfer (security class 'transfer')"
     },
     {
       "layer": "L6_PolicyVerification",
       "passed": false,
       "status": "failed",
-      "reason": "Confidence: 0.4400 (tier: OfficialManifest, ceiling: 0.75) \u00e2\u2020\u2019 Policy: Rejected (min_conf: 0.60, min_tier: HeuristicInferred)"
+      "reason": "Confidence: 0.4400 (tier: OfficialManifest, ceiling: 0.75) → Policy: Rejected (min_conf: 0.80, min_tier: SimulationValidated)"
     },
     {
       "layer": "L7_RiskVerification",
       "passed": true,
       "status": "passed",
-      "reason": "No risk patterns detected (13 patterns checked)"
+      "reason": "No risk patterns detected (17 patterns checked)"
     },
     {
       "layer": "L8_ExecutionVerification",
       "passed": false,
       "status": "inconclusive",
-      "reason": "Phase 1: execution verification not yet verified (post-submission feature) \u00e2\u20ac\u201d audit_trail_id bound to transaction for future L8 replay"
+      "reason": "Not yet submitted — execution verification runs after submission. Call              POST /verify/execution (or `graphite execution`) with this content_hash and              the transaction signature to confirm it on-chain and reconcile the outcome              against this verdict."
     }
   ]
 }
