@@ -18,10 +18,15 @@ pub enum SolanaTypeError {
     InvalidBase58(String),
     #[error("expected 32 bytes, got {0}")]
     InvalidLength(usize),
-    #[error("PDA derivation exhausted all 256 nonces")]
+    #[error("PDA derivation exhausted every bump from 255 down to 1")]
     PdaExhausted,
     #[error("PDA seeds outside the runtime's limits: {0}")]
     SeedLimit(String),
+    /// `create_program_address` with seeds (and bump) whose hash is a point
+    /// on the ed25519 curve: an address a private key could sign for, which
+    /// the runtime refuses as `InvalidSeeds`.
+    #[error("the derived address is on the ed25519 curve, so it is not a program address (InvalidSeeds)")]
+    OnCurve,
 }
 
 /// The runtime's per-seed length limit (`solana_pubkey::MAX_SEED_LEN`).
@@ -30,6 +35,11 @@ pub const MAX_SEED_LEN: usize = 32;
 pub const MAX_SEEDS: usize = 16;
 
 /// A Solana public key — 32 bytes, base58-encoded onchain.
+///
+/// `Pubkey::default()` is the all-zero key, which is the System program's
+/// address — exactly as `solana_pubkey::Pubkey::default()` is. It is a value,
+/// not a fallback: nothing in this module returns it in place of a key it
+/// failed to build.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize, Default,
 )]
@@ -64,16 +74,31 @@ impl Pubkey {
     pub const SYSTEM_PROGRAM: Pubkey = Pubkey([0u8; 32]);
 
     /// SPL Token Program: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
-    pub fn spl_token() -> Pubkey {
-        // Prefer `from_base58` to avoid panics; fall back to SYSTEM_PROGRAM
-        Pubkey::from_base58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-            .unwrap_or(Pubkey::SYSTEM_PROGRAM)
-    }
+    ///
+    /// Round 29 (audit 2026-10-20): the two token program ids were parsed
+    /// from base58 at every call and, on a parse failure, silently became
+    /// the System program — a wrong program id that still looks valid.
+    /// They are const bytes now, so there is nothing to fail; the tests
+    /// check them against the base58 spelling.
+    pub const SPL_TOKEN: Pubkey = Pubkey([
+        6, 221, 246, 225, 215, 101, 161, 147, 217, 203, 225, 70, 206, 235, 121, 172, 28, 180, 133,
+        237, 95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
+    ]);
 
     /// Token-2022 Program: TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb
-    pub fn token_2022() -> Pubkey {
-        Pubkey::from_base58("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
-            .unwrap_or(Pubkey::SYSTEM_PROGRAM)
+    pub const TOKEN_2022: Pubkey = Pubkey([
+        6, 221, 246, 225, 238, 117, 143, 222, 24, 66, 93, 188, 228, 108, 205, 218, 182, 26, 252,
+        77, 131, 185, 13, 39, 254, 189, 249, 40, 216, 161, 139, 252,
+    ]);
+
+    /// SPL Token Program (`Pubkey::SPL_TOKEN`).
+    pub const fn spl_token() -> Pubkey {
+        Pubkey::SPL_TOKEN
+    }
+
+    /// Token-2022 Program (`Pubkey::TOKEN_2022`).
+    pub const fn token_2022() -> Pubkey {
+        Pubkey::TOKEN_2022
     }
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -116,29 +141,13 @@ impl std::fmt::Display for Pubkey {
 /// (`solana-program` `Pubkey::create_program_address`).
 const PDA_MARKER: &[u8] = b"ProgramDerivedAddress";
 
-/// Derive a Program Derived Address (PDA) from seeds and a program ID.
-///
-/// Mirrors Solana's `Pubkey::find_program_address`: appends the bump seed to
-/// the caller seeds, iterating bump from 255 down to 0, and returns the first
-/// hash that does NOT decompress to a valid ed25519 curve point (i.e., is
-/// "off-curve").
-///
-/// The preimage is `seeds[0] || ... || seeds[n] || [bump] || program_id ||
-/// b"ProgramDerivedAddress"`. The bump-as-final-seed placement and the
-/// `ProgramDerivedAddress` marker are REQUIRED for byte-identical results
-/// with the Solana runtime — an implementation without them derives different
-/// addresses and would flag every legitimate PDA as a mismatch (or accept
-/// spoofed ones).
-pub fn find_program_address(
-    seeds: &[&[u8]],
-    program_id: &Pubkey,
-) -> Result<(Pubkey, u8), SolanaTypeError> {
-    // The runtime's limits (Round 19, F-19-09): at most MAX_SEEDS seeds
-    // including the bump, each at most MAX_SEED_LEN bytes. Past them
-    // `create_program_address` returns `MaxSeedLengthExceeded`, so no program
-    // can ever sign for such an address — and a manifest seed template that
-    // produced one would let Graphite "confirm" a PDA the protocol cannot
-    // have derived.
+/// The runtime's seed limits (Round 19, F-19-09): at most `MAX_SEEDS` seeds
+/// including the bump, each at most `MAX_SEED_LEN` bytes. Past them
+/// `create_program_address` returns `MaxSeedLengthExceeded`, so no program can
+/// ever sign for such an address — and a manifest seed template that produced
+/// one would let Graphite "confirm" a PDA the protocol cannot have derived.
+/// `seeds` here EXCLUDES the bump, which takes one of the `MAX_SEEDS`.
+fn check_seed_limits(seeds: &[&[u8]]) -> Result<(), SolanaTypeError> {
     if seeds.len() >= MAX_SEEDS {
         return Err(SolanaTypeError::SeedLimit(format!(
             "{} seeds plus the bump exceed the runtime's {MAX_SEEDS}",
@@ -151,38 +160,69 @@ pub fn find_program_address(
             long.len()
         )));
     }
-    for nonce in (0u8..=255).rev() {
-        let mut hasher = Sha256::new();
-        for seed in seeds {
-            hasher.update(seed);
-        }
-        // The bump byte is appended as the final seed (Solana's
-        // find_program_address pushes it onto the seeds list before calling
-        // create_program_address).
-        hasher.update([nonce]);
-        hasher.update(program_id.as_bytes());
-        hasher.update(PDA_MARKER);
-        let hash = hasher.finalize();
-
-        // Convert GenericArray to [u8;32] safely
-        let hash_bytes: [u8; 32] = match <[u8; 32]>::try_from(hash.as_slice()) {
-            Ok(b) => b,
-            Err(_) => return Err(SolanaTypeError::InvalidLength(hash.as_slice().len())),
-        };
-
-        let compressed = match CompressedEdwardsY::from_slice(&hash_bytes) {
-            Ok(c) => c,
-            Err(_) => return Err(SolanaTypeError::InvalidLength(hash_bytes.len())),
-        };
-        if compressed.decompress().is_none() {
-            return Ok((Pubkey(hash_bytes), nonce));
-        }
-    }
-    Err(SolanaTypeError::PdaExhausted)
+    Ok(())
 }
 
-/// Check if a pubkey is on the ed25519 curve (i.e., could be a keypair pubkey,
-/// NOT a PDA). PDAs are off-curve by construction.
+/// The program address for `seeds` and an explicit `bump` — Solana's
+/// `Pubkey::create_program_address(&[seeds.., &[bump]], program_id)`.
+///
+/// The preimage is `seeds[0] || ... || seeds[n] || [bump] || program_id ||
+/// b"ProgramDerivedAddress"`. The bump-as-final-seed placement and the
+/// `ProgramDerivedAddress` marker are REQUIRED for byte-identical results
+/// with the Solana runtime — an implementation without them derives different
+/// addresses and would flag every legitimate PDA as a mismatch (or accept
+/// spoofed ones). A hash on the ed25519 curve is refused (`OnCurve`), as the
+/// runtime refuses it (`InvalidSeeds`).
+///
+/// For checking a PDA a protocol stores its bump for: one hash, where
+/// `find_program_address` may take up to 255.
+pub fn create_program_address(
+    seeds: &[&[u8]],
+    bump: u8,
+    program_id: &Pubkey,
+) -> Result<Pubkey, SolanaTypeError> {
+    check_seed_limits(seeds)?;
+    program_address(seeds, bump, program_id).ok_or(SolanaTypeError::OnCurve)
+}
+
+/// The off-curve address for these seeds and bump, or `None` on the curve.
+/// Limits are the caller's to check.
+fn program_address(seeds: &[&[u8]], bump: u8, program_id: &Pubkey) -> Option<Pubkey> {
+    let mut hasher = Sha256::new();
+    for seed in seeds {
+        hasher.update(seed);
+    }
+    hasher.update([bump]);
+    hasher.update(program_id.as_bytes());
+    hasher.update(PDA_MARKER);
+    let hash: [u8; 32] = hasher.finalize().into();
+    // `CompressedEdwardsY` is any 32 bytes; decompression is the curve test.
+    let on_curve = CompressedEdwardsY(hash).decompress().is_some();
+    (!on_curve).then_some(Pubkey(hash))
+}
+
+/// Derive a Program Derived Address (PDA) from seeds and a program ID.
+///
+/// Mirrors Solana's `Pubkey::try_find_program_address`: tries the bump seeds
+/// 255 down to 1, appended to the caller seeds, and returns the first that
+/// derives an off-curve address (`create_program_address`).
+///
+/// Bump 0 is never tried. Round 29 (audit 2026-10-20): this tried 256
+/// bumps, 255 down to 0, where Solana's loop runs `0..u8::MAX` — 255
+/// iterations, stopping after bump 1. For seeds whose bumps 255..1 are all
+/// on the curve (about one in 2^255) this would have returned a bump-0
+/// address no Solana program derives; Solana reports none.
+pub fn find_program_address(
+    seeds: &[&[u8]],
+    program_id: &Pubkey,
+) -> Result<(Pubkey, u8), SolanaTypeError> {
+    check_seed_limits(seeds)?;
+    (1u8..=u8::MAX)
+        .rev()
+        .find_map(|bump| program_address(seeds, bump, program_id).map(|pda| (pda, bump)))
+        .ok_or(SolanaTypeError::PdaExhausted)
+}
+
 /// Decode an arbitrary-length base58 string (e.g. instruction data in RPC
 /// `getBlock`/`getTransaction` JSON, which is base58-encoded). Returns None
 /// for invalid base58. Used by the live real-transaction corpus tests and
@@ -191,6 +231,8 @@ pub fn base58_decode(s: &str) -> Option<Vec<u8>> {
     bs58::decode(s).into_vec().ok()
 }
 
+/// Check if a pubkey is on the ed25519 curve (i.e., could be a keypair pubkey,
+/// NOT a PDA). PDAs are off-curve by construction.
 pub fn is_on_curve(pubkey: &Pubkey) -> bool {
     let compressed = match CompressedEdwardsY::from_slice(pubkey.as_bytes()) {
         Ok(c) => c,
@@ -278,6 +320,71 @@ mod tests {
             token.to_base58(),
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         );
+    }
+
+    /// Round 29: the const ids are the ids their base58 spells, and neither
+    /// is the System program the old fallback produced.
+    #[test]
+    fn token_program_ids_are_const_and_exact() {
+        assert_eq!(
+            Pubkey::TOKEN_2022.to_base58(),
+            "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        );
+        assert_eq!(
+            Pubkey::from_base58("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb").unwrap(),
+            Pubkey::token_2022()
+        );
+        assert_eq!(
+            Pubkey::from_base58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA").unwrap(),
+            Pubkey::SPL_TOKEN
+        );
+        assert!(!Pubkey::SPL_TOKEN.is_system_program());
+        assert!(!Pubkey::TOKEN_2022.is_system_program());
+        assert_eq!(Pubkey::default(), Pubkey::SYSTEM_PROGRAM);
+    }
+
+    /// `create_program_address` with the bump `find_program_address` found
+    /// is the same address; any bump whose hash is on the curve is refused.
+    #[test]
+    fn create_program_address_agrees_with_find_and_refuses_on_curve() {
+        let program = Pubkey::spl_token();
+        let mut on_curve_seen = false;
+        for i in 0u8..64 {
+            let seed = [i; 7];
+            let (pda, bump) = find_program_address(&[&seed], &program).unwrap();
+            assert!(bump >= 1, "bump 0 is never tried");
+            assert_eq!(
+                create_program_address(&[&seed], bump, &program).unwrap(),
+                pda
+            );
+            // Every bump above the one found is on the curve.
+            for higher in bump.saturating_add(1)..=255 {
+                if bump == 255 {
+                    break;
+                }
+                on_curve_seen = true;
+                assert!(matches!(
+                    create_program_address(&[&seed], higher, &program),
+                    Err(SolanaTypeError::OnCurve)
+                ));
+            }
+        }
+        assert!(
+            on_curve_seen,
+            "64 seeds include one whose bump 255 is on the curve"
+        );
+        // The known answer, by its stored bump.
+        let cpmm = Pubkey::from_base58("CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C").unwrap();
+        assert_eq!(
+            create_program_address(&[b"vault_and_lp_mint_auth_seed"], 253, &cpmm)
+                .unwrap()
+                .to_base58(),
+            "GpMZbSM2GgvTKHJirzeGfMFoaZ8UR2X7F4v8vHTvxFbL"
+        );
+        assert!(matches!(
+            create_program_address(&[&[0u8; 33]], 1, &cpmm),
+            Err(SolanaTypeError::SeedLimit(_))
+        ));
     }
 
     #[test]
