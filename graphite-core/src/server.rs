@@ -1104,6 +1104,18 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // it, so the stream the operator's tooling reads was silently absent.
     if let Ok(events_file) = std::env::var("GRAPHITE_PLUGIN_EVENTS_FILE") {
         if !events_file.trim().is_empty() {
+            // The sink opens its file lazily, on the first event, so attaching
+            // proves nothing about the path: it is opened for append here, as
+            // the sink will, so a path that cannot be written refuses to start.
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&events_file)
+                .map_err(|e| {
+                    format!(
+                        "plugins: FAILED to open the event file {events_file} (GRAPHITE_PLUGIN_EVENTS_FILE): {e} — refusing to start without the event stream the operator configured"
+                    )
+                })?;
             core.attach_event_file_sink(std::path::Path::new(&events_file))
                 .map_err(|e| {
                     format!(
