@@ -78,7 +78,8 @@ fn start_server() -> SocketAddr {
     while Instant::now() < deadline {
         if let Ok(mut s) = TcpStream::connect(addr) {
             // Wait for a real answer, not just an accepting socket.
-            let _ = s.write_all(b"GET /health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let _ = s
+                .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
             let mut out = Vec::new();
             let _ = s.read_to_end(&mut out);
             if out.starts_with(b"HTTP/1.1 200") {
