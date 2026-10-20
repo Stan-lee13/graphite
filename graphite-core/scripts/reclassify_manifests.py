@@ -21,12 +21,18 @@ Round 29 (audit 2026-10-20). Two findings, one deterministic rule set:
          refused as a sibling, so they were unusable under most intents and
          undescribed under the rest. Each gets the class the same rules give
          it (name family + account roles), or the one in `OVERRIDES` below
-         where a reviewer read the program and the name misleads. The only
-         instructions left unclassed are SPL Token's and Token-2022's
-         `Revoke`: the revoke intent declares exactly the empty class
-         (`manifest::INTENT_DECLARES`), so a class there would make revoking
-         a delegate unverifiable. Metaplex Token Metadata's `Revoke` (added in
-         the same round) is left unclassed for the same reason.
+         where a reviewer read the program and the name misleads. Two kinds
+         stay unclassed on purpose, because the empty class is the one an
+         intent declares (`manifest::INTENT_DECLARES`):
+           * `Revoke` (SPL Token, Token-2022, and Metaplex Token Metadata's,
+             added in the same round): the revoke intent declares exactly the
+             empty class, so a class would make revoking a delegate
+             unverifiable;
+           * a swap on a swap-category program (Jupiter routes, Meteora,
+             Orca, Raydium AMM v4 and pump.fun swaps, DCA/limit fills,
+             OpenBook refill): the swap intent declares the empty class, under
+             FakeSwap and Check 9; `transfer` — which the generator gives
+             swaps — would let a TRANSFER intent declare a swap as well.
 
 Only `risk_class` and, for generated instructions whose class changes, the
 generator's own class phrase in `expected_state_changes` are edited; every
@@ -225,6 +231,12 @@ def reclassify(path):
         elif current == "":
             family, new_class = rule_class(ix)
             why = "unclassed"
+            if family == "swap" and data["protocol"].get("category") == "swap":
+                # A swap on a swap program stays unclassed: the empty class is
+                # the one the SWAP intent declares (with FakeSwap and Check 9
+                # holding it to a swap program that credits an output), and
+                # `transfer` would let a TRANSFER intent declare a swap too.
+                continue
             if old_family is None:
                 family = None  # hand-written prose stays
         elif old_family is not None and name not in EXPLICIT_MAPS:

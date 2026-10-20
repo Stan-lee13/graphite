@@ -4188,7 +4188,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "transferLockedPosition",
@@ -4424,7 +4424,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "twoHopSwapV2",
@@ -4611,7 +4611,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "updateFeesAndRewards",

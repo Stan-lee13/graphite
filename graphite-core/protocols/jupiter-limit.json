@@ -229,7 +229,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify taker signers match the expected authority"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "pre_flash_fill_order",

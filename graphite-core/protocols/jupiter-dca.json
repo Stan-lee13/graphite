@@ -750,7 +750,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "fulfillFlashFill",
@@ -885,7 +885,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "transfer",

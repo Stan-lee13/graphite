@@ -509,7 +509,7 @@
      }
     ]
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "SwapBaseOut",
@@ -783,7 +783,7 @@
      }
     ]
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "SwapBaseInV2",
@@ -860,7 +860,7 @@
    "allowed_cpis": [],
    "risk_rules": [],
    "variable_accounts": false,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "SwapBaseOutV2",
@@ -937,7 +937,7 @@
    "allowed_cpis": [],
    "risk_rules": [],
    "variable_accounts": false,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "SetParams",

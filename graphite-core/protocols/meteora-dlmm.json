@@ -150,7 +150,7 @@
     "RISK: verify lb_pair is legitimate and not a honeypot"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "addLiquidity",
@@ -539,7 +539,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "remove_liquidity",
@@ -1444,7 +1444,7 @@
     "RISK: verify lb_pair is legitimate and not a honeypot"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "add_liquidity2",

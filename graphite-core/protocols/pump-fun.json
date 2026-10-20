@@ -293,7 +293,7 @@
     "bonding_curve must be the curve PDA for the mint",
     "RISK: if output token amount underflows expected, flag HiddenTransfer"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "buy_v2",
@@ -522,7 +522,7 @@
     "swap-shaped: SOL in, tokens out — validate amount vs curve reserves",
     "associated_user must be owned by accounts.user"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "buy_exact_sol_in",
@@ -667,7 +667,7 @@
     "swap-shaped: exact SOL in, tokens out — validate curve math",
     "associated_user must be owned by accounts.user"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sell",
@@ -799,7 +799,7 @@
     "associated_user must be owned by accounts.user",
     "RISK: if sell output is drained to an attacker address instead of accounts.user, flag CompositionalDrain"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sell_v2",
@@ -1021,7 +1021,7 @@
     "swap-shaped: tokens in, SOL out — validate curve math",
     "associated_user must be owned by accounts.user"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "migrate",

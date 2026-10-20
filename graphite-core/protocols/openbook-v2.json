@@ -1678,7 +1678,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify owner signers match the expected authority"
    ],
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "settle_funds",

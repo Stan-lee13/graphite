@@ -104,7 +104,7 @@
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsRoute",
@@ -230,7 +230,7 @@
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "exactOutRoute",
@@ -336,7 +336,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutRoute",
@@ -457,7 +457,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "accountCompressionRoute",
@@ -490,7 +490,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsAccountCompressionRoute",
@@ -523,7 +523,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "exactOutAccountCompressionRoute",
@@ -556,7 +556,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutAccountCompressionRoute",
@@ -589,7 +589,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "routeCheck",
@@ -674,7 +674,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsRouteCheck",
@@ -792,7 +792,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "exactOutRouteCheck",
@@ -894,7 +894,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutRouteCheck",
@@ -1012,7 +1012,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "accountCompressionRouteCheck",
@@ -1044,7 +1044,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsAccountCompressionRouteCheck",
@@ -1076,7 +1076,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "exactOutAccountCompressionRouteCheck",
@@ -1108,7 +1108,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsExactOutAccountCompressionRouteCheck",
@@ -1140,7 +1140,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "setTokenLedger",
@@ -1397,7 +1397,7 @@
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "shared_accounts_route_v2",
@@ -1516,7 +1516,7 @@
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "exact_out_route_v2",
@@ -1617,7 +1617,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "shared_accounts_exact_out_route_v2",
@@ -1731,7 +1731,7 @@
    ],
    "risk_rules": [],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "route_with_token_ledger_v2",
@@ -1828,7 +1828,7 @@
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "shared_accounts_route_with_token_ledger_v2",
@@ -1959,7 +1959,7 @@
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "routeWithTokenLedger",
@@ -2058,7 +2058,7 @@
     "RISK: verify route does not include unknown/unverified DEX programs"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "sharedAccountsRouteWithTokenLedger",
@@ -2191,7 +2191,7 @@
     "RISK: platform_fee_account should be verified as legitimate Jupiter fee account"
    ],
    "variable_accounts": true,
-   "risk_class": "transfer"
+   "risk_class": ""
   },
   {
    "name": "claim",
