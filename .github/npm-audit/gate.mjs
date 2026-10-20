@@ -3,8 +3,8 @@
 //   npm audit --json > audit.json      # exit status deliberately not used
 //   node gate.mjs audit.json <package>.allow
 //
-// Fails when the lockfile carries a HIGH or CRITICAL advisory that is not
-// listed in the package's allowlist. An entry `GHSA-xxxx@package` covers that
+// Fails when the lockfile carries a MODERATE, HIGH or CRITICAL advisory that
+// is not listed in the package's allowlist. An entry `GHSA-xxxx@package` covers that
 // advisory in that package only, so the same advisory surfacing in another
 // package is NEW (review of the 2026-09-29 audit's fix, F14). A bare
 // `GHSA-xxxx`, which would cover it in any package, is refused (W23, external
@@ -18,6 +18,14 @@
 // ignores is no gate. The list names each known advisory; a NEW one fails the
 // build the day it is published. The list can only be shortened by fixing
 // something, and lengthened only in a reviewed diff.
+//
+// Moderate is gated too (audit 2026-10-20). With only high/critical gated,
+// three stream-json advisories in the signing guard's tree — one of them
+// prototype pollution — were published, reached the lockfiles and were seen
+// by nobody: a moderate severity is the advisory database's estimate for a
+// typical consumer, not for a process holding a private key. Each moderate
+// now has to be named and justified like a high one. Low stays below the
+// gate and is recorded in the allowlists' prose.
 import { readFileSync } from "node:fs";
 
 const [reportPath, allowPath] = process.argv.slice(2);
@@ -45,7 +53,7 @@ if (report.error || report.auditReportVersion !== 2 || !report.metadata?.vulnera
   process.exit(1);
 }
 
-const GATED = new Set(["high", "critical"]);
+const GATED = new Set(["moderate", "high", "critical"]);
 const found = new Map(); // "GHSA id@package" -> {id, severity, name, range, title}
 for (const vuln of Object.values(report.vulnerabilities)) {
   for (const via of vuln.via) {
@@ -89,18 +97,18 @@ for (const [key, a] of found) {
 }
 for (const entry of allowed) {
   if (!found.has(entry)) {
-    fail(`${entry} is allowlisted but no longer reported at high/critical; remove it from ${allowPath}`);
+    fail(`${entry} is allowlisted but no longer reported at moderate or above; remove it from ${allowPath}`);
   }
 }
 
 const counts = report.metadata.vulnerabilities;
 console.log(
   `npm audit: ${counts.critical} critical, ${counts.high} high, ${counts.moderate} moderate, ` +
-    `${counts.low} low (by package); ${found.size} distinct high/critical advisories, ` +
+    `${counts.low} low (by package); ${found.size} distinct moderate-or-above advisories, ` +
     `${allowed.size} allowlisted`,
 );
 if (process.exitCode) {
   console.log("advisory gate FAILED");
 } else {
-  console.log("advisory gate passed: every high/critical advisory is a known, listed one");
+  console.log("advisory gate passed: every moderate, high or critical advisory is a known, listed one");
 }

@@ -1,6 +1,7 @@
-# Known HIGH/CRITICAL npm advisories in integrations/vercel-ai/package-lock.json (the Vercel AI SDK tools).
+# Known MODERATE/HIGH/CRITICAL npm advisories in integrations/vercel-ai/package-lock.json (the Vercel AI SDK tools).
 # Read by gate.mjs in the CI supply-chain job. One `GHSA-id@package` per line.
 #
-# Recorded 2026-10-02: `npm audit` reports 0 vulnerabilities at any level, so the
-# list is empty and any high/critical advisory fails CI. The guard these tools
-# sign through is audited separately (agent-guard.allow).
+# Recorded 2026-10-02 and re-checked 2026-10-20: `npm audit` reports 0
+# vulnerabilities at any level, so the list is empty and any moderate, high or
+# critical advisory fails CI. The guard these tools sign through is audited
+# separately (agent-guard.allow).
