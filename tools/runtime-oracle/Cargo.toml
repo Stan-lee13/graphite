@@ -6,14 +6,17 @@ description = "Runs Graphite's transaction parser against the Solana runtime's o
 license = "MIT"
 publish = false
 
-# Its own workspace and lockfile on purpose: the agave crates are the oracle,
-# not a dependency of the gate, and their dependency tree must never reach
-# the shipped binary or the audited `graphite-core/Cargo.lock`.
+# Its own workspace and lockfile on purpose: the Solana SDK crates (Anza's
+# `solana-transaction` / `solana-message`, whose decoder and sanitizer the
+# validator calls) are the oracle, not a dependency of the gate, and their
+# dependency tree must never reach the shipped binary or the audited
+# `graphite-core/Cargo.lock`.
 [workspace]
 
 [dependencies]
 graphite-core = { path = "../../graphite-core", default-features = false }
-# The runtime's wire decoder and sanitizer, from the agave crates themselves.
+# The runtime's wire decoder and sanitizer, from the SDK crates the
+# validator itself uses for them.
 solana-transaction = { version = "5.0.0", features = ["serde", "wincode"] }
 solana-message = { version = "5.0.0", features = ["serde", "wincode"] }
 # The v1 (SIMD-0385) wire format has no serde/bincode encoding at all: the
