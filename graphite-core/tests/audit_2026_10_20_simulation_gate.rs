@@ -331,7 +331,12 @@ async fn a_clean_simulation_approves() {
             ..
         }
     ));
-    assert_eq!(layer(&r, "L4").status, LayerStatus::Passed, "{}", layer(&r, "L4").reason);
+    assert_eq!(
+        layer(&r, "L4").status,
+        LayerStatus::Passed,
+        "{}",
+        layer(&r, "L4").reason
+    );
 }
 
 /// The simulator executed the bytes and said they would not land. That was
@@ -343,7 +348,10 @@ async fn an_errored_simulation_is_refused() {
     assert_eq!(r.policy_verdict, "Rejected");
     assert_eq!(r.risk_verdict.status, "Blocked");
     let why = finding(&r, "SimulationFailed").expect("a SimulationFailed finding");
-    assert!(why.contains("Custom(6004)") && why.contains("would not land"), "{why}");
+    assert!(
+        why.contains("Custom(6004)") && why.contains("would not land"),
+        "{why}"
+    );
     let l3 = layer(&r, "L3");
     assert_eq!(l3.status, LayerStatus::Failed, "{}", l3.reason);
     assert!(l3.reason.contains("FAILED"), "{}", l3.reason);
@@ -369,7 +377,11 @@ async fn an_unobtainable_simulation_is_refused_as_incomplete() {
 async fn an_incomplete_simulation_response_is_refused() {
     let r = verify_with(Simulation::Incomplete).await;
     assert!(!r.approved, "{}", r.summary);
-    assert!(finding(&r, "VerificationIncomplete").is_some(), "{:?}", r.risk_verdict.findings);
+    assert!(
+        finding(&r, "VerificationIncomplete").is_some(),
+        "{:?}",
+        r.risk_verdict.findings
+    );
 }
 
 /// A simulation that ran clean but brought back no post-state leaves L4
@@ -397,7 +409,11 @@ async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
             .verify_async(&describe(2_000_000 + i, WalletProfile::Gaming))
             .await
             .unwrap();
-        assert!(!r.approved, "a fresh program is below Gaming: {}", r.summary);
+        assert!(
+            !r.approved,
+            "a fresh program is below Gaming: {}",
+            r.summary
+        );
     }
     assert_eq!(samples(&core), 0, "a policy refusal trained the baseline");
     let fourth = core
@@ -405,7 +421,11 @@ async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
         .await
         .unwrap();
     assert!(!fourth.approved, "pumped past Gaming: {}", fourth.summary);
-    assert!((fourth.confidence - 0.44).abs() < 1e-9, "{}", fourth.confidence);
+    assert!(
+        (fourth.confidence - 0.44).abs() < 1e-9,
+        "{}",
+        fourth.confidence
+    );
 
     // An APPROVED verdict still trains, as before.
     let approved = core
@@ -430,7 +450,11 @@ async fn policy_refusals_teach_nothing_unless_the_operator_opts_in() {
         .await
         .unwrap();
     assert!(after.approved, "{}", after.summary);
-    assert!((after.confidence - 0.64).abs() < 1e-9, "{}", after.confidence);
+    assert!(
+        (after.confidence - 0.64).abs() < 1e-9,
+        "{}",
+        after.confidence
+    );
 }
 
 // ─── F5 ─────────────────────────────────────────────────────────────────────
@@ -533,7 +557,10 @@ async fn a_cited_refusal_of_other_bytes_is_not_an_alarm() {
     let audit = core
         .audit_execution(&sig, ExecutionKeys::default(), Some(&log))
         .await;
-    assert_eq!(audit.reconciliation, ExecutionReconciliation::BlockedButExecuted);
+    assert_eq!(
+        audit.reconciliation,
+        ExecutionReconciliation::BlockedButExecuted
+    );
     assert!(audit.reconciliation.is_discrepancy());
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -550,7 +577,8 @@ fn the_witness_is_never_the_primary_whichever_is_attached_first() {
         .expect("no primary yet");
     assert!(core.has_inclusion_witness());
     assert!(
-        core.try_attach_rpc_client(client("HTTP://127.0.0.1:9")).is_err(),
+        core.try_attach_rpc_client(client("HTTP://127.0.0.1:9"))
+            .is_err(),
         "the refusing form refuses"
     );
     core.attach_rpc_client(client("http://127.0.0.1:9"));
@@ -561,7 +589,8 @@ fn the_witness_is_never_the_primary_whichever_is_attached_first() {
 
     // A different endpoint is kept.
     let mut core = GraphiteCore::new();
-    core.attach_inclusion_witness(client("http://127.0.0.1:9/")).unwrap();
+    core.attach_inclusion_witness(client("http://127.0.0.1:9/"))
+        .unwrap();
     core.attach_rpc_client(client("http://127.0.0.1:10/"));
     assert!(core.has_inclusion_witness());
 

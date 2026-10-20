@@ -11,7 +11,8 @@
 //! signature.
 //!
 //! - F-16-01: an artifact whose signature slots are filled is refused at
-//!   `/verify`; a cited `audit_trail_id` for other bytes is reported as such.
+//!   `/verify`; a cited `audit_trail_id` for other bytes is reported as such
+//!   (in `caller_keys_disagree`, never as a discrepancy — audit 2026-10-20).
 //! - F-16-03 / F-15-02: refused requests and errored simulations do not
 //!   train the baseline; an errored simulation is named by its own residual
 //!   and never reads "clean".
@@ -285,6 +286,13 @@ fn core_at(endpoint: &str) -> GraphiteCore {
         max_retries: 0,
         ..Default::default()
     }));
+    // These tests are about what a policy-threshold refusal may and may not
+    // teach the baseline (the bootstrap), which since the 2026-10-20 audit
+    // (M1) it may only with the operator's opt-in. Opted in, so the rules
+    // they pin — identity, soundness, the shadow — are still exercised
+    // rather than passing because nothing trains at all. The default is
+    // pinned in `audit_2026_10_20_simulation_gate`.
+    core.set_learn_from_policy_refusals(true);
     core
 }
 
@@ -424,12 +432,17 @@ async fn a_presigned_artifact_is_refused_at_verify() {
 }
 
 /// L8, when the chain's bytes digest to nothing on record but the caller
-/// cites an exact verification of OTHER bytes: the answer names that, and a
-/// cited refusal is a discrepancy. Until Round 17 this was
-/// `NoVerificationOnRecord, discrepancy: false` — the stronger evidence path
-/// gave the weaker alarm.
+/// cites an exact verification of OTHER bytes: the citation is reported.
+///
+/// Round 17 answered `RecordedForDifferentBytes` and called a cited REFUSAL a
+/// discrepancy. Audit 2026-10-20 (F5): that let any verify-key holder page
+/// the operator by citing any refused `audit_trail_id` beside any landed
+/// signature, and the case it was built for — a refused artifact signed
+/// before it was shown — is refused at `/verify` (above). The chain's answer
+/// stands (`NoVerificationOnRecord`) and the contradicted citation is in
+/// `caller_keys_disagree`, refusal or approval alike.
 #[tokio::test]
-async fn a_cited_verdict_about_other_bytes_is_reported_and_a_cited_refusal_alarms() {
+async fn a_cited_verdict_about_other_bytes_is_reported_not_alarmed() {
     let knobs: Shared = Arc::default();
     let core = core_at(&cluster(Arc::clone(&knobs)));
     earn_baseline(&core).await;
@@ -460,24 +473,30 @@ async fn a_cited_verdict_about_other_bytes_is_reported_and_a_cited_refusal_alarm
             Some(&log),
         )
         .await;
-    match &audit.reconciliation {
-        ExecutionReconciliation::RecordedForDifferentBytes {
-            recorded_approved,
-            recorded_transaction_sha256,
-            chain_transaction_sha256,
-        } => {
-            assert!(!recorded_approved);
-            assert_eq!(
-                recorded_transaction_sha256.as_deref(),
-                Some(digest(&refused).as_str())
-            );
-            assert_ne!(chain_transaction_sha256, &digest(&refused));
-        }
-        other => panic!("expected RecordedForDifferentBytes, got {other:?}"),
-    }
+    assert_eq!(
+        audit.reconciliation,
+        ExecutionReconciliation::NoVerificationOnRecord,
+        "the chain's answer stands: {audit:?}"
+    );
     assert!(
-        audit.reconciliation.is_discrepancy(),
-        "a cited refusal beside an execution is the alarm"
+        !audit.reconciliation.is_discrepancy(),
+        "a caller's citation the chain contradicts is not an alarm"
+    );
+    let chain_digest = audit
+        .chain_transaction_sha256
+        .clone()
+        .expect("the chain's bytes were fetched");
+    assert_ne!(chain_digest, digest(&refused));
+    assert!(
+        audit
+            .caller_keys_disagree
+            .iter()
+            .any(|d| d.contains(&refused.audit_trail_id)
+                && d.contains("refused")
+                && d.contains(&digest(&refused))
+                && d.contains(&chain_digest)),
+        "the citation is reported, with both digests: {:?}",
+        audit.caller_keys_disagree
     );
 
     // The same shape with a cited APPROVAL is reported, not alarmed: the
@@ -496,14 +515,19 @@ async fn a_cited_verdict_about_other_bytes_is_reported_and_a_cited_refusal_alarm
             Some(&log),
         )
         .await;
-    assert!(matches!(
+    assert_eq!(
         audit.reconciliation,
-        ExecutionReconciliation::RecordedForDifferentBytes {
-            recorded_approved: true,
-            ..
-        }
-    ));
+        ExecutionReconciliation::NoVerificationOnRecord
+    );
     assert!(!audit.reconciliation.is_discrepancy());
+    assert!(
+        audit
+            .caller_keys_disagree
+            .iter()
+            .any(|d| d.contains(&approved.audit_trail_id) && d.contains("approved")),
+        "{:?}",
+        audit.caller_keys_disagree
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -561,7 +585,10 @@ async fn an_errored_simulation_is_not_evidence_and_is_named() {
     assert!(!c.contains(&UnobservedCode::NoStateDiff), "{c:?}");
     assert!(!c.contains(&UnobservedCode::NotSimulated), "{c:?}");
     // The bridge's default policy refuses this code by construction (it is
-    // not inherent). Nothing here says the transaction is approved-and-clean.
+    // not inherent), and since the 2026-10-20 audit (H1) so does the Core:
+    // an errored simulation is a failed L3 and a refused verdict.
+    assert_eq!(l3.status, LayerStatus::Failed, "{}", l3.reason);
+    assert!(!r.approved, "{}", r.summary);
 }
 
 /// Ten identical approvals are one observation. The same request repeated

@@ -469,9 +469,14 @@ fn test_policy_plugin_veto_rejects_transaction() {
 }
 
 #[test]
-fn test_simulation_plugin_block_fails_l3_report_only() {
+fn test_simulation_plugin_block_fails_l3_and_refuses_without_a_risk_finding() {
     // A simulation plugin can note/block the L3 report but never mint a pass
     // and never fabricate an L7 risk finding (P8 layer boundary, P5).
+    //
+    // Audit 2026-10-20 (F11): a Failed L3 now refuses the verdict, as a
+    // Failed L2/L4/L5 does. This asserted the opposite — "the transaction is
+    // unaffected" — which made a simulation plugin's Block a report nobody
+    // had to read.
     let mut core = GraphiteCore::new_without_plugins();
     core.register_plugin(PluginKind::Simulation(Arc::new(TestSimulation::new(
         "sim-obs",
@@ -481,7 +486,7 @@ fn test_simulation_plugin_block_fails_l3_report_only() {
         },
     ))));
     let r = core.verify(&plain_transfer()).expect("verify ok");
-    // L3 is report-only: the layer fails, the transaction is unaffected.
+    // The layer fails and the verdict is refused...
     let l3 = r
         .layers
         .iter()
@@ -489,7 +494,19 @@ fn test_simulation_plugin_block_fails_l3_report_only() {
         .unwrap();
     assert_eq!(l3.status, LayerStatus::Failed);
     assert!(l3.reason.contains("RpcSuspicious"));
-    assert!(r.approved, "L3 report block must not hard-block the tx");
+    assert!(!r.approved, "an L3 plugin Block must refuse the verdict");
+    assert_eq!(r.policy_verdict, "Rejected");
+    // ...without a fabricated risk finding (P8).
+    assert_eq!(
+        r.risk_verdict.status, "Clear",
+        "{:?}",
+        r.risk_verdict.findings
+    );
+    assert!(
+        r.risk_verdict.findings.is_empty(),
+        "{:?}",
+        r.risk_verdict.findings
+    );
 }
 
 #[test]

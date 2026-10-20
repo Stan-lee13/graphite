@@ -2102,14 +2102,17 @@ fn verification_scope(
             use sha2::{Digest, Sha256};
             let parsed_here = match parsed {
                 Some(_) => None,
-                None => Some(crate::tx_artifact::parse_transaction(bytes).map_err(|e| e.to_string())),
+                None => {
+                    Some(crate::tx_artifact::parse_transaction(bytes).map_err(|e| e.to_string()))
+                }
             };
-            let parsed: Result<&crate::tx_artifact::ArtifactMessage, &str> = match (parsed, &parsed_here) {
-                (Some(parsed), _) => parsed,
-                (None, Some(Ok(message))) => Ok(message),
-                (None, Some(Err(e))) => Err(e.as_str()),
-                (None, None) => Err("not parsed"),
-            };
+            let parsed: Result<&crate::tx_artifact::ArtifactMessage, &str> =
+                match (parsed, &parsed_here) {
+                    (Some(parsed), _) => parsed,
+                    (None, Some(Ok(message))) => Ok(message),
+                    (None, Some(Err(e))) => Err(e.as_str()),
+                    (None, None) => Err("not parsed"),
+                };
             let mut r = Residuals::default();
             if let Some(err) = simulation_error {
                 r.push(
@@ -3769,7 +3772,9 @@ impl GraphiteCore {
             // crash. It is the same "the trail was not read" — answered as
             // `Unavailable` with the reason, never as "nothing on record".
             Some(Err(join)) => {
-                tracing::error!("L8: the audit trail lookup for {signature} did not complete: {join}");
+                tracing::error!(
+                    "L8: the audit trail lookup for {signature} did not complete: {join}"
+                );
                 trail_unread = Some(format!(
                     "the audit trail lookup did not complete ({join}), so the recorded verdict could not be read"
                 ));
@@ -5627,52 +5632,47 @@ impl GraphiteCore {
             artifact_message.as_ref(),
         ) {
             (Some(client), Some(message)) if message.has_lookup_accounts() => {
-                        let table_addrs: Vec<String> =
-                            message.lookups.iter().map(|l| l.table.clone()).collect();
-                        let fetched =
-                            within_budget(&budget, client.get_multiple_accounts(&table_addrs))
-                                .await
-                                .unwrap_or_else(|()| {
-                                    Err(crate::rpc_client::RpcError::Timeout(budget.total()))
-                                });
-                        match fetched {
-                            Ok(accounts) => {
-                                let mut tables: std::collections::HashMap<String, Vec<u8>> =
-                                    std::collections::HashMap::new();
-                                let mut wrong_owner: Option<String> = None;
-                                for (addr, acc) in table_addrs.iter().zip(accounts.iter()) {
-                                    if let Some(a) = acc {
-                                        // The runtime only honours a table
-                                        // owned by the lookup-table program.
-                                        // Bytes at that address under any
-                                        // other owner would be refused at
-                                        // execution, and decoding them here
-                                        // would resolve accounts the
-                                        // transaction cannot actually reach
-                                        // — an answer about a transaction
-                                        // that will not run.
-                                        if a.owner
-                                            != crate::tx_artifact::ADDRESS_LOOKUP_TABLE_PROGRAM
-                                        {
-                                            wrong_owner.get_or_insert_with(|| {
+                let table_addrs: Vec<String> =
+                    message.lookups.iter().map(|l| l.table.clone()).collect();
+                let fetched = within_budget(&budget, client.get_multiple_accounts(&table_addrs))
+                    .await
+                    .unwrap_or_else(|()| Err(crate::rpc_client::RpcError::Timeout(budget.total())));
+                match fetched {
+                    Ok(accounts) => {
+                        let mut tables: std::collections::HashMap<String, Vec<u8>> =
+                            std::collections::HashMap::new();
+                        let mut wrong_owner: Option<String> = None;
+                        for (addr, acc) in table_addrs.iter().zip(accounts.iter()) {
+                            if let Some(a) = acc {
+                                // The runtime only honours a table
+                                // owned by the lookup-table program.
+                                // Bytes at that address under any
+                                // other owner would be refused at
+                                // execution, and decoding them here
+                                // would resolve accounts the
+                                // transaction cannot actually reach
+                                // — an answer about a transaction
+                                // that will not run.
+                                if a.owner != crate::tx_artifact::ADDRESS_LOOKUP_TABLE_PROGRAM {
+                                    wrong_owner.get_or_insert_with(|| {
                                                     format!(
                                                         "the account at table address {addr} is owned by {}, not the Address Lookup Table program",
                                                         a.owner
                                                     )
                                                 });
-                                            continue;
-                                        }
-                                        tables.insert(addr.clone(), a.data.clone());
-                                    }
+                                    continue;
                                 }
-                                Some(match wrong_owner {
-                                    Some(why) => Err(why),
-                                    None => crate::tx_artifact::resolve_lookups(message, &tables)
-                                        .map_err(|e| e.to_string()),
-                                })
+                                tables.insert(addr.clone(), a.data.clone());
                             }
-                            Err(e) => Some(Err(e.to_string())),
                         }
+                        Some(match wrong_owner {
+                            Some(why) => Err(why),
+                            None => crate::tx_artifact::resolve_lookups(message, &tables)
+                                .map_err(|e| e.to_string()),
+                        })
+                    }
+                    Err(e) => Some(Err(e.to_string())),
+                }
             }
             _ => None,
         };
@@ -7658,20 +7658,18 @@ impl GraphiteCore {
                                     // list to be the instruction's own, position
                                     // by position, and every declared sibling to
                                     // match an instruction that is really there.
-                                    let undescribed = artifact_message
-                                        .as_ref()
-                                        .map(|m| {
-                                            let mut out: Vec<String> = m
-                                                .static_keys
-                                                .iter()
-                                                .filter(|k| !described.contains(k.as_str()))
-                                                .cloned()
-                                                .collect();
-                                            // Deterministic output (P2).
-                                            out.sort_unstable();
-                                            out.dedup();
-                                            out
-                                        });
+                                    let undescribed = artifact_message.as_ref().map(|m| {
+                                        let mut out: Vec<String> = m
+                                            .static_keys
+                                            .iter()
+                                            .filter(|k| !described.contains(k.as_str()))
+                                            .cloned()
+                                            .collect();
+                                        // Deterministic output (P2).
+                                        out.sort_unstable();
+                                        out.dedup();
+                                        out
+                                    });
                                     // Round 20: the fee schedules of the
                                     // Token-2022 mints whose fee-bearing
                                     // accounts the diff covers. A
@@ -8483,7 +8481,8 @@ impl GraphiteCore {
                     privileges_grounded,
                     fee_payer_for_diff.as_deref(),
                 );
-                let structural = self.verify_state(&expected_state_changes, &resolution.resolved_accounts);
+                let structural =
+                    self.verify_state(&expected_state_changes, &resolution.resolved_accounts);
                 if structural.status == LayerStatus::Failed
                     && from_diff.status != LayerStatus::Failed
                 {
@@ -8500,7 +8499,8 @@ impl GraphiteCore {
                 }
             }
             (None, None) => {
-                let mut fallback = self.verify_state(&expected_state_changes, &resolution.resolved_accounts);
+                let mut fallback =
+                    self.verify_state(&expected_state_changes, &resolution.resolved_accounts);
                 // Say so when the diff was ATTEMPTED and abandoned. "State
                 // verification passed" on its own reads as though the layer did
                 // its strongest work; it did not, and the difference is the
@@ -10286,29 +10286,34 @@ mod tests {
             real_account_metas: vec![],
             state_diff: None,
         };
+        // Audit 2026-10-20 (F18): this asserted only `confidence < 1.0`,
+        // which every fresh-core verdict satisfies — it passed with both
+        // blocks deleted. It asserts each block now. With the undeclared CPI
+        // target, the CPI check refuses first (`UnexpectedCpi`)...
         let result = core.verify(&input).unwrap();
-        // A SetAuthority on SPL Token is on the Risk Engine's unconditional
-        // table. Audit 2026-10-20 (F18): this asserted only
-        // `confidence < 1.0`, which every fresh-core verdict satisfies — it
-        // passed with the block deleted. It asserts the block now.
-        assert!(!result.approved, "{}", result.summary);
-        assert_eq!(result.risk_verdict.status, "Blocked", "{}", result.summary);
-        assert!(
-            result
-                .risk_verdict
-                .findings
+        let blocked_by = |r: &VerificationResult, pattern: &str| {
+            assert!(!r.approved, "{}", r.summary);
+            assert_eq!(r.risk_verdict.status, "Blocked", "{}", r.summary);
+            assert_eq!(r.policy_verdict, "Rejected");
+            assert!(
+                r.risk_verdict.findings.iter().any(|f| f.pattern == pattern),
+                "expected {pattern}: {:?}",
+                r.risk_verdict.findings
+            );
+            let l7 = r
+                .layers
                 .iter()
-                .any(|f| f.pattern == "AuthorityHijack"),
-            "{:?}",
-            result.risk_verdict.findings
-        );
-        assert_eq!(result.policy_verdict, "Rejected");
-        let l7 = result
-            .layers
-            .iter()
-            .find(|l| l.layer == "L7_RiskVerification")
-            .expect("L7");
-        assert_eq!(l7.status, LayerStatus::Failed, "{}", l7.reason);
+                .find(|l| l.layer == "L7_RiskVerification")
+                .expect("L7");
+            assert_eq!(l7.status, LayerStatus::Failed, "{}", l7.reason);
+        };
+        blocked_by(&result, "UnexpectedCpi");
+        // ...and without it, SetAuthority is on the Risk Engine's
+        // unconditional table.
+        let mut input = input;
+        input.cpi_targets.clear();
+        let result = core.verify(&input).unwrap();
+        blocked_by(&result, "AuthorityHijack");
     }
 
     #[cfg(any(feature = "rpc", feature = "server", feature = "cli"))]
@@ -10728,6 +10733,53 @@ mod tests {
         );
         assert_eq!(content_hash, "48c65c638aceb5de");
     }
+
+    /// Audit 2026-10-20 (F8): the `audit_trail_id` sequence started at 0 in
+    /// every process, so the first verification after each restart could
+    /// repeat an id already on the trail. It starts at a random per-process
+    /// offset, and the id keeps its `gr-<16hex>-<8hex>` shape.
+    #[test]
+    fn audit_trail_ids_start_at_a_random_offset_and_keep_their_shape() {
+        let seeds: std::collections::BTreeSet<u32> =
+            (0..8).map(|_| audit_sequence_seed()).collect();
+        assert!(seeds.len() > 1, "the seed is not random: {seeds:?}");
+        let risk = RiskVerdictSummary {
+            status: "Clear".to_string(),
+            findings: vec![],
+        };
+        let (id, content_hash) = generate_audit_id(SYSTEM_ID, "02", &[], &None, &[], 0.5, &risk);
+        let parts: Vec<&str> = id.split('-').collect();
+        assert_eq!(parts.len(), 3, "{id}");
+        assert_eq!(parts[0], "gr");
+        assert_eq!(parts[1].len(), 16, "{id}");
+        assert_eq!(parts[2].len(), 8, "{id}");
+        assert!(parts[1..]
+            .iter()
+            .all(|p| p.chars().all(|c| c.is_ascii_hexdigit())));
+        assert_eq!(content_hash.len(), 16);
+        // Consecutive ids in one process still differ by their sequence.
+        let (next, _) = generate_audit_id(SYSTEM_ID, "02", &[], &None, &[], 0.5, &risk);
+        assert_ne!(id, next);
+    }
+
+    /// Audit 2026-10-20 (F5): only a refused transaction executing pages.
+    #[test]
+    fn only_blocked_but_executed_is_a_discrepancy() {
+        assert!(ExecutionReconciliation::BlockedButExecuted.is_discrepancy());
+        for not in [
+            ExecutionReconciliation::RecordedForDifferentBytes {
+                recorded_approved: false,
+                recorded_transaction_sha256: None,
+                chain_transaction_sha256: String::new(),
+            },
+            ExecutionReconciliation::NoVerificationOnRecord,
+            ExecutionReconciliation::ApprovedAndExecuted,
+        ] {
+            assert!(!not.is_discrepancy(), "{not:?}");
+        }
+    }
+
+    const SYSTEM_ID: &str = "11111111111111111111111111111111";
 
     /// Drive a future that never waits to completion, without a runtime.
     /// `verify_async` with no RPC client attached awaits nothing that can be

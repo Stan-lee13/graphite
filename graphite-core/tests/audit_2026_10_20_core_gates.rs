@@ -77,7 +77,10 @@ fn transfer(intent: &str) -> VerificationInput {
     }
 }
 
-fn layer<'a>(r: &'a VerificationResult, prefix: &str) -> &'a graphite_core::verification::PipelineLayerResult {
+fn layer<'a>(
+    r: &'a VerificationResult,
+    prefix: &str,
+) -> &'a graphite_core::verification::PipelineLayerResult {
     r.layers
         .iter()
         .find(|l| l.layer.starts_with(prefix))
@@ -112,7 +115,11 @@ fn an_unmanifested_sibling_sets_the_verdicts_tier() {
         r.risk_verdict.findings
     );
     assert_eq!(r.trust_tier, "Unknown", "{}", r.summary);
-    assert!(!r.approved, "an Unknown-tier sibling must not be approvable: {}", r.summary);
+    assert!(
+        !r.approved,
+        "an Unknown-tier sibling must not be approvable: {}",
+        r.summary
+    );
     assert_eq!(layer(&r, "L6").status, LayerStatus::Failed);
     assert!(
         r.summary.contains(UNMANIFESTED) && r.summary.contains("lowest of every program"),
@@ -201,7 +208,10 @@ fn a_corrupt_snapshot_is_refused_not_replaced() {
     let err = GraphiteCore::try_with_data_dir(dir.clone()).unwrap_err();
     assert!(err.contains("corrupt"), "{err}");
     let panicked = std::panic::catch_unwind(|| GraphiteCore::with_data_dir(dir.clone()));
-    assert!(panicked.is_err(), "with_data_dir must not start fresh over a corrupt snapshot");
+    assert!(
+        panicked.is_err(),
+        "with_data_dir must not start fresh over a corrupt snapshot"
+    );
     assert_eq!(
         std::fs::read_to_string(dir.join("semantic_graph.json")).unwrap(),
         "{ not json",
@@ -277,7 +287,9 @@ fn undescribed(intent: &str) -> VerificationInput {
 /// a check that confirmed nothing is Inconclusive.
 #[test]
 fn an_undescribed_instruction_is_not_a_passed_l2() {
-    let r = GraphiteCore::new().verify(&undescribed("transfer")).unwrap();
+    let r = GraphiteCore::new()
+        .verify(&undescribed("transfer"))
+        .unwrap();
     assert_eq!(r.instruction_name, "unknown_instruction");
     let l2 = layer(&r, "L2");
     assert_eq!(l2.status, LayerStatus::Inconclusive, "{}", l2.reason);
@@ -292,7 +304,9 @@ fn an_undescribed_instruction_is_not_a_passed_l2() {
 #[test]
 fn every_spelling_of_a_high_risk_intent_is_high_risk() {
     let core = GraphiteCore::new();
-    for intent in ["swap", "trade", "exchange", "Swap", " SWAP ", "delegate", "stake"] {
+    for intent in [
+        "swap", "trade", "exchange", "Swap", " SWAP ", "delegate", "stake",
+    ] {
         let r = core.verify(&undescribed(intent)).unwrap();
         let l5 = layer(&r, "L5");
         assert_eq!(l5.status, LayerStatus::Failed, "{intent}: {}", l5.reason);
@@ -339,7 +353,9 @@ fn without_an_rpc_client_an_artifact_verdict_is_unchanged() {
     assert_eq!(layer(&r, "L3").status, LayerStatus::Inconclusive);
     match &r.scope {
         VerificationScope::ArtifactBound {
-            unobserved_codes, simulated, ..
+            unobserved_codes,
+            simulated,
+            ..
         } => {
             assert!(!simulated);
             assert!(unobserved_codes.contains(&UnobservedCode::NotSimulated));
