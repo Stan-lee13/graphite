@@ -149,7 +149,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, perpetuals, pool, lpTokenMint",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -157,7 +157,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "addCustody",
@@ -236,7 +236,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, pool, custody, custodyTokenAccount",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -244,7 +244,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "setCustodyConfig",
@@ -369,14 +369,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: perpetuals",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "withdrawFees2",
@@ -534,7 +534,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, metadata",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -542,7 +542,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "createTokenLedger",
@@ -1078,14 +1078,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: custody",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "operatorSetPoolConfig",
@@ -1108,14 +1108,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "testInit",
@@ -3672,7 +3672,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "setMaxGlobalSizes",
@@ -4942,14 +4942,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, custody, borrowPosition, custodyTokenAccount, userTokenAccount",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "repayToCustody",
@@ -5421,14 +5421,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool, custody, borrowPosition, collateralTokenAccount, lpTokenMint",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "closeBorrowPosition",

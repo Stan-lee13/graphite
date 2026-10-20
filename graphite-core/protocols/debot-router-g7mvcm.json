@@ -175,14 +175,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: router_fee_config, authority",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "recover_stuck_sol",

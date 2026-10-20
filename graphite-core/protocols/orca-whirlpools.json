@@ -551,7 +551,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "collectReward",
@@ -704,7 +705,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "decreaseLiquidity",
@@ -799,7 +801,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "decreaseLiquidityV2",
@@ -921,7 +924,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "deletePositionBundle",
@@ -981,7 +985,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "deleteTokenBadge",
@@ -1037,7 +1042,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "idlInclude",
@@ -1065,7 +1071,8 @@
     "whirlpool protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   },
   {
    "name": "increaseLiquidity",
@@ -1165,7 +1172,8 @@
    "risk_rules": [
     "position_authority must be signer and own the position",
     "RISK: verify whirlpool and tick arrays are legitimate"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "increaseLiquidityByTokenAmountsV2",
@@ -1287,7 +1295,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "increaseLiquidityV2",
@@ -1409,7 +1418,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "initializeAdaptiveFeeTier",
@@ -1458,7 +1468,8 @@
     "initializes the adaptive fee tier account for the whirlpool protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeConfig",
@@ -1493,7 +1504,8 @@
     "initializes the config account for the whirlpool protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeConfigExtension",
@@ -1545,7 +1557,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeDynamicTickArray",
@@ -1587,7 +1600,8 @@
     "initializes the dynamic tick array account for the whirlpool protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeFeeTier",
@@ -1636,7 +1650,8 @@
     "initializes the fee tier account for the whirlpool protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializePool",
@@ -1856,7 +1871,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializePoolWithAdaptiveFee",
@@ -1988,7 +2004,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializePositionBundle",
@@ -2078,7 +2095,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializePositionBundleWithMetadata",
@@ -2195,7 +2213,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeReward",
@@ -2275,7 +2294,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeRewardV2",
@@ -2362,7 +2382,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeTickArray",
@@ -2407,7 +2428,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeTokenBadge",
@@ -2473,7 +2495,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "lockPosition",
@@ -2558,7 +2581,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "migrateRepurposeRewardAuthoritySpace",
@@ -2576,7 +2600,8 @@
     "whirlpool protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "openBundledPosition",
@@ -2652,7 +2677,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "openPosition",
@@ -2749,7 +2775,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "openPositionWithMetadata",
@@ -2873,7 +2900,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "openPositionWithTokenExtensions",
@@ -2970,7 +2998,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "repositionLiquidityV2",
@@ -3123,7 +3152,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "resetPositionRange",
@@ -3182,7 +3212,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setAdaptiveFeeConstants",
@@ -3221,7 +3252,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setCollectProtocolFeesAuthority",
@@ -3253,7 +3285,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setConfigExtensionAuthority",
@@ -3292,7 +3325,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setConfigFeatureFlag",
@@ -3317,7 +3351,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setDefaultBaseFeeRate",
@@ -3349,7 +3384,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setDefaultFeeRate",
@@ -3381,7 +3417,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setDefaultProtocolFeeRate",
@@ -3406,7 +3443,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setDelegatedFeeAuthority",
@@ -3445,7 +3483,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setFeeAuthority",
@@ -3477,7 +3516,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setFeeRate",
@@ -3509,7 +3549,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setFeeRateByDelegatedFeeAuthority",
@@ -3541,7 +3582,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setInitializePoolAuthority",
@@ -3580,7 +3622,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setPresetAdaptiveFeeConstants",
@@ -3612,7 +3655,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setProtocolFeeRate",
@@ -3644,7 +3688,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setRewardAuthority",
@@ -3676,7 +3721,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setRewardAuthorityBySuperAuthority",
@@ -3715,7 +3761,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setRewardEmissions",
@@ -3750,7 +3797,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setRewardEmissionsSuperAuthority",
@@ -3782,7 +3830,8 @@
     "updates a whirlpool protocol authority or parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setRewardEmissionsV2",
@@ -3817,7 +3866,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setTokenBadgeAttribute",
@@ -3866,7 +3916,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "setTokenBadgeAuthority",
@@ -3908,7 +3959,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "swap",
@@ -4135,7 +4187,8 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": "transfer"
   },
   {
    "name": "transferLockedPosition",
@@ -4209,7 +4262,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "twoHopSwap",
@@ -4369,7 +4423,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "twoHopSwapV2",
@@ -4555,7 +4610,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "updateFeesAndRewards",
@@ -4597,7 +4653,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   }
  ],
  "trust_tier": "BattleTested"

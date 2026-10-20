@@ -48,7 +48,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: sender, collateral, collateral_admin_signatures",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -56,7 +56,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "add_coordinator_executor",
@@ -982,14 +982,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: sender, collateral, collateral_admin_signatures",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "remove_coordinator_executor",

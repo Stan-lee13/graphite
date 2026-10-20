@@ -2,8 +2,8 @@
 """C27 — Build the Drift + Kamino Lending manifests from the official IDLs.
 
 Ground truth:
-  - Drift:   scripts/drift_idl.json from velocity-exchange/protocol-v2
-             (sdk/src/idl/drift.json, the moved drift-labs/protocol-v2), program
+  - Drift:   scripts/drift_idl.json from drift-labs/protocol-v2
+             (sdk/src/idl/drift.json), program
              dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH (SDK DRIFT_PROGRAM_ID,
              confirmed as an executable account on mainnet).
   - Kamino:  scripts/klend_idl.json from Kamino-Finance/klend-sdk
@@ -25,7 +25,7 @@ matched the derived values, zero unmatched. The remaining instructions follow
 the same proven convention on the same deployed binaries.
 
 PDA seeds: only accounts whose seed construction is VERIFIED from the deployed
-program source (velocity-exchange/protocol-v2 programs/drift/src/instructions/
+program source (drift-labs/protocol-v2 programs/drift/src/instructions/
 user.rs; Kamino-Finance/klend libs/klend-interface/src/pda.rs +
 programs/klend/src/handlers/*) or the official SDKs are grounded. Accounts the
 program does NOT seed-constrain are left with empty pda_seeds — grounding them
@@ -47,7 +47,7 @@ PROGRAMS = {
         "name": "Drift Perpetuals Exchange",
         "program_id": "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH",
         "website": "https://www.drift.trade",
-        "github": "https://github.com/velocity-exchange/protocol-v2",
+        "github": "https://github.com/drift-labs/protocol-v2",
         "version": "2.0.0",
         "prev": "1.0.0",
         "tier": "BattleTested",
@@ -432,6 +432,11 @@ def main():
                 "risk_rules": (old_ix.get("risk_rules")
                                if old_ix and old_ix.get("risk_rules")
                                else risk_rules(prog, sn)),
+                # Round 29 (audit 2026-10-20, LOW-1): the class is carried
+                # over like every other curated field. This builder never
+                # wrote one, which is how all 249 Drift instructions shipped
+                # unclassed; `reclassify_manifests.py` assigns them.
+                "risk_class": old_ix.get("risk_class", "") if old_ix else "",
             }
             if old_ix and old_ix.get("variable_accounts"):
                 entry["variable_accounts"] = True

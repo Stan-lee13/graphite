@@ -4,7 +4,7 @@
   "name": "Drift Perpetuals Exchange",
   "program_id": "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH",
   "website": "https://www.drift.trade",
-  "github": "https://github.com/velocity-exchange/protocol-v2",
+  "github": "https://github.com/drift-labs/protocol-v2",
   "note": "C27 build (2026-08-09) from the official deployed-program IDL (scripts/drift_idl.json, committed for reproducibility). All 249 discriminators are DERIVED as sha256(\"global:\"+snake_case_name)[0..8] (the IDLs carry no byte arrays) and VERIFIED LIVE by on-chain census (scripts/census_drift_kamino.py, base58-correct decode): placePerpOrder=45a15dca787e4cb9, cancelOrdersByIds=861390a55ef0d25e, placeOrders=3c3f327b0cc53cbe all matched the derived value with zero unmatched — the convention is proven on the deployed binary. PDA seeds are grounded ONLY where the deployed program's account struct seed-constrains the derivation (C26: a wrong seed spec would flag legitimate txs): Drift initialize_user user=[user,authority,sub_account_id], initialize_user_stats user_stats=[user_stats,authority], deposit/withdraw/transfer_deposit spot_market_vault=[spot_market_vault,market_index], withdraw drift_signer=[drift_signer]; Kamino lending_market_authority=[lma,market] (every ix carrying it), init_reserve vaults=[reserve_liq_supply|fee_receiver|reserve_coll_mint|reserve_coll_supply, reserve] (ONLY init_reserve — runtime ixs constrain vaults by address-from-state, not PDA), init_user_metadata user_metadata=[user_meta,owner], init_obligation obligation=[tag,id,owner,market,seed1,seed2]."
  },
  "version": {
@@ -67,7 +67,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "addInsuranceFundStake",
@@ -155,7 +156,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "addMarketToAmmCache",
@@ -211,7 +213,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "adminDeposit",
@@ -271,7 +274,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "adminUpdateUserStatsPausedOperations",
@@ -303,7 +307,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "adminWithdrawFromInsuranceFundVault",
@@ -370,7 +375,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "beginInsuranceFundSwap",
@@ -458,7 +464,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "beginLpSwap",
@@ -553,7 +560,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "beginSwap",
@@ -648,7 +656,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "cancelOrder",
@@ -680,7 +689,8 @@
     "cancels a user order"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "cancelOrderByUserId",
@@ -712,7 +722,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "cancelOrders",
@@ -744,7 +755,8 @@
     "cancels multiple user orders"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "cancelOrdersByIds",
@@ -776,7 +788,8 @@
     "cancels multiple user orders by id"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "cancelRequestRemoveInsuranceFundStake",
@@ -822,7 +835,8 @@
     "cancels a stake removal request"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "changeApprovedBuilder",
@@ -864,7 +878,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "changeSignedMsgWsDelegateStatus",
@@ -899,7 +914,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "deleteAmmCache",
@@ -931,7 +947,8 @@
     "closes the amm_cache account and reclaims rent"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "deleteInitializedPerpMarket",
@@ -963,7 +980,8 @@
     "closes the initialized_perp_market account and reclaims rent"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "deleteInitializedSpotMarket",
@@ -1030,7 +1048,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "deleteOpenbookV2FulfillmentConfig",
@@ -1062,7 +1081,8 @@
     "closes the openbook_v2_fulfillment_config account and reclaims rent"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "deletePrelaunchOracle",
@@ -1101,7 +1121,8 @@
     "closes the prelaunch_oracle account and reclaims rent"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "deleteSerumFulfillmentConfig",
@@ -1133,7 +1154,8 @@
     "closes the serum_fulfillment_config account and reclaims rent"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "deleteSignedMsgUserOrders",
@@ -1165,7 +1187,8 @@
     "deletes the signed-msg orders account"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "deleteUser",
@@ -1206,7 +1229,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "deleting a user account with nonzero balance must be blocked"
-   ]
+   ],
+   "risk_class": "close"
   },
   {
    "name": "deposit",
@@ -1277,7 +1301,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositIntoInsuranceFundStake",
@@ -1365,7 +1390,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositIntoIsolatedPerpPosition",
@@ -1432,7 +1458,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositIntoPerpMarketFeePool",
@@ -1506,7 +1533,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "depositIntoSpotMarketRevenuePool",
@@ -1566,7 +1594,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "depositIntoSpotMarketVault",
@@ -1626,7 +1655,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "depositToProgramVault",
@@ -1707,7 +1737,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "disableUserHighLeverageMode",
@@ -1746,7 +1777,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "enableUserHighLeverageMode",
@@ -1785,7 +1817,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "endInsuranceFundSwap",
@@ -1873,7 +1906,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "endLpSwap",
@@ -1968,7 +2002,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "endSwap",
@@ -2063,7 +2098,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "fillPerpOrder",
@@ -2116,7 +2152,8 @@
     "fills a perp order"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "fillSpotOrder",
@@ -2169,7 +2206,8 @@
     "fills a spot order"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "forceCancelOrders",
@@ -2210,7 +2248,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "force-cancel must be authorized by the keeper"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "forceDeleteUser",
@@ -2263,7 +2302,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "close"
   },
   {
    "name": "initialize",
@@ -2333,7 +2373,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeAmmCache",
@@ -2382,7 +2423,8 @@
     "initializes the amm cache account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeConstituent",
@@ -2487,7 +2529,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeFuelOverflow",
@@ -2543,7 +2586,8 @@
     "initializes the fuel overflow account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeHighLeverageModeConfig",
@@ -2592,7 +2636,8 @@
     "initializes the high leverage mode config account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeIfRebalanceConfig",
@@ -2641,7 +2686,8 @@
     "initializes the if rebalance config account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeInsuranceFundStake",
@@ -2711,7 +2757,8 @@
     "initializes an insurance fund stake"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeLpPool",
@@ -2809,7 +2856,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeOpenbookV2FulfillmentConfig",
@@ -2893,7 +2941,8 @@
     "initializes the openbook v2 fulfillment config account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializePerpMarket",
@@ -2949,7 +2998,8 @@
     "initializes a perp market"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializePhoenixFulfillmentConfig",
@@ -3033,7 +3083,8 @@
     "initializes the phoenix fulfillment config account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializePredictionMarket",
@@ -3065,7 +3116,8 @@
     "initializes a prediction market"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializePrelaunchOracle",
@@ -3114,7 +3166,8 @@
     "initializes the prelaunch oracle account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeProtectedMakerModeConfig",
@@ -3163,7 +3216,8 @@
     "initializes the protected maker mode config account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializePythLazerOracle",
@@ -3212,7 +3266,8 @@
     "initializes the pyth lazer oracle account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializePythPullOracle",
@@ -3261,7 +3316,8 @@
     "initializes the pyth pull oracle account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeReferrerName",
@@ -3324,7 +3380,8 @@
     "initializes a referrer name account"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeRevenueShare",
@@ -3373,7 +3430,8 @@
     "initializes the revenue share account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeRevenueShareEscrow",
@@ -3436,7 +3494,8 @@
     "initializes the revenue share escrow account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeSerumFulfillmentConfig",
@@ -3527,7 +3586,8 @@
     "initializes the serum fulfillment config account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeSignedMsgUserOrders",
@@ -3576,7 +3636,8 @@
     "initializes the signed msg user orders account for the protocol"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeSignedMsgWsDelegates",
@@ -3618,7 +3679,8 @@
     "initializes signed-msg ws delegates"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeSpotMarket",
@@ -3716,7 +3778,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "initializeUser",
@@ -3783,7 +3846,8 @@
     "initializes the user account and user_stats PDA for the authority"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "initializeUserStats",
@@ -3842,7 +3906,8 @@
     "initializes the user_stats PDA for the authority"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "liquidateBorrowForPerpPnl",
@@ -3895,7 +3960,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "liquidatePerp",
@@ -3950,7 +4016,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "liquidation must target a delinquent user's perp position"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "liquidatePerpPnlForDeposit",
@@ -4003,7 +4070,8 @@
     "liquidates a user's perp pnl for spot deposit"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "liquidatePerpWithFill",
@@ -4056,7 +4124,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "liquidateSpot",
@@ -4111,7 +4180,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "liquidation must target a delinquent user's spot position"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "liquidateSpotWithSwapBegin",
@@ -4220,7 +4290,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "liquidateSpotWithSwapEnd",
@@ -4329,7 +4400,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "logUserBalances",
@@ -4361,7 +4433,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   },
   {
    "name": "lpPoolAddLiquidity",
@@ -4463,7 +4536,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "lpPoolRemoveLiquidity",
@@ -4586,7 +4660,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "lpPoolSwap",
@@ -4702,7 +4777,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "modifyOrder",
@@ -4734,7 +4810,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "modifyOrderByUserId",
@@ -4766,7 +4843,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "moveAmmPrice",
@@ -4798,7 +4876,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "openbookV2FulfillmentConfigStatus",
@@ -4830,7 +4909,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "overrideAmmCacheInfo",
@@ -4862,7 +4942,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "pauseSpotMarketDepositWithdraw",
@@ -4901,7 +4982,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "phoenixFulfillmentConfigStatus",
@@ -4933,7 +5015,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "placeAndMakePerpOrder",
@@ -4986,7 +5069,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeAndMakeSignedMsgPerpOrder",
@@ -5046,7 +5130,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeAndMakeSpotOrder",
@@ -5099,7 +5184,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeAndTakePerpOrder",
@@ -5138,7 +5224,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeAndTakeSpotOrder",
@@ -5177,7 +5264,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeOrders",
@@ -5209,7 +5297,8 @@
     "places multiple perp/spot orders in the orderbook"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placePerpOrder",
@@ -5241,7 +5330,8 @@
     "places a perp order in the orderbook"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeScaleOrders",
@@ -5273,7 +5363,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeSignedMsgTakerOrder",
@@ -5326,7 +5417,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "placeSpotOrder",
@@ -5358,7 +5450,8 @@
     "places a spot order in the orderbook"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "postMultiPythPullOracleUpdatesAtomic",
@@ -5390,7 +5483,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "postPythLazerOracleUpdate",
@@ -5422,7 +5516,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "postPythPullOracleUpdateAtomic",
@@ -5461,7 +5556,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "recenterPerpMarketAmm",
@@ -5493,7 +5589,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "recenterPerpMarketAmmCrank",
@@ -5539,7 +5636,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "reclaimRent",
@@ -5585,7 +5683,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "removeAmmConstituentMappingData",
@@ -5634,7 +5733,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "removeInsuranceFundStake",
@@ -5715,7 +5815,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "repegAmmCurve",
@@ -5754,7 +5855,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "requestRemoveInsuranceFundStake",
@@ -5800,7 +5902,8 @@
     "requests insurance fund stake removal"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "resetFuelSeason",
@@ -5839,7 +5942,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "resetPerpMarketAmmOracleTwap",
@@ -5878,7 +5982,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "resizeRevenueShareEscrowOrders",
@@ -5920,7 +6025,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "resizeSignedMsgUserOrders",
@@ -5969,7 +6075,8 @@
     "resizes the signed-msg orders account"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "resolvePerpBankruptcy",
@@ -6057,7 +6164,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "resolvePerpPnlDeficit",
@@ -6117,7 +6225,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "resolveSpotBankruptcy",
@@ -6205,7 +6314,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "revertFill",
@@ -6244,7 +6354,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "settleExpiredMarket",
@@ -6276,7 +6387,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "settleExpiredMarketPoolsToRevenuePool",
@@ -6315,7 +6427,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "settleFundingPayment",
@@ -6340,7 +6453,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "settleMultiplePnls",
@@ -6379,7 +6493,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "settlePerpToLpPool",
@@ -6467,7 +6582,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "settlePnl",
@@ -6506,7 +6622,8 @@
     "settles the user's unrealized perp pnl into their spot balance"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "settleRevenueToInsuranceFund",
@@ -6566,7 +6683,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "setUserStatusToBeingLiquidated",
@@ -6598,7 +6716,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "sweepFuel",
@@ -6637,7 +6756,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "transferDeposit",
@@ -6695,7 +6815,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "transfer must be between the signer's own sub-accounts"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "transferIsolatedPerpPositionDeposit",
@@ -6741,7 +6862,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "transferPerpPosition",
@@ -6787,7 +6909,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "transferPools",
@@ -6868,7 +6991,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "transferProtocolIfSharesToRevenuePool",
@@ -6935,7 +7059,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "triggerOrder",
@@ -6974,7 +7099,8 @@
     "triggers a user's trigger order"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "updateAdmin",
@@ -6999,7 +7125,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateAmmCache",
@@ -7038,7 +7165,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateAmmConstituentMappingData",
@@ -7087,7 +7215,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateAmmJitIntensity",
@@ -7119,7 +7248,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateAmms",
@@ -7144,7 +7274,8 @@
     "updates AMM curves for multiple markets"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateConstituentCorrelationData",
@@ -7183,7 +7314,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateConstituentOracleInfo",
@@ -7229,7 +7361,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateConstituentParams",
@@ -7275,7 +7408,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateConstituentPausedOperations",
@@ -7307,7 +7441,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateConstituentStatus",
@@ -7339,7 +7474,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateDelegateUserGovTokenInsuranceStake",
@@ -7392,7 +7528,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateDiscountMint",
@@ -7417,7 +7554,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateExchangeStatus",
@@ -7442,7 +7580,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateFeatureBitFlagsBuilderCodes",
@@ -7467,7 +7606,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateFeatureBitFlagsMedianTriggerPrice",
@@ -7492,7 +7632,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateFeatureBitFlagsMintRedeemLpPool",
@@ -7517,7 +7658,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateFeatureBitFlagsMmOracle",
@@ -7542,7 +7684,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateFeatureBitFlagsSettleLpPool",
@@ -7567,7 +7710,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateFeatureBitFlagsSwapLpPool",
@@ -7592,7 +7736,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateFundingRate",
@@ -7624,7 +7769,8 @@
     "updates the funding rate"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateHighLeverageModeConfig",
@@ -7656,7 +7802,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateIfRebalanceConfig",
@@ -7688,7 +7835,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateInitialAmmCacheInfo",
@@ -7720,7 +7868,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateInitialPctToLiquidate",
@@ -7745,7 +7894,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateInsuranceFundUnstakingPeriod",
@@ -7777,7 +7927,8 @@
     "updates the insurance fund unstaking period"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateK",
@@ -7816,7 +7967,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateLiquidationDuration",
@@ -7841,7 +7993,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateLiquidationMarginBufferRatio",
@@ -7866,7 +8019,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateLpConstituentTargetBase",
@@ -7919,7 +8073,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateLpPoolAum",
@@ -7965,7 +8120,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateLpPoolParams",
@@ -7997,7 +8153,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateOracleGuardRails",
@@ -8022,7 +8179,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpAuctionDuration",
@@ -8047,7 +8205,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpBidAskTwap",
@@ -8093,7 +8252,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpFeeStructure",
@@ -8118,7 +8278,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketAmmOracleTwap",
@@ -8157,7 +8318,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketAmmSpreadAdjustment",
@@ -8189,7 +8351,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketAmmSummaryStats",
@@ -8235,7 +8398,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketBaseSpread",
@@ -8267,7 +8431,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketConcentrationCoef",
@@ -8299,7 +8464,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketConfig",
@@ -8331,7 +8497,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketContractTier",
@@ -8363,7 +8530,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketCurveUpdateIntensity",
@@ -8395,7 +8563,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketExpiry",
@@ -8427,7 +8596,8 @@
     "updates a perp market's expiry"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketFeeAdjustment",
@@ -8459,7 +8629,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketFundingPeriod",
@@ -8491,7 +8662,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketHighLeverageMarginRatio",
@@ -8523,7 +8695,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketImfFactor",
@@ -8555,7 +8728,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketLiquidationFee",
@@ -8587,7 +8761,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketLpPoolFeeTransferScalar",
@@ -8619,7 +8794,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketLpPoolId",
@@ -8651,7 +8827,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketLpPoolPausedOperations",
@@ -8683,7 +8860,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketLpPoolStatus",
@@ -8722,7 +8900,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketMarginRatio",
@@ -8754,7 +8933,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketMaxFillReserveFraction",
@@ -8786,7 +8966,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketMaxImbalances",
@@ -8818,7 +8999,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketMaxOpenInterest",
@@ -8850,7 +9032,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketMaxSlippageRatio",
@@ -8882,7 +9065,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketMaxSpread",
@@ -8914,7 +9098,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketMinOrderSize",
@@ -8946,7 +9131,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketName",
@@ -8978,7 +9164,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketNumberOfUsers",
@@ -9010,7 +9197,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketOracle",
@@ -9063,7 +9251,8 @@
     "updates a perp market's oracle"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketOracleLowRiskSlotDelayOverride",
@@ -9095,7 +9284,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketOracleSlotDelayOverride",
@@ -9127,7 +9317,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketPausedOperations",
@@ -9159,7 +9350,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketPnlPool",
@@ -9205,7 +9397,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketProtectedMakerParams",
@@ -9237,7 +9430,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketReferencePriceOffsetDeadbandPct",
@@ -9269,7 +9463,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketStatus",
@@ -9301,7 +9496,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketStepSizeAndTickSize",
@@ -9333,7 +9529,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePerpMarketUnrealizedAssetWeight",
@@ -9365,7 +9562,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePrelaunchOracle",
@@ -9397,7 +9595,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePrelaunchOracleParams",
@@ -9436,7 +9635,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateProtectedMakerModeConfig",
@@ -9468,7 +9668,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updatePythPullOracle",
@@ -9507,7 +9708,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSerumFulfillmentConfigStatus",
@@ -9539,7 +9741,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotAuctionDuration",
@@ -9564,7 +9767,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotFeeStructure",
@@ -9589,7 +9793,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketAssetTier",
@@ -9621,7 +9826,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketBorrowRate",
@@ -9653,7 +9859,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketCumulativeInterest",
@@ -9692,7 +9899,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketExpiry",
@@ -9724,7 +9932,8 @@
     "updates a spot market's expiry"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketFeeAdjustment",
@@ -9756,7 +9965,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketIfFactor",
@@ -9788,7 +9998,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketIfPausedOperations",
@@ -9820,7 +10031,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketLiquidationFee",
@@ -9852,7 +10064,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketMarginWeights",
@@ -9884,7 +10097,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketMaxTokenBorrows",
@@ -9916,7 +10130,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketMaxTokenDeposits",
@@ -9948,7 +10163,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketMinOrderSize",
@@ -9980,7 +10196,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketName",
@@ -10012,7 +10229,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketOracle",
@@ -10058,7 +10276,8 @@
     "updates a spot market's oracle"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketOrdersEnabled",
@@ -10090,7 +10309,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketPausedOperations",
@@ -10122,7 +10342,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketPoolId",
@@ -10154,7 +10375,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketRevenueSettlePeriod",
@@ -10186,7 +10408,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketScaleInitialAssetWeightStart",
@@ -10218,7 +10441,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketStatus",
@@ -10250,7 +10474,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateSpotMarketStepSizeAndTickSize",
@@ -10282,7 +10507,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateStateMaxInitializeUserFee",
@@ -10307,7 +10533,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateStateMaxNumberOfSubAccounts",
@@ -10332,7 +10559,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateStateSettlementDuration",
@@ -10357,7 +10585,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserCustomMarginRatio",
@@ -10382,7 +10611,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserDelegate",
@@ -10407,7 +10637,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserGovTokenInsuranceStake",
@@ -10460,7 +10691,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserIdle",
@@ -10499,7 +10731,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserMarginTradingEnabled",
@@ -10524,7 +10757,8 @@
     "toggles the user's margin trading flag"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserName",
@@ -10549,7 +10783,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserPerpPositionCustomMarginRatio",
@@ -10574,7 +10809,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserPoolId",
@@ -10599,7 +10835,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserProtectedMakerOrders",
@@ -10638,7 +10875,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserQuoteAssetInsuranceStake",
@@ -10691,7 +10929,8 @@
     "updates the user's quote asset insurance stake"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserReduceOnly",
@@ -10716,7 +10955,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateUserStatsReferrerStatus",
@@ -10748,7 +10988,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "updateWithdrawGuardThreshold",
@@ -10780,7 +11021,8 @@
     "updates a protocol parameter"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "viewLpPoolAddLiquidityFees",
@@ -10840,7 +11082,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   },
   {
    "name": "viewLpPoolRemoveLiquidityFees",
@@ -10900,7 +11143,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "inert"
   },
   {
    "name": "viewLpPoolSwapFees",
@@ -10995,7 +11239,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "withdraw",
@@ -11077,7 +11322,8 @@
    ],
    "risk_rules": [
     "withdraw must match the declared transfer intent and the authority must sign"
-   ]
+   ],
+   "risk_class": "withdraw"
   },
   {
    "name": "withdrawFromIsolatedPerpPosition",
@@ -11151,7 +11397,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "withdrawFromProgramVault",
@@ -11239,7 +11486,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "zeroMmOracleFields",
@@ -11271,7 +11519,8 @@
     "protocol state transition"
    ],
    "allowed_cpis": [],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "OfficialManifest"

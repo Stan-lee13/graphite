@@ -50,14 +50,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, buyer, sol_destination",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "admin_close_fee_collector",
@@ -98,14 +98,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, fee_collector, sol_destination",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "admin_close_global",
@@ -137,14 +137,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, global, sol_destination",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "admin_close_round",
@@ -183,14 +183,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, round, sol_destination",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "buy",
@@ -332,14 +332,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, fee_collector, recipient",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "claim_treasury",
@@ -394,14 +394,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, global, recipient",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "claim_yield",
@@ -519,7 +519,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, global, fee_collector, round",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -527,7 +527,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "inject_jackpot",

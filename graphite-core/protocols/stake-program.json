@@ -1069,7 +1069,8 @@
    "allowed_cpis": [],
    "risk_rules": [
     "permissionless: accounts.reference_vote must have voted recently and accounts.delinquent_vote must not"
-   ]
+   ],
+   "risk_class": "stake"
   },
   {
    "name": "MoveStake",

@@ -380,7 +380,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "ThawAccount",
@@ -761,6 +761,43 @@
    "allowed_cpis": [],
    "risk_rules": [],
    "risk_class": "inert"
+  },
+  {
+   "name": "WithdrawExcessLamports",
+   "discriminator": "26",
+   "accounts": [
+    {
+     "name": "source",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "authority",
+     "role": "signer",
+     "is_writable": false,
+     "is_signer": true,
+     "pda_seeds": []
+    }
+   ],
+   "expected_state_changes": [
+    "debits accounts.source by its lamports above the rent-exempt minimum",
+    "credits accounts.destination with those lamports"
+   ],
+   "allowed_cpis": [],
+   "risk_rules": [
+    "authority must be signer (the account owner, or the mint authority for a mint)",
+    "RISK: the destination receives every lamport above rent exemption — verify it"
+   ],
+   "risk_class": "withdraw"
   }
  ],
  "trust_tier": "BattleTested"

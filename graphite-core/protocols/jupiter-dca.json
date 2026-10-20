@@ -377,7 +377,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": ""
+   "risk_class": "close"
   },
   {
    "name": "withdraw",
@@ -491,7 +491,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": ""
+   "risk_class": "withdraw"
   },
   {
    "name": "deposit",
@@ -650,7 +650,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "initiateFlashFill",
@@ -750,7 +750,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "fulfillFlashFill",
@@ -885,7 +885,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "transfer",
@@ -1000,7 +1000,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "endAndClose",
@@ -1135,7 +1135,7 @@
     "instruction surface from official DCA IDL (jupiter-python-sdk embedded IDL, program DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M)",
     "RISK: verify user signer matches the DCA account's recorded user"
    ],
-   "risk_class": ""
+   "risk_class": "close"
   }
  ],
  "trust_tier": "BattleTested",

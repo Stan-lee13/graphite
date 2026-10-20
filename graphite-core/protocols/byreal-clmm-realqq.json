@@ -522,7 +522,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, amm_config",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -530,7 +530,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "create_operation_account",
@@ -1521,7 +1521,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, admin_group",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -1529,7 +1529,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "initialize_reward",
@@ -2174,14 +2174,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "set_pool_trade_fee_rate",
@@ -2213,14 +2213,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "set_reward_params",
@@ -2318,14 +2318,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "swap",
@@ -2657,14 +2657,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pool_state",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "update_amm_admin_group",

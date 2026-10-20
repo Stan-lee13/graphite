@@ -584,14 +584,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: validator_list, reserve_stake",
-    "updates protocol accounting state"
+    "transfers funds between the protocol and the involved accounts"
    ],
    "allowed_cpis": [
     "Stake11111111111111111111111111111111111111",
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "UpdateStakePoolBalance",
@@ -653,14 +653,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: stake_pool, validator_list, fee_account, pool_mint",
-    "updates protocol accounting state"
+    "transfers funds between the protocol and the involved accounts"
    ],
    "allowed_cpis": [
     "Stake11111111111111111111111111111111111111",
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "CleanupRemovedValidatorEntries",

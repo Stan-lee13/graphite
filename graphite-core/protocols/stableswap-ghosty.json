@@ -88,7 +88,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, pair_state",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -96,7 +96,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "add_to_whitelist",
@@ -145,7 +145,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, whitelist_entry",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -153,7 +153,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "add_token",
@@ -219,7 +219,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, token_state, token_vault",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -227,7 +227,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "change_admin",
@@ -417,7 +417,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, exchange_state",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -425,7 +425,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "remove_from_whitelist",
@@ -474,14 +474,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, whitelist_entry",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "remove_pair",
@@ -531,14 +531,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, pair_state",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "remove_token",
@@ -597,14 +597,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, token_state, vault",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "swap",
@@ -804,14 +804,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, exchange_state, token_vault, recipient_token_account",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "unfreeze",
@@ -836,14 +836,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, exchange_state",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "update_pair",
@@ -922,14 +922,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: admin, exchange_state",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "withdraw",

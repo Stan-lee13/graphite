@@ -41,7 +41,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: programConfig, initializer",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -49,7 +49,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "setProgramConfigAuthority",
@@ -228,7 +228,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: settings, rentPayer",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -236,7 +236,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "removeSignerAsAuthority",
@@ -282,14 +282,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: settings, rentPayer",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "setTimeLockAsAuthority",
@@ -540,7 +540,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: spendingLimit, rentPayer",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -548,7 +548,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "removeSpendingLimitAsAuthority",
@@ -592,14 +592,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: spendingLimit, rentCollector",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "createSettingsTransaction",
@@ -1813,7 +1813,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   }
  ],
  "trust_tier": "BattleTested"

@@ -54,13 +54,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, permission",
-    "closes the position or account and transfers remaining funds back to the user"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": "close"
+   "risk_class": "authority"
   },
   {
    "name": "collect_creator_fee",
@@ -449,13 +449,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, amm_config",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "create_permission_pda",
@@ -498,13 +498,13 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: owner, permission",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "deposit",

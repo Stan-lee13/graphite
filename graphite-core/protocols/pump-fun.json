@@ -292,7 +292,8 @@
     "associated_user must be owned by accounts.user",
     "bonding_curve must be the curve PDA for the mint",
     "RISK: if output token amount underflows expected, flag HiddenTransfer"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "buy_v2",
@@ -520,7 +521,8 @@
    "risk_rules": [
     "swap-shaped: SOL in, tokens out — validate amount vs curve reserves",
     "associated_user must be owned by accounts.user"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "buy_exact_sol_in",
@@ -664,7 +666,8 @@
    "risk_rules": [
     "swap-shaped: exact SOL in, tokens out — validate curve math",
     "associated_user must be owned by accounts.user"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "sell",
@@ -796,7 +799,7 @@
     "associated_user must be owned by accounts.user",
     "RISK: if sell output is drained to an attacker address instead of accounts.user, flag CompositionalDrain"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "sell_v2",
@@ -1017,7 +1020,8 @@
    "risk_rules": [
     "swap-shaped: tokens in, SOL out — validate curve math",
     "associated_user must be owned by accounts.user"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "migrate",
@@ -3708,14 +3712,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: quote_control",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "set_reserved_fee_recipients",
@@ -3801,14 +3805,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global, authority",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "sync_user_volume_accumulator",
@@ -3863,7 +3867,7 @@
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "toggle_cashback_enabled",
@@ -4048,14 +4052,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: global, authority",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "update_creator_fee_config",

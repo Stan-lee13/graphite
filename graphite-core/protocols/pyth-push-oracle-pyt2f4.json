@@ -69,11 +69,11 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: payer, treasury, priceFeedAccount",
-    "updates protocol accounting state"
+    "transfers funds between the protocol and the involved accounts"
    ],
    "allowed_cpis": [],
    "risk_rules": [],
-   "risk_class": ""
+   "risk_class": "transfer"
   }
  ],
  "trust_tier": "BattleTested"

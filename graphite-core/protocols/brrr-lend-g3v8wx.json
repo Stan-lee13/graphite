@@ -122,14 +122,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market, liquidity_vault, treasury_usdc",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "apply_oracle_source",
@@ -176,14 +176,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market, oracle_state",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "apply_risk",
@@ -206,14 +206,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "borrow",
@@ -348,14 +348,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market, position, liquidity_vault, borrower_usdc, oracle_state",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "cancel_insurance_withdraw",
@@ -378,14 +378,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "cancel_oracle_source",
@@ -432,14 +432,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market, oracle_state",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "cancel_risk",
@@ -462,14 +462,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "checkpoint_oracle",
@@ -1065,14 +1065,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: market",
-    "withdraws funds and transfers them out of the protocol to the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "withdraw"
+   "risk_class": "authority"
   },
   {
    "name": "propose_oracle_source",

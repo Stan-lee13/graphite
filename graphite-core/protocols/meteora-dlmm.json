@@ -149,7 +149,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: verify lb_pair is legitimate and not a honeypot"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": "transfer"
   },
   {
    "name": "addLiquidity",
@@ -289,7 +290,8 @@
    "risk_rules": [
     "sender must be signer and own the position",
     "RISK: verify lb_pair and bin arrays are legitimate"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "initialize_pool",
@@ -346,7 +348,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "add_pool_fee",
@@ -374,7 +377,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "remove_pool_fee",
@@ -402,7 +406,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "authority"
   },
   {
    "name": "swap_exact_out",
@@ -533,7 +538,8 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": "transfer"
   },
   {
    "name": "remove_liquidity",
@@ -804,7 +810,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "add_liquidity_by_strategy_one_side",
@@ -907,7 +914,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "remove_liquidity_by_strategy",
@@ -935,7 +943,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "remove_liquidity_by_range",
@@ -1070,7 +1079,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "withdraw"
   },
   {
    "name": "claim_fee",
@@ -1261,7 +1271,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "create"
   },
   {
    "name": "add_liquidity_single_side",
@@ -1289,7 +1300,8 @@
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": []
+   "risk_rules": [],
+   "risk_class": "transfer"
   },
   {
    "name": "swap_2",
@@ -1431,7 +1443,8 @@
     "RISK: verify output amount matches expected within slippage tolerance",
     "RISK: verify lb_pair is legitimate and not a honeypot"
    ],
-   "variable_accounts": true
+   "variable_accounts": true,
+   "risk_class": "transfer"
   },
   {
    "name": "add_liquidity2",
@@ -4355,7 +4368,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: lb_pair, bin_array_bitmap_extension, reserve_x, reserve_y, oracle, payer",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -4363,7 +4376,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "initialize_position",
@@ -5718,14 +5731,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: lb_pair",
-    "credits the output token account with the received amount for the swap"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "swap2",

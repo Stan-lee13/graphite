@@ -47,7 +47,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "aggregator_init",
@@ -118,7 +118,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "aggregator_open_round",
@@ -251,7 +251,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "aggregator_save_result",
@@ -363,7 +363,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify oracleAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "aggregator_save_result_v2",
@@ -475,7 +475,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify oracleAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "aggregator_set_authority",
@@ -541,7 +541,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "aggregator_set_resolution_mode",
@@ -596,7 +596,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority, payer signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "aggregator_set_history_buffer",
@@ -632,7 +632,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "aggregator_set_queue",
@@ -668,7 +668,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "buffer_relayer_init",
@@ -934,7 +934,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify oracleAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "crank_init",
@@ -1072,7 +1072,7 @@
    "risk_rules": [
     "instruction surface from official IDL; account roles per IDL isMut/isSigner"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "crank_pop_v2",
@@ -1155,7 +1155,7 @@
    "risk_rules": [
     "instruction surface from official IDL; account roles per IDL isMut/isSigner"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "crank_push",
@@ -1232,7 +1232,7 @@
    "risk_rules": [
     "instruction surface from official IDL; account roles per IDL isMut/isSigner"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "job_init",
@@ -1316,7 +1316,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "lease_extend",
@@ -1400,7 +1400,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify owner signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "lease_init",
@@ -1688,7 +1688,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify oracleAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "oracle_init",
@@ -1848,7 +1848,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "oracle_withdraw",
@@ -2035,7 +2035,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "program_config",
@@ -2071,7 +2071,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "program_init",
@@ -2656,7 +2656,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify oracleAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "vrf_lite_request_randomness",
@@ -2747,7 +2747,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "vrf_pool_init",
@@ -2888,7 +2888,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "vrf_pool_add",
@@ -2937,7 +2937,7 @@
    "risk_rules": [
     "instruction surface from official IDL; account roles per IDL isMut/isSigner"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "vrf_pool_request",
@@ -3028,7 +3028,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "vrf_prove_and_verify",
@@ -3112,7 +3112,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify oracleAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "vrf_request_randomness",
@@ -3217,7 +3217,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority, payerAuthority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "vrf_set_callback",
@@ -3246,7 +3246,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify authority signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "OfficialManifest",

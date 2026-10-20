@@ -100,7 +100,7 @@
    "risk_rules": [
     "instruction tags from official Solend SDK unpack()"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   },
   {
    "name": "InitReserve",
@@ -294,7 +294,7 @@
    "risk_rules": [
     "instruction tags from official Solend SDK unpack()"
    ],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "DepositReserveLiquidity",
@@ -574,7 +574,7 @@
    "risk_rules": [
     "instruction tags from official Solend SDK unpack()"
    ],
-   "risk_class": ""
+   "risk_class": "inert"
   },
   {
    "name": "DepositObligationCollateral",

@@ -404,14 +404,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: pair, user_position, rate_model, reserve_vault, user_reserve_token_account",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "claim_protocol_fees",
@@ -810,7 +810,7 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: deployer, futarchy_authority",
-    "creates the protocol account and transfers any initial funds"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "11111111111111111111111111111111",
@@ -818,7 +818,7 @@
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "create"
+   "risk_class": "authority"
   },
   {
    "name": "initialize",

@@ -154,31 +154,45 @@
    "discriminator": "02",
    "accounts": [
     {
-     "name": "source",
+     "name": "nested_associated_token_account",
      "role": "writable",
      "is_writable": true,
      "is_signer": false,
      "pda_seeds": []
     },
     {
-     "name": "nested",
-     "role": "writable",
-     "is_writable": true,
-     "is_signer": false,
-     "pda_seeds": []
-    },
-    {
-     "name": "owner",
+     "name": "nested_token_mint",
      "role": "readonly",
      "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "destination_associated_token_account",
+     "role": "writable",
+     "is_writable": true,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner_associated_token_account",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "owner_token_mint",
+     "role": "readonly",
+     "is_writable": false,
+     "is_signer": false,
+     "pda_seeds": []
+    },
+    {
+     "name": "wallet",
+     "role": "signer",
+     "is_writable": true,
      "is_signer": true,
-     "pda_seeds": []
-    },
-    {
-     "name": "token_mint",
-     "role": "readonly",
-     "is_writable": false,
-     "is_signer": false,
      "pda_seeds": []
     },
     {
@@ -194,13 +208,16 @@
     }
    ],
    "expected_state_changes": [
-    "recovers funds from a nested associated token account into the parent wallet's ATA"
+    "transfers the nested account's tokens to accounts.destination_associated_token_account and closes accounts.nested_associated_token_account, refunding its rent to accounts.wallet"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
-   "risk_rules": [],
+   "risk_rules": [
+    "wallet must be signer",
+    "nested_associated_token_account must be the ATA of owner_associated_token_account for nested_token_mint"
+   ],
    "risk_class": "close"
   }
  ],

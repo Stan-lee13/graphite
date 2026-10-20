@@ -133,6 +133,10 @@ def main():
             "expected_state_changes": expected,
             "allowed_cpis": allowed,
             "risk_rules": rules,
+            # Round 29 (audit 2026-10-20, LOW-1): carried over like every
+            # other curated field; this builder never wrote one, which is how
+            # 57 Orca instructions shipped unclassed.
+            "risk_class": (old_ix or {}).get("risk_class", ""),
         }
         if var_accts:
             entry["variable_accounts"] = True

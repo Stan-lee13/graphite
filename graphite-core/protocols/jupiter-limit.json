@@ -229,7 +229,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify taker signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "pre_flash_fill_order",
@@ -513,7 +513,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify maker signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "cancel_expired_order",
@@ -586,7 +586,7 @@
    "risk_rules": [
     "instruction surface from official IDL; account roles per IDL isMut/isSigner"
    ],
-   "risk_class": ""
+   "risk_class": "transfer"
   },
   {
    "name": "withdraw_fee",
@@ -720,7 +720,7 @@
     "instruction surface from official IDL; account roles per IDL isMut/isSigner",
     "RISK: verify keeper signers match the expected authority"
    ],
-   "risk_class": ""
+   "risk_class": "authority"
   }
  ],
  "trust_tier": "BattleTested",

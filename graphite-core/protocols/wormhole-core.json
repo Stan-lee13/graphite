@@ -41,7 +41,8 @@
    "risk_rules": [
     "one-time bootstrap: config must be uninitialized",
     "guardian set is fixed at deploy — changes are guarded by multi-sig"
-   ]
+   ],
+   "risk_class": "authority"
   },
   {
    "name": "PostMessage",
@@ -73,7 +74,8 @@
     "emitter must be signer — only registered emitters may post",
     "RISK: bridge messages move wrapped assets cross-chain — verify no unexpected token CPI",
     "RISK: if message payload claims a transfer to an attacker address, flag HiddenTransfer"
-   ]
+   ],
+   "risk_class": "transfer"
   },
   {
    "name": "PostVAA",
@@ -105,7 +107,8 @@
     "RISK: VAA is attacker-supplied data — verify signature set is the CURRENT guardian set",
     "RISK: if VAA unlocks assets to an attacker account, flag CompositionalDrain",
     "FAIL-CLOSED: bridge token movement with unverifiable VAA provenance must be blocked"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "VerifySignatures",
@@ -135,7 +138,8 @@
     "signature threshold must meet the current guardian-set quorum",
     "RISK: partial signature verification is not final — flag if used as final",
     "discriminator corrected in Round 18 from 03 to 07 against the program's own solitaire! dispatch order (0 Initialize, 1 PostMessage, 2 PostVAA, 3 SetFees, 4 TransferFees, 5 UpgradeContract, 6 UpgradeGuardianSet, 7 VerifySignatures, 8 PostMessageUnreliable, 9 ClosePostedMessage, 10 CloseSignatureSetAndPostedVAA); the mainnet decode census had observed 29 instructions carrying tag 08 that no manifest entry could name"
-   ]
+   ],
+   "risk_class": "create"
   },
   {
    "name": "PostMessageUnreliable",
@@ -166,7 +170,8 @@
     "emitter must be signer",
     "same payload-integrity checks as PostMessage",
     "discriminator corrected in Round 18 from 09 to 08 against the program's own solitaire! dispatch order (0 Initialize, 1 PostMessage, 2 PostVAA, 3 SetFees, 4 TransferFees, 5 UpgradeContract, 6 UpgradeGuardianSet, 7 VerifySignatures, 8 PostMessageUnreliable, 9 ClosePostedMessage, 10 CloseSignatureSetAndPostedVAA); the mainnet decode census had observed 29 instructions carrying tag 08 that no manifest entry could name"
-   ]
+   ],
+   "risk_class": "transfer"
   }
  ],
  "trust_tier": "BattleTested",
