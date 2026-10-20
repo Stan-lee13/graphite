@@ -1652,8 +1652,9 @@ impl AuditLog {
     /// same stamp twice reproduces the collision deterministically on every
     /// platform.
     ///
-    /// The stamp is not `now` itself but `max(now, newest archive's stamp
-    /// + 1, this process's last stamp + 1)` (Round 29, audit 2026-10-20):
+    /// The stamp is not `now` itself but the largest of `now`, the newest
+    /// archive's stamp plus one and this process's last stamp plus one
+    /// (Round 29, audit 2026-10-20):
     /// archives are ordered by stamp first, and a wall clock stepped back
     /// would otherwise name the next archive older than the newest one, so
     /// pruning deleted the newest and newest-first lookups read the trail
