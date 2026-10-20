@@ -1,8 +1,13 @@
 name: CI
 
 on:
+  # Round 29 (audit 2026-10-20, C5): every push to any branch AND every pull
+  # request ran the whole workflow, so a branch with an open PR ran it twice
+  # per push. Pushes run for main and for release tags; every other branch is
+  # tested through its pull request (which tests the merge result).
   push:
-    branches: ["**"]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
   # Manual runs gate exactly what a push gates. There is deliberately no
   # input: the no-default-features legs are part of the contract, not a
@@ -43,9 +48,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The whole history with its tags: the P13 contract gate
-          # (tests/contract_version_gate.rs, Round 28) diffs the published
-          # schemas against the last release tag.
+          # The whole history with its tags. The P13 contract gate
+          # (tests/contract_version_gate.rs) compares the published schemas
+          # with a committed snapshot of the last release, so it runs in any
+          # checkout (Round 29, C3); with the tags it also proves the
+          # snapshot is byte-identical to the release and that no newer
+          # release has left it behind.
           fetch-depth: 0
       # Pinned to a commit of the `stable` branch (2026-09-12). The action
       # used to read the toolchain from the ref name, so with a SHA it is
@@ -91,8 +99,8 @@ jobs:
         # tests run against the dependency versions the image ships.
         run: cargo test --locked --release
         env:
-          # Without the tags the contract gate cannot run; here that fails
-          # instead of being skipped.
+          # The snapshot's provenance check needs the tags; here a missing
+          # tag fails instead of being skipped.
           GRAPHITE_CONTRACT_GATE_REQUIRED: "1"
       # `corpus_persists_and_reloads_identically` (tests/regression_corpus.rs)
       # writes the regression corpus back into fixtures/corpus, which is
@@ -179,15 +187,17 @@ jobs:
       - name: Audit the runtime oracle's dependencies
         working-directory: tools/runtime-oracle
         run: cargo audit --deny warnings --ignore RUSTSEC-2025-0141
-      # The three npm lockfiles (A6-05): the SAK bridge (the signing path),
-      # the TypeScript SDK and the dashboard. `npm audit` reads the lockfile
-      # and asks the registry; nothing is installed, so no install script
-      # runs here. Its own exit status is not the gate: gate.mjs is. It fails
-      # on any high/critical advisory that is not named in that package's
-      # allowlist, on a listed one that has gone away, and on a report that
-      # is an npm error rather than an audit (fail closed). The SAK tree
-      # carries known advisories with no non-breaking fix, so a bare
-      # `--audit-level=high` would be permanently red; the allowlists in
+      # The six npm lockfiles (A6-05): the agent guard (the signing path),
+      # the AI SDK tools, the MCP server, the SAK adapter, the TypeScript SDK
+      # and the dashboard. `npm audit` reads the lockfile and asks the
+      # registry; nothing is installed, so no install script runs here. Its
+      # own exit status is not the gate: gate.mjs is. It fails on any
+      # moderate, high or critical advisory that is not named in that
+      # package's allowlist (moderate is gated since Round 29; it used to be
+      # high/critical only), on a listed one that has gone away, and on a
+      # report that is an npm error rather than an audit (fail closed). The
+      # SAK tree carries known advisories with no non-breaking fix, so a bare
+      # `--audit-level=moderate` would be permanently red; the allowlists in
       # .github/npm-audit/ say what each one is and where it comes from.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -218,8 +228,8 @@ jobs:
   runtime-oracle:
     name: Parser vs the Solana runtime decoder
     runs-on: ubuntu-24.04
-    # ~1.5 min warm; a cold build of the agave crates plus two 300,000-frame
-    # seeds fits well inside 30.
+    # ~1.5 min warm; a cold build of the agave crates plus two seeds of
+    # ~628,500 frames each fits well inside 30.
     timeout-minutes: 30
     defaults:
       run:
@@ -244,13 +254,15 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       # The runtime is the authority on what a transaction is, not web3.js.
-      # This decodes the recorded corpus, its 2,897 mutations and 300,000
-      # generated frames with the agave crates exactly as a validator's
+      # This decodes the recorded corpus and its mutations, the reserved-key
+      # frames, `--iterations` generated legacy/v0 frames, the v1 systematic
+      # pass and `--iterations` generated v1 frames — ~628,500 frames per
+      # seed at 300,000 — with the agave crates exactly as a validator's
       # packet path does, and fails on any byte string Graphite parses that
       # the runtime refuses, or reads differently (Round 12). Its own
       # workspace and lockfile: the agave tree never reaches the shipped
       # binary or the audited graphite-core lockfile.
-      - name: Run the oracle over the corpus and 300,000 generated frames
+      - name: Run the oracle over the corpus and ~628,500 frames (300,000 legacy/v0 + 300,000 v1 + systematic)
         run: cargo run --release --locked -- --iterations 300000
       # A second seed, so the property is not a fact about one sequence.
       - name: Run the oracle under a second seed
@@ -431,12 +443,84 @@ jobs:
             echo "keyless ($env): refused with exit $code"
           done
           docker rm -f graphite-keyless >/dev/null 2>&1 || true
+      # Round 29 (audit 2026-10-20, C2): the compose file's hardening —
+      # read-only root filesystem, every capability dropped,
+      # no-new-privileges, resource limits, the fixed user, loopback-only
+      # publish, the registry state on the volume — was documented and
+      # never exercised: `docker run` above uses none of it. The documented
+      # deploy path is validated and brought up as written, and the
+      # hardening is read back from the running container.
+      - name: Compose — the documented deploy path, validated and run
+        shell: bash
+        env:
+          GRAPHITE_API_KEY: ci-compose-test-key-0123456789abcdef
+        run: |
+          set -euo pipefail
+          docker rm -f graphite-ci >/dev/null 2>&1 || true   # free port 7331
+          # compose reads .env (env_file); the template is what an operator
+          # copies, so it is what CI runs.
+          cp .env.example .env
+          # A missing key must stop compose before anything starts.
+          if GRAPHITE_API_KEY= docker compose config >/dev/null 2>&1; then
+            echo "::error::docker compose config accepted an empty GRAPHITE_API_KEY"; exit 1
+          fi
+          docker compose config --quiet
+          docker compose config --format json > "$RUNNER_TEMP/compose.json"
+          python3 - "$RUNNER_TEMP/compose.json" <<'PY'
+          import json, sys
+          svc = json.load(open(sys.argv[1]))["services"]["graphite"]
+          checks = {
+              "read_only": svc.get("read_only") is True,
+              "cap_drop ALL": svc.get("cap_drop") == ["ALL"],
+              "no-new-privileges": "no-new-privileges:true" in (svc.get("security_opt") or []),
+              "user 10001:10001": svc.get("user") == "10001:10001",
+              "memory limit": bool(svc["deploy"]["resources"]["limits"].get("memory")),
+              "pids limit": bool(svc["deploy"]["resources"]["limits"].get("pids")),
+              "published on loopback only": all(p.get("host_ip") == "127.0.0.1" for p in svc["ports"]),
+              "registry state on the volume": svc["environment"]["GRAPHITE_REGISTRY_STATE"].startswith("/data/"),
+          }
+          bad = [k for k, ok in checks.items() if not ok]
+          if bad:
+              sys.exit(f"compose hardening missing: {bad}")
+          print("compose hardening present:", ", ".join(checks))
+          PY
+          docker compose up -d --build
+          cid=$(docker compose ps -q graphite)
+          for i in $(seq 1 30); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' "$cid")
+            if [ "$state" = "healthy" ]; then echo "compose service healthy after ${i} checks"; break; fi
+            if [ "$i" = "30" ]; then
+              echo "::error::compose service never became healthy ($state)"; docker compose logs; exit 1
+            fi
+            sleep 3
+          done
+          # The hardening as the engine applied it, not as the file says.
+          test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$cid")" = "true"
+          docker inspect -f '{{json .HostConfig.CapDrop}}' "$cid" | grep -q ALL
+          docker inspect -f '{{json .HostConfig.SecurityOpt}}' "$cid" | grep -q no-new-privileges
+          test "$(docker inspect -f '{{.Config.User}}' "$cid")" = "10001:10001"
+          test "$(docker inspect -f '{{.Config.WorkingDir}}' "$cid")" = "/data"
+          # It serves, behind its key, on loopback.
+          curl -sf http://127.0.0.1:7331/health >/dev/null
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7331/api/graph)
+          test "$code" = "401" || { echo "::error::unauthenticated /api/graph returned $code"; exit 1; }
+          curl -sf -H "Authorization: Bearer ${GRAPHITE_API_KEY}" http://127.0.0.1:7331/api/graph >/dev/null
+          # The root filesystem is read-only and the volume is writable (K1).
+          if docker compose exec -T graphite sh -c 'touch /registry_state.json' 2>/dev/null; then
+            echo "::error::the container's root filesystem is writable"; exit 1
+          fi
+          docker compose exec -T graphite sh -c 'touch /data/.ci-probe && rm /data/.ci-probe'
+          docker compose down -v
       - name: Container logs
         if: always()
-        run: docker logs graphite-ci || true
+        run: |
+          docker logs graphite-ci || true
+          docker compose logs || true
       - name: Cleanup
         if: always()
-        run: docker rm -f graphite-ci graphite-keyless || true
+        run: |
+          docker rm -f graphite-ci graphite-keyless || true
+          docker compose down -v || true
 
   typescript:
     name: TypeScript SDK, agent guard + framework adapters
@@ -584,10 +668,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # 22: the dashboard's unit tests (Round 19 — the plain-HTTP
-          # refusal and the router's malformed-escape handling) run under
-          # Node's built-in type stripping, which Node 20 does not have.
-          # Exact release (A6-08): the current 22.x LTS on 2026-09-30.
+          # 22: the dashboard declares `engines.node >=22`; its unit tests
+          # run under tsx (`tsx --test`, a pinned devDependency) with
+          # node:test. Exact release (A6-08): the current 22.x LTS on
+          # 2026-09-30.
           node-version: "22.23.3"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
@@ -604,9 +688,19 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      # Round 29 (audit 2026-10-20, D6): what the build ships. No source
+      # maps, and a Content-Security-Policy that runs only the console's own
+      # scripts.
+      - name: The build ships a CSP and no source maps
+        run: |
+          if [ -n "$(find dist -name '*.map')" ]; then
+            echo "::error::the production build ships source maps"; find dist -name '*.map'; exit 1
+          fi
+          grep -q 'http-equiv="Content-Security-Policy"' dist/index.html
+          grep -q "script-src &#39;self&#39;;" dist/index.html
 
   python:
-    name: Python AI layer — tests
+    name: Python AI layer + mainnet-sample tools — tests
     runs-on: ubuntu-24.04
     # Seconds; five hash-pinned wheels.
     timeout-minutes: 15
@@ -636,6 +730,11 @@ jobs:
         run: pip install --require-hashes -r requirements-lock.txt
       - name: Tests
         run: pytest -q
+      # Round 29 (audit 2026-10-20, M1-M3): the sample fetcher and the
+      # row-by-row verifier, against a stand-in endpoint (no network).
+      - name: mainnet-sample tool tests
+        working-directory: tools/mainnet-sample
+        run: pytest -q -p no:cacheprovider test_mainnet_sample.py
       # W23 (external review): the other lockfiles were audited and this one
       # was not. Every pin is exact and hashed, so no resolution is needed.
       - name: Advisory audit of the lockfile

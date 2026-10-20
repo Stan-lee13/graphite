@@ -29,6 +29,10 @@ services:
       # Fail closed: refuse to start without an API key.
       GRAPHITE_API_KEY: ${GRAPHITE_API_KEY:?set GRAPHITE_API_KEY in .env}
       GRAPHITE_DATA_DIR: /data
+      # On the volume (Round 29, K1): the root filesystem below is read-only,
+      # and the image's working directory is /data, so a relative path in
+      # .env lands on the volume as well.
+      GRAPHITE_REGISTRY_STATE: ${GRAPHITE_REGISTRY_STATE:-/data/registry_state.json}
       # Structured JSON logs for aggregators (Loki/ELK/Datadog). Set to
       # anything else for human-readable output.
       GRAPHITE_LOG_FORMAT: ${GRAPHITE_LOG_FORMAT:-json}
