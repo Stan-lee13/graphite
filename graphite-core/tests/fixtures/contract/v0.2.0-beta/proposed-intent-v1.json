@@ -1,0 +1,24 @@
+{
+  "$schema": "https://graphite.dev/schemas/proposed-intent-v1.json",
+  "type": "object",
+  "required": ["intent_type", "raw_natural_language", "confidence_of_parse"],
+  "properties": {
+    "intent_type": { "type": "string", "enum": ["swap", "transfer", "stake", "lend", "unknown"] },
+    "raw_natural_language": { "type": "string" },
+    "confidence_of_parse": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "The AI Layer's own confidence in its parse — NOT a verification confidence score."
+    },
+    "extracted_parameters": {
+      "type": "object",
+      "properties": {
+        "input_token": { "type": "string" },
+        "output_token": { "type": "string" },
+        "amount": { "type": "string" },
+        "slippage_bps": { "type": "integer" }
+      }
+    }
+  }
+}
