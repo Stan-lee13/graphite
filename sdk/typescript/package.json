@@ -1,16 +1,23 @@
 {
   "name": "@graphite/sdk",
   "version": "0.1.0",
+  "description": "Thin TypeScript client for a Graphite verification Core: typed, validated verdicts and the AuditBind / transaction-digest checks.",
   "engines": {
     "node": ">=22"
   },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test src/*.test.ts",
+    "prepublishOnly": "npm run check && npm test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",

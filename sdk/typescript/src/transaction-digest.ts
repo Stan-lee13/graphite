@@ -24,7 +24,7 @@
  * boolean, so a forgotten `!` cannot turn it into a pass.
  */
 import * as crypto from "crypto";
-import { AuditBindError } from "./auditbind.js";
+import { AuditBindError, checkedBytes } from "./auditbind.js";
 
 /**
  * The largest serialized transaction the network accepts: PACKET_DATA_SIZE =
@@ -82,7 +82,11 @@ export function readSignatureCount(bytes: Uint8Array): { count: number; offset: 
  * zeroed — the value the Core reports as `scope.transaction_sha256` for the
  * unsigned artifact it was shown.
  */
-export function transactionDigest(bytes: Uint8Array): string {
+export function transactionDigest(input: Uint8Array | readonly number[]): string {
+  // Audit 2026-10-20 (T3): a number[] with an element outside 0..255 was
+  // wrapped modulo 256 by Uint8Array.from below, so the digest was of
+  // different bytes from the ones the caller holds.
+  const bytes = checkedBytes(input, "transaction");
   if (bytes[0] === V1_PREFIX) return v1Digest(bytes);
   if (bytes.length > MAX_TRANSACTION_BYTES) {
     throw new AuditBindError(
@@ -186,7 +190,7 @@ export function verifyTransactionDigest(
       "scope.transaction_sha256 is missing or is not 64 lowercase hex characters. ABORTING.",
     );
   }
-  const computed = transactionDigest(Uint8Array.from(transactionBytes));
+  const computed = transactionDigest(transactionBytes);
   if (computed !== approved) {
     throw new AuditBindError(
       `transaction digest mismatch (computed ${computed}, approved ${approved}). These are not ` +

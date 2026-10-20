@@ -65,6 +65,34 @@ export interface AuditBindTransactionParams {
  */
 export const CONTENT_HASH_DOMAIN = "graphite-content-hash-v2\0";
 
+/**
+ * The bytes a caller handed over, refused unless every element is a byte.
+ *
+ * Audit 2026-10-20 (T3): `Buffer.from(number[])` and `Uint8Array.from`
+ * reduce each element modulo 256 without a word, so `[256]` hashed as `[0]`,
+ * `[-1]` as `[255]` and `[1.5]` as `[1]`. A projection or a transaction the
+ * caller built wrong then "matched" an approval of different bytes — or a
+ * correct one failed for a reason nobody could see. Every element must be an
+ * integer from 0 to 255. A `Uint8Array` (or `Buffer`) cannot hold anything
+ * else and is returned as is.
+ */
+export function checkedBytes(bytes: Uint8Array | readonly number[], what: string): Uint8Array {
+  if (bytes instanceof Uint8Array) return bytes;
+  if (!Array.isArray(bytes)) {
+    throw new AuditBindError(`${what} must be a Uint8Array or an array of bytes. ABORTING.`);
+  }
+  for (let i = 0; i < bytes.length; i++) {
+    const b: unknown = bytes[i];
+    if (typeof b !== "number" || !Number.isInteger(b) || b < 0 || b > 255) {
+      throw new AuditBindError(
+        `${what}[${i}] is ${String(b)}, not a byte (an integer from 0 to 255); converting it ` +
+          "would silently hash a different byte. ABORTING.",
+      );
+    }
+  }
+  return Uint8Array.from(bytes);
+}
+
 export function computeContentHash(params: AuditBindTransactionParams): string {
   const hasher = crypto.createHash("sha256");
   const u32 = (n: number): Buffer => {
@@ -83,7 +111,7 @@ export function computeContentHash(params: AuditBindTransactionParams): string {
   for (const addr of params.accountAddresses) {
     field(Buffer.from(addr, "utf8"));
   }
-  field(Buffer.from(params.instructionData ?? []));
+  field(Buffer.from(checkedBytes(params.instructionData ?? [], "instructionData")));
   const cpis = params.cpiTargets ?? [];
   hasher.update(u32(cpis.length));
   for (const target of cpis) {
@@ -173,7 +201,7 @@ export function projectionFromInstruction(input: {
   /** Hex discriminator exactly as sent to Graphite. Required for native programs. */
   discriminator?: string;
 }): AuditBindTransactionParams {
-  const dataBytes = input.data ?? new Uint8Array(0);
+  const dataBytes = checkedBytes(input.data ?? new Uint8Array(0), "data");
   if (input.discriminator !== undefined) {
     const declared = input.discriminator.replace(/^0x/i, "").toLowerCase();
     const actual = Buffer.from(dataBytes).toString("hex");

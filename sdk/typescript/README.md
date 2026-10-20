@@ -2,8 +2,18 @@
 
 Thin TypeScript SDK for calling a Graphite verification service.
 
-The client expects a `POST /verify` endpoint that accepts a `ProposedIntent`
-payload and returns a `VerificationResult`.
+The client calls a Graphite Core: `POST /verify` takes a `VerificationInput` (the
+`ProposedIntent` is one field of it, `proposed_intent`, beside the program id,
+discriminator, accounts, wallet profile and — to bind the verdict — the unsigned
+transaction bytes) and returns a `VerificationResult`. It also wraps
+`POST /audit/event` (`recordLifecycleEvent`), `POST /verify/execution`
+(`verifyExecution`), `GET /health` and `GET /manifests`.
+
+Every 2xx answer is checked before it is returned: a body that is not JSON, or not
+the shape its route answers with, is thrown — never returned typed as the answer.
+`timeoutMs` defaults to 30000; only `0` disables it, and any other value that is
+not a whole number of milliseconds is refused at construction. The API key is held
+in an ES private field and is not a readable property of the client.
 
 ## Trust boundary (GAP-2026-08-06-8)
 
@@ -12,7 +22,7 @@ is the source of truth, and its append-only audit trail (`audit.jsonl`) is the
 authoritative record of every verification.
 
 - **Transport integrity:** responses are validated structurally at runtime
-  (`validateVerificationResult`) so a truncated or mis-shaped payload fails
+  (`validateVerificationResult`, and a validator per route) so a truncated or mis-shaped payload fails
   loudly instead of flowing through typed as a `VerificationResult`. That is
   defense-in-depth, not integrity. **Deploy Graphite behind TLS** — over plain
   HTTP a network attacker can mutate any field (including `approved`) before
@@ -45,7 +55,8 @@ has the same three as `VerifyTransactionDigest`, `TransactionDigest` and
 `ReadSignatureCount`.
 
 **Transport.** `baseUrl` must be `https://`, or `http://` to a loopback host
-(localhost, 127.0.0.0/8, [::1]); anything else is refused at construction so the API key
+(localhost, 127.0.0.0/8, [::1], or 127.0.0.0/8 as an IPv4-mapped address such as
+`[::ffff:127.0.0.1]`); anything else is refused at construction so the API key
 is never sent in cleartext (Round 19). Go's `CheckBaseURL` enforces the same rule.
 
 `verifyInstruction` / `content_hash` in this SDK re-hash one instruction's projection.
@@ -58,8 +69,9 @@ for the digest.
 
 Read `scope.unobserved` on every verdict: it names what Graphite did not establish and
 is never empty. Decide on `scope.unobserved_codes`, not on the prose: `unobservedCodes(result)`
-returns the stable `UnobservedCode` naming each entry (or `undefined` for a server older
-than 2026-09-12, which is unknown, not clear). `INHERENT_UNOBSERVED` holds the two codes
+returns the stable `UnobservedCode` naming each entry. `verify` refuses a verdict without
+`scope` or without `unobserved_codes` (a server older than 2026-09-12); for a result that
+reached you some other way, `undefined` is unknown, not clear. `INHERENT_UNOBSERVED` holds the two codes
 every artifact-bound verdict carries; every other code names an observation that was
 possible and did not happen, and an executor must refuse it unless the operator has
 accepted it by name — the reference is `ResidualPolicy` in
