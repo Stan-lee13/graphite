@@ -18,7 +18,17 @@ is SAK's own agent, for a caller's **read-only** use (balances, prices, lookups)
   process that holds the key; `@solana-agent-kit/plugin-defi` alone brought 25 of the
   tree's 36 high/critical npm advisories (2026-09-30).
 - **The key is not reachable** through the adapter, the guard or the SAK agent at
-  runtime: the tests walk all three for the secret key's bytes.
+  runtime: the tests walk all three for the secret key's bytes. Since Round 29 (audit
+  2026-10-20, M8) they also look for the Core API key and the OpenAI key: neither is
+  reachable through the adapter or the guard (`getGraphiteClient()` returns the Core's
+  read-only endpoints, not the client). `SolanaAgentKit` keeps the OpenAI key in its own
+  config because it calls a model with it — SAK's design, and the only secret the SAK agent
+  holds. `SOLANA_PRIVATE_KEY` is deleted from `process.env` once the guard has read it.
+- **A per-transaction cap is required** (Round 29, M6): the guard refuses to start without
+  `GRAPHITE_MAX_TRANSFER_LAMPORTS` (or `spendPolicy.maxTransferLamports`) unless the
+  operator sets `GRAPHITE_ALLOW_UNCAPPED=1`. This adapter used to start without one.
+  `.env.example` lists every variable the adapter and the guard read, and a test keeps it
+  that way.
 - The audit trail's `reported_by` names this adapter (`sak-bridge:<key prefix>`).
 
 This is the only package in the repository that depends on the `solana-agent-kit` npm
@@ -42,6 +52,7 @@ import { VerifiedSakAgent } from "./graphite-sak-bridge.js";
 
 const agent = await VerifiedSakAgent.create({
   // every GraphiteGuard option, plus the key SAK itself needs:
+  spendPolicy: { maxTransferLamports: 100_000_000n }, // or GRAPHITE_MAX_TRANSFER_LAMPORTS
   openAiApiKey: process.env.OPENAI_API_KEY,
 });
 
@@ -57,8 +68,9 @@ cluster `SOLANA_RPC_URL` names.
 
 ```bash
 npm run typecheck
-npm test                 # the SAK-specific tests: the gated wallet, the SAK agent and
-                         # the key's reachability, delegation to the guard
+npm test                 # the SAK-specific tests (9): the gated wallet, the SAK agent and
+                         # the keys' reachability, delegation to the guard, the cap,
+                         # and .env.example naming every variable read
 ```
 
 The verified paths are tested in the guard (`../agent-guard`).

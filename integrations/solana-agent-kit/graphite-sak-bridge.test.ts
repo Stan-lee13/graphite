@@ -30,7 +30,11 @@ interface Harness {
   close(): Promise<void>;
 }
 
-async function harness(opts: { withSak?: boolean } = {}): Promise<Harness> {
+/** Round 29 (M8): a Core API key and an OpenAI key that must not be reachable through the adapter. */
+const CORE_API_KEY = `loopback-core-key-${Math.random().toString(36).slice(2)}`;
+const OPENAI_KEY = `loopback-test-placeholder-not-a-key-${Math.random().toString(36).slice(2)}`;
+
+async function harness(opts: { withSak?: boolean; spendPolicy?: { maxTransferLamports?: bigint } } = {}): Promise<Harness> {
   const rpc = await mockRpc();
   const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
   core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
@@ -50,9 +54,12 @@ async function harness(opts: { withSak?: boolean } = {}): Promise<Harness> {
     rpcUrl: rpc.url,
     graphiteCoreUrl: core.url,
     aiLayerUrl: ai.url,
+    graphiteApiKey: CORE_API_KEY,
+    // Round 29 (M6): the guard requires a per-transaction cap.
+    spendPolicy: opts.spendPolicy ?? { maxTransferLamports: 2_000_000_000n },
     // SAK is only constructed with this set. It is never sent anywhere: no
     // code path in these tests calls a model.
-    openAiApiKey: opts.withSak ? "loopback-test-placeholder-not-a-key" : undefined,
+    openAiApiKey: opts.withSak ? OPENAI_KEY : undefined,
   });
   return {
     agent,
@@ -112,6 +119,10 @@ test("R8: the wallet's secret key is not reachable through the adapter or SAK at
     const seen = new Set<unknown>();
     const found: string[] = [];
     const walk = (value: unknown, path: string, depth: number): void => {
+      if (typeof value === "string") {
+        if (value.includes(CORE_API_KEY)) found.push(`${path} holds the Core API key`);
+        if (value.includes(OPENAI_KEY)) found.push(`${path} holds the OpenAI key`);
+      }
       if (value === null || typeof value !== "object" || seen.has(value) || depth > 6) return;
       seen.add(value);
       if (value instanceof Keypair) found.push(`${path} is a Keypair`);
@@ -143,9 +154,16 @@ test("R8: the wallet's secret key is not reachable through the adapter or SAK at
       }
     };
     walk(h.agent, "agent", 0);
-    walk(h.agent.getSakAgent(), "sak", 0);
     walk(h.agent.getGuard(), "guard", 0);
-    assert.deepEqual(found, [], `the secret key is reachable: ${found.join("; ")}`);
+    // Round 29 (M8): getGraphiteClient used to return the Core client itself,
+    // and with it the Core API key.
+    walk(h.agent.getGraphiteClient(), "agent.getGraphiteClient()", 0);
+    assert.deepEqual(found, [], `a secret is reachable through the adapter or the guard: ${found.join("; ")}`);
+    // SolanaAgentKit itself keeps the OpenAI key in its own config (SAK's
+    // design: it needs it to call a model). The wallet key and the Core key are
+    // not there; the OpenAI key is, and that is the one thing it holds.
+    walk(h.agent.getSakAgent(), "sak", 0);
+    assert.ok((found as string[]).every((f) => f.endsWith("holds the OpenAI key")), found.join("; "));
   } finally {
     await h.close();
   }
@@ -164,6 +182,36 @@ test("executeTransfer goes through the guard: an unsigned artifact to the Core, 
     for (const call of h.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
     assert.equal(h.rpc.calls.filter((c) => c.method === "sendTransaction").length, 0);
     assert.equal(h.agent.getSakAgent(), null, "no OpenAI key, no SAK agent; the verified path does not need one");
+  } finally {
+    await h.close();
+  }
+});
+
+test("Round 29 (M6, audit S1): the adapter does not start without a per-transaction cap", async () => {
+  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
+  try {
+    await assert.rejects(
+      VerifiedSakAgent.create({
+        privateKey: bs58.encode(Keypair.generate().secretKey),
+        rpcUrl: "http://127.0.0.1:1",
+        graphiteCoreUrl: core.url,
+        spendPolicy: {},
+      }),
+      /no per-transaction cap is set/,
+    );
+    assert.equal(core.calls.length, 0, "refused before the Core was contacted");
+  } finally {
+    await core.close();
+  }
+});
+
+test("Round 29 (M8): getGraphiteClient is the Core's read-only endpoints, not the client", async () => {
+  const h = await harness();
+  try {
+    const client = h.agent.getGraphiteClient();
+    assert.deepEqual(Object.keys(client).sort(), ["health", "listManifests"]);
+    assert.equal((client as unknown as Record<string, unknown>).apiKey, undefined);
+    assert.equal(typeof (client as unknown as Record<string, unknown>).verify, "undefined");
   } finally {
     await h.close();
   }

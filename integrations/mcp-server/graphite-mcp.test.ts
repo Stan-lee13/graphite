@@ -12,16 +12,20 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { GraphiteGuard } from "../agent-guard/guard.js";
-import { BLOCKED_VERDICT, mockRpc, mockService, throwawayWallet } from "../agent-guard/loopback-mocks.js";
+import { BLOCKED_VERDICT, mockApprovingCore, mockRpc, mockService, throwawayWallet } from "../agent-guard/loopback-mocks.js";
 import { createGraphiteMcpServer, parseConfirmation, type Confirmation } from "./graphite-mcp.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 const REQUEST = `Transfer 1.5 SOL to ${DEST}`;
 
-async function services() {
+async function services(opts: { approve?: boolean } = {}) {
   const rpc = await mockRpc();
-  const core = await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
-  core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
+  // Round 29 (M7): the person is asked after Graphite's verdict, so the
+  // tests about asking need a Core that approves (with the real digests).
+  const core = opts.approve
+    ? await mockApprovingCore()
+    : await mockService({ "GET /health": { status: "ok", service: "graphite", version: "test" } });
+  if (!opts.approve) core.answer.set("POST /verify", { status: 200, body: BLOCKED_VERDICT });
   const ai = await mockService();
   ai.answer.set("POST /parse", {
     status: 200,
@@ -46,7 +50,9 @@ async function services() {
       graphiteCoreUrl: core.url,
       aiLayerUrl: ai.url,
       reporter: "mcp-server",
-      spendPolicy: maxTransferLamports === undefined ? {} : { maxTransferLamports },
+      // Round 29 (M6): the guard itself needs a cap or an explicit
+      // allowUncapped; uncapped here so the server's own refusal is tested.
+      spendPolicy: maxTransferLamports === undefined ? { allowUncapped: true } : { maxTransferLamports },
     });
   return { rpc, core, ai, env, wallet, guard, close: () => Promise.all([rpc.close(), core.close(), ai.close()]) };
 }
@@ -78,6 +84,12 @@ function result(r: Awaited<ReturnType<Client["callTool"]>>) {
 test("the server refuses a guard without a per-transfer cap", async () => {
   const s = await services();
   try {
+    // Round 29 (M6): the guard itself refuses to start without a cap…
+    await assert.rejects(
+      GraphiteGuard.create({ privateKey: s.env.SOLANA_PRIVATE_KEY, rpcUrl: s.rpc.url, graphiteCoreUrl: s.core.url, spendPolicy: {} }),
+      /no per-transaction cap is set/,
+    );
+    // …and the server refuses even a guard whose operator accepted running uncapped.
     const guard = await s.guard();
     assert.throws(() => createGraphiteMcpServer(guard, { confirmation: "elicit" }), /needs a per-transfer cap/);
   } finally {
@@ -101,16 +113,15 @@ test("the tools a client sees, with the hints a client uses to warn", async () =
   }
 });
 
-test("a person approves: the request runs through the guard and Graphite's block is the result", async () => {
+test("Graphite's block is the result, and nobody is asked to approve what Graphite refused", async () => {
   const s = await services();
   try {
     const guard = await s.guard(2_000_000_000n);
     const c = await connect(guard, "elicit", () => ({ action: "accept", content: { approve: true } }));
     const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
-    assert.equal(c.asked.length, 1, "the person was asked once");
-    assert.match(c.asked[0], new RegExp(DEST), "and was shown the request the guard acts on");
     assert.equal(out.executed, false);
     assert.equal(out.refusedBy, "graphite");
+    assert.equal(c.asked.length, 0, "Round 29 (M7): the person is asked after the verdict, so a block asks nobody");
     assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 1);
     for (const call of s.rpc.calls) assert.notEqual(call.signed, true);
     assert.equal(s.rpc.calls.filter((x) => x.method === "sendTransaction").length, 0);
@@ -120,8 +131,32 @@ test("a person approves: the request runs through the guard and Graphite's block
   }
 });
 
-test("a person declines: nothing is built, verified or sent", async () => {
-  const s = await services();
+test("M7: a person approves the RESOLVED transaction — destination, amount, effect, verdict — and it executes", async () => {
+  const s = await services({ approve: true });
+  try {
+    const guard = await s.guard(2_000_000_000n);
+    const c = await connect(guard, "elicit", () => ({ action: "accept", content: { approve: true } }));
+    const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
+    assert.equal(out.executed, true, JSON.stringify(out));
+    assert.equal(c.asked.length, 1, "the person was asked once");
+    const shown = c.asked[0];
+    assert.match(shown, /Send 1\.5 SOL \(1500000000 lamports\)/);
+    assert.match(shown, new RegExp(`to ${DEST}`));
+    assert.match(shown, /Program: 11111111111111111111111111111111/);
+    assert.match(shown, /Simulated effect on the wallet/);
+    assert.match(shown, /Graphite: APPROVED, risk Clear/);
+    assert.match(shown, /transaction [0-9a-f]{64}/);
+    // Asked after the verdict, before anything was signed or sent.
+    const sends = s.rpc.calls.filter((x) => x.method === "sendTransaction");
+    assert.equal(sends.length, 1);
+    await c.close();
+  } finally {
+    await s.close();
+  }
+});
+
+test("M7: a person declines: verified, but nothing is signed, recorded or sent", async () => {
+  const s = await services({ approve: true });
   try {
     for (const answer of [
       { action: "decline" as const },
@@ -132,35 +167,40 @@ test("a person declines: nothing is built, verified or sent", async () => {
       const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
       assert.equal(out.executed, false);
       assert.equal(out.refusedBy, "person", JSON.stringify(answer));
+      assert.equal(c.asked.length, 1);
       await c.close();
     }
-    assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 0);
-    assert.equal(s.rpc.calls.length, 0);
+    assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 3, "each was verified first");
+    assert.equal(s.core.calls.filter((x) => x.method === "POST /audit/event").length, 0, "no signing on the trail");
+    assert.equal(s.rpc.calls.filter((x) => x.method === "sendTransaction").length, 0);
+    for (const call of s.rpc.calls) assert.notEqual(call.signed, true, `${call.method} carried a signature`);
   } finally {
     await s.close();
   }
 });
 
-test("a client that cannot ask a person is refused, not executed for", async () => {
-  const s = await services();
+test("a client that cannot ask a person is refused before anything is built", async () => {
+  const s = await services({ approve: true });
   try {
     const c = await connect(await s.guard(2_000_000_000n), "elicit");
     const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
     assert.equal(out.refusedBy, "person");
     assert.match(out.reason ?? "", /cannot ask a person/);
     assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 0);
+    assert.equal(s.rpc.calls.length, 0);
     await c.close();
   } finally {
     await s.close();
   }
 });
 
-test("over the cap: refused by the spend policy after the person approved, before the RPC or the Core", async () => {
-  const s = await services();
+test("over the cap: refused by the spend policy before anyone is asked, before the RPC or the Core", async () => {
+  const s = await services({ approve: true });
   try {
     const c = await connect(await s.guard(1_000_000_000n), "elicit", () => ({ action: "accept", content: { approve: true } }));
     const out = result(await c.client.callTool({ name: "graphite_transfer_sol", arguments: { request: REQUEST } }));
     assert.equal(out.refusedBy, "spend-policy");
+    assert.equal(c.asked.length, 0, "Round 29 (M7): nobody is asked to approve what the cap refuses");
     assert.equal(s.rpc.calls.length, 0);
     assert.equal(s.core.calls.filter((x) => x.method === "POST /verify").length, 0);
     await c.close();
