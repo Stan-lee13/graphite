@@ -20,9 +20,27 @@
  * real-world, unseen data (the corpus entries are NOT Graphite's own
  * benchmark cases).
  *
+ * WHAT THIS MEASURES (Round 29, audit 2026-10-20, L5): every verification
+ * here is DESCRIPTIVE. The harness sends the Core a description of one
+ * instruction (program, discriminator, accounts) — never the transaction
+ * bytes — so each verdict is about metadata, `scope.kind` is "descriptive",
+ * and nothing in it says whether the Core would gate the real signed
+ * transaction. The output says so on every run and reports the scope the
+ * Core returned. An artifact-bound mode (fetch each transaction's raw bytes,
+ * zero its signature slots, send them as `signed_transaction` with every
+ * other instruction declared) is not provided: it needs a live mainnet RPC
+ * for the bytes, lookup tables and the Core's own simulation, and a
+ * historical transaction re-simulated against today's state is not the
+ * transaction that ran. Treat the numbers as "how the Core labels real
+ * instruction metadata", not as precision/recall of the gate.
+ *
  * Honesty notes:
  *   - Intents are per-protocol, not a blanket "unknown" (which would block
  *     everything via the intent-program mismatch rule and prove nothing).
+ *   - Exploit-corpus entries on a program other than System / SPL Token are
+ *     sent with intent "unknown", which the Core blocks by the intent-program
+ *     mismatch rule whatever the transaction is. They are reported apart, as
+ *     TRIVIALLY blocked, and are not counted in the recall figure.
  *   - Squads has no intent class in the AI layer; the harness sends an EMPTY
  *     intent (the check is skipped) and reports the outcome honestly.
  */
@@ -74,6 +92,8 @@ interface BenchmarkCase {
 
 interface BenchmarkResult {
   case: BenchmarkCase;
+  /** The scope the Core reported: "descriptive" for every case this harness sends. */
+  scope: string;
   graphiteVerdict: boolean;
   graphiteConfidence: number;
   graphiteRisk: string;
@@ -244,7 +264,7 @@ function loadExploitCorpus(): BenchmarkCase[] {
 // A5-07 (2026-09-29 audit): verification went out as a raw `fetch`, outside
 // the SDK's transport rule and verdict shape check. It goes through
 // GraphiteClient now; any failure it raises is counted as an HTTP error.
-async function verifyThroughGraphite(graphite: GraphiteClient, case_: BenchmarkCase): Promise<{ approved: boolean; confidence: number; risk: string; latencyMs: number; httpError: boolean }> {
+async function verifyThroughGraphite(graphite: GraphiteClient, case_: BenchmarkCase): Promise<{ approved: boolean; confidence: number; risk: string; scope: string; latencyMs: number; httpError: boolean }> {
   const start = Date.now();
   try {
     const v = await graphite.verify({
@@ -265,9 +285,9 @@ async function verifyThroughGraphite(graphite: GraphiteClient, case_: BenchmarkC
     } as unknown as VerificationInput);
 
     const latencyMs = Date.now() - start;
-    return { approved: v.approved, confidence: v.confidence, risk: v.risk_verdict?.status ?? "unknown", latencyMs, httpError: false };
+    return { approved: v.approved, confidence: v.confidence, risk: v.risk_verdict?.status ?? "unknown", scope: v.scope?.kind ?? "unscoped", latencyMs, httpError: false };
   } catch (err) {
-    return { approved: false, confidence: 0, risk: `error: ${(err as Error).message?.slice(0, 50)}`, latencyMs: Date.now() - start, httpError: true };
+    return { approved: false, confidence: 0, risk: `error: ${(err as Error).message?.slice(0, 50)}`, scope: "none", latencyMs: Date.now() - start, httpError: true };
   }
 }
 
@@ -275,7 +295,7 @@ async function main() {
   assertNoLegacyEnvNames();
   // Built before any request: an http:// non-loopback Core is refused here.
   const graphite = new GraphiteClient({ baseUrl: GRAPHITE_CORE_URL, apiKey: process.env.GRAPHITE_API_KEY });
-  console.log("=== Graphite Real Mainnet Benchmark ===");
+  console.log("=== Graphite Real Mainnet Benchmark (DESCRIPTIVE: instruction metadata, no transaction bytes) ===");
   // The host only: a provider URL can carry its API key in the query.
   console.log(`RPC: ${rpcHostForLog(RPC_URL)}`);
   console.log(`Graphite: ${GRAPHITE_CORE_URL}`);
@@ -313,14 +333,17 @@ async function main() {
     process.stdout.write(`  ${case_.name}... `);
     const verdict = await verifyThroughGraphite(graphite, case_);
     const correct = (verdict.approved && case_.expected === "approve") || (!verdict.approved && case_.expected === "block");
-    results.push({ case: case_, graphiteVerdict: verdict.approved, graphiteConfidence: verdict.confidence, graphiteRisk: verdict.risk, latencyMs: verdict.latencyMs, httpError: verdict.httpError, correct });
+    results.push({ case: case_, scope: verdict.scope, graphiteVerdict: verdict.approved, graphiteConfidence: verdict.confidence, graphiteRisk: verdict.risk, latencyMs: verdict.latencyMs, httpError: verdict.httpError, correct });
     console.log(`${correct ? "PASS" : "FAIL"} | approved=${verdict.approved} conf=${verdict.confidence} risk=${verdict.risk} (${verdict.latencyMs}ms)${verdict.httpError ? " [HTTP ERROR]" : ""}`);
   }
 
   // Phase 4: Compute metrics
   console.log("\n=== RESULTS ===");
   const legit = results.filter(r => r.case.expected === "approve");
-  const mal = results.filter(r => r.case.expected === "block");
+  // Malicious cases sent with intent "unknown" are blocked by the
+  // intent-program mismatch rule whatever they are: not evidence of detection.
+  const trivial = results.filter(r => r.case.expected === "block" && r.case.intent === "unknown");
+  const mal = results.filter(r => r.case.expected === "block" && r.case.intent !== "unknown");
   const tp = mal.filter(r => r.correct).length;          // malicious correctly blocked
   const fp = legit.filter(r => !r.correct).length;       // legitimate wrongly blocked
   const fn = mal.filter(r => !r.correct).length;         // malicious wrongly approved
@@ -331,6 +354,8 @@ async function main() {
   const accuracy = results.length > 0 ? (results.filter(r => r.correct).length / results.length * 100).toFixed(1) : "N/A";
   const avgLatency = results.length > 0 ? (results.reduce((s, r) => s + r.latencyMs, 0) / results.length).toFixed(0) : "N/A";
 
+  const scopes = [...new Set(results.map(r => r.scope))].join(", ");
+  console.log(`MODE: descriptive — verdicts are about instruction metadata, not signed bytes (scopes returned: ${scopes})`);
   console.log(`Total cases: ${results.length}`);
   console.log(`v1 transactions read: ${v1Read}; fetches failed: ${fetchFailed}`);
   console.log(`Correct: ${results.filter(r => r.correct).length}/${results.length}`);
@@ -341,7 +366,8 @@ async function main() {
   console.log(`\nLegitimate cases: ${legit.length}`);
   console.log(`  Correctly approved: ${tn}`);
   console.log(`  Incorrectly blocked (false positive): ${fp}`);
-  console.log(`Malicious cases (real pinned corpus): ${mal.length}`);
+  console.log(`Malicious cases with a real intent (counted in recall): ${mal.length}`);
+  console.log(`Malicious cases sent with intent "unknown" (blocked by intent mismatch whatever they are; NOT counted): ${trivial.length}`);
   console.log(`  Correctly blocked: ${tp}`);
   console.log(`  Incorrectly approved (false negative): ${fn}`);
 
@@ -356,10 +382,11 @@ async function main() {
     fs.writeFileSync(JSON_OUT, JSON.stringify({
       generated: new Date().toISOString(),
       graphite: GRAPHITE_CORE_URL,
-      summary: { total: results.length, correct: results.filter(r => r.correct).length, accuracy, precision, recall, avgLatency, tp, fp, fn, tn },
+      mode: "descriptive (instruction metadata only; no transaction bytes; not a measure of the signing gate)",
+      summary: { total: results.length, correct: results.filter(r => r.correct).length, accuracy, precision, recall, avgLatency, tp, fp, fn, tn, triviallyBlockedUnknownIntent: trivial.length },
       results: results.map(r => ({
         name: r.case.name, expected: r.case.expected, got: r.graphiteVerdict ? "approve" : "block",
-        confidence: r.graphiteConfidence, risk: r.graphiteRisk, correct: r.correct,
+        confidence: r.graphiteConfidence, risk: r.graphiteRisk, correct: r.correct, scope: r.scope, intent: r.case.intent,
         latencyMs: r.latencyMs, source: r.case.source, txSignature: r.case.txSignature,
         attackType: r.case.attackType, programId: r.case.programId,
       })),

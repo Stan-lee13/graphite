@@ -121,13 +121,15 @@ export class AuditBind {
     // prefix of the data it claims to describe is a projection of an
     // instruction other than this one.
     //
-    // The swap path was already shielded from the Core-side bypass, but only
-    // incidentally: `executeSwap` calls `verifyInstruction` WITHOUT a
-    // discriminator, so this function re-derived it from the bytes and the
-    // recomputed hash diverged from the one Graphite returned. Nothing made
-    // that a rule — a caller passing an explicit, mismatched discriminator
-    // got a projection built around the label. It is a rule now, on both
-    // sides of the boundary: the Core fails L2 on the same contradiction.
+    // The swap path was once shielded from the Core-side bypass only
+    // incidentally: `executeSwap` called `verifyInstruction` WITHOUT a
+    // discriminator, so this function re-derived 8 bytes from the data. That
+    // also made every approved swap on a 1-byte-selector program, or with an
+    // upper-case selector, abort (Round 29, L1); `executeSwap` now passes the
+    // decoded selector it sent to the Core. A caller passing an explicit,
+    // mismatched discriminator would get a projection built around the
+    // label, so this is a rule, on both sides of the boundary: the Core
+    // fails L2 on the same contradiction.
     if (input.discriminator !== undefined) {
       const declared = input.discriminator.replace(/^0x/i, "").toLowerCase();
       const actual = Buffer.from(dataBytes).toString("hex");

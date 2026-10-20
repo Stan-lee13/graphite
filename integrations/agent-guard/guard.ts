@@ -251,11 +251,11 @@ export function assertSecureAiLayerUrl(url: string): string {
  * same shape on the wire, so `approved` cannot distinguish them. Anything that
  * can move funds should know which one it is holding.
  *
- * Reports rather than refuses, deliberately: neither bridge path hands the Core
- * a serialized artifact yet, so enforcing artifact binding here would refuse
- * everything. What protects these paths today is AuditBind against the live
- * instruction. Making the gap visible is the honest first step, and what stops
- * it being rediscovered later as a surprise.
+ * Reports rather than refuses: the refusal of anything but an artifact-bound
+ * verdict is the residual policy's, in `executeBoundTransaction`, on the path
+ * to signing. (This comment used to say neither path hands the Core an
+ * artifact; both have, since the BoundTransaction work.) This is the
+ * human-readable half.
  */
 function reportVerificationScope(verification: VerificationResult, path: string): void {
   const scope = (verification as { scope?: { kind?: string; unobserved?: string[] } }).scope;

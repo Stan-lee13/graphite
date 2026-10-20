@@ -38,6 +38,39 @@ export function assertNoLegacyEnvNames(env: Record<string, string | undefined> =
   }
 }
 
+/** Devnet's genesis hash: the one cluster `devnet-test.ts` may move funds on. */
+export const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+/** Mainnet-beta's genesis hash, named in the refusal so the mistake is obvious. */
+export const MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+
+/**
+ * Refuse to run a script that signs and submits anywhere but devnet (or a
+ * local test validator on a loopback host, whose genesis is its own).
+ *
+ * Round 29 (audit 2026-10-20, Info): `devnet-test.ts` signs and submits real
+ * transfers on whatever cluster SOLANA_RPC_URL names, and nothing checked
+ * that the cluster was devnet — pointed at a mainnet RPC with a funded key it
+ * would have moved real funds. The cluster is identified by its genesis hash,
+ * not by its URL.
+ */
+export function assertDevnetCluster(genesisHash: string, rpcUrl: string): void {
+  if (genesisHash === DEVNET_GENESIS_HASH) return;
+  let loopback = false;
+  try {
+    const host = new URL(rpcUrl).hostname;
+    loopback = host === "localhost" || host === "[::1]" || /^127\./.test(host);
+  } catch {
+    /* an unparseable URL is not loopback */
+  }
+  if (loopback && genesisHash !== MAINNET_GENESIS_HASH) return;
+  throw new Error(
+    `[Graphite] the RPC's cluster has genesis hash ${genesisHash}` +
+      (genesisHash === MAINNET_GENESIS_HASH ? " — MAINNET-BETA" : "") +
+      `, not devnet's (${DEVNET_GENESIS_HASH}). This script signs and submits real transfers; it runs on ` +
+      "devnet or a local test validator only. REFUSING.",
+  );
+}
+
 /**
  * What a log line may say about an RPC endpoint: its host, nothing else.
  *
