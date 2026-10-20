@@ -61,11 +61,6 @@ pub enum TrustTier {
 }
 
 impl TrustTier {
-    /// Parse a trust tier from a manifest's `trust_tier` string field.
-    ///
-    /// Manifests declare trust tiers as strings (e.g., "BattleTested", "OfficialManifest").
-    /// This converts them to the enum. Unknown strings default to HeuristicInferred
-    /// (safer to under-trust than over-trust — Constitution P6/P7).
     /// Canonical string form of a tier (matches its serde serialization —
     /// e.g. `OfficialManifest`). Used for dashboard/registry readouts.
     pub fn as_str(&self) -> &'static str {
@@ -79,6 +74,13 @@ impl TrustTier {
         }
     }
 
+    /// Parse a trust tier from a manifest's `trust_tier` string field.
+    ///
+    /// Manifests declare trust tiers as strings (e.g., "BattleTested",
+    /// "OfficialManifest"); this converts them to the enum. An empty or
+    /// unrecognized string is `Unknown`, the least-trusted tier — not
+    /// `HeuristicInferred` (C53, fail-closed P12: safer to under-trust than
+    /// over-trust — Constitution P6/P7).
     pub fn from_manifest_str(s: &str) -> Self {
         match s.trim() {
             "BattleTested" => TrustTier::BattleTested,
@@ -94,6 +96,22 @@ impl TrustTier {
             // Gaming) despite declaring no (or an invalid) trust level.
             "" => TrustTier::Unknown,
             _ => TrustTier::Unknown,
+        }
+    }
+
+    /// The highest confidence this tier may report (Constitution P6).
+    ///
+    /// The ONE tier -> ceiling table: `compute_confidence` applies it, and so
+    /// does `unknown_protocol_mode`'s defence-in-depth second cap (audit
+    /// 2026-10-20: each kept its own copy of this match).
+    pub fn confidence_ceiling(self) -> f64 {
+        match self {
+            TrustTier::Unknown | TrustTier::HeuristicInferred => ceilings::UNKNOWN_OR_HEURISTIC_MAX,
+            TrustTier::OfficialManifest => ceilings::OFFICIAL_MANIFEST_MAX,
+            TrustTier::SimulationValidated => ceilings::SIMULATION_VALIDATED_MAX,
+            TrustTier::CommunityVerified | TrustTier::BattleTested => {
+                ceilings::COMMUNITY_OR_BATTLE_TESTED_MAX
+            }
         }
     }
 }
@@ -237,14 +255,7 @@ pub fn compute_confidence(
     // of whether `confidence` actually exceeded `ceiling`. See
     // `test_ceiling_not_triggered_when_raw_score_already_below_ceiling`
     // below — the regression test that would have caught this.
-    let ceiling = match trust_tier {
-        TrustTier::Unknown | TrustTier::HeuristicInferred => ceilings::UNKNOWN_OR_HEURISTIC_MAX,
-        TrustTier::OfficialManifest => ceilings::OFFICIAL_MANIFEST_MAX,
-        TrustTier::SimulationValidated => ceilings::SIMULATION_VALIDATED_MAX,
-        TrustTier::CommunityVerified | TrustTier::BattleTested => {
-            ceilings::COMMUNITY_OR_BATTLE_TESTED_MAX
-        }
-    };
+    let ceiling = trust_tier.confidence_ceiling();
 
     let ceiling_triggered = confidence > ceiling;
     let final_confidence = if ceiling_triggered {
@@ -398,7 +409,9 @@ mod tests {
         assert_eq!(result.confidence, 0.3);
         assert!(
             !result.ceiling_triggered,
-            "ceiling_triggered must be false when the raw score never approached the ceiling —              a caller trusting this field to mean \"this score was artificially capped\" would              be misled otherwise"
+            "ceiling_triggered must be false when the raw score never approached the ceiling — \
+             a caller trusting this field to mean \"this score was artificially capped\" would \
+             be misled otherwise"
         );
         assert_eq!(result.ceiling_applied, ceilings::SIMULATION_VALIDATED_MAX);
     }

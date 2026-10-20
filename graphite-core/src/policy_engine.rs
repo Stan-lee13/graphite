@@ -29,7 +29,13 @@ pub enum PolicyError {
 /// running `cargo test` during the 2026-07-06 production-readiness sweep —
 /// deriving `Eq` on an enum containing a float field doesn't compile at
 /// all, so this bug could never have shipped a working build.
+///
+/// `deny_unknown_fields` (audit 2026-10-20, F4): `wallet_profile` is part of
+/// the `/verify` request, and a misspelled key in a `Custom` profile
+/// (`min_trust_teir`) is refused rather than silently dropped, like every other
+/// field of `VerificationInput`.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub enum WalletProfile {
     /// Treasury profile: high confidence, high trust tier required
     #[default]
@@ -353,6 +359,29 @@ mod tests {
 
         let result = evaluate_policy(&input).unwrap();
         assert_eq!(result, PolicyVerdict::Approved);
+    }
+
+    /// Audit 2026-10-20 (F4): a `Custom` profile carrying a key it does not
+    /// have is refused at deserialization, not read as the profile without it.
+    #[test]
+    fn a_custom_profile_with_an_unknown_key_is_refused() {
+        let ok: WalletProfile = serde_json::from_str(
+            r#"{"Custom":{"min_confidence":0.6,"min_trust_tier":"OfficialManifest"}}"#,
+        )
+        .expect("the documented shape parses");
+        assert_eq!(
+            ok,
+            WalletProfile::Custom {
+                min_confidence: 0.6,
+                min_trust_tier: TrustTier::OfficialManifest
+            }
+        );
+        let typo = serde_json::from_str::<WalletProfile>(
+            r#"{"Custom":{"min_confidence":0.6,"min_trust_tier":"OfficialManifest","min_trust_teir":"Unknown"}}"#,
+        );
+        assert!(typo.is_err(), "an unknown key must be refused: {typo:?}");
+        let named: WalletProfile = serde_json::from_str(r#""Gaming""#).unwrap();
+        assert_eq!(named, WalletProfile::Gaming);
     }
 
     /// C53 companion: Gaming must still REJECT a protocol that is only
