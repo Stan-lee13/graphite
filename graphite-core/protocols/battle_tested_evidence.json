@@ -143,7 +143,7 @@
    "program_id": "4MangoMjqJ2firMokCjjGgoK8d4MXcrgL7XJaL3w6fVg",
    "manifest": "mango-v4-4mango.json",
    "name": "Mango V4 (4MangoMj)",
-   "declared_trust_tier": "OfficialManifest",
+   "declared_trust_tier": "BattleTested",
    "measured_at_unix": 1791055232,
    "identity": {
     "exists": true,
@@ -196,7 +196,7 @@
    "program_id": "4R3gSG8BpU4t19KYj8CfnbtRpnT8gtk4dvTHxVRwc2r7",
    "manifest": "jito-tip-distribution-4r3gsg.json",
    "name": "Jito Tip Distribution (4R3gSG8B)",
-   "declared_trust_tier": "OfficialManifest",
+   "declared_trust_tier": "BattleTested",
    "measured_at_unix": 1791055482,
    "identity": {
     "exists": true,
@@ -2665,7 +2665,7 @@
    "program_id": "LocpQgucEQHbqNABEYvBvwoxCPsSbG91A1QaQhQQqjn",
    "manifest": "locker-locpqg.json",
    "name": "Locker (LocpQguc)",
-   "declared_trust_tier": "OfficialManifest",
+   "declared_trust_tier": "BattleTested",
    "measured_at_unix": 1791055731,
    "identity": {
     "exists": true,
@@ -2876,7 +2876,7 @@
      "lending_account_borrow": 29,
      "lending_account_start_flashloan": 28,
      "lending_account_end_flashloan": 28,
-     "onchain_observed_shape_7acct": 26,
+     "lending_account_repay": 26,
      "lending_account_withdraw": 5,
      "lending_account_deposit": 3,
      "kamino_withdraw": 1
@@ -3087,7 +3087,7 @@
    "program_id": "MoonCVVNZFSYkqNXP6bxHLPL6QQJiMagDL3qcqUQTrG",
    "manifest": "token-launchpad-mooncv.json",
    "name": "Token Launchpad (MoonCVVN)",
-   "declared_trust_tier": "OfficialManifest",
+   "declared_trust_tier": "BattleTested",
    "measured_at_unix": 1791056099,
    "identity": {
     "exists": true,
@@ -3885,7 +3885,7 @@
    "program_id": "T1pyyaTNZsKv2WcRAB8oVnk93mLJw2XzjtVYqCsaHqt",
    "manifest": "jito-tip-payment-t1pyya.json",
    "name": "Jito Tip Payment (T1pyyaTN)",
-   "declared_trust_tier": "OfficialManifest",
+   "declared_trust_tier": "BattleTested",
    "measured_at_unix": 1791056199,
    "identity": {
     "exists": true,
@@ -3927,7 +3927,7 @@
    "program_id": "TAMM6ub33ij1mbetoMyVBLeKY5iP41i4UPUJQGkhfsg",
    "manifest": "amm-program-tamm6u.json",
    "name": "AMM Program (TAMM6ub3)",
-   "declared_trust_tier": "OfficialManifest",
+   "declared_trust_tier": "BattleTested",
    "measured_at_unix": 1791056321,
    "identity": {
     "exists": true,
@@ -4020,7 +4020,7 @@
    "program_id": "TSWAPaqyCSx2KABk68Shruf4rp7CxcNi8hAsbdwmHbN",
    "manifest": "tensorswap-tswapa.json",
    "name": "Tensorswap (TSWAPaqy)",
-   "declared_trust_tier": "OfficialManifest",
+   "declared_trust_tier": "BattleTested",
    "measured_at_unix": 1791056449,
    "identity": {
     "exists": true,
@@ -4093,8 +4093,8 @@
     "instructions_from_block_sweep": 37990,
     "decode_applicable": true,
     "instructions_observed": 37990,
-    "instructions_named_by_manifest": 37941,
-    "decode_rate": 0.9987101868912872,
+    "instructions_named_by_manifest": 37984,
+    "decode_rate": 0.999842063700974,
     "instructions_by_name": {
      "TransferChecked": 15596,
      "InitializeAccount3": 4516,
@@ -4105,6 +4105,7 @@
      "Transfer": 2072,
      "Approve": 100,
      "InitializeAccount": 92,
+     "WithdrawExcessLamports": 43,
      "Burn": 34,
      "MintTo": 11,
      "ThawAccount": 9,
@@ -4114,7 +4115,6 @@
      "BurnChecked": 1
     },
     "unmatched_leading_bytes": {
-     "26": 43,
      "2d01ce45b4070000": 1,
      "2d00": 1,
      "2d01f9f110000000": 1,
@@ -4157,8 +4157,8 @@
     "instructions_from_block_sweep": 10307,
     "decode_applicable": true,
     "instructions_observed": 10307,
-    "instructions_named_by_manifest": 10173,
-    "decode_rate": 0.9869991268070244,
+    "instructions_named_by_manifest": 10307,
+    "decode_rate": 1.0,
     "instructions_by_name": {
      "TransferChecked": 6805,
      "InitializeAccount3": 828,
@@ -4169,27 +4169,23 @@
      "FreezeAccount": 117,
      "ThawAccount": 108,
      "Transfer": 87,
+     "HarvestWithheldTokensToMint": 74,
      "SetAuthority": 51,
      "Burn": 25,
+     "WithdrawWithheldTokensFromMint": 16,
      "BurnChecked": 13,
      "InitializeMint2": 12,
+     "TokenMetadataInitialize": 12,
+     "InitializeMetadataPointer": 12,
+     "WithdrawExcessLamports": 7,
+     "TokenMetadataUpdateAuthority": 6,
+     "InitializeTransferFeeConfig": 3,
      "InitializeAccount": 2,
+     "InitializeMintCloseAuthority": 2,
+     "TransferCheckedWithFee": 2,
      "ApproveChecked": 1
     },
-    "unmatched_leading_bytes": {
-     "1a04": 74,
-     "1a02": 16,
-     "d2e11ea258b84d8d": 12,
-     "2700000000000000": 11,
-     "26": 7,
-     "d7e4a6e45464567b": 6,
-     "1a00010783a81526": 3,
-     "2700f2ccd535aca5": 1,
-     "1901f2ccd535aca5": 1,
-     "1a01a4e8fa020000": 1,
-     "1901a58b11529d54": 1,
-     "1a01e2cc0b140000": 1
-    }
+    "unmatched_leading_bytes": {}
    },
    "meets_battle_tested": true
   },
@@ -5011,18 +5007,17 @@
     "instructions_from_block_sweep": 9,
     "decode_applicable": true,
     "instructions_observed": 24,
-    "instructions_named_by_manifest": 1,
-    "decode_rate": 0.041666666666666664,
+    "instructions_named_by_manifest": 24,
+    "decode_rate": 1.0,
     "instructions_by_name": {
-     "CreateMetadataAccountV3": 1
+     "Transfer": 20,
+     "Revoke": 2,
+     "CreateMetadataAccountV3": 1,
+     "Delegate": 1
     },
-    "unmatched_leading_bytes": {
-     "3100010000000000": 20,
-     "2d02": 2,
-     "2c02010000000000": 1
-    }
+    "unmatched_leading_bytes": {}
    },
-   "meets_battle_tested": false
+   "meets_battle_tested": true
   },
   {
    "program_id": "mmm3XBJg5gk8XJxEKBvdgptZz6SgK4tXvn36sodowMc",
