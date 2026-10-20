@@ -37,7 +37,13 @@ import bs58 from "bs58";
 
 // Round 19 (F-19-C1): simulation is unsigned by construction; the class
 // lives in its own dependency-light module so its tests run without SAK.
-import { RpcSimulator, assertEverySignatureSlotEmpty } from "./rpc-simulator.js";
+import {
+  RpcSimulator,
+  assertEverySignatureSlotEmpty,
+  connectionWithoutRedirects,
+  noRedirectFetch,
+  readJsonBounded,
+} from "./rpc-simulator.js";
 export { RpcSimulator, assertEverySignatureSlotEmpty };
 // Round 19 (F-19-C5): the AI layer's answer is checked against the user's text.
 import {
@@ -46,8 +52,10 @@ import {
   assertSwapEffectMatches,
   groundSwapIntent,
   groundSwapRequest,
+  groundTransferClass,
   groundTransferIntent,
   IntentGroundingError,
+  type WalletEffect,
 } from "./intent-grounding.js";
 export {
   assertAffirmative,
@@ -55,21 +63,51 @@ export {
   assertSwapEffectMatches,
   groundSwapIntent,
   groundSwapRequest,
+  groundTransferClass,
   groundTransferIntent,
   IntentGroundingError,
 };
-// The operator's spending limits, checked before anything is built.
+// The operator's spending limits.
 import {
+  assertSpendPolicyUsable,
   assertSwapAllowed,
   assertTransferAllowed,
+  describeSpendPolicy,
   spendPolicyFromEnv,
+  SpendLedger,
   SpendPolicyRefusal,
   type SpendPolicy,
+  type SpendReservation,
 } from "./spend-policy.js";
 export { assertSwapAllowed, assertTransferAllowed, spendPolicyFromEnv, SpendPolicyRefusal, type SpendPolicy };
-// A5-01: the programs a swap payload may be addressed to.
+// A5-01 / Round 29 (L3): the programs a swap payload may be addressed to —
+// exactly those whose swap instruction the guard decodes.
 import { SWAP_PROGRAM_IDS } from "./swap-programs.js";
 export { SWAP_PROGRAM_IDS };
+// Round 29 (H2 + H4): the route's own amounts, read from its data, and what
+// they must be worth.
+import { decodeSwapInstruction, normalizeDiscriminator, SwapRouteRefusal } from "./swap-instructions.js";
+export { SwapRouteRefusal };
+import {
+  assertSwapEconomics,
+  assertSwapPolicyUsable,
+  describeSwapPolicy,
+  swapPolicyFromEnv,
+  type SwapEconomics,
+  type SwapPolicy,
+} from "./swap-economics.js";
+export { swapPolicyFromEnv, type SwapPolicy };
+// Round 29 (L4): the compute budget and output account the guard builds around a swap.
+import {
+  assertSwapEnvelopeUsable,
+  buildSwapEnvelope,
+  maxPriorityFeeLamports,
+  swapEnvelopeFromEnv,
+  type SwapEnvelopeConfig,
+} from "./swap-envelope.js";
+export { swapEnvelopeFromEnv, type SwapEnvelopeConfig };
+import { ConfirmationDeclined, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
+export { ConfirmationDeclined, SubmissionOutcomeUnknown };
 
 // AuditBind lives in ./auditbind.ts — a dependency-free module (Node crypto
 // only) so its cross-language pinned-vector tests run without the SAK tree.
@@ -80,7 +118,7 @@ export { AuditBind };
 import { GraphiteClient, assertSecureBaseUrl } from "../../sdk/typescript/src/client.js";
 import { ResidualPolicy, ResidualPolicyRefusal } from "./residual-policy.js";
 export { ResidualPolicyRefusal };
-import { executeBoundTransaction, type ExecutionLifecycle } from "./execution-lifecycle.js";
+import { executeBoundTransaction, type ExecutionLifecycle, type SubmitConnection } from "./execution-lifecycle.js";
 import type {
   VerificationInput,
   VerificationResult,
@@ -242,9 +280,18 @@ function reportVerificationScope(verification: VerificationResult, path: string)
 
 /** How a guard is configured. Every field falls back to its environment variable. */
 export interface GuardConfig {
-    /** Base58 secret key (SOLANA_PRIVATE_KEY). Held in an ES private field. */
+    /**
+     * Base58 secret key (SOLANA_PRIVATE_KEY). Held in an ES private field.
+     * Round 29 (M8): when it is read from the environment, the guard deletes
+     * SOLANA_PRIVATE_KEY from `process.env` once read, so code loaded later in
+     * the process cannot read it there.
+     */
     privateKey?: string;
-    /** Solana JSON-RPC URL (SOLANA_RPC_URL). */
+    /**
+     * Solana JSON-RPC URL (SOLANA_RPC_URL). https://, or http:// only to a
+     * loopback host (Round 29, M3): this endpoint alone measures what a swap
+     * does to the wallet.
+     */
     rpcUrl?: string;
     graphiteCoreUrl?: string; aiLayerUrl?: string; walletProfile?: WalletProfile;
     /** Bearer API key for a secured Graphite Core (GRAPHITE_API_KEY). */
@@ -271,9 +318,116 @@ export interface GuardConfig {
     reporter?: string;
     /**
      * The operator's spending limits (see spend-policy.ts). Overrides
-     * GRAPHITE_MAX_TRANSFER_LAMPORTS / GRAPHITE_ALLOWED_DESTINATIONS.
+     * GRAPHITE_MAX_TRANSFER_LAMPORTS / GRAPHITE_ALLOWED_DESTINATIONS /
+     * GRAPHITE_MAX_TOTAL_LAMPORTS / GRAPHITE_SPEND_WINDOW_SECONDS /
+     * GRAPHITE_ALLOW_UNCAPPED. A per-transaction cap is required unless
+     * `allowUncapped` (Round 29, M6).
      */
     spendPolicy?: SpendPolicy;
+    /**
+     * What a swap's route must be worth (see swap-economics.ts). Overrides
+     * GRAPHITE_SWAP_MAX_SLIPPAGE_BPS / GRAPHITE_SWAP_MIN_RATES /
+     * GRAPHITE_SWAP_ALLOW_UNPRICED (Round 29, H2).
+     */
+    swapPolicy?: SwapPolicy;
+    /**
+     * The compute budget and output account the guard builds around a swap
+     * (see swap-envelope.ts). Overrides GRAPHITE_SWAP_COMPUTE_UNIT_LIMIT /
+     * GRAPHITE_SWAP_COMPUTE_UNIT_PRICE / GRAPHITE_SWAP_CREATE_OUTPUT_ATA
+     * (Round 29, L4). Default: none.
+     */
+    swapEnvelope?: SwapEnvelopeConfig;
+}
+
+/**
+ * What a person (or a caller's hook) is shown before the guard signs
+ * (Round 29, audit 2026-10-20, M7). Every value is the RESOLVED one — the
+ * grounded destination and amount, the program the bytes call, what a
+ * simulation of those exact bytes does to the wallet, and Graphite's verdict
+ * on them — never the model's text alone. Amounts are decimal strings.
+ */
+export interface ConfirmationSummary {
+  kind: "transfer" | "swap";
+  /** The request, as the guard grounded it. */
+  request: string;
+  wallet: string;
+  /** The program the verified instruction calls. */
+  programId: string;
+  /** Transfer: where the lamports go. */
+  destination?: string;
+  /** Transfer: how many lamports, and the same in SOL. */
+  lamports?: string;
+  sol?: string;
+  /** Swap: what the route's own data says, and what it must deliver. */
+  swap?: {
+    route: string;
+    input: { token: string; mint: string; amountIn: string };
+    output: { token: string; mint: string; minimumOut: string; simulatedOut: string };
+    maxSlippageBps: number;
+    priceFloor: string;
+  };
+  /** One simulation of the exact bytes: SOL leaving the wallet (lamports), and every token's change. */
+  walletEffect: { solOutLamports: string; tokens: { mint: string; delta: string }[] };
+  verdict: {
+    approved: boolean;
+    confidence: number;
+    risk: string;
+    auditTrailId: string;
+    transactionSha256?: string;
+    unobservedCodes: string[];
+    /** Residuals the deployment's policy accepted for this execution. */
+    acceptedUnobserved: string[];
+  };
+}
+
+/** Per-call options for `executeTransfer` / `executeSwap`. */
+export interface ExecuteOptions {
+  /**
+   * Called after grounding, the spend policy, building, simulation, Graphite's
+   * verdict and the residual policy, immediately before signing. Anything but
+   * `true` aborts with `ConfirmationDeclined`; nothing is signed or sent.
+   */
+  confirm?: (summary: ConfirmationSummary) => Promise<boolean>;
+}
+
+/** The read-only part of the Core client a caller may use (Round 29, M8). */
+export interface GraphiteReadClient {
+  health(): Promise<{ status: string; service: string; version: string }>;
+  listManifests(): ReturnType<GraphiteClient["listManifests"]>;
+}
+
+/**
+ * A request whose earlier submission may still land (Round 29, L2). Thrown
+ * before anything is built for a repeat of a request whose last submission
+ * failed ambiguously and whose fate the RPC cannot yet tell.
+ */
+export class PriorSubmissionUnresolved extends Error {
+  readonly signature: string;
+  constructor(message: string, signature: string) {
+    super(message);
+    this.name = "PriorSubmissionUnresolved";
+    this.signature = signature;
+  }
+}
+
+/** The most bytes the AI layer's answer may carry (audit 2026-10-20, Info). */
+export const MAX_AI_LAYER_RESPONSE_BYTES = 64 * 1024;
+
+/** How long the guard waits for a submission to confirm, at most. */
+const CONFIRMATION_MAX_MS = 90_000;
+const CONFIRMATION_POLL_MS = 500;
+
+function lamportsAsSol(lamports: bigint): string {
+  const whole = lamports / 1_000_000_000n;
+  const frac = (lamports % 1_000_000_000n).toString().padStart(9, "0").replace(/0+$/, "");
+  return frac === "" ? whole.toString() : `${whole}.${frac}`;
+}
+
+function effectForSummary(effect: WalletEffect): ConfirmationSummary["walletEffect"] {
+  return {
+    solOutLamports: effect.solOut.toString(),
+    tokens: [...effect.tokenDelta].map(([mint, delta]) => ({ mint, delta: delta.toString() })),
+  };
 }
 
 /**
@@ -282,58 +436,82 @@ export interface GuardConfig {
  *
  * Flow: parse intent -> ground it in the user's text -> build ONE transaction
  * -> RPC simulate (unsigned) -> Graphite verify -> AuditBind -> residual
- * policy -> sign the approved bytes -> trail -> submit -> L8.
+ * policy -> [confirm] -> sign the approved bytes -> trail -> submit -> L8.
+ *
+ * Round 29 (audit 2026-10-20, M8): every collaborator that takes part in a
+ * decision — the Core client, the RPC connection and simulator, the residual
+ * and spend policies, the swap policy, the AI layer's URL, the wallet profile
+ * — is an ES private field. TypeScript `private` is a compile-time label: at
+ * runtime `guard.graphite = stub` replaced the Core with a client that
+ * approved anything over the real digest, and `guard.getGraphiteClient()`
+ * handed out the Core's API key. The instance and its prototype are frozen,
+ * so no method can be swapped for another either.
  */
 export class GraphiteGuard {
-  private graphite: GraphiteClient;
-  private connection: Connection;
-  private walletProfile: WalletProfile;
-  private aiLayerUrl: string;
-  private aiLayerTimeoutMs: number;
-  private walletPublicKey: string;
+  #graphite: GraphiteClient;
+  #connection: Connection;
+  #walletProfile: WalletProfile;
+  #aiLayerUrl: string;
+  #aiLayerTimeoutMs: number;
+  #walletPublicKey: string;
   // An ES private field, not TypeScript `private`: TypeScript's is a
   // compile-time label, and the key was readable as `agent.walletKeypair` by
   // any code holding this object (review of the 2026-09-29 audit, R8). A `#`
   // field cannot be read from outside the class at runtime.
   #walletKeypair: Keypair;
-  private simulator: RpcSimulator;
-  private residualPolicy: ResidualPolicy;
-  private transactionVersion: BridgeTransactionVersion;
-  private reporterName: string;
-  private spendPolicy: SpendPolicy;
+  #simulator: RpcSimulator;
+  #residualPolicy: ResidualPolicy;
+  #transactionVersion: BridgeTransactionVersion;
+  #reporterName: string;
+  #spendPolicy: SpendPolicy;
+  #ledger: SpendLedger;
+  #swapPolicy: SwapPolicy;
+  #swapEnvelope: SwapEnvelopeConfig;
+  /** Submissions whose outcome is unknown, by request (Round 29, L2). */
+  #unresolved = new Map<string, { signature: string; lastValidBlockHeight: number }>();
 
-  private constructor(
-    graphite: GraphiteClient, connection: Connection,
-    walletProfile: WalletProfile, aiLayerUrl: string, walletPublicKey: string, walletKeypair: Keypair,
-    residualPolicy: ResidualPolicy, aiLayerTimeoutMs: number, transactionVersion: BridgeTransactionVersion,
-    reporterName: string,
-    spendPolicy: SpendPolicy,
-  ) {
-    this.graphite = graphite; this.connection = connection;
-    this.walletProfile = walletProfile; this.aiLayerUrl = aiLayerUrl; this.aiLayerTimeoutMs = aiLayerTimeoutMs;
-    this.walletPublicKey = walletPublicKey; this.#walletKeypair = walletKeypair;
-    this.simulator = new RpcSimulator(connection.rpcEndpoint);
-    this.residualPolicy = residualPolicy;
-    this.transactionVersion = transactionVersion;
-    this.reporterName = reporterName;
-    this.spendPolicy = spendPolicy;
+  private constructor(c: {
+    graphite: GraphiteClient; connection: Connection; walletProfile: WalletProfile; aiLayerUrl: string;
+    walletKeypair: Keypair; residualPolicy: ResidualPolicy; aiLayerTimeoutMs: number;
+    transactionVersion: BridgeTransactionVersion; reporterName: string; spendPolicy: SpendPolicy;
+    swapPolicy: SwapPolicy; swapEnvelope: SwapEnvelopeConfig; rpcUrl: string;
+  }) {
+    this.#graphite = c.graphite;
+    this.#connection = c.connection;
+    this.#walletProfile = c.walletProfile;
+    this.#aiLayerUrl = c.aiLayerUrl;
+    this.#aiLayerTimeoutMs = c.aiLayerTimeoutMs;
+    this.#walletKeypair = c.walletKeypair;
+    this.#walletPublicKey = c.walletKeypair.publicKey.toBase58();
+    this.#simulator = new RpcSimulator(c.rpcUrl);
+    this.#residualPolicy = c.residualPolicy;
+    this.#transactionVersion = c.transactionVersion;
+    this.#reporterName = c.reporterName;
+    this.#spendPolicy = c.spendPolicy;
+    this.#ledger = new SpendLedger(c.spendPolicy);
+    this.#swapPolicy = c.swapPolicy;
+    this.#swapEnvelope = c.swapEnvelope;
+    Object.freeze(this);
   }
 
   /** The `reported_by` on every lifecycle row this bridge writes. */
-  private reporter(): string {
-    return `${this.reporterName}:${this.walletPublicKey.slice(0, 8)}`;
+  #reporter(): string {
+    return `${this.#reporterName}:${this.#walletPublicKey.slice(0, 8)}`;
   }
 
   static async create(config?: GuardConfig): Promise<GraphiteGuard> {
-    return GraphiteGuard.createWith(config ?? {});
+    return GraphiteGuard.#createWith(config ?? {});
   }
 
-  private static async createWith(config: GuardConfig): Promise<GraphiteGuard> {
+  static async #createWith(config: GuardConfig): Promise<GraphiteGuard> {
 
     // Before any default is applied: a legacy variable name must not quietly
     // become "use localhost" (Round 19, F-19-C6).
     assertNoLegacyEnvNames();
     const privateKey = config?.privateKey ?? process.env.SOLANA_PRIVATE_KEY;
+    // Round 29 (M8): the key is read once, here; it does not stay in the
+    // environment of a process that loads frameworks, plugins and model tools.
+    if (config?.privateKey === undefined) delete process.env.SOLANA_PRIVATE_KEY;
     const rpcUrl = config?.rpcUrl ?? process.env.SOLANA_RPC_URL;
     const graphiteCoreUrl = config?.graphiteCoreUrl ?? process.env.GRAPHITE_CORE_URL ?? "http://localhost:7331";
     // Secured Core deployments require the Bearer key on /verify and /manifests.
@@ -366,10 +544,22 @@ export class GraphiteGuard {
 
     if (!privateKey) throw new Error("SOLANA_PRIVATE_KEY is required");
     if (!rpcUrl) throw new Error("SOLANA_RPC_URL is required");
+    // Round 29 (M3): the RPC under the Core's transport rule. It decides what
+    // a swap is measured to do, and a rewritten simulation is a rewritten
+    // measurement.
+    assertSecureRpcUrl(rpcUrl);
+
+    // Limits and swap rules are read before anything is contacted: a
+    // malformed or missing one is a startup error, never an absent bound.
+    const spendPolicy = config?.spendPolicy ?? spendPolicyFromEnv();
+    assertSpendPolicyUsable(spendPolicy);
+    const swapPolicy = config?.swapPolicy ?? swapPolicyFromEnv();
+    assertSwapPolicyUsable(swapPolicy);
+    const swapEnvelope = config?.swapEnvelope ?? swapEnvelopeFromEnv();
+    assertSwapEnvelopeUsable(swapEnvelope);
 
     const walletKeypair = Keypair.fromSecretKey(bs58.decode(privateKey));
-    const walletPublicKey = walletKeypair.publicKey.toBase58();
-    const connection = new Connection(rpcUrl, "confirmed");
+    const connection = connectionWithoutRedirects(rpcUrl);
 
     const graphite = new GraphiteClient({ baseUrl: graphiteCoreUrl, apiKey: graphiteApiKey });
     try { await graphite.health(); } catch {
@@ -380,21 +570,22 @@ export class GraphiteGuard {
     const residualPolicy = config?.acceptUnobserved
       ? new ResidualPolicy(config.acceptUnobserved)
       : ResidualPolicy.fromEnv();
-    // Read here, not lazily: a malformed limit is a startup error, never an
-    // absent one.
-    const spendPolicy = config?.spendPolicy ?? spendPolicyFromEnv();
     const accepted = residualPolicy.accepts();
     console.log(
       accepted.length === 0
         ? "[Graphite] residual policy: inherent residuals only — any other unobserved property refuses execution"
         : `[Graphite] residual policy: accepting ${accepted.join(", ")} in addition to the inherent residuals`,
     );
+    // Round 29 (M6, H2): the limits in force are stated where an operator
+    // reads them, accepted risks by name.
+    console.log(describeSpendPolicy(spendPolicy));
+    console.log(describeSwapPolicy(swapPolicy));
 
-    return new GraphiteGuard(
-      graphite, connection, walletProfile, aiLayerUrl, walletPublicKey, walletKeypair,
-      residualPolicy, aiLayerTimeoutMs, transactionVersion, config?.reporter ?? "agent-guard",
-      spendPolicy,
-    );
+    return new GraphiteGuard({
+      graphite, connection, walletProfile, aiLayerUrl, walletKeypair, residualPolicy, aiLayerTimeoutMs,
+      transactionVersion, reporterName: config?.reporter ?? "agent-guard", spendPolicy, swapPolicy, swapEnvelope,
+      rpcUrl,
+    });
   }
 
   async parseIntent(naturalLanguage: string): Promise<ProposedIntent> {
@@ -402,32 +593,47 @@ export class GraphiteGuard {
     // request past the transport rule the URL was checked against.
     let response: Response;
     try {
-      response = await fetch(`${this.aiLayerUrl}/parse`, {
+      response = await fetch(`${this.#aiLayerUrl}/parse`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ text: naturalLanguage }),
-        signal: AbortSignal.timeout(this.aiLayerTimeoutMs),
+        signal: AbortSignal.timeout(this.#aiLayerTimeoutMs),
         redirect: "error",
       });
     } catch (e) {
       const timedOut = e instanceof Error && e.name === "TimeoutError";
       throw new Error(
         timedOut
-          ? `[Graphite] the AI layer did not answer within ${this.aiLayerTimeoutMs} ms. ABORTING.`
+          ? `[Graphite] the AI layer did not answer within ${this.#aiLayerTimeoutMs} ms. ABORTING.`
           : `[Graphite] the AI layer request failed: ${e instanceof Error ? e.message : String(e)}. ABORTING.`,
       );
     }
     if (!response.ok) throw new Error(`AI Layer error: ${response.status}`);
-    const result = await response.json() as {
-      intent_type: string; raw_natural_language: string; confidence_of_parse: number;
-      extracted_parameters?: { input_token?: string; output_token?: string; amount?: string; destination?: string; slippage_bps?: number; };
+    // Audit 2026-10-20 (Info): bounded before it is parsed, like every RPC answer.
+    const result = (await readJsonBounded(response, MAX_AI_LAYER_RESPONSE_BYTES, "[Graphite] the AI layer's answer")) as {
+      intent_type?: unknown; raw_natural_language?: unknown; confidence_of_parse?: unknown;
+      extracted_parameters?: unknown;
     };
     // Round 19 (F-19-C5): the answer must be an answer to THIS request. The
     // text the Core sees as the user's words is the bridge's own copy, never
     // the AI layer's echo of it.
-    assertEcho(naturalLanguage, result.raw_natural_language);
+    assertEcho(naturalLanguage, result?.raw_natural_language);
+    // Audit 2026-10-20 (Info): only the fields grounding reads, and only as
+    // strings. Nothing else the layer sends travels further; what reaches the
+    // Core is rebuilt from grounded values in executeTransfer / executeSwap.
+    const raw = (typeof result.extracted_parameters === "object" && result.extracted_parameters !== null
+      ? result.extracted_parameters
+      : {}) as Record<string, unknown>;
+    const extracted: Record<string, string> = {};
+    for (const key of ["amount", "input_token", "output_token", "destination"]) {
+      if (typeof raw[key] === "string") extracted[key] = raw[key] as string;
+    }
+    const confidence = result.confidence_of_parse;
     return {
-      intent_type: result.intent_type as any, raw_natural_language: naturalLanguage,
-      confidence_of_parse: result.confidence_of_parse, extracted_parameters: result.extracted_parameters,
+      intent_type: (typeof result.intent_type === "string" ? result.intent_type : "unknown") as any,
+      raw_natural_language: naturalLanguage,
+      confidence_of_parse:
+        typeof confidence === "number" && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? confidence : 0,
+      extracted_parameters: extracted,
     };
   }
 
@@ -446,13 +652,6 @@ export class GraphiteGuard {
     /**
      * The instructions to serialize into the artifact, when they are not the
      * ones to simulate.
-     *
-     * `instructions` drives the RPC simulation, and the swap path deliberately
-     * does not simulate here — SAK has already done that, and a second
-     * simulation would add a round trip and a second authority on the same
-     * question. But the swap path DOES hold the exact instruction it will
-     * submit, and withholding it would leave the swap in Descriptive mode for
-     * no reason other than the two concerns sharing a field.
      */
     artifactInstructions?: TransactionInstruction[];
     /**
@@ -472,7 +671,7 @@ export class GraphiteGuard {
       // This used to pass `signers: [this.#walletKeypair]`, which made web3.js
       // sign the transfer on a live blockhash and send the signed bytes to the
       // RPC before Graphite had decided anything.
-      const sim = await this.simulator.simulate({ instructions: params.instructions, feePayer: this.#walletKeypair.publicKey });
+      const sim = await this.#simulator.simulate({ instructions: params.instructions, feePayer: this.#walletKeypair.publicKey });
       computeUnits = sim.computeUnits; accountWrites = sim.accountWrites; cpiHops = sim.cpiHops;
       console.log(`[Graphite] Simulation: CU=${computeUnits}, writes=${accountWrites}, CPI=${cpiHops}, success=${sim.success}`);
     }
@@ -517,7 +716,7 @@ export class GraphiteGuard {
           serializeUnsignedArtifact({
             instructions: artifactInstructions,
             feePayer: this.#walletKeypair.publicKey,
-            recentBlockhash: (await this.connection.getLatestBlockhash()).blockhash,
+            recentBlockhash: (await this.#connection.getLatestBlockhash()).blockhash,
           });
         const primary = findPrimaryIndex(artifactInstructions, {
           programId: params.programId,
@@ -549,7 +748,7 @@ export class GraphiteGuard {
     const input: VerificationInput = {
       proposed_intent: params.proposedIntent, program_id: params.programId,
       instruction_discriminator: params.instructionDiscriminator, account_addresses: params.accountAddresses,
-      cpi_targets: params.cpiTargets ?? [], wallet_profile: this.walletProfile,
+      cpi_targets: params.cpiTargets ?? [], wallet_profile: this.#walletProfile,
       instruction_data: params.instructionData, compute_units: computeUnits,
       account_writes: accountWrites, cpi_hops: cpiHops,
       behavior_evidence, real_account_metas: params.realAccountMetas,
@@ -559,7 +758,69 @@ export class GraphiteGuard {
       uses_versioned_transaction: params.bound !== undefined && params.bound.version !== "legacy",
       lookup_table_count: params.bound?.lookupTableCount ?? 0,
     } as any;
-    return this.graphite.verify(input);
+    return this.#graphite.verify(input);
+  }
+
+  /**
+   * The RPC calls the execution path makes. Confirmation polls
+   * `getSignatureStatuses` and `getBlockHeight` over HTTP (Round 29): the
+   * web3.js confirmation opens a websocket subscription, which is a second
+   * transport to the RPC that the URL rule above never checked.
+   */
+  #submitConnection(): SubmitConnection {
+    const connection = this.#connection;
+    return {
+      sendRawTransaction: (raw) => connection.sendRawTransaction(raw),
+      confirmTransaction: async ({ signature, lastValidBlockHeight }) => {
+        const deadline = Date.now() + CONFIRMATION_MAX_MS;
+        for (;;) {
+          const status = (await connection.getSignatureStatuses([signature])).value[0];
+          if (status) {
+            if (status.err) throw new Error(`landed and FAILED: ${JSON.stringify(status.err).slice(0, 160)}`);
+            if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") return status;
+          }
+          const height = await connection.getBlockHeight("confirmed");
+          if (height > lastValidBlockHeight) {
+            throw new Error(`block height ${height} passed ${lastValidBlockHeight} before ${signature} confirmed`);
+          }
+          if (Date.now() > deadline) throw new Error(`not confirmed within ${CONFIRMATION_MAX_MS} ms`);
+          await new Promise((resolve) => setTimeout(resolve, CONFIRMATION_POLL_MS));
+        }
+      },
+    };
+  }
+
+  /**
+   * Round 29 (L2): a repeat of a request whose last submission failed
+   * ambiguously is not rebuilt until the RPC says that submission cannot land
+   * — or has landed, in which case the repeat is refused once, naming it.
+   * An RPC that cannot answer is a refusal too.
+   */
+  async #assertNoUnresolvedSubmission(key: string): Promise<void> {
+    const prior = this.#unresolved.get(key);
+    if (!prior) return;
+    const status = (await this.#connection.getSignatureStatuses([prior.signature], { searchTransactionHistory: true })).value[0];
+    if (status) {
+      this.#unresolved.delete(key);
+      if (status.err === null) {
+        throw new PriorSubmissionUnresolved(
+          `[Graphite] the last submission of this same request, ${prior.signature}, LANDED (its send had failed ` +
+            "ambiguously). Not building it a second time; repeat the request if a second one is really meant.",
+          prior.signature,
+        );
+      }
+      return; // it landed and failed: nothing moved but its fee
+    }
+    const height = await this.#connection.getBlockHeight("confirmed");
+    if (height <= prior.lastValidBlockHeight) {
+      throw new PriorSubmissionUnresolved(
+        `[Graphite] the last submission of this same request, ${prior.signature}, failed ambiguously and can ` +
+          `still land until block height ${prior.lastValidBlockHeight} (now ${height}). Not building a second ` +
+          "transaction for it until that has passed.",
+        prior.signature,
+      );
+    }
+    this.#unresolved.delete(key);
   }
 
   /**
@@ -571,34 +832,47 @@ export class GraphiteGuard {
    * was approved. Splitting them across call sites is how the previous version
    * ended up verifying one transaction and submitting another.
    *
-   * `sendRawTransaction` rather than `sendAndConfirmTransaction`: the latter
-   * prepares the transaction itself, including fetching a blockhash if one is
-   * missing, which is a mutation after approval no matter how benign. These
-   * bytes are final.
-   *
    * Round 9: the residual policy decides first, the signing is on the trail
    * before submission, the submission is on the trail after it, and L8
-   * reconciles the signature at the end. The returned lifecycle says which
-   * of those happened.
+   * reconciles the signature at the end. Round 29: the caller's confirmation
+   * runs after the policy and before signing (M7); the aggregate reservation
+   * is kept once the bytes may have left (M6); an ambiguous send is remembered
+   * against its request (L2).
    */
-  private async signSubmitAndConfirm(
+  async #signSubmitAndConfirm(
     bound: BoundTransaction,
     verification: VerificationResult,
     label: string,
+    key: string,
+    reservation: SpendReservation,
+    confirm?: (acceptedUnobserved: string[]) => Promise<boolean>,
   ): Promise<ExecutionLifecycle> {
     // The whole path — policy, signing, the lifecycle events, submission,
     // confirmation, L8 — is `executeBoundTransaction`, in that order. See
     // execution-lifecycle.ts for why each step sits where it does.
-    return executeBoundTransaction({
-      bound,
-      verification,
-      signers: [this.#walletKeypair],
-      connection: this.connection,
-      graphite: this.graphite,
-      policy: this.residualPolicy,
-      reportedBy: this.reporter(),
-      label,
-    });
+    try {
+      const lifecycle = await executeBoundTransaction({
+        bound,
+        verification,
+        signers: [this.#walletKeypair],
+        connection: this.#submitConnection(),
+        graphite: this.#graphite,
+        policy: this.#residualPolicy,
+        reportedBy: this.#reporter(),
+        label,
+        ...(confirm ? { confirm: ({ acceptedUnobserved }) => confirm(acceptedUnobserved) } : {}),
+      });
+      reservation.commit();
+      return lifecycle;
+    } catch (e) {
+      if (e instanceof SubmissionOutcomeUnknown) {
+        reservation.commit();
+        this.#unresolved.set(key, { signature: e.signature, lastValidBlockHeight: e.lastValidBlockHeight });
+      } else {
+        reservation.release();
+      }
+      throw e;
+    }
   }
 
   /**
@@ -617,18 +891,18 @@ export class GraphiteGuard {
    * simulation first (`RpcSimulator.estimateV1Limits`): in v1 an unset limit
    * is zero, and the limits are part of the bytes Graphite verifies.
    */
-  private async buildBound(
+  async #buildBound(
     instructions: TransactionInstruction[],
     tableAddresses: string[] = [],
   ): Promise<BoundTransaction> {
     const feePayer = this.#walletKeypair.publicKey;
-    if (this.transactionVersion === 1) {
-      const limits = await this.simulator.estimateV1Limits({ instructions, feePayer });
+    if (this.#transactionVersion === 1) {
+      const limits = await this.#simulator.estimateV1Limits({ instructions, feePayer });
       console.log(
         `[Graphite] v1 budget measured: ${limits.unitsConsumed} CU used -> limit ${limits.computeUnitLimit}; ` +
           `${limits.loadedAccountsDataSize} bytes loaded -> limit ${limits.loadedAccountsDataSizeLimit}`,
       );
-      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+      const { blockhash, lastValidBlockHeight } = await this.#connection.getLatestBlockhash();
       return BoundTransaction.build({
         instructions,
         feePayer,
@@ -643,7 +917,7 @@ export class GraphiteGuard {
     }
     const addressLookupTables: AddressLookupTableAccount[] = [];
     for (const address of tableAddresses) {
-      const table = (await this.connection.getAddressLookupTable(new PublicKey(address))).value;
+      const table = (await this.#connection.getAddressLookupTable(new PublicKey(address))).value;
       if (!table) {
         throw new Error(
           `[Graphite] address lookup table ${address} named by the swap payload could not be read. ABORTING.`,
@@ -651,7 +925,7 @@ export class GraphiteGuard {
       }
       addressLookupTables.push(table);
     }
-    const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await this.#connection.getLatestBlockhash();
     return BoundTransaction.build({
       instructions,
       feePayer,
@@ -661,199 +935,174 @@ export class GraphiteGuard {
     });
   }
 
-  async executeTransfer(
-    naturalLanguage: string
-  ): Promise<ExecutionOutcome> {
+  #verdictSummary(verification: VerificationResult, acceptedUnobserved: string[]): ConfirmationSummary["verdict"] {
+    const scope = verification.scope;
+    return {
+      approved: verification.approved,
+      confidence: verification.confidence,
+      risk: verification.risk_verdict.status,
+      auditTrailId: verification.audit_trail_id,
+      ...(scope?.kind === "artifact_bound" ? { transactionSha256: scope.transaction_sha256 } : {}),
+      unobservedCodes: [...(scope?.unobserved_codes ?? [])],
+      acceptedUnobserved: [...acceptedUnobserved],
+    };
+  }
+
+  async executeTransfer(naturalLanguage: string, options: ExecuteOptions = {}): Promise<ExecutionOutcome> {
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
 
     // Round 19 (F-19-C5): destination and amount are taken from the user's
     // own text, and the AI layer's reading is accepted only where it matches
-    // that text exactly. Both used to come from the AI layer's response alone
-    // — and the same response went to the Core as `proposed_intent`, so the
-    // Core's transaction-versus-intent check compared the response with
-    // itself. The amount is converted to lamports on the string, not through
-    // `parseFloat(...) * 1e9`.
+    // that text exactly. Round 29 (H3 + M5): and the text must be, as a whole,
+    // an imperative transfer of SOL to that address (`TRANSFER_GRAMMAR`).
+    // The class is the method's; the AI layer's label must agree with it.
+    const intentType = groundTransferClass(proposedIntent.intent_type);
     const grounded = groundTransferIntent(naturalLanguage, proposedIntent.extracted_parameters);
     const destination = grounded.destination;
     // The operator's limits, on the grounded values, before a blockhash is
     // fetched, anything is simulated or the Core is asked.
-    assertTransferAllowed(this.spendPolicy, destination, grounded.lamports);
+    assertTransferAllowed(this.#spendPolicy, destination, grounded.lamports);
+    const key = `transfer:${naturalLanguage}`;
+    await this.#assertNoUnresolvedSubmission(key);
     // The intent sent to the Core is rebuilt from the grounded values and the
-    // guard's own copy of the request. The Core does not compare the amount
-    // or the destination with the instruction; they are bound here, because
-    // the transfer below is built from exactly these values.
+    // guard's own copy of the request — nothing the AI layer wrote beyond its
+    // confidence travels (audit 2026-10-20, Info). The Core does not compare
+    // the amount or the destination with the instruction; they are bound
+    // here, because the transfer below is built from exactly these values.
     const groundedIntent: ProposedIntent = {
-      ...proposedIntent,
+      intent_type: intentType as any,
       raw_natural_language: naturalLanguage,
+      confidence_of_parse: proposedIntent.confidence_of_parse,
       extracted_parameters: {
-        ...proposedIntent.extracted_parameters,
         amount: grounded.amountText,
         destination: grounded.destination,
         input_token: "SOL",
       },
     };
 
-    const destPubkey = new PublicKey(destination);
-    const transferIx = SystemProgram.transfer({
-      fromPubkey: this.#walletKeypair.publicKey,
-      toPubkey: destPubkey,
-      lamports: grounded.lamports,
-    });
+    // Round 29 (M6): the aggregate limit, claimed now and returned unless
+    // the bytes leave the process.
+    const reservation = this.#ledger.reserve(grounded.lamports);
+    let handedOff = false;
+    try {
+      const destPubkey = new PublicKey(destination);
+      const transferIx = SystemProgram.transfer({
+        fromPubkey: this.#walletKeypair.publicKey,
+        toPubkey: destPubkey,
+        lamports: grounded.lamports,
+      });
 
-    const SYSTEM_PROGRAM = "11111111111111111111111111111111";
-    const TRANSFER_DISCRIMINATOR = "02000000";
+      const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+      const TRANSFER_DISCRIMINATOR = "02000000";
 
-    // C22 TOCTOU closure: bind the AMOUNT, not just program+discriminator+
-    // accounts. The transfer amount lives in `transferIx.data` (u64 LE lamports
-    // after the 0x02 discriminator). The previous projection omitted it, so an
-    // attacker who mutated the amount between verification and execution would
-    // pass the AuditBind check unchanged. Both sides must carry the same raw
-    // data bytes: the Rust content_hash includes instruction_data only when it
-    // is present (generate_audit_id), so we pass it to verification AND to the
-    // AuditBind projection together — changing only one side would make the
-    // check permanently abort.
-    const transferData = Array.from(transferIx.data);
-    // ONE transaction object, built before verification and carried through to
-    // submission. Everything downstream operates on this object: the bytes
-    // Graphite verifies come out of it, the digest is re-checked against it
-    // immediately before signing, and the signed bytes come from it. There is
-    // no second transaction for the two to drift apart.
-    const bound = await this.buildBound([transferIx]);
-    const verification = await this.verifyTransaction({
-      programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
-      accountAddresses: [this.walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
-      instructionData: transferData,
-      bound,
-    });
+      // C22 TOCTOU closure: bind the AMOUNT, not just program+discriminator+
+      // accounts. The transfer amount lives in `transferIx.data` (u64 LE
+      // lamports after the 0x02 discriminator). Both sides must carry the same
+      // raw data bytes: the Rust content_hash includes instruction_data only
+      // when it is present (generate_audit_id), so we pass it to verification
+      // AND to the AuditBind projection together.
+      const transferData = Array.from(transferIx.data);
+      // ONE transaction object, built before verification and carried through to
+      // submission. The bytes Graphite verifies come out of it, the digest is
+      // re-checked against it immediately before signing, and the signed bytes
+      // come from it. There is no second transaction for the two to drift apart.
+      const bound = await this.#buildBound([transferIx]);
+      const verification = await this.verifyTransaction({
+        programId: SYSTEM_PROGRAM, instructionDiscriminator: TRANSFER_DISCRIMINATOR,
+        accountAddresses: [this.#walletPublicKey, destination], proposedIntent: groundedIntent, instructions: [transferIx],
+        instructionData: transferData,
+        bound,
+      });
 
-    console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
-    if (!verification.approved) { console.log("[Graphite] Transfer BLOCKED."); return { executed: false, verifiedExecution: false, verification }; }
-    // `approved` alone is not the gate. A verdict that merely described
-    // caller-supplied metadata and one bound to real signed bytes are the same
-    // shape on the wire, so `approved` cannot tell whether Graphite was ever
-    // shown a transaction. This path hands the Core the exact bytes it will
-    // sign (`bound` above), and `signSubmitAndConfirm` refuses anything but
-    // an artifact-bound verdict whose residuals the policy accepts. The
-    // report here is the human-readable half of that decision.
-    reportVerificationScope(verification, "transfer");
+      console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
+      if (!verification.approved) { console.log("[Graphite] Transfer BLOCKED."); return { executed: false, verifiedExecution: false, verification }; }
+      // `approved` alone is not the gate: `#signSubmitAndConfirm` refuses
+      // anything but an artifact-bound verdict whose residuals the policy
+      // accepts. The report here is the human-readable half of that decision.
+      reportVerificationScope(verification, "transfer");
 
-    // Build the transaction FIRST, then bind what is actually in it.
-    //
-    // This used to re-hash the local constants above — SYSTEM_PROGRAM,
-    // `destination`, and a `transferData` copy taken before verification — and
-    // then sign `transferIx`. Those are two different artifacts. The
-    // reconstruction is a snapshot from before the window it was meant to
-    // cover, so mutating the instruction object after approval left the check
-    // passing and printing "Hash verified" while the redirected instruction
-    // went to the signer (reproduced in toctou-signing-boundary.test.ts).
-    //
-    // Everything below is projected from the live objects on the path to
-    // signing. The discriminator is passed explicitly
-    // because System Transfer's is 4 bytes and the Anchor default would read 8,
-    // picking up half the lamport amount and never matching Graphite's hash.
-    // Copies, not the bound transaction's own objects: AuditBind projects
-    // from these, and nothing it does to them can reach what gets signed.
-    const tx = { instructions: bound.instructions() };
-    const project = (ix: TransactionInstruction) => ({
-      programId: ix.programId.toBase58(),
-      data: ix.data,
-      accounts: ix.keys.map((k) => k.pubkey.toBase58()),
-      discriminator: TRANSFER_DISCRIMINATOR,
-      // The privilege flags. Graphite checks these via `real_account_metas`,
-      // so a binding that omits them would be checking less than the Core did
-      // — flipping a verified read-only account to writable changes what the
-      // instruction can do and leaves the projection hash untouched.
-      accountMetas: ix.keys.map((k) => ({
-        isSigner: k.isSigner,
-        isWritable: k.isWritable,
-      })),
-    });
-
-    // 1. The verified instruction is still the one in the transaction.
-    AuditBind.verifyInstruction(
-      project(tx.instructions[0]),
-      verification.content_hash ?? verification.audit_trail_id,
-    );
-    // 2. And nothing else joined it. content_hash covers the instruction
-    //    Graphite saw; it cannot cover one that did not exist yet, so an
-    //    appended drain passes a per-instruction check untouched.
-    if (tx.instructions.length !== 1) {
-      throw new Error(
-        `AuditBind FAILED: ${tx.instructions.length} instructions present, 1 verified. ABORTING.`,
+      // AuditBind over the bound transaction's own instructions (copies, so
+      // nothing it does reaches what is signed). The discriminator is passed
+      // explicitly because System Transfer's is 4 bytes and the Anchor default
+      // would read 8, picking up half the lamport amount.
+      const instructions = bound.instructions();
+      // 1. The verified instruction is still the one in the transaction.
+      AuditBind.verifyInstruction(
+        {
+          programId: instructions[0].programId.toBase58(),
+          data: instructions[0].data,
+          accounts: instructions[0].keys.map((k) => k.pubkey.toBase58()),
+          discriminator: TRANSFER_DISCRIMINATOR,
+        },
+        verification.content_hash ?? verification.audit_trail_id,
       );
-    }
-    const binding = AuditBind.transactionBinding(tx.instructions.map(project));
+      // 2. And nothing else joined it.
+      if (instructions.length !== 1) {
+        throw new Error(
+          `AuditBind FAILED: ${instructions.length} instructions present, 1 verified. ABORTING.`,
+        );
+      }
+      // Round 29 (audit 2026-10-20, Info): a `transactionBinding` taken here
+      // and compared a line later, over two fresh copies of the same private
+      // instructions with no await between, could not differ and so checked
+      // nothing; it is gone. What covers the window up to signing is
+      // `signApproved`, which re-serializes the transaction itself and
+      // requires the digest Graphite approved.
 
-    console.log("[Graphite] Transfer approved + AuditBind verified — executing...");
-    // 3. Re-checked immediately before signing, so the binding covers the
-    //    window rather than preceding it.
-    AuditBind.verifyTransactionUnchanged(tx.instructions.map(project), binding);
-    // 4. And the whole transaction, not only its instructions. AuditBind cannot
-    //    see the fee payer, the blockhash, the header or the message version,
-    //    because none of them are instruction-level facts. This compares the
-    //    digest Graphite computed over the exact bytes.
-    const lifecycle = await this.signSubmitAndConfirm(bound, verification, "transfer");
-    console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
-    return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
+      const confirm = options.confirm
+        ? async (acceptedUnobserved: string[]) => {
+            const effect = await this.#simulator.measureWalletEffect({ wire: bound.artifactBytes, wallet: this.#walletPublicKey });
+            return options.confirm!({
+              kind: "transfer",
+              request: naturalLanguage,
+              wallet: this.#walletPublicKey,
+              programId: SYSTEM_PROGRAM,
+              destination,
+              lamports: grounded.lamports.toString(),
+              sol: lamportsAsSol(grounded.lamports),
+              walletEffect: effectForSummary(effect),
+              verdict: this.#verdictSummary(verification, acceptedUnobserved),
+            });
+          }
+        : undefined;
+      console.log("[Graphite] Transfer approved + AuditBind verified — executing...");
+      handedOff = true;
+      const lifecycle = await this.#signSubmitAndConfirm(bound, verification, "transfer", key, reservation, confirm);
+      console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
+      return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
+    } finally {
+      // `#signSubmitAndConfirm` settles the reservation itself once handed off.
+      if (!handedOff) reservation.release();
+    }
   }
 
   /**
    * Execute a swap under the Graphite verification gate.
    *
-   * TOCTOU hardening (audit finding C2, CLOSED 2026-09-05 for the
-   * payload-provided path — see P1 "SAK swap-path TOCTOU residual"): pass
-   * `payload` — the EXACT swap instruction (programId, discriminator, full
-   * account list WITH per-account isSigner/isWritable, raw data bytes) — to
-   * bind AuditBind to the real instruction that will be submitted. Any
-   * mutation of that instruction between verification and execution changes
-   * the content_hash and ABORTS. Previously a bound payload was still handed
-   * off to `sakAgent.methods.swap()`, which REBUILDS the swap instruction
-   * internally — the executed instruction was not actually guaranteed to be
-   * the verified one (the "HONEST BOUNDARY" this comment used to document).
-   * That gap is now closed: when `payload` is supplied, this method builds
-   * the `TransactionInstruction` directly from the SAME bound fields and
-   * submits it itself (mirroring `executeTransfer`), never touching SAK's
-   * internal builder. This requires the caller to supply the real
-   * isSigner/isWritable flags (previously missing from the payload schema,
-   * which is exactly why the bridge could not safely do this before).
+   * TOCTOU hardening (audit finding C2, CLOSED 2026-09-05): `payload` is the
+   * EXACT swap instruction (programId, discriminator, full account list WITH
+   * per-account isSigner/isWritable, raw data bytes). This method builds the
+   * `TransactionInstruction` from those same fields and submits it itself;
+   * any mutation between verification and execution changes the content_hash
+   * and ABORTS. The per-account flags are forwarded to Graphite as
+   * `real_account_metas` (P1 fix, 2026-09-05). Without `payload` this
+   * REFUSES (2026-09-08), and the unverified opt-out is gone (Round 19,
+   * F-19-C2): a swap is a payload the bridge verifies and signs itself, or it
+   * is refused.
    *
-   * **Without `payload`, this now REFUSES (2026-09-08).** The unbound mode was
-   * default-on with an opt-in `GRAPHITE_SWAP_STRICT=1` to disable it, which is
-   * the wrong polarity for a security gate: the safe path should not be the one
-   * you have to know to ask for.
-   *
-   * It was also worse than the "reduced projection" the comment here used to
-   * claim. `accountAddresses` fell back to `[this.walletPublicKey]`, so
-   * Graphite was asked to verify a Jupiter swap consisting of ONE account, the
-   * wallet — no destination token account, no vaults, no authority, no
-   * instruction data, no amounts, no route. AuditBind then "passed" by
-   * re-hashing the same three constants the bridge had just sent, and SAK's
-   * internal builder constructed and submitted an entirely different
-   * instruction. Nothing about the executed swap was ever observed by anything.
-   * That is not a residual window; it is a verdict about a transaction that
-   * does not exist, printed next to the execution of one that does.
-   *
-   * The escape hatch that survived that change — `GRAPHITE_SWAP_ALLOW_UNVERIFIED_EXECUTION`
-   * set to `UNVERIFIED_SWAP_OPT_IN`, which handed the swap to SAK's builder —
-   * is gone as of Round 19 (F-19-C2). It could only execute because SAK held
-   * the wallet key; SAK now holds a wallet that refuses to sign, so the
-   * opt-out had nothing left to execute with. A swap is a payload the bridge
-   * verifies and signs itself, or it is refused.
-   *
-   * Privilege grounding (P1 fix, 2026-09-05 audit, "signer/writable metadata
-   * is not grounded in actual transaction AccountMeta data", CLOSED for the
-   * payload-provided path): `payload.accounts` already carries the real
-   * per-account isSigner/isWritable flags used to build the instruction —
-   * they are also forwarded to Graphite as `real_account_metas` so the Core
-   * cross-checks them against the manifest's declared expectations and
-   * hard-blocks a security-relevant mismatch (a required signer that isn't
-   * actually signed, or a readonly slot marked writable) BEFORE this
-   * instruction is built or submitted. See `bound-instruction.ts`.
+   * Round 29 (audit 2026-10-20, H2 + H4, L1, L4): the payload must be an
+   * exact-in instruction whose data the guard decodes (`swap-instructions.ts`);
+   * its own minimum output is held to what was simulated, the slippage
+   * allowed and a price floor (`swap-economics.ts`); the selector sent to the
+   * Core and bound by AuditBind is the decoded one, normalised once; and the
+   * operator's compute budget and output account, when configured, are built
+   * around it (`swap-envelope.ts`).
    */
   async executeSwap(
     naturalLanguage: string,
     payload?: BoundInstructionPayload,
+    options: ExecuteOptions = {},
   ): Promise<ExecutionOutcome> {
     const proposedIntent = await this.parseIntent(naturalLanguage);
     console.log(`[Graphite] Parsed intent: ${proposedIntent.intent_type} (conf: ${proposedIntent.confidence_of_parse})`);
@@ -861,11 +1110,6 @@ export class GraphiteGuard {
     const params = proposedIntent.extracted_parameters;
     if (!params?.input_token || !params?.output_token || !params?.amount) throw new Error("Swap requires input_token, output_token, amount");
 
-    // Deployed Jupiter V6 swap entrypoint: route_v2 = bb64facc31c4af14,
-    // CONFIRMED on-chain (C22.3, base58-decoded live mainnet txs 2026-08-09 +
-    // pinned fixture sig 57TAjPZXt49F9rSVZNEu… slot 438012579, SUCCESS). The
-    // legacy `route` discriminator (e517cb977ae3ad2a) is also live but legacy.
-    const JUPITER_SWAP_DISCRIMINATOR = "bb64facc31c4af14";
     // No payload, no swap. Round 19 (F-19-C2): the unverified opt-out that
     // used to live here executed through SAK's builder with the key SAK held;
     // SAK holds no signing key now, so there is nothing to opt into. An
@@ -891,106 +1135,222 @@ export class GraphiteGuard {
     }
     // A5-01: the class of this request is a swap because this is the swap
     // method and the user's text asks for one — not because the AI layer said
-    // so. Its label used to go to the Core unchanged, and the Core's
-    // intent-mismatch checks compare the transaction against that label: an
-    // AI answering "approve" switched off the Approve check for an Approve
-    // payload. The payload must also be addressed to a swap program. All of
-    // it is decided here, before a blockhash is fetched or the Core is asked.
-    const swapIntent: ProposedIntent = {
-      ...proposedIntent,
-      intent_type: groundSwapIntent(naturalLanguage, proposedIntent.intent_type, payload.programId),
-      raw_natural_language: naturalLanguage,
-    };
+    // so. The payload must also be addressed to a swap program the guard
+    // decodes. All of it is decided here, before a blockhash is fetched or
+    // the Core is asked.
+    const intentType = groundSwapIntent(naturalLanguage, proposedIntent.intent_type, payload.programId);
     // Which swap: the amount and both tokens, read from the user's own text
-    // and agreed by the AI layer's reading (external review, 2026-10-16).
-    // Before this, "Swap 1 SOL for USDC" was any swap on a swap program.
+    // and agreed by the AI layer's reading (external review, 2026-10-16), and
+    // since Round 29 the whole request in one accepted form.
     const groundedSwap = groundSwapRequest(naturalLanguage, params);
+    // Round 29 (H2/H4): the route's own amounts, from its data; exact-in only.
+    const decoded = decodeSwapInstruction(
+      payload.programId,
+      Uint8Array.from(payload.instructionData ?? []),
+      payload.discriminator,
+    );
+    const key = `swap:${naturalLanguage}`;
+    await this.#assertNoUnresolvedSubmission(key);
+    const swapIntent: ProposedIntent = {
+      intent_type: intentType as any,
+      raw_natural_language: naturalLanguage,
+      confidence_of_parse: proposedIntent.confidence_of_parse,
+      extracted_parameters: {
+        amount: groundedSwap.amountText,
+        input_token: groundedSwap.input.written,
+        output_token: groundedSwap.output.written,
+        ...(groundedSwap.slippageBps !== undefined ? { slippage_bps: groundedSwap.slippageBps } : {}),
+      } as ProposedIntent["extracted_parameters"],
+    };
     const accountAddresses = payload.accounts.map((a) => a.pubkey);
     // P1 fix (2026-09-05 audit): the bound payload already carries the REAL
-    // per-account isSigner/isWritable flags (that's what buildInstructionFromPayload
-    // uses to construct the actual on-chain instruction) — forward them as
-    // real_account_metas so the Core cross-checks them against the manifest's
-    // declared expectations, not just the account addresses.
+    // per-account isSigner/isWritable flags — forward them as
+    // real_account_metas so the Core cross-checks them against the manifest.
     const realAccountMetas = payload.accounts.map((a) => ({ is_signer: a.isSigner, is_writable: a.isWritable }));
-    // Built once, from the payload, before verification — the same construction
-    // that used to happen after approval.
-    const boundSwap = await this.buildBound(
-      [buildInstructionFromPayload(payload)],
+    // Round 29 (L4): the envelope, built by the guard from configuration and
+    // the wallet's own key — nothing in it comes from the payload.
+    const envelope = buildSwapEnvelope({
+      wallet: this.#walletKeypair.publicKey,
+      payload,
+      outputMint: groundedSwap.output.mint,
+      config: this.#swapEnvelope,
+      version: this.#transactionVersion,
+    });
+    // Built once, from the payload, before verification.
+    const boundSwap = await this.#buildBound(
+      [...envelope, buildInstructionFromPayload(payload)],
       payload.addressLookupTableAddresses ?? [],
     );
     // What this exact transaction does to the wallet, from one simulation of
     // the bytes that will be signed (pre- and post-balances of the same run),
     // never from the request, whose amounts are whatever the model wrote.
-    // First the operator's limits, then the request itself: no more than the
-    // requested amount of the requested token, no other token, and the
-    // requested token delivered.
-    const effect = await this.simulator.measureWalletEffect({
+    // First the operator's limits, then the request itself, then what the
+    // route must be worth.
+    const effect = await this.#simulator.measureWalletEffect({
       wire: boundSwap.artifactBytes,
-      wallet: this.walletPublicKey,
+      wallet: this.#walletPublicKey,
     });
-    assertSwapAllowed(this.spendPolicy, {
-      lamports: effect.solOut > 0n ? effect.solOut : 0n,
+    // The priority fee the envelope permits is counted on top of what was
+    // measured: conservative if the simulation charged it already.
+    const outflowLamports = (effect.solOut > 0n ? effect.solOut : 0n) + maxPriorityFeeLamports(this.#swapEnvelope);
+    assertSwapAllowed(this.#spendPolicy, {
+      lamports: outflowLamports,
       tokens: [...effect.tokenDelta]
         .filter(([, delta]) => delta < 0n)
         .map(([mint, delta]) => ({ mint, amount: -delta })),
     });
     assertSwapEffectMatches(groundedSwap, effect);
-    const verification = await this.verifyTransaction({
-      // No Jupiter default: groundSwapIntent has already refused a payload
-      // without a swap program.
-      programId: payload.programId,
-      instructionDiscriminator: payload.discriminator ?? JUPITER_SWAP_DISCRIMINATOR,
-      accountAddresses, proposedIntent: swapIntent,
-      instructionData: payload.instructionData,
-      realAccountMetas,
-      // The transaction that will be signed, not a copy of its instructions.
-      bound: boundSwap,
+    const economics: SwapEconomics = assertSwapEconomics({
+      grounded: groundedSwap,
+      decoded,
+      effect,
+      policy: this.#swapPolicy,
     });
-
-    console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
-    if (!verification.approved) { console.log("[Graphite] Swap BLOCKED."); return { executed: false, verifiedExecution: false, verification }; }
-    reportVerificationScope(verification, "swap");
-
-    // Bind the EXACT instruction that will be submitted (full data + accounts).
-    AuditBind.verifyInstruction(
-      {
+    if (economics.floor.source === "unpriced") {
+      console.warn(
+        "[Graphite] swap: no price floor applies (GRAPHITE_SWAP_ALLOW_UNPRICED=1, an accepted risk); the route's " +
+          `minimum of ${economics.minOut} is held only to the simulated ${economics.simulatedOut}.`,
+      );
+    }
+    const reservation = this.#ledger.reserve(outflowLamports);
+    let handedOff = false;
+    try {
+      const verification = await this.verifyTransaction({
         programId: payload.programId,
-        data: Uint8Array.from(payload.instructionData ?? []),
-        accounts: accountAddresses,
-      },
-      verification.content_hash ?? verification.audit_trail_id,
-    );
-    console.log("[Graphite] Swap payload bound to AuditBind (instruction data + full account list).");
+        // Round 29 (L1): the decoded selector, normalised once, is both what
+        // the Core hashes and what AuditBind binds below.
+        instructionDiscriminator: decoded.discriminator,
+        accountAddresses, proposedIntent: swapIntent,
+        instructionData: payload.instructionData,
+        realAccountMetas,
+        // The transaction that will be signed, not a copy of its instructions.
+        bound: boundSwap,
+      });
 
-    // TOCTOU closure: submit the SAME instruction that was just bound —
-    // never SAK's internal rebuild. buildInstructionFromPayload uses the
-    // identical (programId, accounts, instructionData) fields that were
-    // just hashed above, so what executes is byte-identical to what was
-    // verified by construction, not by trusting a second code path to
-    // agree with the first.
-    // `boundSwap` holds the instruction built from this same payload before
-    // verification, and its bytes are what Graphite verified. Rebuilding here
-    // would reintroduce the copy-versus-original gap one level down.
-    console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction directly (bypassing SAK's builder)...");
-    const lifecycle = await this.signSubmitAndConfirm(boundSwap, verification, "swap");
-    console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
-    return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
+      console.log(`[Graphite] ${verification.approved ? "APPROVED" : "BLOCKED"} (confidence: ${verification.confidence})`);
+      if (!verification.approved) { console.log("[Graphite] Swap BLOCKED."); return { executed: false, verifiedExecution: false, verification }; }
+      reportVerificationScope(verification, "swap");
+
+      // Bind the EXACT instruction that will be submitted (full data + accounts),
+      // with the discriminator string the Core was sent. Round 29 (L1): this
+      // used to omit it, so AuditBind re-derived an 8-byte selector from the
+      // data; for a 1-byte program (Raydium AMM v4) or a payload that wrote
+      // its selector in capitals, the two hashes never matched and every
+      // approved swap aborted.
+      AuditBind.verifyInstruction(
+        {
+          programId: payload.programId,
+          data: Uint8Array.from(payload.instructionData ?? []),
+          accounts: accountAddresses,
+          discriminator: normalizeDiscriminator(decoded.discriminator),
+        },
+        verification.content_hash ?? verification.audit_trail_id,
+      );
+      console.log("[Graphite] Swap payload bound to AuditBind (instruction data + full account list).");
+
+      const confirm = options.confirm
+        ? (acceptedUnobserved: string[]) =>
+            options.confirm!({
+              kind: "swap",
+              request: naturalLanguage,
+              wallet: this.#walletPublicKey,
+              programId: payload.programId,
+              swap: {
+                route: decoded.name,
+                input: { token: groundedSwap.input.written, mint: groundedSwap.input.mint, amountIn: economics.amountIn.toString() },
+                output: {
+                  token: groundedSwap.output.written,
+                  mint: groundedSwap.output.mint,
+                  minimumOut: economics.minOut.toString(),
+                  simulatedOut: economics.simulatedOut.toString(),
+                },
+                maxSlippageBps: economics.maxSlippageBps,
+                priceFloor:
+                  economics.floor.source === "unpriced"
+                    ? "none (GRAPHITE_SWAP_ALLOW_UNPRICED=1)"
+                    : `${economics.floor.baseUnits} base units (${economics.floor.source})`,
+              },
+              walletEffect: effectForSummary(effect),
+              verdict: this.#verdictSummary(verification, acceptedUnobserved),
+            })
+        : undefined;
+      // `boundSwap` holds the instruction built from this same payload before
+      // verification, and its bytes are what Graphite verified. Rebuilding here
+      // would reintroduce the copy-versus-original gap one level down.
+      console.log("[Graphite] Swap approved + AuditBind verified — submitting the bound transaction...");
+      handedOff = true;
+      const lifecycle = await this.#signSubmitAndConfirm(boundSwap, verification, "swap", key, reservation, confirm);
+      console.log(`[Solana] ${lifecycle.confirmed ? "Confirmed" : "Submitted (not confirmed)"}: ${lifecycle.signature}`);
+      return { executed: true, verifiedExecution: true, verification, signature: lifecycle.signature, lifecycle };
+    } finally {
+      if (!handedOff) reservation.release();
+    }
   }
 
   /** The operator's spending limits, as configured (a copy). */
   get limits(): SpendPolicy {
+    const p = this.#spendPolicy;
     return {
-      ...(this.spendPolicy.maxTransferLamports !== undefined
-        ? { maxTransferLamports: this.spendPolicy.maxTransferLamports }
-        : {}),
-      ...(this.spendPolicy.allowedDestinations !== undefined
-        ? { allowedDestinations: [...this.spendPolicy.allowedDestinations] }
-        : {}),
+      ...(p.maxTransferLamports !== undefined ? { maxTransferLamports: p.maxTransferLamports } : {}),
+      ...(p.allowedDestinations !== undefined ? { allowedDestinations: [...p.allowedDestinations] } : {}),
+      ...(p.maxTotalLamports !== undefined ? { maxTotalLamports: p.maxTotalLamports } : {}),
+      ...(p.spendWindowSeconds !== undefined ? { spendWindowSeconds: p.spendWindowSeconds } : {}),
+      ...(p.allowUncapped !== undefined ? { allowUncapped: p.allowUncapped } : {}),
     };
   }
 
   /** The wallet's public key, base58. The secret key is not reachable from outside. */
-  get publicKey(): string { return this.walletPublicKey; }
-  getGraphiteClient(): GraphiteClient { return this.graphite; }
-  getConnection(): Connection { return this.connection; }
+  get publicKey(): string { return this.#walletPublicKey; }
+
+  /**
+   * The Core's read-only endpoints (Round 29, M8). This returned the
+   * `GraphiteClient` itself, and with it the Core's API key
+   * (`getGraphiteClient()["apiKey"]`) and a `verify` any caller could use to
+   * write to the trail under this deployment's key. Callers that need more
+   * build their own client with their own key.
+   */
+  getGraphiteClient(): GraphiteReadClient {
+    const graphite = this.#graphite;
+    return Object.freeze({
+      health: () => graphite.health(),
+      listManifests: () => graphite.listManifests(),
+    });
+  }
+
+  /**
+   * The RPC connection, for read-only use. Its endpoint is the operator's
+   * SOLANA_RPC_URL, which for some providers carries an API key in the query.
+   */
+  getConnection(): Connection { return this.#connection; }
 }
+// Round 29 (M8): no method of the class can be replaced at runtime either.
+Object.freeze(GraphiteGuard.prototype);
+Object.freeze(GraphiteGuard);
+
+/**
+ * SOLANA_RPC_URL under the Core's transport rule (Round 29, audit 2026-10-20,
+ * M3): https://, or http:// only to a loopback host. Every number a swap is
+ * judged by — the wallet's balances before and after — comes from this
+ * endpoint's simulation, and an answer rewritten in flight is a measurement
+ * rewritten in flight. Never logs the URL (a provider URL can carry its key).
+ */
+export function assertSecureRpcUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("[Graphite] SOLANA_RPC_URL is not a valid URL. REFUSING TO START.");
+  }
+  try {
+    assertSecureBaseUrl(url);
+  } catch {
+    throw new Error(
+      `[Graphite] SOLANA_RPC_URL is refused: ${parsed.protocol}//${parsed.host} is not https://, nor http:// to a ` +
+        "loopback host. The RPC alone measures what a swap does to the wallet, so it is held to the Core's " +
+        "transport rule (Round 29, M3). REFUSING TO START.",
+    );
+  }
+}
+
+// Kept for callers that imported it (Round 29: the fetch every Connection uses).
+export { noRedirectFetch };

@@ -21,7 +21,9 @@ import {
   IntentGroundingError,
   parseTransactionVersion,
   SpendPolicyRefusal,
+  swapPolicyFromEnv,
   type SpendPolicy,
+  type SwapPolicy,
 } from "./guard.js";
 import {
   BLOCKED_VERDICT,
@@ -31,10 +33,15 @@ import {
   type Loopback,
   type MockService,
 } from "./loopback-mocks.js";
+import { jupiterRouteData } from "./swap-fixtures.js";
 
 const DEST = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR";
 const ATTACKER = "6bSsP4p6wXqFJdD2TkYgNcVmLzHfWq7pRyA8tCzE5nBj";
 const REQUEST = `Transfer 1.5 SOL to ${DEST}`;
+/** A Core API key that must not be reachable through the guard (Round 29, M8). */
+const CORE_API_KEY = `loopback-core-key-${Math.random().toString(36).slice(2)}`;
+/** Floors below what the loopback routes pay: SOL/USDC 100, USDC/SOL 0.003. */
+const DEFAULT_TEST_SWAP_POLICY = swapPolicyFromEnv({ GRAPHITE_SWAP_MIN_RATES: "SOL/USDC=100,USDC/SOL=0.003" });
 
 /** What the real AI layer answers for REQUEST (intent_parser.py). */
 function honestParse(text = REQUEST) {
@@ -60,6 +67,7 @@ async function harness(
     aiLayerTimeoutMs?: number;
     transactionVersion?: "legacy" | 1;
     spendPolicy?: SpendPolicy;
+    swapPolicy?: SwapPolicy;
     rpc?: (wallet: Keypair) => Parameters<typeof mockRpc>[0];
   } = {},
 ): Promise<Harness> {
@@ -76,7 +84,12 @@ async function harness(
     aiLayerUrl: ai.url,
     aiLayerTimeoutMs: opts.aiLayerTimeoutMs,
     transactionVersion: opts.transactionVersion,
-    spendPolicy: opts.spendPolicy,
+    // Round 29 (M6): a cap is required; these tests are about other things,
+    // so the default cap is far above anything they move.
+    spendPolicy: opts.spendPolicy ?? { maxTransferLamports: 1_000_000_000_000n },
+    // Round 29 (H2): a price floor for the pairs these tests swap.
+    swapPolicy: opts.swapPolicy ?? DEFAULT_TEST_SWAP_POLICY,
+    graphiteApiKey: CORE_API_KEY,
   });
   return {
     agent,
@@ -242,17 +255,17 @@ function approvePayload(wallet: Keypair) {
 /** The wallet's account for what a swap delivers (a fixed, valid address). */
 const OUT_ACCOUNT = "p2Yicb86aZig616Eav2VWG9vuXR5mEqhtzshZYBxzsV";
 
-/** A payload addressed to Jupiter V6 (its contents are the Core's to judge). */
-function jupiterPayload(wallet: Keypair) {
+/** A Jupiter V6 route payload the guard can read; the rest is the Core's to judge. */
+function jupiterPayload(wallet: Keypair, route: Parameters<typeof jupiterRouteData>[0] = {}) {
   return {
     programId: JUPITER_V6,
-    discriminator: "bb64facc31c4af14",
+    discriminator: "e517cb977ae3ad2a",
     accounts: [
       { pubkey: wallet.publicKey.toBase58(), isSigner: true, isWritable: true },
       { pubkey: DEST, isSigner: false, isWritable: true },
       { pubkey: OUT_ACCOUNT, isSigner: false, isWritable: true },
     ],
-    instructionData: [0xbb, 0x64, 0xfa, 0xcc, 0x31, 0xc4, 0xaf, 0x14],
+    instructionData: jupiterRouteData(route),
   };
 }
 
@@ -279,7 +292,7 @@ test("A5-01: executeSwap refuses a payload for a program that does not swap, hon
     h.ai.answer.set("POST /parse", { status: 200, body: swapParse("swap") });
     await assert.rejects(
       h.agent.executeSwap(SWAP_REQUEST, approvePayload(h.wallet)),
-      /no seed manifest tags as a swap program/,
+      /not one of the swap programs whose instruction data the guard decodes/,
     );
     assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
     assert.equal(h.rpc.calls.length, 0);
@@ -333,6 +346,7 @@ test("A5-01: a hung AI layer times out instead of hanging the call", async () =>
       graphiteCoreUrl: core.url,
       aiLayerUrl: `http://127.0.0.1:${(hung.address() as AddressInfo).port}`,
       aiLayerTimeoutMs: 200,
+      spendPolicy: { maxTransferLamports: 1n },
     });
     const started = Date.now();
     await assert.rejects(agent.executeTransfer(REQUEST), /the AI layer did not answer within 200 ms/);
@@ -370,6 +384,8 @@ test("R8: the wallet's secret key is not reachable through the guard object at r
     const seen = new Set<unknown>();
     const found: string[] = [];
     const walk = (value: unknown, path: string, depth: number): void => {
+      // Round 29 (M8): the Core's API key is as much a secret as the wallet's.
+      if (typeof value === "string" && value.includes(CORE_API_KEY)) found.push(`${path} holds the Core API key`);
       if (value === null || typeof value !== "object" || seen.has(value) || depth > 6) return;
       seen.add(value);
       if (value instanceof Keypair) found.push(`${path} is a Keypair`);
@@ -403,6 +419,10 @@ test("R8: the wallet's secret key is not reachable through the guard object at r
       }
     };
     walk(h.agent, "agent", 0);
+    // What the guard hands out by method, too (Round 29, M8: this returned
+    // the GraphiteClient, and `getGraphiteClient()["apiKey"]` was the key).
+    walk(h.agent.getGraphiteClient(), "agent.getGraphiteClient()", 0);
+    walk(h.agent.getConnection(), "agent.getConnection()", 0);
     assert.ok(seen.size > 1, "the walk reached past the guard object itself");
     assert.deepEqual(found, [], `the secret key is reachable: ${found.join("; ")}`);
   } finally {
@@ -465,7 +485,7 @@ test("spend policy: a transfer over the cap is refused before the RPC or the Cor
 });
 
 test("spend policy: a destination outside the allowlist is refused; inside it, the transfer is verified", async () => {
-  const outside = await harness({ spendPolicy: { allowedDestinations: [ATTACKER] } });
+  const outside = await harness({ spendPolicy: { maxTransferLamports: 10n * BigInt(1e9), allowedDestinations: [ATTACKER] } });
   try {
     await assert.rejects(outside.agent.executeTransfer(REQUEST), /not in the allowed destinations/);
     assert.equal(outside.rpc.calls.length, 0);
@@ -526,7 +546,7 @@ function swapLedger(
           ? { [OUT_ACCOUNT]: { lamports: 2_039_280, owner: SPL_TOKEN, data: tokenAccountData(received.mint, w, received.amount) } }
           : {}),
       },
-      decimals: { [USDC]: 6, [USDT]: 6, [BONK]: 5 },
+      decimals: { [USDC]: 6, [USDT]: 6, [BONK]: 5, [WSOL]: 9 },
     };
   };
 }
@@ -598,7 +618,7 @@ test("spend policy: a swap spending a token a lamport cap cannot price is refuse
 });
 
 test("spend policy: a destination list alone cannot bound a swap, so the swap is refused", async () => {
-  const h = await swapUnder({ allowedDestinations: [DEST] }, swapLedger(10 * SOL - 5_000));
+  const h = await swapUnder({ allowedDestinations: [DEST], allowUncapped: true }, swapLedger(10 * SOL - 5_000));
   try {
     await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /no destination to check/);
     assert.equal(h.core.calls.filter((c) => c.method === "POST /verify").length, 0);
@@ -627,8 +647,9 @@ async function swapCase(
   text: string,
   params: Record<string, string>,
   rpc: ReturnType<typeof swapLedger>,
+  spendPolicy?: SpendPolicy,
 ): Promise<Harness> {
-  const h = await harness({ rpc });
+  const h = await harness({ rpc, spendPolicy });
   h.ai.answer.set("POST /parse", { status: 200, body: parse(text, params) });
   return h;
 }
@@ -685,6 +706,9 @@ test("swap grounding: a route spending USDT for a SOL request is refused", async
     SWAP_REQUEST,
     SOL_FOR_USDC,
     swapLedger(10 * SOL - 5_000, { mint: USDT, before: 5_000_000n, after: 0n }),
+    // Uncapped, so the grounding (not the lamport cap, which refuses any
+    // token outflow) is what is under test.
+    { allowUncapped: true },
   );
   try {
     await assert.rejects(h.agent.executeSwap(SWAP_REQUEST, jupiterPayload(h.wallet)), /spends 5000000 base units of Es9v/);
@@ -697,18 +721,25 @@ test("swap grounding: a route spending USDT for a SOL request is refused", async
 test("swap grounding: a token-for-token swap is held to the token amount requested", async () => {
   const text = "Swap 150 USDC for SOL";
   const params = { input_token: "USDC", output_token: "SOL", amount: "150" };
+  // A token input cannot be priced against a lamport cap (spend-policy.ts),
+  // so this deployment runs uncapped, by name (Round 29, M6).
+  const uncapped: SpendPolicy = { allowUncapped: true };
+  // Round 29 (H2): the route pays 0.5 SOL as wrapped SOL into the wallet; its
+  // minimum is 0.4975 SOL; the floor USDC/SOL=0.003 asks 0.45.
+  const route = { amountIn: 150_000_000n, quotedOut: 500_000_000n };
+  const delivers = { mint: WSOL, amount: 500_000_000n };
   // Spends 150 USDC and receives SOL: goes to the Core.
-  let h = await swapCase(text, params, swapLedger(10 * SOL + SOL / 2, { mint: USDC, before: 150_000_000n, after: 0n }, null));
+  let h = await swapCase(text, params, swapLedger(10 * SOL - 5_000 - 2_039_280, { mint: USDC, before: 150_000_000n, after: 0n }, delivers), uncapped);
   try {
-    await h.agent.executeSwap(text, jupiterPayload(h.wallet));
+    await h.agent.executeSwap(text, jupiterPayload(h.wallet, route));
     assert.equal(coreAsked(h), 1);
   } finally {
     await h.close();
   }
   // Spends 200 USDC for a request of 150: refused.
-  h = await swapCase(text, params, swapLedger(10 * SOL + SOL / 2, { mint: USDC, before: 200_000_000n, after: 0n }, null));
+  h = await swapCase(text, params, swapLedger(10 * SOL - 5_000 - 2_039_280, { mint: USDC, before: 200_000_000n, after: 0n }, delivers), uncapped);
   try {
-    await assert.rejects(h.agent.executeSwap(text, jupiterPayload(h.wallet)), /150 USDC \(150000000 base units\); the transaction takes 200000000/);
+    await assert.rejects(h.agent.executeSwap(text, jupiterPayload(h.wallet, route)), /150 USDC \(150000000 base units\); the transaction takes 200000000/);
     assert.equal(coreAsked(h), 0);
   } finally {
     await h.close();

@@ -4,7 +4,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { toolRefusalOf, toolResultOf } from "./tool-results.js";
+import { MAX_REASON_CHARS, redactReason, toolRefusalOf, toolResultOf } from "./tool-results.js";
+import { ConfirmationDeclined, SubmissionOutcomeUnknown } from "./execution-lifecycle.js";
+import { SwapRouteRefusal } from "./swap-instructions.js";
 import { ResidualPolicyRefusal } from "./residual-policy.js";
 import { SpendPolicyRefusal } from "./spend-policy.js";
 import { BLOCKED_VERDICT } from "./loopback-mocks.js";
@@ -54,4 +56,30 @@ test("each refusal names who refused", () => {
   assert.equal(toolRefusalOf(new ResidualPolicyRefusal("no")).refusedBy, "residual-policy");
   assert.equal(toolRefusalOf(new SpendPolicyRefusal("no")).refusedBy, "spend-policy");
   assert.equal(toolRefusalOf(new Error("boom")).refusedBy, "error");
+});
+
+// Round 29 (audit 2026-10-20).
+test("Round 29: new refusals map to who refused; an unknown submission carries its signature", () => {
+  assert.equal(toolRefusalOf(new SwapRouteRefusal("dust")).refusedBy, "swap-route");
+  assert.equal(toolRefusalOf(new ConfirmationDeclined("transfer", "declined")).refusedBy, "person");
+  const unknown = toolRefusalOf(new SubmissionOutcomeUnknown("transfer", "SIG123", 9, "timeout", true));
+  assert.equal(unknown.refusedBy, "submission-unknown");
+  assert.equal(unknown.signature, "SIG123");
+});
+
+test("Info: a refusal's text reaches the model without secrets, and bounded", () => {
+  const r = toolRefusalOf(
+    new Error(
+      "fetch https://user:pw@rpc.example.com/v1/?api-key=K3Y failed; Authorization: Bearer abc.def; token=t0k; " +
+        "x".repeat(2000),
+    ),
+  );
+  assert.equal(r.refusedBy, "error");
+  for (const secret of ["K3Y", "pw@", "abc.def", "t0k", "/v1/"]) assert.ok(!r.reason!.includes(secret), secret);
+  assert.match(r.reason!, /https:\/\/rpc\.example\.com/);
+  assert.ok(r.reason!.length <= MAX_REASON_CHARS + 1);
+  // The guard's own guidance survives: which form is accepted.
+  const g = toolRefusalOf(new SpendPolicyRefusal("1 lamports exceeds the per-transfer cap of 0"));
+  assert.match(g.reason!, /exceeds the per-transfer cap/);
+  assert.equal(redactReason('A transfer is only built from "send <amount> SOL to <address>"'), 'A transfer is only built from "send <amount> SOL to <address>"');
 });

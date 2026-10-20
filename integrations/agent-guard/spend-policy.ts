@@ -14,13 +14,25 @@
  *
  * Limits only narrow: nothing here can make a transaction the Core refuses
  * executable.
+ *
+ * Round 29 (audit 2026-10-20, M6): a guard without a per-transaction cap used
+ * to be the default — `spendPolicyFromEnv({})` is `{}` — silently, and only
+ * two of the three adapters refused it. The guard itself now refuses to start
+ * without `maxTransferLamports` unless the operator says, by name, that this
+ * deployment runs uncapped (GRAPHITE_ALLOW_UNCAPPED=1: an accepted risk under
+ * Constitution P14, logged at startup). The policy in force is logged at
+ * startup either way, and an aggregate limit over a rolling window
+ * (GRAPHITE_MAX_TOTAL_LAMPORTS per GRAPHITE_SPEND_WINDOW_SECONDS) bounds what
+ * many capped requests add up to. The aggregate is IN MEMORY and PER PROCESS:
+ * a restart, or a second process with the same key, starts from zero.
  */
 
 export interface SpendPolicy {
   /**
    * The most one transaction may take out of the wallet, in lamports: a
    * transfer's amount, or a swap's outflow as measured by simulating the
-   * exact transaction (fee and wrapped SOL included). Unset = no cap.
+   * exact transaction (fee and wrapped SOL included). Required unless
+   * `allowUncapped` (Round 29, M6).
    */
   maxTransferLamports?: bigint;
   /**
@@ -28,34 +40,84 @@ export interface SpendPolicy {
    * destination; an empty list = none (every transfer refused).
    */
   allowedDestinations?: readonly string[];
+  /**
+   * The most every executed transaction together may take out of the wallet
+   * within `spendWindowSeconds`, in lamports (GRAPHITE_MAX_TOTAL_LAMPORTS).
+   * Unset = no aggregate limit. Per process, in memory.
+   */
+  maxTotalLamports?: bigint;
+  /** The aggregate's rolling window in seconds (GRAPHITE_SPEND_WINDOW_SECONDS, default 3600). */
+  spendWindowSeconds?: number;
+  /**
+   * Run without a per-transaction cap (GRAPHITE_ALLOW_UNCAPPED=1). An accepted
+   * risk the operator states by name; logged at startup.
+   */
+  allowUncapped?: boolean;
 }
 
-/** Thrown before anything is built or sent. */
+/** The aggregate window when GRAPHITE_MAX_TOTAL_LAMPORTS is set without one. */
+export const DEFAULT_SPEND_WINDOW_SECONDS = 3600;
+
+/**
+ * Thrown when the operator's limits refuse a request. For a transfer that is
+ * before anything is built; for a swap it is after the transaction was built
+ * and simulated (its outflow is measured on the bytes) — in both cases before
+ * anything is signed or sent.
+ */
 export class SpendPolicyRefusal extends Error {
   constructor(message: string) {
-    super(`[Graphite] spend policy: ${message}. REFUSED before anything was built or sent.`);
+    super(`[Graphite] spend policy: ${message}. REFUSED; nothing was signed or sent.`);
     this.name = "SpendPolicyRefusal";
   }
 }
 
 const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
+function lamportsFromEnv(name: string, value: string): bigint {
+  if (!/^\d+$/.test(value.trim())) {
+    throw new Error(
+      `[Graphite] ${name}=${JSON.stringify(value)} is not a non-negative integer of lamports. REFUSING TO START.`,
+    );
+  }
+  return BigInt(value.trim());
+}
+
 /**
- * Read the policy from GRAPHITE_MAX_TRANSFER_LAMPORTS (a non-negative integer)
- * and GRAPHITE_ALLOWED_DESTINATIONS (comma-separated base58 addresses). A
- * malformed value is a startup error, never a silently absent limit.
+ * Read the policy from GRAPHITE_MAX_TRANSFER_LAMPORTS (a non-negative integer),
+ * GRAPHITE_ALLOWED_DESTINATIONS (comma-separated base58 addresses),
+ * GRAPHITE_MAX_TOTAL_LAMPORTS, GRAPHITE_SPEND_WINDOW_SECONDS and
+ * GRAPHITE_ALLOW_UNCAPPED ("1", or unset / "0"). A malformed value is a
+ * startup error, never a silently absent limit.
  */
 export function spendPolicyFromEnv(env: Record<string, string | undefined> = process.env): SpendPolicy {
   const policy: SpendPolicy = {};
   const max = env.GRAPHITE_MAX_TRANSFER_LAMPORTS;
   if (max !== undefined && max !== "") {
-    if (!/^\d+$/.test(max.trim())) {
+    policy.maxTransferLamports = lamportsFromEnv("GRAPHITE_MAX_TRANSFER_LAMPORTS", max);
+  }
+  const total = env.GRAPHITE_MAX_TOTAL_LAMPORTS;
+  if (total !== undefined && total !== "") {
+    policy.maxTotalLamports = lamportsFromEnv("GRAPHITE_MAX_TOTAL_LAMPORTS", total);
+  }
+  const window = env.GRAPHITE_SPEND_WINDOW_SECONDS;
+  if (window !== undefined && window !== "") {
+    if (!/^[1-9][0-9]{0,8}$/.test(window.trim())) {
       throw new Error(
-        `[Graphite] GRAPHITE_MAX_TRANSFER_LAMPORTS=${JSON.stringify(max)} is not a non-negative integer of lamports. REFUSING TO START.`,
+        `[Graphite] GRAPHITE_SPEND_WINDOW_SECONDS=${JSON.stringify(window)} is not a positive integer of seconds. REFUSING TO START.`,
       );
     }
-    policy.maxTransferLamports = BigInt(max.trim());
+    if (policy.maxTotalLamports === undefined) {
+      throw new Error(
+        "[Graphite] GRAPHITE_SPEND_WINDOW_SECONDS is set without GRAPHITE_MAX_TOTAL_LAMPORTS, so it bounds nothing. REFUSING TO START.",
+      );
+    }
+    policy.spendWindowSeconds = Number(window.trim());
   }
+  const uncapped = env.GRAPHITE_ALLOW_UNCAPPED;
+  if (uncapped !== undefined && uncapped !== "" && uncapped !== "0" && uncapped !== "1") {
+    throw new Error(`[Graphite] GRAPHITE_ALLOW_UNCAPPED=${JSON.stringify(uncapped)} is not "1" or "0". REFUSING TO START.`);
+  }
+  if (uncapped === "1") policy.allowUncapped = true;
   const allowed = env.GRAPHITE_ALLOWED_DESTINATIONS;
   if (allowed !== undefined) {
     const list = allowed
@@ -72,6 +134,112 @@ export function spendPolicyFromEnv(env: Record<string, string | undefined> = pro
     policy.allowedDestinations = list;
   }
   return policy;
+}
+
+/**
+ * Refuse to start under a policy that does not bound a transaction (Round 29,
+ * M6): no per-transaction cap, and no explicit `allowUncapped`.
+ */
+export function assertSpendPolicyUsable(policy: SpendPolicy): void {
+  if (policy.maxTransferLamports === undefined && policy.allowUncapped !== true) {
+    throw new Error(
+      "[Graphite] no per-transaction cap is set. A request a model was talked into moves whatever it names; " +
+        "set GRAPHITE_MAX_TRANSFER_LAMPORTS (or spendPolicy.maxTransferLamports), or accept running without one " +
+        "by name with GRAPHITE_ALLOW_UNCAPPED=1 (spendPolicy.allowUncapped). REFUSING TO START.",
+    );
+  }
+  if (policy.spendWindowSeconds !== undefined) {
+    if (!Number.isSafeInteger(policy.spendWindowSeconds) || policy.spendWindowSeconds < 1) {
+      throw new Error(`[Graphite] spendWindowSeconds ${policy.spendWindowSeconds} is not a positive integer. REFUSING TO START.`);
+    }
+    if (policy.maxTotalLamports === undefined) {
+      throw new Error("[Graphite] spendWindowSeconds is set without maxTotalLamports, so it bounds nothing. REFUSING TO START.");
+    }
+  }
+}
+
+/** The startup line that states the spend policy in force (Round 29, M6). */
+export function describeSpendPolicy(policy: SpendPolicy): string {
+  const parts: string[] = [];
+  parts.push(
+    policy.maxTransferLamports !== undefined
+      ? `at most ${policy.maxTransferLamports} lamports per transaction`
+      : "ACCEPTED RISK (GRAPHITE_ALLOW_UNCAPPED=1): NO per-transaction cap",
+  );
+  parts.push(
+    policy.maxTotalLamports !== undefined
+      ? `at most ${policy.maxTotalLamports} lamports per ${policy.spendWindowSeconds ?? DEFAULT_SPEND_WINDOW_SECONDS} s ` +
+          "across executed transactions (this process only, in memory)"
+      : "no aggregate limit",
+  );
+  parts.push(
+    policy.allowedDestinations === undefined
+      ? "any transfer destination"
+      : `transfers only to ${policy.allowedDestinations.length} allowed destination(s)`,
+  );
+  return `[Graphite] spend policy: ${parts.join("; ")}`;
+}
+
+/** A claim on the aggregate limit, made before signing and kept once sent. */
+export interface SpendReservation {
+  /** Keep it: the transaction left the process (or may have). */
+  commit(): void;
+  /** Return it: nothing was sent. Idempotent; a no-op after `commit`. */
+  release(): void;
+}
+
+/**
+ * The aggregate limit (Round 29, M6): lamports out of the wallet, over a
+ * rolling window, across every transaction this process executes. A request
+ * RESERVES its outflow before it is signed — synchronously, so two concurrent
+ * requests cannot both fit under one remaining allowance — and the
+ * reservation is released if nothing is sent. Per process and in memory: it
+ * is a bound on one running guard, not on the wallet.
+ */
+export class SpendLedger {
+  readonly #max: bigint | undefined;
+  readonly #windowMs: number;
+  readonly #now: () => number;
+  #entries: { at: number; lamports: bigint; live: boolean }[] = [];
+
+  constructor(policy: SpendPolicy, now: () => number = Date.now) {
+    this.#max = policy.maxTotalLamports;
+    this.#windowMs = (policy.spendWindowSeconds ?? DEFAULT_SPEND_WINDOW_SECONDS) * 1000;
+    this.#now = now;
+  }
+
+  /** Lamports counted in the current window. */
+  spentInWindow(): bigint {
+    const since = this.#now() - this.#windowMs;
+    this.#entries = this.#entries.filter((e) => e.live && e.at > since);
+    return this.#entries.reduce((sum, e) => sum + e.lamports, 0n);
+  }
+
+  /** Claim `lamports` of the window's allowance, or refuse. */
+  reserve(lamports: bigint): SpendReservation {
+    if (this.#max === undefined) return { commit() {}, release() {} };
+    const spent = this.spentInWindow();
+    if (spent + lamports > this.#max) {
+      throw new SpendPolicyRefusal(
+        `${lamports} lamports would bring this process's outflow in the last ${this.#windowMs / 1000} s to ` +
+          `${spent + lamports}, above the aggregate limit of ${this.#max} (GRAPHITE_MAX_TOTAL_LAMPORTS)`,
+      );
+    }
+    const entry = { at: this.#now(), lamports, live: true };
+    this.#entries.push(entry);
+    let settled = false;
+    return {
+      commit() {
+        settled = true;
+      },
+      release() {
+        if (!settled) {
+          settled = true;
+          entry.live = false;
+        }
+      },
+    };
+  }
 }
 
 /** Refuse a transfer the policy does not allow. */

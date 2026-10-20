@@ -145,12 +145,28 @@ export function assertEverySignatureSlotEmpty(wire: Uint8Array): void {
   }
 }
 
+/**
+ * `fetch` that refuses redirects. Round 29 (audit 2026-10-20, M3): the
+ * guard's own JSON-RPC requests already said `redirect: "error"`, but
+ * everything that went through a web3.js `Connection` — the advisory
+ * simulation, blockhashes, lookup tables, submission — used web3.js's
+ * default fetch, which follows them: an RPC answering 307 sent the request to
+ * a location the transport rule never saw.
+ */
+export const noRedirectFetch: typeof globalThis.fetch = (input, init) =>
+  globalThis.fetch(input, { ...(init ?? {}), redirect: "error" });
+
+/** A web3.js Connection that never follows a redirect (Round 29, M3). */
+export function connectionWithoutRedirects(rpcUrl: string): Connection {
+  return new Connection(rpcUrl, { commitment: "confirmed", fetch: noRedirectFetch });
+}
+
 export class RpcSimulator {
-  private connection: Connection;
-  private rpcUrl: string;
+  #connection: Connection;
+  #rpcUrl: string;
   constructor(rpcUrl: string) {
-    this.rpcUrl = rpcUrl;
-    this.connection = new Connection(rpcUrl, "confirmed");
+    this.#rpcUrl = rpcUrl;
+    this.#connection = connectionWithoutRedirects(rpcUrl);
   }
 
   /**
@@ -185,7 +201,7 @@ export class RpcSimulator {
       },
     });
     assertEverySignatureSlotEmpty(draft);
-    const response = await fetch(this.rpcUrl, {
+    const response = await fetch(this.#rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -274,7 +290,7 @@ export class RpcSimulator {
     assertEverySignatureSlotEmpty(tx.serialize());
 
     try {
-      const simulation = await this.connection.simulateTransaction(tx, {
+      const simulation = await this.#connection.simulateTransaction(tx, {
         sigVerify: false,
         replaceRecentBlockhash: true,
         commitment: "confirmed",
@@ -344,7 +360,7 @@ export class RpcSimulator {
    */
   async measureWalletEffect(params: { wire: Uint8Array; wallet: string }): Promise<WalletEffect> {
     assertEverySignatureSlotEmpty(params.wire);
-    const sim = await this.rpc<{
+    const sim = await this.#rpc<{
       value?: {
         err?: unknown;
         preBalances?: unknown;
@@ -366,8 +382,8 @@ export class RpcSimulator {
     return walletEffectOf(value, params.wallet);
   }
 
-  private async rpc<T>(method: string, params: unknown[]): Promise<T> {
-    const response = await fetch(this.rpcUrl, {
+  async #rpc<T>(method: string, params: unknown[]): Promise<T> {
+    const response = await fetch(this.#rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -392,14 +408,22 @@ export class RpcSimulator {
  */
 export const MAX_RPC_RESPONSE_BYTES = 32 * 1024 * 1024;
 
-/** Read a JSON answer, refusing one larger than `max` bytes before it is parsed. */
-export async function readJsonBounded(response: Response, max: number = MAX_RPC_RESPONSE_BYTES): Promise<unknown> {
+/**
+ * Read a JSON answer, refusing one larger than `max` bytes before it is
+ * parsed. `what` names the answer in the refusal (the AI layer's answer goes
+ * through here too since Round 29).
+ */
+export async function readJsonBounded(
+  response: Response,
+  max: number = MAX_RPC_RESPONSE_BYTES,
+  what = "[RpcSimulator] the RPC answer",
+): Promise<unknown> {
   const declared = response.headers.get("content-length");
   if (declared !== null && Number(declared) > max) {
     await response.body?.cancel();
-    throw new Error(`[RpcSimulator] the RPC answer declares ${declared} bytes, over the ${max}-byte bound. REFUSING.`);
+    throw new Error(`${what} declares ${declared} bytes, over the ${max}-byte bound. REFUSING.`);
   }
-  if (!response.body) throw new Error("[RpcSimulator] the RPC answer has no body. REFUSING.");
+  if (!response.body) throw new Error(`${what} has no body. REFUSING.`);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -409,7 +433,7 @@ export async function readJsonBounded(response: Response, max: number = MAX_RPC_
     total += value.byteLength;
     if (total > max) {
       await reader.cancel();
-      throw new Error(`[RpcSimulator] the RPC answer exceeds the ${max}-byte bound. REFUSING.`);
+      throw new Error(`${what} exceeds the ${max}-byte bound. REFUSING.`);
     }
     chunks.push(value);
   }
@@ -482,6 +506,7 @@ export function walletEffectOf(
     );
   }
   let solOut = exactLamports(pre[0], "the fee payer's pre-balance") - exactLamports(post[0], "the fee payer's post-balance");
+  let wrappedSolDelta = 0n;
   const tokenDelta = new Map<string, bigint>();
   const decimals = new Map<string, number>();
   const add = (entries: TokenBalanceEntry[], sign: 1n | -1n) => {
@@ -497,6 +522,7 @@ export function walletEffectOf(
       decimals.set(e.mint, e.decimals);
       if (e.mint === WRAPPED_SOL_MINT) {
         solOut += sign * e.amount;
+        wrappedSolDelta -= sign * e.amount;
       } else {
         tokenDelta.set(e.mint, (tokenDelta.get(e.mint) ?? 0n) - sign * e.amount);
       }
@@ -505,5 +531,5 @@ export function walletEffectOf(
   // Held before and gone after counts as leaving; arriving counts as received.
   add(tokenBalances(value.preTokenBalances, "preTokenBalances"), 1n);
   add(tokenBalances(value.postTokenBalances, "postTokenBalances"), -1n);
-  return { solOut, tokenDelta, decimals };
+  return { solOut, tokenDelta, decimals, wrappedSolDelta };
 }
