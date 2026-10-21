@@ -53,8 +53,12 @@ fn report(before: &[u8], after: &[u8], executed_known: bool) -> StateDiffReport 
     let diff = StateDiff {
         deltas: vec![AccountDelta {
             pubkey: MINT.to_string(),
-            before: Some(AccountSnapshot::from_raw(MINT, 5_000_000, TOKEN_2022, before)),
-            after: Some(AccountSnapshot::from_raw(MINT, 5_000_000, TOKEN_2022, after)),
+            before: Some(AccountSnapshot::from_raw(
+                MINT, 5_000_000, TOKEN_2022, before,
+            )),
+            after: Some(AccountSnapshot::from_raw(
+                MINT, 5_000_000, TOKEN_2022, after,
+            )),
         }],
         provenance: DiffProvenance::RpcSimulated,
         token2022_executed: executed_known.then(Vec::new),
@@ -98,7 +102,11 @@ fn a_duplicated_permanent_delegate_is_never_inert() {
     );
     let r = report(&m, &m, true);
     assert!(r.blocked, "{:?}", r.findings);
-    assert!(critical(&r, "Token2022ExtensionNotModelled"), "{:?}", r.findings);
+    assert!(
+        critical(&r, "Token2022ExtensionNotModelled"),
+        "{:?}",
+        r.findings
+    );
 }
 
 /// Duplicated, and the mint's data changed: the authorities cannot be compared.
@@ -109,7 +117,11 @@ fn a_duplicated_authority_on_a_changed_mint_is_unreadable() {
         (PERMANENT_DELEGATE, vec![7u8; 32]),
     ];
     let r = report(&t22_mint(1_000, &ext), &t22_mint(2_000, &ext), true);
-    assert!(critical(&r, "Token2022AuthoritiesUnreadable"), "{:?}", r.findings);
+    assert!(
+        critical(&r, "Token2022AuthoritiesUnreadable"),
+        "{:?}",
+        r.findings
+    );
 }
 
 /// An authority-bearing extension that does not decode BEFORE the
@@ -135,5 +147,9 @@ fn an_unknown_extension_the_transaction_removed_is_judged() {
     let before = t22_mint(1_000, &[(250, vec![1u8; 8])]);
     let after = t22_mint(1_000, &[]);
     let r = report(&before, &after, true);
-    assert!(critical(&r, "Token2022ExtensionNotModelled"), "{:?}", r.findings);
+    assert!(
+        critical(&r, "Token2022ExtensionNotModelled"),
+        "{:?}",
+        r.findings
+    );
 }

@@ -30,11 +30,20 @@ const LOW_DECODE: &[(&str, &str)] = &[
     ("Bubblegum", "BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY"),
     ("Coinflow", "FD1amxhTsDpwzoVX41dxp2ygAESURV2zdUACzxM1Dfw9"),
     ("Doorcash", "67g5HhrzQ2eqqEDJTEogHGBjAfwRD8evD3wg6LTDV8GK"),
-    ("Account Compression", "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq"),
+    (
+        "Account Compression",
+        "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq",
+    ),
     ("Rush", "RUsHe5Kt19Koe2stiQuTRS4wkev5QjY5AyatokniGeY"),
-    ("Merkle Distributor", "MErKy6nZVoVAkryxAejJz2juifQ4ArgLgHmaJCQkU7N"),
+    (
+        "Merkle Distributor",
+        "MErKy6nZVoVAkryxAejJz2juifQ4ArgLgHmaJCQkU7N",
+    ),
     ("Timelock", "strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m"),
-    ("Light System Program", "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7"),
+    (
+        "Light System Program",
+        "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",
+    ),
 ];
 
 const SYSTEM: &str = "11111111111111111111111111111111";
@@ -238,10 +247,9 @@ fn an_undescribed_sibling_of_a_low_decode_manifest_is_blocked() {
         let r = core.verify(&with_sibling).unwrap();
         assert!(!r.approved, "{name}: {}", r.summary);
         assert!(
-            r.risk_verdict
-                .findings
-                .iter()
-                .any(|f| f.reason.contains("is not described by the program's manifest")),
+            r.risk_verdict.findings.iter().any(|f| f
+                .reason
+                .contains("is not described by the program's manifest")),
             "{name}: the block must name the undescribed sibling: {:?}",
             r.risk_verdict.findings
         );

@@ -8557,9 +8557,7 @@ impl GraphiteCore {
             .and_then(|m| m.instruction_for(&effective_discriminator))
             .is_some()
         {
-            diff_declared.push(crate::state_diff::security_class_line(
-                &manifest_risk_class,
-            ));
+            diff_declared.push(crate::state_diff::security_class_line(&manifest_risk_class));
         }
         let diff_declared = &diff_declared;
         let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {

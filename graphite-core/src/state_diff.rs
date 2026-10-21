@@ -4133,9 +4133,12 @@ pub fn check_state_diff(input: &StateDiffCheck<'_>) -> StateDiffReport {
         if token_debit {
             let detail = "token balances decreased but the manifest declares no debit";
             if strict {
-                findings.push(StateDiffFinding::critical("UndeclaredTokenDebit", None, detail));
-            } else if let (true, Some(account)) = (signer_strict, signer_token_debited.as_deref())
-            {
+                findings.push(StateDiffFinding::critical(
+                    "UndeclaredTokenDebit",
+                    None,
+                    detail,
+                ));
+            } else if let (true, Some(account)) = (signer_strict, signer_token_debited.as_deref()) {
                 findings.push(StateDiffFinding::critical(
                     "UndeclaredTokenDebit",
                     Some(account),

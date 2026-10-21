@@ -129,7 +129,10 @@ fn corpus() -> RegressionCorpus {
 #[test]
 fn the_registry_refuses_a_sole_empty_discriminator_the_loader_would_take() {
     let m = manifest("", vec![account("user", &[])]);
-    assert!(validate_manifest(&m).is_ok(), "control: the runtime loader takes it");
+    assert!(
+        validate_manifest(&m).is_ok(),
+        "control: the runtime loader takes it"
+    );
     let r = reviewer(9);
     let mut engine = ManifestRegistryEngine::new();
     engine.register_reviewer(&r.1, 1_000).unwrap();
@@ -153,7 +156,9 @@ fn an_attestation_below_the_reputation_bar_earns_nothing() {
     engine
         .register_reviewer(&low.1, MIN_REVIEWER_REPUTATION - 1)
         .unwrap();
-    engine.register_reviewer(&ok.1, MIN_REVIEWER_REPUTATION).unwrap();
+    engine
+        .register_reviewer(&ok.1, MIN_REVIEWER_REPUTATION)
+        .unwrap();
     let core = GraphiteCore::new();
     let c = corpus();
     let m = manifest("01", vec![account("user", &[])]);
@@ -162,7 +167,10 @@ fn an_attestation_below_the_reputation_bar_earns_nothing() {
         attested(m.clone(), &[&low]),
         Some((&c, &core)),
     );
-    assert!(matches!(result, Err(RegistryError::NoEvidence)), "{result:?}");
+    assert!(
+        matches!(result, Err(RegistryError::NoEvidence)),
+        "{result:?}"
+    );
     // Control: a reviewer at the bar counts.
     let result = engine.submit(
         &mut SemanticGraphStore::new(),

@@ -162,9 +162,8 @@ impl RegressionFixture {
 
     /// Whether this fixture is what it says it is: filed under its input's
     /// program, its identity hash recomputes from its input and provenance,
-    /// and — when sealed — its integrity hash recomputes from what it asserts.
-    /// An unsealed fixture (written before RG-1) passes the first two and is
-    /// sealed when added to a corpus.
+    /// and its integrity hash recomputes from what it asserts. An unsealed
+    /// fixture is refused (R30, K-17).
     pub fn verify_integrity(&self) -> Result<(), String> {
         if self.program_id != self.input.program_id
             || self.content_hash != Self::content_hash(&self.input, &self.source)
@@ -179,7 +178,16 @@ impl RegressionFixture {
                 "fixture {} has been altered since it was recorded: its integrity hash does not cover its expected outcome, deprecation or label source as they now stand",
                 self.content_hash
             )),
-            _ => Ok(()),
+            Some(_) => Ok(()),
+            // R30 (K-17): an unsealed fixture used to pass and be sealed on
+            // load — so deleting `integrity_hash` from an edited fixture made
+            // the edit load, and the reseal made it look recorded. Every
+            // fixture written since RG-1 is sealed (all 13,013 committed ones
+            // are), so a missing seal is an edit, not a migration.
+            None => Err(format!(
+                "fixture {} carries no integrity hash: every recorded fixture is sealed, so one without a seal has been altered (an edited outcome with its seal removed would otherwise load and be resealed)",
+                self.content_hash
+            )),
         }
     }
 
@@ -702,11 +710,10 @@ mod tests {
     }
 
     /// Round 29 (RG-1): the outcome a fixture asserts is covered too. An
-    /// edited `expected_approved` or `deprecated` is refused at load; a
-    /// fixture written before the integrity hash existed still loads and is
-    /// sealed (migrated).
+    /// edited `expected_approved` or `deprecated` is refused at load, and
+    /// (R30, K-17) so is a fixture with no integrity hash at all.
     #[test]
-    fn an_edited_outcome_or_deprecation_is_refused_and_old_fixtures_migrate() {
+    fn an_edited_outcome_or_deprecation_is_refused_and_an_unsealed_fixture_too() {
         for (tag, tamper) in [
             (
                 "outcome",
@@ -740,29 +747,39 @@ mod tests {
             let _ = std::fs::remove_dir_all(&dir);
         }
 
-        // A pre-RG-1 fixture: no integrity hash on disk.
-        let dir = temp_dir("rg1-legacy");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let mut legacy = serde_json::to_value(RegressionFixture::new(
-            safe_system_transfer(),
-            true,
-            "recorded",
-        ))
-        .unwrap();
-        legacy.as_object_mut().unwrap().remove("integrity_hash");
-        std::fs::write(
-            dir.join(format!("{SYSTEM}.json")),
-            serde_json::to_string(&vec![legacy]).unwrap(),
-        )
-        .unwrap();
-        let loaded = RegressionCorpus::load_from_dir(&dir).expect("old fixtures still load");
-        let f = &loaded.all()[0];
-        assert_eq!(
-            f.integrity_hash.as_deref(),
-            Some(f.integrity_hash_of().as_str())
-        );
-        let _ = std::fs::remove_dir_all(&dir);
+        // R30 (K-17): a fixture with no integrity hash on disk. It used to
+        // load and be sealed on load, so an edited outcome with its seal
+        // deleted came back looking recorded. Both the bare unsealed fixture
+        // and that edit are refused now.
+        for (tag, edit_outcome) in [("rg1-unsealed", false), ("rg1-unsealed-edit", true)] {
+            let dir = temp_dir(tag);
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut unsealed = serde_json::to_value(RegressionFixture::new(
+                safe_system_transfer(),
+                true,
+                "recorded",
+            ))
+            .unwrap();
+            let obj = unsealed.as_object_mut().unwrap();
+            obj.remove("integrity_hash");
+            if edit_outcome {
+                obj.insert("expected_approved".into(), serde_json::Value::Bool(false));
+            }
+            std::fs::write(
+                dir.join(format!("{SYSTEM}.json")),
+                serde_json::to_string(&vec![unsealed]).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                matches!(
+                    RegressionCorpus::load_from_dir(&dir),
+                    Err(RegressionError::CorruptFixture { ref err, .. }) if err.contains("no integrity hash")
+                ),
+                "{tag}: an unsealed fixture must not load"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
 
         // Deprecation in code is explicit and resealed.
         let mut corpus = RegressionCorpus::new();

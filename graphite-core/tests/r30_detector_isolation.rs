@@ -47,14 +47,22 @@ fn check_6b_refuses_account_creation_under_a_transfer_intent() {
     for disc in ["00000000", "03000000", "08000000", "09000000"] {
         let v = assess(&input(SYSTEM, disc, &[A, B], "transfer")).unwrap();
         assert!(
-            blocked_by(&v, RiskPattern::MaliciousAccountChange, "Account allocation/creation detected"),
+            blocked_by(
+                &v,
+                RiskPattern::MaliciousAccountChange,
+                "Account allocation/creation detected"
+            ),
             "{disc}: {v:?}"
         );
     }
     // Control: the same instruction declared as a creation.
     let v = assess(&input(SYSTEM, "00000000", &[A, B], "create")).unwrap();
     assert!(
-        !blocked_by(&v, RiskPattern::MaliciousAccountChange, "Account allocation/creation detected"),
+        !blocked_by(
+            &v,
+            RiskPattern::MaliciousAccountChange,
+            "Account allocation/creation detected"
+        ),
         "{v:?}"
     );
 }
@@ -65,14 +73,22 @@ fn check_6a_refuses_a_self_refunding_close_declared_as_a_transfer() {
     close.verified_self_refund_close = true;
     let v = assess(&close).unwrap();
     assert!(
-        blocked_by(&v, RiskPattern::MaliciousAccountChange, "CloseAccount instruction detected"),
+        blocked_by(
+            &v,
+            RiskPattern::MaliciousAccountChange,
+            "CloseAccount instruction detected"
+        ),
         "{v:?}"
     );
     // Control: declared as the close it is.
     close.proposed_intent_type = "close".to_string();
     let v = assess(&close).unwrap();
     assert!(
-        !blocked_by(&v, RiskPattern::MaliciousAccountChange, "CloseAccount instruction detected"),
+        !blocked_by(
+            &v,
+            RiskPattern::MaliciousAccountChange,
+            "CloseAccount instruction detected"
+        ),
         "{v:?}"
     );
 }
@@ -81,13 +97,21 @@ fn check_6a_refuses_a_self_refunding_close_declared_as_a_transfer() {
 fn check_9_refuses_an_intent_the_program_does_not_serve() {
     let v = assess(&input(SYSTEM, "02000000", &[A, C], "swap")).unwrap();
     assert!(
-        blocked_by(&v, RiskPattern::PermissionEscalation, "Intent-Program mismatch"),
+        blocked_by(
+            &v,
+            RiskPattern::PermissionEscalation,
+            "Intent-Program mismatch"
+        ),
         "{v:?}"
     );
     // Control: the intent the program serves.
     let v = assess(&input(SYSTEM, "02000000", &[A, C], "transfer")).unwrap();
     assert!(
-        !blocked_by(&v, RiskPattern::PermissionEscalation, "Intent-Program mismatch"),
+        !blocked_by(
+            &v,
+            RiskPattern::PermissionEscalation,
+            "Intent-Program mismatch"
+        ),
         "{v:?}"
     );
 }

@@ -111,13 +111,33 @@ fn signer_token_drain() -> Vec<AccountDelta> {
     vec![
         delta(
             VAULT,
-            snap(VAULT, 2_039_280, TOKEN, &token_account([7; 32], signer_key(), 1_000_000)),
-            snap(VAULT, 2_039_280, TOKEN, &token_account([7; 32], signer_key(), 0)),
+            snap(
+                VAULT,
+                2_039_280,
+                TOKEN,
+                &token_account([7; 32], signer_key(), 1_000_000),
+            ),
+            snap(
+                VAULT,
+                2_039_280,
+                TOKEN,
+                &token_account([7; 32], signer_key(), 0),
+            ),
         ),
         delta(
             ATTACKER,
-            snap(ATTACKER, 2_039_280, TOKEN, &token_account([7; 32], [9; 32], 0)),
-            snap(ATTACKER, 2_039_280, TOKEN, &token_account([7; 32], [9; 32], 1_000_000)),
+            snap(
+                ATTACKER,
+                2_039_280,
+                TOKEN,
+                &token_account([7; 32], [9; 32], 0),
+            ),
+            snap(
+                ATTACKER,
+                2_039_280,
+                TOKEN,
+                &token_account([7; 32], [9; 32], 1_000_000),
+            ),
         ),
     ]
 }
@@ -141,13 +161,23 @@ fn pool_payout() -> Vec<AccountDelta> {
     vec![
         delta(
             POOL,
-            snap(POOL, 2_039_280, TOKEN, &token_account([7; 32], [5; 32], 1_000_000)),
+            snap(
+                POOL,
+                2_039_280,
+                TOKEN,
+                &token_account([7; 32], [5; 32], 1_000_000),
+            ),
             snap(POOL, 2_039_280, TOKEN, &token_account([7; 32], [5; 32], 0)),
         ),
         delta(
             DEST,
             snap(DEST, 2_039_280, TOKEN, &token_account([7; 32], [6; 32], 0)),
-            snap(DEST, 2_039_280, TOKEN, &token_account([7; 32], [6; 32], 1_000_000)),
+            snap(
+                DEST,
+                2_039_280,
+                TOKEN,
+                &token_account([7; 32], [6; 32], 1_000_000),
+            ),
         ),
     ]
 }
@@ -234,7 +264,11 @@ fn a_signers_token_loss_under_a_silent_declaration_is_critical() {
 
 #[test]
 fn a_signers_token_loss_under_uninterpretable_prose_is_critical() {
-    let r = report(signer_token_drain(), &accounts(), &["frobnicates the widget"]);
+    let r = report(
+        signer_token_drain(),
+        &accounts(),
+        &["frobnicates the widget"],
+    );
     assert_eq!(
         severity_of(&r, "UndeclaredTokenDebit"),
         Some(DiffSeverity::Critical),
@@ -258,7 +292,11 @@ fn a_signers_lamport_loss_under_a_silent_declaration_is_critical() {
 
 #[test]
 fn a_signers_lamport_loss_under_uninterpretable_prose_is_critical() {
-    let r = report(signer_lamport_drain(), &accounts(), &["frobnicates the widget"]);
+    let r = report(
+        signer_lamport_drain(),
+        &accounts(),
+        &["frobnicates the widget"],
+    );
     assert_eq!(
         severity_of(&r, "UndeclaredSignerLamportDebit"),
         Some(DiffSeverity::Critical),
@@ -287,12 +325,20 @@ fn the_security_class_decides_an_unreadable_declarations_signer_loss() {
         let declared = ["Orca Whirlpools instruction", line.as_str()];
         for (what, deltas, code) in [
             ("token", signer_token_drain(), "UndeclaredTokenDebit"),
-            ("lamports", signer_lamport_drain(), "UndeclaredSignerLamportDebit"),
+            (
+                "lamports",
+                signer_lamport_drain(),
+                "UndeclaredSignerLamportDebit",
+            ),
         ] {
             let r = report(deltas, &accounts(), &declared);
             assert_eq!(r.blocked, blocks, "{class:?} {what}: {:?}", r.findings);
             if blocks {
-                assert_eq!(severity_of(&r, code), Some(DiffSeverity::Critical), "{class:?}");
+                assert_eq!(
+                    severity_of(&r, code),
+                    Some(DiffSeverity::Critical),
+                    "{class:?}"
+                );
             }
         }
     }
