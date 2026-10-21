@@ -1628,7 +1628,7 @@
     "instruction surface from official Squads Protocol v4 IDL (sdk/multisig/idl/squads_multisig_program.json)",
     "RISK: verify multisig PDA and member/config signers"
    ],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "configTransactionAccountsClose",

@@ -704,14 +704,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: settings, proposal, rentPayer",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "createTransaction",
@@ -992,14 +992,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: proposal",
-    "transfers funds between the protocol and the involved accounts"
+    "transfers the funds held by the protocol account to the destination account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "drain"
   },
   {
    "name": "createBatch",
@@ -1161,14 +1161,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: proposal, batch",
-    "transfers funds between the protocol and the involved accounts"
+    "transfers the funds held by the protocol account to the destination account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "drain"
   },
   {
    "name": "createProposal",
@@ -1250,14 +1250,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, proposal",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "approveProposal",
@@ -1337,14 +1337,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, proposal",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "cancelProposal",
@@ -1382,14 +1382,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: signer, proposal",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "useSpendingLimit",
@@ -1480,14 +1480,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: spendingLimit, smartAccount, destination, smartAccountTokenAccount, destinationTokenAccount",
-    "transfers funds between the protocol and the involved accounts"
+    "withdraws funds and transfers them out of the protocol to the involved accounts"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "withdraw"
   },
   {
    "name": "closeSettingsTransaction",
@@ -1741,14 +1741,14 @@
     }
    ],
    "expected_state_changes": [
-    "transfers funds between the protocol and the involved accounts"
+    "transfers the funds held by the protocol account to the destination account"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "drain"
   },
   {
    "name": "executeSettingsTransactionSync",
@@ -1787,14 +1787,14 @@
    ],
    "expected_state_changes": [
     "modifies writable accounts: settings, rentPayer",
-    "transfers funds between the protocol and the involved accounts"
+    "updates protocol configuration or authority"
    ],
    "allowed_cpis": [
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
     "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
    ],
    "risk_rules": [],
-   "risk_class": "transfer"
+   "risk_class": "authority"
   },
   {
    "name": "logEvent",

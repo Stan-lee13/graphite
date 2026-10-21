@@ -152,6 +152,22 @@ OVERRIDES = {
     ("squads-v4.json", "proposalReject"): ("authority", "a member's governance vote"),
     ("squads-v4.json", "proposalCancel"): ("authority", "a member's governance vote"),
     ("squads-v4.json", "proposalCancelV2"): ("authority", "a member's governance vote"),
+    # A spending limit pays out of the VAULT to the destination the member
+    # names: a withdrawal, which a transfer intent does not declare (external
+    # review W14: as a sibling beside a 0.001 SOL transfer it came back Clear).
+    ("squads-v4.json", "spendingLimitUse"): ("withdraw", "pays out of the multisig vault to a named destination"),
+    # Squads Smart Account: the generator classed these `transfer`; they are
+    # the counterparts of Squads v4's vaultTransactionExecute (`drain`),
+    # configTransactionExecute and proposal votes (`authority`).
+    ("squads-smart-account-program-smrtzf.json", "executeTransaction"): ("drain", "executes an arbitrary vault transaction (cf. Squads v4 vaultTransactionExecute)"),
+    ("squads-smart-account-program-smrtzf.json", "executeTransactionSync"): ("drain", "executes an arbitrary vault transaction (cf. Squads v4 vaultTransactionExecute)"),
+    ("squads-smart-account-program-smrtzf.json", "executeBatchTransaction"): ("drain", "executes an arbitrary vault transaction (cf. Squads v4 batchExecuteTransaction)"),
+    ("squads-smart-account-program-smrtzf.json", "executeSettingsTransaction"): ("authority", "applies a settings change (signers, threshold, limits)"),
+    ("squads-smart-account-program-smrtzf.json", "executeSettingsTransactionSync"): ("authority", "applies a settings change (signers, threshold, limits)"),
+    ("squads-smart-account-program-smrtzf.json", "useSpendingLimit"): ("withdraw", "pays out of the smart account vault to a named destination"),
+    ("squads-smart-account-program-smrtzf.json", "activateProposal"): ("authority", "a signer's governance action over the vault"),
+    ("squads-smart-account-program-smrtzf.json", "rejectProposal"): ("authority", "a signer's governance vote"),
+    ("squads-smart-account-program-smrtzf.json", "cancelProposal"): ("authority", "a signer's governance vote"),
     # Stake program.
     ("stake-program.json", "DeactivateDelinquent"): ("stake", "deactivates stake delegated to a delinquent validator"),
     # Switchboard v2: aggregator, job and VRF-pool configuration.
