@@ -570,12 +570,29 @@ fn an_undeclared_change_to_the_fee_terms_blocks() {
     let r = check(&diff(deltas.clone(), None));
     assert!(r.blocked);
     assert!(detail(&r, "Token2022TransferFeeConfigChanged").contains("10000 bps"));
-    // Declared (SetTransferFee's own description): stated, not an undeclared change.
-    let declared = check_with(
-        &diff(deltas, None),
-        &["changes the transfer fee authority and schedule of accounts.mint".to_string()],
-    );
+    // Declared (SetTransferFee's own description): stated, not an undeclared
+    // change — when the account it names IS the mint. Round 29 (audit
+    // 2026-10-20, F4): the declaration is scoped like every other authority
+    // check, so the mint must hold the `mint` slot of the instruction.
+    let declaration =
+        ["changes the transfer fee authority and schedule of accounts.mint".to_string()];
+    let fee_diff = diff(deltas, None);
+    let check_named = |name: &str| {
+        let mut mint = resolved(&MINT);
+        mint.name = name.to_string();
+        check_state_diff(&StateDiffCheck {
+            diff: &fee_diff,
+            resolved_accounts: &[mint],
+            privileges_grounded: true,
+            expected_state_changes: &declaration,
+            fee_payer: None,
+        })
+    };
+    let declared = check_named("mint");
     assert!(!codes(&declared).contains(&"Token2022TransferFeeConfigChanged".to_string()));
+    // The same words about an account the mint is not: not excused.
+    let elsewhere = check_named("source");
+    assert!(codes(&elsewhere).contains(&"Token2022TransferFeeConfigChanged".to_string()));
 }
 
 // ─── The fee-extension instructions move value ─────────────────────────────
