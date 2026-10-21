@@ -154,7 +154,17 @@ export function assertEverySignatureSlotEmpty(wire: Uint8Array): void {
  * a location the transport rule never saw.
  */
 export const noRedirectFetch: typeof globalThis.fetch = (input, init) =>
-  globalThis.fetch(input, { ...(init ?? {}), redirect: "error" });
+  capturedFetch(input, { ...(init ?? {}), redirect: "error" });
+
+/**
+ * The process's `fetch`, captured when this module loads (Round 30). Every
+ * request the guard makes to the RPC and the AI layer goes through it, so a
+ * tool or plugin loaded later that reassigns `globalThis.fetch` does not get
+ * to answer the simulations and submissions the guard decides on. Code loaded
+ * BEFORE this module is outside what this can help with; isolating the key
+ * from that is a separate signing process's job.
+ */
+export const capturedFetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
 
 /** A web3.js Connection that never follows a redirect (Round 29, M3). */
 export function connectionWithoutRedirects(rpcUrl: string): Connection {
@@ -201,7 +211,7 @@ export class RpcSimulator {
       },
     });
     assertEverySignatureSlotEmpty(draft);
-    const response = await fetch(this.#rpcUrl, {
+    const response = await capturedFetch(this.#rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -383,7 +393,7 @@ export class RpcSimulator {
   }
 
   async #rpc<T>(method: string, params: unknown[]): Promise<T> {
-    const response = await fetch(this.#rpcUrl, {
+    const response = await capturedFetch(this.#rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -398,6 +408,10 @@ export class RpcSimulator {
     return body.result;
   }
 }
+// Round 30: the measurement a swap is judged by (`measureWalletEffect`) and
+// the unsigned-simulation check cannot be replaced at runtime.
+Object.freeze(RpcSimulator.prototype);
+Object.freeze(RpcSimulator);
 
 /**
  * The most bytes one RPC answer may carry: the Core's own bound

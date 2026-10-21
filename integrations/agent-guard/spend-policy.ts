@@ -23,9 +23,10 @@
  * Constitution P14, logged at startup). The policy in force is logged at
  * startup either way, and an aggregate limit over a rolling window
  * (GRAPHITE_MAX_TOTAL_LAMPORTS per GRAPHITE_SPEND_WINDOW_SECONDS) bounds what
- * many capped requests add up to. The aggregate is IN MEMORY and PER PROCESS:
- * a restart, or a second process with the same key, starts from zero.
+ * many capped requests add up to. The aggregate is PER GUARD PROCESS, kept in
+ * memory unless GRAPHITE_GUARD_STATE_FILE names a file (Round 30, guard-state.ts).
  */
+import { GuardState } from "./guard-state.js";
 
 export interface SpendPolicy {
   /**
@@ -43,7 +44,7 @@ export interface SpendPolicy {
   /**
    * The most every executed transaction together may take out of the wallet
    * within `spendWindowSeconds`, in lamports (GRAPHITE_MAX_TOTAL_LAMPORTS).
-   * Unset = no aggregate limit. Per process, in memory.
+   * Unset = no aggregate limit. Per guard process (durable with GRAPHITE_GUARD_STATE_FILE).
    */
   maxTotalLamports?: bigint;
   /** The aggregate's rolling window in seconds (GRAPHITE_SPEND_WINDOW_SECONDS, default 3600). */
@@ -169,7 +170,7 @@ export function describeSpendPolicy(policy: SpendPolicy): string {
   parts.push(
     policy.maxTotalLamports !== undefined
       ? `at most ${policy.maxTotalLamports} lamports per ${policy.spendWindowSeconds ?? DEFAULT_SPEND_WINDOW_SECONDS} s ` +
-          "across executed transactions (this process only, in memory)"
+          "across executed transactions (this guard process only)"
       : "no aggregate limit",
   );
   parts.push(
@@ -193,40 +194,50 @@ export interface SpendReservation {
  * rolling window, across every transaction this process executes. A request
  * RESERVES its outflow before it is signed — synchronously, so two concurrent
  * requests cannot both fit under one remaining allowance — and the
- * reservation is released if nothing is sent. Per process and in memory: it
- * is a bound on one running guard, not on the wallet.
+ * reservation is released if nothing is sent. A bound on one running guard,
+ * not on the wallet: another process with the same key has its own.
+ *
+ * Round 30: the reservations live in a `GuardState`. In memory by default (a
+ * restart starts from zero, as before); with GRAPHITE_GUARD_STATE_FILE they
+ * are written to disk before signing, so a restart inside the window still
+ * counts what was spent in it.
  */
 export class SpendLedger {
   readonly #max: bigint | undefined;
   readonly #windowMs: number;
   readonly #now: () => number;
-  #entries: { at: number; lamports: bigint; live: boolean }[] = [];
+  readonly #state: GuardState;
 
-  constructor(policy: SpendPolicy, now: () => number = Date.now) {
+  constructor(policy: SpendPolicy, now: () => number = Date.now, state: GuardState = GuardState.inMemory()) {
     this.#max = policy.maxTotalLamports;
     this.#windowMs = (policy.spendWindowSeconds ?? DEFAULT_SPEND_WINDOW_SECONDS) * 1000;
     this.#now = now;
+    this.#state = state;
   }
 
   /** Lamports counted in the current window. */
   spentInWindow(): bigint {
     const since = this.#now() - this.#windowMs;
-    this.#entries = this.#entries.filter((e) => e.live && e.at > since);
-    return this.#entries.reduce((sum, e) => sum + e.lamports, 0n);
+    return this.#state.reservedSince(since).reduce((sum, e) => sum + e.lamports, 0n);
   }
 
-  /** Claim `lamports` of the window's allowance, or refuse. */
+  /**
+   * Claim `lamports` of the window's allowance, or refuse. The check and the
+   * claim are synchronous: no other request can run between them. With a
+   * state file the claim is on disk before this returns, and a claim that
+   * cannot be written is a refusal.
+   */
   reserve(lamports: bigint): SpendReservation {
     if (this.#max === undefined) return { commit() {}, release() {} };
     const spent = this.spentInWindow();
     if (spent + lamports > this.#max) {
       throw new SpendPolicyRefusal(
-        `${lamports} lamports would bring this process's outflow in the last ${this.#windowMs / 1000} s to ` +
+        `${lamports} lamports would bring this guard's outflow in the last ${this.#windowMs / 1000} s to ` +
           `${spent + lamports}, above the aggregate limit of ${this.#max} (GRAPHITE_MAX_TOTAL_LAMPORTS)`,
       );
     }
-    const entry = { at: this.#now(), lamports, live: true };
-    this.#entries.push(entry);
+    const state = this.#state;
+    const id = state.reserve(lamports, this.#now());
     let settled = false;
     return {
       commit() {
@@ -235,12 +246,14 @@ export class SpendLedger {
       release() {
         if (!settled) {
           settled = true;
-          entry.live = false;
+          state.release(id);
         }
       },
     };
   }
 }
+Object.freeze(SpendLedger.prototype);
+Object.freeze(SpendLedger);
 
 /** Refuse a transfer the policy does not allow. */
 export function assertTransferAllowed(policy: SpendPolicy, destination: string, lamports: bigint): void {

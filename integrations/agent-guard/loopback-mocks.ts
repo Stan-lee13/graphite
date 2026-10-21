@@ -337,7 +337,18 @@ export async function mockService(initial: Record<string, unknown> = {}): Promis
  */
 export function approvedVerdictFor(
   request: unknown,
-  opts: { auditTrailId?: string; unobservedCodes?: string[] } = {},
+  opts: {
+    auditTrailId?: string;
+    unobservedCodes?: string[];
+    /**
+     * Round 30 (G-01): the Core's execution decision. Default: computed as
+     * the Core computes it — `executable_approved` when every residual is
+     * inherent, `analysis_only` otherwise. `null` leaves `decision` and
+     * `executable` out, as a server that predates them does.
+     */
+    decision?: string | null;
+    executable?: unknown;
+  } = {},
 ): Record<string, unknown> {
   const r = request as {
     program_id: string;
@@ -349,8 +360,15 @@ export function approvedVerdictFor(
   };
   const bytes = Uint8Array.from(r.signed_transaction);
   const codes = opts.unobservedCodes ?? ["program_semantics", "inner_instructions"];
+  const computed = codes.every((c) => c === "program_semantics" || c === "inner_instructions")
+    ? "executable_approved"
+    : "analysis_only";
+  const decision = opts.decision === undefined ? computed : opts.decision;
   return {
     ...BLOCKED_VERDICT,
+    ...(decision === null
+      ? {}
+      : { decision, executable: "executable" in opts ? opts.executable : decision === "executable_approved" }),
     approved: true,
     confidence: 0.64,
     risk_verdict: { status: "Clear", findings: [] },
