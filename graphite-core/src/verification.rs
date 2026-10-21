@@ -3668,7 +3668,7 @@ impl GraphiteCore {
                 }
                 Ok(None) => {
                     chain_bytes_unavailable = Some(format!(
-                        "{who}'s getSignatureStatuses reports {signature} as included but its getTransaction returned null for it"
+                        "{who}'s getSignatureStatuses reports {signature} as included, but its getTransaction at the configured commitment (confirmed at least) returned null: no record of it yet"
                     ));
                 }
                 Err(e) => {
