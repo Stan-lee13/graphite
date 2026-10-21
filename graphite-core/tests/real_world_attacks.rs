@@ -112,11 +112,12 @@ fn test_real_stmt_001() {
         &[],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "STMT 001 (4 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -145,11 +146,12 @@ fn test_real_stmt_002() {
         &[],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "STMT 002 (5 accounts) — approved: {}, confidence: {}, risk: {}",
         result.approved, result.confidence, result.risk_verdict.status
@@ -2078,11 +2080,12 @@ fn test_real_edge_092() {
         &[],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Edge 092 (Transfer) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -2141,11 +2144,12 @@ fn test_real_edge_095() {
         &[],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Edge 095 (Transfer) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status
@@ -2204,11 +2208,12 @@ fn test_real_edge_098() {
         &[],
         WalletProfile::TradingBot,
     );
-    let result = run(input);
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Edge 098 (Transfer) — approved: {}, risk: {}",
         result.approved, result.risk_verdict.status

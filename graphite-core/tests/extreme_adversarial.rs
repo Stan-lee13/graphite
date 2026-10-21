@@ -266,11 +266,12 @@ fn t04_spl_token_transfer_to_drainer() {
         0.95,
         None,
     );
-    let r = run(input);
+    let r = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     assert!(
         r.confidence < 1.0,
         "No transaction should get 100% confidence"
@@ -423,11 +424,12 @@ fn t10_account_substitution_attacker_token_account() {
         0.9,
         None,
     );
-    let r = run(input);
+    let r = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     assert!(
         r.confidence < 1.0,
         "Substituted account should not get 100% confidence"
@@ -476,11 +478,12 @@ fn t12_address_poisoning_lookalike() {
         0.95,
         None,
     );
-    let r = run(input);
+    let r = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     assert!(
         r.confidence < 1.0,
         "Address poisoning should not get 100% confidence"
@@ -1270,13 +1273,14 @@ fn t43_stale_state_closed_account() {
         0.9,
         None,
     );
-    let r = run(input);
+    let r = run(input.clone());
     // The SPL Token program is the transfer's AUTHORITY slot here (source,
     // destination, authority), not its destination; the unspendable rule
     // judges the destination only (audit 2026-10-20, R-4), and a stale
     // account is not something the request-time Core can see. Refused for
     // want of evidence alone.
     attack_harness::assert_blocked_by(&r, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     assert!(
         r.confidence < 1.0,
         "Stale state account should not get 100% confidence"

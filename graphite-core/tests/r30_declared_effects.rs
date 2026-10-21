@@ -268,6 +268,70 @@ fn a_signers_lamport_loss_under_uninterpretable_prose_is_critical() {
     assert!(r.blocked);
 }
 
+/// The pipeline states the manifest's security class beside the prose. A
+/// class whose instructions move value keeps the old warning for unreadable
+/// prose (a swap described as "Orca Whirlpools instruction"); one that states
+/// the instruction moves nothing (`inert`, `authority`) does not.
+#[test]
+fn the_security_class_decides_an_unreadable_declarations_signer_loss() {
+    use graphite_core::state_diff::security_class_line;
+    for (class, blocks) in [
+        ("transfer", false),
+        ("withdraw", false),
+        ("close", false),
+        ("", false),
+        ("inert", true),
+        ("authority", true),
+    ] {
+        let line = security_class_line(class);
+        let declared = ["Orca Whirlpools instruction", line.as_str()];
+        for (what, deltas, code) in [
+            ("token", signer_token_drain(), "UndeclaredTokenDebit"),
+            ("lamports", signer_lamport_drain(), "UndeclaredSignerLamportDebit"),
+        ] {
+            let r = report(deltas, &accounts(), &declared);
+            assert_eq!(r.blocked, blocks, "{class:?} {what}: {:?}", r.findings);
+            if blocks {
+                assert_eq!(severity_of(&r, code), Some(DiffSeverity::Critical), "{class:?}");
+            }
+        }
+    }
+}
+
+/// The class line is the pipeline's: it states nothing about effects, so a
+/// declaration made only of it is silent, and two different classes state
+/// none.
+#[test]
+fn the_class_line_is_not_prose() {
+    use graphite_core::state_diff::security_class_line;
+    let only = DeclaredEffects::parse(&[security_class_line("transfer")]);
+    assert!(only.is_silent());
+    assert_eq!(only.security_class.as_deref(), Some("transfer"));
+    assert!(only.class_moves_value());
+    let two = DeclaredEffects::parse(&[
+        security_class_line("transfer"),
+        security_class_line("inert"),
+    ]);
+    assert_eq!(two.security_class, None);
+    assert!(!two.class_moves_value());
+    let none = DeclaredEffects::parse(&["frobnicates the widget".to_string()]);
+    assert!(!none.class_moves_value(), "no class stated: no allowance");
+}
+
+/// A manifest cannot write the pipeline's line itself.
+#[test]
+fn a_manifest_may_not_declare_a_graphite_line() {
+    let mut m = graphite_core::manifest::load_seed_manifests()
+        .get("11111111111111111111111111111111")
+        .unwrap()
+        .clone();
+    m.instructions[0]
+        .expected_state_changes
+        .push(graphite_core::state_diff::security_class_line("transfer"));
+    let err = graphite_core::manifest::validate_manifest(&m).unwrap_err();
+    assert!(err.to_string().contains("graphite:"), "{err}");
+}
+
 /// Control: value moving between accounts no signer owns, under prose
 /// Graphite cannot read, keeps the old warning — the rule is about the
 /// signer's value, not about every movement a declaration does not explain.

@@ -8547,7 +8547,21 @@ impl GraphiteCore {
         // "reassigns accounts owner" excused UndeclaredOwnerReassignment,
         // UndeclaredAccountClosure and UndeclaredTokenDebit — a plugin
         // disarming L4, which P8 forbids (a plugin vetoes or annotates).
-        let diff_declared = &risk_expected_state_changes;
+        //
+        // R30: with the manifest's security class for the instruction stated
+        // beside its prose, so L4 can tell an unreadable declaration of an
+        // instruction that moves value from one of an instruction that states
+        // it moves none (`DeclaredEffects::class_moves_value`).
+        let mut diff_declared = risk_expected_state_changes.clone();
+        if manifest
+            .and_then(|m| m.instruction_for(&effective_discriminator))
+            .is_some()
+        {
+            diff_declared.push(crate::state_diff::security_class_line(
+                &manifest_risk_class,
+            ));
+        }
+        let diff_declared = &diff_declared;
         let l4_result = match (observed_diff.as_ref(), caller_diff.as_ref()) {
             (Some(diff), _) => Self::verify_state_from_diff(
                 diff,

@@ -633,17 +633,19 @@ fn test_adv_legit_look_030() {
 
 #[test]
 fn test_adv_account_gaming_031() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Account gaming 031 (3 accts) — risk: {}",
         result.risk_verdict.status
@@ -656,17 +658,19 @@ fn test_adv_account_gaming_031() {
 
 #[test]
 fn test_adv_account_gaming_032() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3, A4],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Account gaming 032 (4 accts) — risk: {}",
         result.risk_verdict.status
@@ -679,17 +683,19 @@ fn test_adv_account_gaming_032() {
 
 #[test]
 fn test_adv_account_gaming_033() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3, A4, A5],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Account gaming 033 (5 accts) — risk: {}",
         result.risk_verdict.status
@@ -1304,119 +1310,133 @@ fn test_adv_prog_confusion_070() {
 
 #[test]
 fn test_adv_empty_071() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!("Empty 071 — approved: {}", result.approved);
     assert!(!result.approved, "Empty 071: should not approve");
 }
 
 #[test]
 fn test_adv_empty_072() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!("Empty 072 — approved: {}", result.approved);
     assert!(!result.approved, "Empty 072: should not approve");
 }
 
 #[test]
 fn test_adv_empty_073() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!("Empty 073 — approved: {}", result.approved);
     assert!(!result.approved, "Empty 073: should not approve");
 }
 
 #[test]
 fn test_adv_empty_074() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!("Empty 074 — approved: {}", result.approved);
     assert!(!result.approved, "Empty 074: should not approve");
 }
 
 #[test]
 fn test_adv_empty_075() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!("Empty 075 — approved: {}", result.approved);
     assert!(!result.approved, "Empty 075: should not approve");
 }
 
 #[test]
 fn test_adv_empty_076() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!("Empty 076 — approved: {}", result.approved);
     assert!(!result.approved, "Empty 076: should not approve");
 }
 
 #[test]
 fn test_adv_empty_077() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!("Empty 077 — approved: {}", result.approved);
     assert!(!result.approved, "Empty 077: should not approve");
 }
@@ -1474,7 +1494,7 @@ fn test_adv_empty_080() {
 
 #[test]
 fn test_adv_mixed_signal_081() {
-    let result = run(make_ev(
+    let input = make_ev(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
@@ -1486,11 +1506,13 @@ fn test_adv_mixed_signal_081() {
             battle_tested_tx_count: 5000,
             simulation_match_count: 10,
         },
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Mixed signal 081 — approved: {}, conf: {}",
         result.approved, result.confidence
@@ -1526,7 +1548,7 @@ fn test_adv_mixed_signal_082() {
 
 #[test]
 fn test_adv_mixed_signal_083() {
-    let result = run(make_ev(
+    let input = make_ev(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
@@ -1538,11 +1560,13 @@ fn test_adv_mixed_signal_083() {
             battle_tested_tx_count: 5000,
             simulation_match_count: 10,
         },
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Mixed signal 083 — approved: {}, conf: {}",
         result.approved, result.confidence
@@ -1578,7 +1602,7 @@ fn test_adv_mixed_signal_084() {
 
 #[test]
 fn test_adv_mixed_signal_085() {
-    let result = run(make_ev(
+    let input = make_ev(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
@@ -1590,11 +1614,13 @@ fn test_adv_mixed_signal_085() {
             battle_tested_tx_count: 5000,
             simulation_match_count: 10,
         },
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Mixed signal 085 — approved: {}, conf: {}",
         result.approved, result.confidence
@@ -1630,7 +1656,7 @@ fn test_adv_mixed_signal_086() {
 
 #[test]
 fn test_adv_mixed_signal_087() {
-    let result = run(make_ev(
+    let input = make_ev(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
@@ -1642,11 +1668,13 @@ fn test_adv_mixed_signal_087() {
             battle_tested_tx_count: 5000,
             simulation_match_count: 10,
         },
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Mixed signal 087 — approved: {}, conf: {}",
         result.approved, result.confidence
@@ -1682,7 +1710,7 @@ fn test_adv_mixed_signal_088() {
 
 #[test]
 fn test_adv_mixed_signal_089() {
-    let result = run(make_ev(
+    let input = make_ev(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
@@ -1694,11 +1722,13 @@ fn test_adv_mixed_signal_089() {
             battle_tested_tx_count: 5000,
             simulation_match_count: 10,
         },
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Mixed signal 089 — approved: {}, conf: {}",
         result.approved, result.confidence

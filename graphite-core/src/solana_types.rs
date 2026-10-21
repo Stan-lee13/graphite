@@ -217,10 +217,17 @@ pub fn find_program_address(
     program_id: &Pubkey,
 ) -> Result<(Pubkey, u8), SolanaTypeError> {
     check_seed_limits(seeds)?;
+    first_off_curve_bump(|bump| program_address(seeds, bump, program_id))
+        .ok_or(SolanaTypeError::PdaExhausted)
+}
+
+/// The bump search of [`find_program_address`]: 255 down to 1, the first
+/// whose derivation is off the curve. Separate so the range can be tested —
+/// no seed is known whose bumps 255..1 all land on the curve.
+fn first_off_curve_bump(derive: impl Fn(u8) -> Option<Pubkey>) -> Option<(Pubkey, u8)> {
     (1u8..=u8::MAX)
         .rev()
-        .find_map(|bump| program_address(seeds, bump, program_id).map(|pda| (pda, bump)))
-        .ok_or(SolanaTypeError::PdaExhausted)
+        .find_map(|bump| derive(bump).map(|pda| (pda, bump)))
 }
 
 /// Decode an arbitrary-length base58 string (e.g. instruction data in RPC
@@ -304,6 +311,37 @@ impl Instruction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R30: the Round 29 fix (bump 0 is never tried) had no test, because no
+    /// real seed exercises it. The search is driven with a derivation whose
+    /// off-curve bumps are chosen: Solana's `try_find_program_address` runs
+    /// 255 down to 1 and reports none past that.
+    #[test]
+    fn the_bump_search_runs_255_down_to_1_and_never_tries_0() {
+        let pda = Pubkey([7u8; 32]);
+        let only = |ok: u8| move |bump: u8| (bump == ok).then_some(pda);
+        assert_eq!(
+            first_off_curve_bump(only(0)),
+            None,
+            "a seed whose only off-curve bump is 0 has no PDA"
+        );
+        assert_eq!(first_off_curve_bump(only(1)), Some((pda, 1)));
+        assert_eq!(first_off_curve_bump(only(255)), Some((pda, 255)));
+        assert_eq!(
+            first_off_curve_bump(|_| Some(pda)),
+            Some((pda, 255)),
+            "the first bump tried is 255"
+        );
+        let tried = std::cell::RefCell::new(Vec::new());
+        assert_eq!(
+            first_off_curve_bump(|b| {
+                tried.borrow_mut().push(b);
+                None
+            }),
+            None
+        );
+        assert_eq!(*tried.borrow(), (1u8..=255).rev().collect::<Vec<_>>());
+    }
 
     #[test]
     fn test_system_program_is_all_zeros() {
