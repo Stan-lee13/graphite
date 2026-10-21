@@ -45,7 +45,7 @@
     "findings": []
   },
   "policy_verdict": "Rejected",
-  "audit_trail_id": "gr-b9da6dcad9c6ab8b-00000000",
+  "audit_trail_id": "gr-b9da6dcad9c6ab8b-31fa7af8",
   "content_hash": "48c65c638aceb5de",
   "transaction": {
     "program_id": "11111111111111111111111111111111",
@@ -142,7 +142,7 @@
       "layer": "L3_SimulationVerification",
       "passed": false,
       "status": "inconclusive",
-      "reason": "No simulation: no RPC endpoint configured (set GRAPHITE_RPC_URL).                                  Compute usage cannot be verified, so no divergence verdict is                                  possible (P12: no evidence, no verdict)."
+      "reason": "No simulation: no RPC endpoint configured (set GRAPHITE_RPC_URL). Compute usage cannot be verified, so no divergence verdict is possible (P12: no evidence, no verdict)."
     },
     {
       "layer": "L4_StateVerification",
@@ -166,13 +166,13 @@
       "layer": "L7_RiskVerification",
       "passed": true,
       "status": "passed",
-      "reason": "No risk patterns detected (17 patterns checked)"
+      "reason": "No risk patterns detected (16 patterns checked)"
     },
     {
       "layer": "L8_ExecutionVerification",
       "passed": false,
       "status": "inconclusive",
-      "reason": "Not yet submitted — execution verification runs after submission. Call              POST /verify/execution (or `graphite execution`) with this content_hash and              the transaction signature to confirm it on-chain and reconcile the outcome              against this verdict."
+      "reason": "Not yet submitted — execution verification runs after submission. Call POST /verify/execution (or `graphite execution`) with this content_hash and the transaction signature to confirm it on-chain and reconcile the outcome against this verdict."
     }
   ]
 }
