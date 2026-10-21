@@ -778,8 +778,9 @@ impl ManifestRegistryEngine {
     /// manifest then had to pass), plus the registry's own resource caps and
     /// its stricter rule on empty discriminators.
     fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), RegistryError> {
-        crate::manifest::validate_manifest(manifest)
-            .map_err(|e| RegistryError::InvalidManifest(e.to_string()))?;
+        // The resource caps run FIRST: they bound the work the full
+        // validation below does (its prefix-ambiguity check is quadratic in
+        // the instruction count).
         if manifest.instructions.is_empty() {
             return Err(RegistryError::InvalidManifest(
                 "manifest must declare at least one instruction".to_string(),
@@ -856,7 +857,8 @@ impl ManifestRegistryEngine {
                 )));
             }
         }
-        Ok(())
+        crate::manifest::validate_manifest(manifest)
+            .map_err(|e| RegistryError::InvalidManifest(e.to_string()))
     }
 
     /// Derive BehaviorEvidence from a submission (G5 + P7), with the signer
@@ -1101,7 +1103,7 @@ mod tests {
         assert!(
             matches!(
                 engine.submit(&mut store, submission, None),
-                Err(RegistryError::InvalidManifest(reason)) if reason.contains("discriminator ambiguity")
+                Err(RegistryError::InvalidManifest(reason)) if reason.contains("ambiguous discriminators")
             ),
             "prefix-ambiguous discriminators must be rejected"
         );

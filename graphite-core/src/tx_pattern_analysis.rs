@@ -666,22 +666,25 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
     // 1. Rule 1 says nothing because the Token Program is perfectly well known.
     // A twenty-way drain was structurally invisible.
     //
-    // Grouping is per PARENT PROGRAM, not across the whole tree, because that
-    // is what separates a sweep from a route. A multi-hop swap also calls the
-    // Token Program a dozen times over a dozen distinct account pairs — but
-    // those calls hang off a dozen DIFFERENT DEX programs, one or two per hop.
-    // A sweep's calls all hang off the same program, because one instruction
-    // is iterating a list.
+    // Grouping is per PARENT, not across the whole tree, because that is what
+    // separates a sweep from a route. A multi-hop swap also calls the Token
+    // Program a dozen times over a dozen distinct account pairs — but those
+    // calls hang off a dozen different hops, one or two per hop. A sweep's
+    // calls all hang off one parent, because one instruction is iterating a
+    // list.
     //
     // Round 29 (audit 2026-10-20, T-1): two splits defeated the grouping. By
     // DISCRIMINATOR: eleven `Transfer`s and eleven `TransferChecked`s under one
-    // parent were two groups of eleven, each under the block bound. By
-    // PARENT NODE: the same program invoked twice, each invocation sweeping
-    // eleven accounts, was two parents of eleven. Every value transfer
-    // (`value_movement`: System Transfer/TransferWithSeed, Token Transfer/
-    // TransferChecked, Token-2022 TransferCheckedWithFee) is now one class,
-    // and the children of every node of the same program are pooled. Other
-    // instructions are still grouped by their own (program, discriminator).
+    // parent were two groups of eleven, each under the block bound. Every
+    // value transfer (`value_movement`: System Transfer/TransferWithSeed,
+    // Token Transfer/TransferChecked, Token-2022 TransferCheckedWithFee) is
+    // now one class; other instructions are still grouped by their own
+    // (program, discriminator). By PARENT: one program invoked twice, each
+    // invocation sweeping eleven accounts, is two parents of eleven. That
+    // split is NOT pooled into a block: a route through the same AMM program
+    // on several hops is the same shape, and blocking it would refuse
+    // ordinary split routes. It is caught by Rule 6's whole-tree count — a
+    // warning that puts the total in front of a reviewer.
     //
     // The thresholds are a judgment call and are stated as one: there was no
     // corpus of real CPI traces to calibrate against (five fixtures carry a
@@ -702,20 +705,22 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
 
     let mut parents: Vec<&CpiTraceNode> = vec![trace];
     parents.extend(nodes.iter().copied());
-    // (parent program, callee program or transfer class, discriminator) →
-    // the callees. A BTreeMap, so findings come out in a deterministic order
-    // (P2) whatever the traversal order.
-    let mut groups: std::collections::BTreeMap<(&str, &str, &str), Vec<&CpiTraceNode>> =
+    // (parent program, parent position, callee program or transfer class,
+    // discriminator) → the callees. A BTreeMap, so findings come out in a
+    // deterministic order (P2).
+    type GroupKey<'a> = (&'a str, usize, &'a str, &'a str);
+    let mut groups: std::collections::BTreeMap<GroupKey, Vec<&CpiTraceNode>> =
         std::collections::BTreeMap::new();
-    for parent in parents {
+    for (pi, parent) in parents.into_iter().enumerate() {
         for child in &parent.children {
             let is_transfer = value_movement(&child.program_id, &child.instruction_discriminator)
                 .is_some_and(|m| m.is_transfer);
             let key = if is_transfer {
-                (parent.program_id.as_str(), TRANSFER_CLASS, "")
+                (parent.program_id.as_str(), pi, TRANSFER_CLASS, "")
             } else {
                 (
                     parent.program_id.as_str(),
+                    pi,
                     child.program_id.as_str(),
                     child.instruction_discriminator.as_str(),
                 )
@@ -723,7 +728,7 @@ pub fn analyze_cpi_trace(trace: &CpiTraceNode, known_programs: &[String]) -> Vec
             groups.entry(key).or_default().push(child);
         }
     }
-    for ((parent, callee, disc), siblings) in groups {
+    for ((parent, _, callee, disc), siblings) in groups {
         let count = siblings.len();
         if count < FANOUT_WARN {
             continue;
@@ -1469,9 +1474,10 @@ mod tests {
     }
 
     /// Round 29 (T-1): the same program invoked twice, each invocation
-    /// sweeping eleven accounts, is one sweep of twenty-two.
+    /// sweeping eleven accounts, is reported for the whole tree — a warning,
+    /// because a route through one AMM on several hops has the same shape.
     #[test]
-    fn a_sweep_split_across_two_invocations_of_one_program_is_one_sweep() {
+    fn a_sweep_split_across_two_invocations_of_one_program_is_reported() {
         let half = |from: usize| CpiTraceNode {
             program_id: "SweeperProgram11111111111111111111111111111".to_string(),
             instruction_discriminator: "aa".to_string(),
@@ -1494,7 +1500,13 @@ mod tests {
             "SweeperProgram11111111111111111111111111111".into(),
         ];
         let findings = analyze_cpi_trace(&trace, &known);
-        assert_eq!(blocked(&findings).len(), 1, "{findings:?}");
+        assert!(blocked(&findings).is_empty(), "{findings:?}");
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.reason.contains("22 times across the whole tree")),
+            "{findings:?}"
+        );
     }
 
     /// Round 29 (T-1): value spread over several different parent programs is

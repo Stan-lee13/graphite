@@ -235,12 +235,10 @@ fn an_empty_discriminator_loads_only_as_the_sole_instruction() {
 /// validator nothing passes is not a validator.
 #[test]
 fn every_shipped_seed_manifest_satisfies_the_stricter_validation() {
-    // try_load_seed_manifests returns the first seed that fails validation
-    // (load_seed_manifests panics with it), so an Ok here proves the whole
-    // seed set passes. Assert the set is non-trivial so the test cannot pass
-    // vacuously.
-    let registry = graphite_core::manifest::try_load_seed_manifests()
-        .expect("every shipped seed manifest passes the runtime validation");
+    // load_seed_manifests aborts the process on any validation failure, so
+    // reaching this point at all proves the whole seed set passes. Assert the
+    // set is non-trivial so the test cannot pass vacuously.
+    let registry = load_seed_manifests();
     assert!(
         registry.list().len() >= 30,
         "expected the full seed set to load under the stricter validation, got {}",
