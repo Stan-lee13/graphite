@@ -198,9 +198,15 @@ test("G-01: a decision that disagrees with the verdict's own scope, or that the 
   for (const c of cases) {
     const h = await harness({ verdict: c.verdict });
     try {
+      // Two layers refuse these: the SDK's response validator (Round 30,
+      // WS-A) catches a self-contradicting decision before the guard sees
+      // it; the guard's own recomputation is the second layer, unit-tested
+      // directly in residual-policy.test.ts. Either way nothing is signed.
       await assert.rejects(h.agent.executeTransfer(REQUEST), (e: unknown) => {
+        const message = (e as Error).message;
+        if (/structurally invalid verification result/.test(message)) return true;
         assert.ok(e instanceof ResidualPolicyRefusal, `${c.name}: ${String(e)}`);
-        assert.match((e as Error).message, c.why, c.name);
+        assert.match(message, c.why, c.name);
         return true;
       });
       assertNothingSigned(h);
@@ -216,7 +222,10 @@ test("G-01: a Core that calls a verdict with a non-inherent residual executable 
     config: { acceptUnobserved: ["not_simulated"] },
   });
   try {
-    await assert.rejects(h.agent.executeTransfer(REQUEST), /decided "executable_approved", but its own scope makes this verdict "analysis_only"/);
+    await assert.rejects(
+      h.agent.executeTransfer(REQUEST),
+      /decided "executable_approved", but its own scope makes this verdict "analysis_only"|`executable` is true but the verdict's own fields do not permit execution/,
+    );
     assertNothingSigned(h);
   } finally {
     await h.close();

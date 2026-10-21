@@ -8,7 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ACCEPT_UNOBSERVED_ENV, ResidualPolicy } from "./residual-policy.js";
+import { ACCEPT_UNOBSERVED_ENV, ResidualPolicy, ResidualPolicyRefusal } from "./residual-policy.js";
 import {
   INHERENT_UNOBSERVED,
   UNOBSERVED_CODES,
@@ -121,4 +121,36 @@ test("a code this bridge does not know is refused, even under a permissive polic
   const policy = new ResidualPolicy([...UNOBSERVED_CODES]);
   const scope = bound([...INHERENT, "something_new" as UnobservedCode]);
   assert.throws(() => policy.assertExecutable(scope, "t"), /unknown to this bridge/);
+});
+
+// Round 30 (G-01): the guard's own recomputation of the Core's decision. End
+// to end, the SDK's validator refuses these responses first; this is the
+// second layer, held on its own.
+test("G-01: the guard refuses a decision its own recomputation contradicts, whatever the SDK let through", () => {
+  const inherent = { approved: true, scope: bound(INHERENT) };
+  const residual = { approved: true, scope: bound(["not_simulated", "program_semantics"]) };
+  const cases: { name: string; policy: ResidualPolicy; verdict: Parameters<ResidualPolicy["assertExecutableVerdict"]>[0]; why: RegExp }[] = [
+    { name: "unknown decision", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "executable" }, why: /not one this guard knows/ },
+    { name: "analysis_only over inherent residuals", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "analysis_only" }, why: /its own scope makes this verdict "executable_approved"/ },
+    { name: "blocked on an approval", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "blocked" }, why: /its decision is "blocked"/ },
+    { name: "executable not a boolean", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "executable_approved", executable: "yes" }, why: /is not a boolean/ },
+    { name: "executable false on executable_approved", policy: new ResidualPolicy(), verdict: { ...inherent, decision: "executable_approved", executable: false }, why: /contradicts/ },
+    {
+      name: "executable_approved over an operator-accepted residual",
+      policy: new ResidualPolicy(["not_simulated"]),
+      verdict: { ...residual, decision: "executable_approved", executable: true },
+      why: /its own scope makes this verdict "analysis_only"/,
+    },
+  ];
+  for (const c of cases) {
+    assert.throws(() => c.policy.assertExecutableVerdict(c.verdict, "test"), (e: unknown) => {
+      assert.ok(e instanceof ResidualPolicyRefusal, c.name);
+      assert.match((e as Error).message, c.why, c.name);
+      return true;
+    });
+  }
+  // The control: an agreeing executable verdict passes, and an operator-
+  // accepted residual yields analysis_only, never executable_approved.
+  assert.equal(new ResidualPolicy().assertExecutableVerdict({ ...inherent, decision: "executable_approved", executable: true }, "t").decision, "executable_approved");
+  assert.equal(new ResidualPolicy(["not_simulated"]).assertExecutableVerdict({ ...residual, decision: "analysis_only", executable: false }, "t").decision, "analysis_only");
 });

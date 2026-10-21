@@ -380,23 +380,35 @@ export function approvedVerdictFor(
     ? "executable_approved"
     : "analysis_only";
   const decision = opts.decision === undefined ? computed : opts.decision;
+  const contentHash = AuditBind.computeHash({
+    programId: r.program_id,
+    instructionDiscriminator: r.instruction_discriminator,
+    accountAddresses: r.account_addresses,
+    instructionData: r.instruction_data,
+    cpiTargets: r.cpi_targets ?? [],
+  });
+  // The sample is a Round 30 verdict: drop its own decision fields and bind
+  // key so a `decision: null` stand-in really is a server that predates them.
+  const { decision: _d, executable: _e, instruction_bind_key: _k, ...base } = BLOCKED_VERDICT;
   return {
-    ...BLOCKED_VERDICT,
+    ...base,
     ...(decision === null
       ? {}
-      : { decision, executable: "executable" in opts ? opts.executable : decision === "executable_approved" }),
+      : {
+          decision,
+          executable: "executable" in opts ? opts.executable : decision === "executable_approved",
+          instruction_bind_key: contentHash,
+        }),
     approved: true,
     confidence: 0.64,
     risk_verdict: { status: "Clear", findings: [] },
     policy_verdict: "Approved",
     audit_trail_id: opts.auditTrailId ?? "gr-loopback-00000001",
-    content_hash: AuditBind.computeHash({
-      programId: r.program_id,
-      instructionDiscriminator: r.instruction_discriminator,
-      accountAddresses: r.account_addresses,
-      instructionData: r.instruction_data,
-      cpiTargets: r.cpi_targets ?? [],
-    }),
+    content_hash: contentHash,
+    // An approval has no failed layer: the sample's L6 policy refusal passes.
+    layers: (base.layers as Array<Record<string, unknown>>).map((l) =>
+      l.status === "failed" ? { ...l, passed: true, status: "passed", reason: "Policy: Approved (loopback)" } : l,
+    ),
     summary: "APPROVED (loopback stand-in)",
     scope: {
       kind: "artifact_bound",
