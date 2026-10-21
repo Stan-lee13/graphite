@@ -1,0 +1,70 @@
+# path	depth(full|sections|historical)	note
+.dockerignore	full	allowlist context: Cargo.toml/lock, src, protocols
+.env.example	full	still documents GRAPHITE_LEARN_FROM_POLICY_REFUSALS (G-02)
+Dockerfile	full	digest-pinned bases; non-root 10001; healthcheck non-strict by design
+integrations/solana-agent-kit/.env.example	full	spend cap required; key deleted from env
+python-ai-layer/requirements.txt	full	pytest pinned only
+sdk/go/go.mod	full	go 1.26, no deps
+graphite-core/tests/proptest_engine.proptest-regressions	full	one seed
+.github/npm-audit/agent-guard.allow	full	4 moderate via jayson/web3.js 1.x
+.github/npm-audit/dashboard.allow	full	empty list
+.github/npm-audit/mcp-server.allow	full	stale comment: says package fails gate until MCP SDK >=1.32.0 (bumped in R29)
+.github/npm-audit/sdk-typescript.allow	full	empty list
+.github/npm-audit/solana-agent-kit.allow	full	bigint-buffer high + 4 moderate; stale MCP SDK paragraph
+.github/npm-audit/vercel-ai.allow	full	empty list
+.gitattributes	full	LF everywhere
+LICENSE	full	MIT
+dashboard/index.html	full	no inline script; CSP is injected at build (dashboard/src/csp.ts)
+graphite-core/scripts/metaplex_discriminators.txt	full	Shank u8 discriminators, 41 lines
+tools/mainnet-sample/fetch_mainnet.py	full	slot-pinned refetch; stops on 429; no key recorded
+tools/mainnet-sample/verify_sample.py	full	row-by-row comparison, every field
+tools/mainnet-sample/make_committed_subset.py	full	refuses an unrecorded source hash; whole blocks by position
+.gitignore	full	node_modules/ (dir only), .env*, data dirs
+.github/workflows/ci.yml	full	gates mapped in architecture.md §7; K-10
+AUDIT/01-findings.md	historical	every finding and break B01-B127 mapped in the regression matrix
+AUDIT/02-roadmap-gap.md	historical	K-05
+AUDIT/FINAL.md	historical	K-07
+docs/CURRENT.md	full	current-status claims cross-checked; K-04
+integrations/agent-guard/artifact.ts	full	BoundTransaction: digest re-serialize, signer set, single signing, message slice
+integrations/agent-guard/execution-lifecycle.ts	full	order: policy, confirm, sign, signing event (exact id, approved on record), send, submission, confirm, L8
+integrations/agent-guard/residual-policy.ts	full	inherent-only default; unknown code refuses; length pairing
+integrations/agent-guard/guard.ts	full	K-02; sink map
+integrations/agent-guard/devnet-test.ts	full	K-09
+integrations/solana-agent-kit/graphite-sak-bridge.ts	full	SAK gets the public key only
+integrations/mcp-server/graphite-mcp.ts	full	confirm hook after resolution; elicitation required by default
+integrations/vercel-ai/graphite-tools.ts	full	K-01
+sdk/typescript/src/client.ts	sections	200-380 result validation (approved ⇒ Clear risk and Approved policy; layers; scope required; unknown top-level fields ignored), 580-746 transport, redirects, accept(); K-03
+graphite-core/src/server.rs	sections	1-420 (limits, connection caps), 1600-1700 (router, middleware order), auth middleware
+graphite-core/src/policy_engine.rs	sections	1-240 (all production code); K-13
+graphite-core/src/operator_boundary.rs	full	strict env flags; profile clamp on both axes; learn flag (G-02)
+graphite-core/src/confidence_engine.rs	sections	1-320 (all production code); K-16
+graphite-core/src/transaction_builder.rs	sections	1-150 (all production code): a summary, no serialization
+integrations/agent-guard/rpc-simulator.ts	sections	145-445: no-redirect fetch, unsigned simulations, bounded reads
+integrations/agent-guard/spend-policy.ts	sections	SpendLedger, transfer/swap checks: synchronous reserve, in-memory
+dashboard/src/usePolling.ts	full	K-15
+dashboard/src/App.tsx	sections	95-140: app-level polls survive a connection change (K-15)
+python-ai-layer/intent_parser.py	sections	800-1049: bounded body, Origin/Host refusal, JSON only, connection cap
+sdk/go/graphite.go	sections	1-80 package doc (teaches Approved as the decision, G-01), 590-650 residual helpers
+graphite-core/src/plugins/mod.rs	full	a plugins-dir manifest can activate only the two built-ins: no third-party code runs
+.github/ISSUE_TEMPLATE/hardening_suggestion.md	full	—
+.github/ISSUE_TEMPLATE/protocol_manifest.md	full	—
+graphite-core/Cargo.toml	full	features (server ⇒ rpc), release profile, MSRV declared not tested (K-20)
+tools/runtime-oracle/Cargo.toml	full	own workspace; agave SDK crates as the oracle
+graphite-core/src/lib.rs	full	module graph; rpc and server feature-gated
+graphite-core/src/unknown_protocol_mode.rs	full	one ceiling table
+graphite-core/src/plugins/fake_rewards_drainer.rs	sections	1-170 (all production code): request-text keyed, veto only, limits stated
+graphite-core/src/solana_types.rs	sections	1-260: PDA derivation matches the runtime (marker, bump 255..1, seed limits, curve test)
+graphite-core/src/tx_artifact.rs	sections	480-800: frame layout (legacy/v0/v1), unsigned digest, filled-slot refusal, simulation identity, chain-byte binding (first slot + verify_strict under the fee payer)
+graphite-core/src/server.rs	sections	2209-2506 verify_handler: profile clamp before verify, audit append before the response (503 if not recorded), observation committed only after
+docker-compose.yml	full	loopback publish, read-only root, caps dropped, limits; no RPC configured by default (G-01)
+AUDIT/00-map.md	historical	its "a missing RPC refuses" invariant does not hold (G-01)
+integrations/agent-guard/tool-results.ts	full	structured refusals; reasons redacted and bounded
+integrations/agent-guard/intent-grounding.ts	sections	180-300: anchored ASCII transfer grammar, echo checks, class from the method
+graphite-core/src/state_diff.rs	sections	1500-1800: DeclaredEffects::parse (mixed declarations are stricter, not looser)
+graphite-core/src/regression_engine.rs	sections	94-513: fixture integrity, corpus load, replay, P10 gate; K-17
+dashboard/src/api.ts	full	K-18
+.github/npm-audit/gate.mjs	full	fails closed on a missing/npm-error report, unlisted moderate+, stale entries, unscoped ids
+.github/ISSUE_TEMPLATE/config.yml	full	blank issues off; private channel = SECURITY.md mailbox (private vulnerability reporting not enabled)
+.github/ISSUE_TEMPLATE/bug_report.md	full	—
+.github/PULL_REQUEST_TEMPLATE.md	full	still says "SAK integration npm test" (the guard is integrations/agent-guard since R-P8)
+graphite-core/src/verification.rs	sections	359-420 (L1 status), 6735-6825 (identity → risk), 8650-8700, 8890-9450 (approval decision, observation rule, result)
