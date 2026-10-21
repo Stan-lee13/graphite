@@ -1000,6 +1000,21 @@ pub fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), ManifestErro
                     ix.name, ix.risk_class, RISK_CLASSES
                 )));
             }
+            // R30: `graphite:` begins the lines the pipeline adds to a
+            // declaration (`state_diff::UNDESCRIBED_INSTRUCTION_EFFECTS`, the
+            // security-class line L4 reads). A manifest writing one would be
+            // speaking for the pipeline — stating a class its prose then
+            // hides behind, say — so it is refused.
+            if let Some(line) = ix
+                .expected_state_changes
+                .iter()
+                .find(|l| l.trim_start().to_ascii_lowercase().starts_with("graphite:"))
+            {
+                return Err(ManifestError::Invalid(format!(
+                    "instruction '{}' declares {line:?}: a declared change may not begin with `graphite:`, which marks the lines the pipeline itself adds",
+                    ix.name
+                )));
+            }
             // Empty discriminator is allowed (e.g., Memo program uses raw UTF-8 data
             // with no instruction selector — the entire data field IS the
             // instruction), and only for a program with that ONE instruction:

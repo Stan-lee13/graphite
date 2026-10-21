@@ -1374,17 +1374,19 @@ fn test_novel_manifest_confusion_070() {
 
 #[test]
 fn test_novel_instruction_data_071() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Instruction data 071 (disc=03) — approved: {}",
         result.approved
@@ -1525,17 +1527,19 @@ fn test_novel_instruction_data_078() {
 
 #[test]
 fn test_novel_instruction_data_079() {
-    let result = run(make(
+    let input = make(
         SYSTEM,
         "02000000",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Instruction data 079 (disc=02000000) — approved: {}",
         result.approved
@@ -1568,17 +1572,19 @@ fn test_novel_instruction_data_080() {
 
 #[test]
 fn test_novel_boundary_081() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Boundary 081 (2 accts) — risk: {}",
         result.risk_verdict.status
@@ -1591,17 +1597,19 @@ fn test_novel_boundary_081() {
 
 #[test]
 fn test_novel_boundary_082() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Boundary 082 (3 accts) — risk: {}",
         result.risk_verdict.status
@@ -1614,17 +1622,19 @@ fn test_novel_boundary_082() {
 
 #[test]
 fn test_novel_boundary_083() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3, A4],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Boundary 083 (4 accts) — risk: {}",
         result.risk_verdict.status
@@ -1637,17 +1647,19 @@ fn test_novel_boundary_083() {
 
 #[test]
 fn test_novel_boundary_084() {
-    let result = run(make(
+    let input = make(
         SPL_TOKEN,
         "03",
         &[A1, A2, A3, A4, A5],
         &[],
         WalletProfile::TradingBot,
-    ));
+    );
+    let result = run(input.clone());
     // Round 29 (audit 2026-10-20, MED-6): no detector refuses this shape.
     // With earned evidence for the program the same input is APPROVED; it
     // is blocked here only because nothing is approvable without evidence.
     attack_harness::assert_blocked_by(&result, &["evidence_ceiling"]);
+    attack_harness::assert_approved_with_earned_evidence(&input);
     println!(
         "Boundary 084 (5 accts) — risk: {}",
         result.risk_verdict.status

@@ -208,6 +208,35 @@ pub fn assert_approved(r: &VerificationResult) {
     );
 }
 
+/// The input under an engine with earned evidence for its program, shaped to
+/// that engine's baseline (the `discover` convention).
+pub fn verify_seeded(input: &VerificationInput) -> VerificationResult {
+    let mut seeded_input = input.clone();
+    seeded_input.compute_units = 150;
+    seeded_input.account_writes = 2;
+    seeded_input.cpi_hops = 0;
+    let core = seeded_core(&input.program_id, &["debits accounts.from by amount"]);
+    verify_with(&core, &seeded_input)
+}
+
+/// R30: a case blocked by `evidence_ceiling` alone says so in a comment —
+/// "with earned evidence the same input is APPROVED". This makes the comment
+/// a test: no detector refuses the shape, and when one starts to, this fails
+/// and the case should assert that detector instead. It pins a LIMITATION of
+/// the request-time Core (a recipient it cannot know is a drainer, a stale
+/// account it cannot see); the agent guard's recipient grounding is what
+/// refuses most of them before signing.
+pub fn assert_approved_with_earned_evidence(input: &VerificationInput) {
+    let r = verify_seeded(input);
+    assert!(
+        r.approved,
+        "documented as blocked only for want of evidence, but with earned evidence it is \
+         refused by {:?} — assert that cause instead: {}",
+        block_reasons(&r),
+        r.summary
+    );
+}
+
 /// Discovery aid for maintainers: with `GRAPHITE_ATTACK_DISCOVER=1`, print
 /// each case's causes (`cargo test --test <suite> -- --nocapture`).
 /// Also prints what the same input gets from an engine with earned evidence
