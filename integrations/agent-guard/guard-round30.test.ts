@@ -652,23 +652,22 @@ test("escape: a config key the guard does not have is refused, not ignored", asy
   }
 });
 
-test("escape: replacing globalThis.fetch after the guard loaded does not answer its RPC or AI-layer calls", async () => {
+test("escape: replacing globalThis.fetch after the guard loaded does not answer its Core, RPC or AI-layer calls", async () => {
   const h = await harness();
   const original = globalThis.fetch;
   const intercepted: string[] = [];
-  // A later module answers every request except the Core's: the SDK client
-  // (sdk/typescript) still reads globalThis.fetch per request, so the Core's
-  // requests are passed through, and what is checked is the guard's own.
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  // A later module answers every request: the guard's RPC and AI-layer calls
+  // and — since the SDK client also captures fetch at load (Round 30
+  // integration) — the Core's /verify.
+  globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (url.startsWith(h.core.url)) return original(input, init);
     intercepted.push(url);
     return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: null }), { status: 200 });
   }) as typeof globalThis.fetch;
   try {
     const outcome = await h.agent.executeTransfer(REQUEST);
     assert.equal(outcome.executed, true);
-    assert.deepEqual(intercepted, [], "no RPC or AI-layer request went through the replaced fetch");
+    assert.deepEqual(intercepted, [], "no Core, RPC or AI-layer request went through the replaced fetch");
     assert.ok(h.rpc.calls.some((c) => c.method === "sendTransaction"), "the guard's RPC calls reached the RPC");
     assert.ok(h.ai.calls.length >= 1, "the AI layer was asked directly");
   } finally {

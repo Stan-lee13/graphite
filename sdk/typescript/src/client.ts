@@ -59,6 +59,14 @@ export const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 /** Error bodies are read only for their `error` text. */
 const MAX_ERROR_BODY_BYTES = 64 * 1024;
 
+/**
+ * The `fetch` this module found when it loaded (Round 30). A tool or plugin
+ * loaded later that reassigns `globalThis.fetch` does not get to answer the
+ * Core's `/verify` — the same rule the agent guard applies to its RPC and
+ * AI-layer calls. Code that runs before this module loads is out of reach.
+ */
+const loadedFetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
+
 /** A response body larger than the bound; the read was cancelled. */
 export class ResponseTooLargeError extends Error {}
 
@@ -718,7 +726,7 @@ export class GraphiteClient {
    */
   private async send(path: string, init: RequestInit = {}): Promise<Response> {
     try {
-      return await fetch(`${this.baseUrl}${path}`, { ...init, redirect: "error", signal: this.signal() });
+      return await loadedFetch(`${this.baseUrl}${path}`, { ...init, redirect: "error", signal: this.signal() });
     } catch (e) {
       const cause = (e as { cause?: { message?: unknown } }).cause;
       if (typeof cause?.message === "string" && /redirect/i.test(cause.message)) {
