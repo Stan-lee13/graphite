@@ -738,6 +738,11 @@ func executionResultViolation(value any, sent *ExecutionCheckInput) string {
 			return "`inclusion_witness` must be { agrees, seen, detail } or null"
 		}
 	}
+	// Round 30: optional (older servers do not send it); when sent, one of
+	// the five labels.
+	if a, has := r["inclusion_assurance"]; has && !oneOf(a, "single_provider", "witnessed", "witnessed_not_independent", "witness_disputed", "witness_unavailable") {
+		return "`inclusion_assurance` must be single_provider, witnessed, witnessed_not_independent, witness_disputed or witness_unavailable"
+	}
 	if rv, has := r["recorded_verdicts"]; has && rv != nil {
 		m, ok := asObject(rv)
 		if !ok || !isCount(m["approved"]) || !isCount(m["refused"]) {

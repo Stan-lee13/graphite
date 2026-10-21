@@ -1457,6 +1457,7 @@ fn run_execution(
     println!("signature   {}", result.signature);
     println!("chain       {:?}", result.chain_status);
     println!("attribution {:?}", result.attribution);
+    println!("assurance   {}", result.inclusion_assurance.as_str());
     if let Some(d) = &result.chain_transaction_sha256 {
         println!("chain tx    {d}");
     }

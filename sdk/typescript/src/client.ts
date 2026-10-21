@@ -8,7 +8,7 @@ import type {
   VerificationInput,
   VerificationResult,
 } from "./types.js";
-import { ACCOUNT_IDENTITIES, UNOBSERVED_CODES } from "./types.js";
+import { ACCOUNT_IDENTITIES, INCLUSION_ASSURANCES, UNOBSERVED_CODES } from "./types.js";
 
 export interface GraphiteClientOptions {
   baseUrl: string;
@@ -463,6 +463,14 @@ export function validateExecutionCheckResult(value: unknown, sent?: ExecutionChe
     if (!isObject(w) || !isBoolean(w.agrees) || !isNullable(w.seen, isBoolean) || !isString(w.detail)) {
       return "`inclusion_witness` must be { agrees, seen, detail } or null";
     }
+  }
+  // Round 30: optional (older servers do not send it); when sent, one of the
+  // five labels — an unknown label is not read as any of them.
+  if (
+    value.inclusion_assurance !== undefined &&
+    !(INCLUSION_ASSURANCES as readonly unknown[]).includes(value.inclusion_assurance)
+  ) {
+    return "`inclusion_assurance` must be one of " + INCLUSION_ASSURANCES.join(", ");
   }
   const rv = value.recorded_verdicts;
   if (rv !== undefined && rv !== null && !(isObject(rv) && isCount(rv.approved) && isCount(rv.refused))) {

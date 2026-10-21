@@ -343,6 +343,12 @@ func TestVerifyExecutionIsCheckedLikeAVerdict(t *testing.T) {
 	if err != nil || r.ReconciliationVariant() != "ApprovedAndExecuted" || r.Discrepancy {
 		t.Fatalf("a well-formed answer must be accepted: %+v %v", r, err)
 	}
+	// Round 30: the assurance label comes through when a server sends it.
+	labelled := strings.Replace(executionJSON(`"ApprovedAndExecuted"`, false), `"inclusion_witness":null`, `"inclusion_witness":null,"inclusion_assurance":"single_provider"`, 1)
+	r, err = NewClient(serve(t, http.StatusOK, labelled).URL).VerifyExecution(in)
+	if err != nil || r.InclusionAssurance != "single_provider" {
+		t.Fatalf("a labelled answer must be accepted and carry its label: %+v %v", r, err)
+	}
 	r, err = NewClient(serve(t, http.StatusOK, executionJSON(`"BlockedButExecuted"`, true)).URL).VerifyExecution(in)
 	if err != nil || !r.Discrepancy {
 		t.Fatalf("the alarm must come through: %+v %v", r, err)
@@ -352,9 +358,13 @@ func TestVerifyExecutionIsCheckedLikeAVerdict(t *testing.T) {
 		// Only BlockedButExecuted is a discrepancy (audit 2026-10-20, F5).
 		"cited other bytes alarmed": executionJSON(`{"RecordedForDifferentBytes":{"recorded_approved":false,"recorded_transaction_sha256":null,"chain_transaction_sha256":"ab"}}`, true),
 		"unknown outcome":           executionJSON(`"Fine"`, false),
-		"another signature":         strings.ReplaceAll(executionJSON(`"ApprovedAndExecuted"`, false), signature, strings.Repeat("4", 88)),
-		"empty object":              `{}`,
-		"not JSON":                  `<html>`,
+		// Round 30: an assurance label the client does not know is refused,
+		// never read as one it does.
+		"unknown assurance": strings.Replace(executionJSON(`"ApprovedAndExecuted"`, false), `"inclusion_witness":null`, `"inclusion_witness":null,"inclusion_assurance":"proven"`, 1),
+		"null assurance":    strings.Replace(executionJSON(`"ApprovedAndExecuted"`, false), `"inclusion_witness":null`, `"inclusion_witness":null,"inclusion_assurance":null`, 1),
+		"another signature": strings.ReplaceAll(executionJSON(`"ApprovedAndExecuted"`, false), signature, strings.Repeat("4", 88)),
+		"empty object":      `{}`,
+		"not JSON":          `<html>`,
 	} {
 		if _, err := NewClient(serve(t, http.StatusOK, body).URL).VerifyExecution(in); err == nil {
 			t.Errorf("%s: must be refused", name)
