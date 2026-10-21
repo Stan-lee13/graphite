@@ -29,9 +29,9 @@ Sampled 80 finalized blocks (77,589 successful transactions, 569 distinct progra
 
 Validator vote transactions are separated out because no agent ever signs one; including them moves the percentages without changing what an agent is protected for.
 
-The figure that matters most is measured by a different instrument, because it is the engine's own answer rather than a count over a block: `tools/mainnet-sample` runs whole finalized blocks through the full pipeline. On 10,617 transactions from 8 blocks on 2026-09-22, against the 131-manifest registry of that day, the share of NON-VOTE transactions whose primary program Graphite can name was **44.0%** (1,498 of 3,405); on the **same sample** against the 33-manifest registry Round 18 started from, it was **20.8%** (708 of 3,405).
+The figure that matters most is measured by a different instrument, because it is the engine's own answer rather than a count over a block: `tools/mainnet-sample` runs whole finalized blocks through the full pipeline. On 10,617 transactions from 8 blocks on 2026-09-22, against the 129-manifest registry of that day, the share of NON-VOTE transactions whose primary program Graphite can name was **44.0%** (1,498 of 3,405); on the **same sample** against the 33-manifest registry Round 18 started from, it was **20.8%** (708 of 3,405).
 
-Transaction versions in the same sample — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
+Transaction versions across the 80-block census above (77,589 successful transactions) — 0: 24.3%, 1: 15.8%, legacy: 59.9%.
 
 ## Every manifest
 

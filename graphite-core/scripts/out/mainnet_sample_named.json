@@ -1,9 +1,9 @@
 {
- "note": "Recorded output of tools/mainnet-sample (full-pipeline run over whole finalized blocks), as published in tools/mainnet-sample/README.md 'Recorded results (2026-09-22, Round 18)'. Read by scripts/render_coverage.py; update it from a new run of tools/mainnet-sample, never by hand-editing the rendered page.",
+ "note": "Recorded output of tools/mainnet-sample (full-pipeline run over whole finalized blocks), as published in tools/mainnet-sample/README.md 'Recorded results (2026-09-22, Round 18)'. registry_manifests corrected 131 -> 129 on 2026-10-21: the Round 18 report records 129 manifests that day (33 + 96 onboarded); the tools README had said 131. Read by scripts/render_coverage.py; update it from a new run of tools/mainnet-sample, never by hand-editing the rendered page.",
  "measured_on": "2026-09-22",
  "blocks": 8,
  "transactions": 10617,
- "registry_manifests": 131,
+ "registry_manifests": 129,
  "non_vote_transactions_with_verdict": 3405,
  "non_vote_primary_program_named": 1498,
  "baseline_registry_manifests": 33,

@@ -216,7 +216,14 @@ def main():
             parts = ", ".join(
                 f"{k}: {100.0 * v / tot:.1f}%" for k, v in sorted(vers.items())
             )
-            lines.append(f"Transaction versions in the same sample — {parts}.")
+            # The versions are the census's, not the full-pipeline sample's
+            # (audit 2026-10-20: the line said "the same sample", and the
+            # 10,617-transaction sample's own v1 share is a different figure).
+            lines.append(
+                f"Transaction versions across the {census.get('blocks_returned', '?')}-block "
+                f"census above ({census.get('successful_transactions', 0):,} successful "
+                f"transactions) — {parts}."
+            )
             lines.append("")
 
     lines.append("## Every manifest")
