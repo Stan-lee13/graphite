@@ -76,12 +76,48 @@ export function SystemView() {
 
       <Freshness sources={[health, metrics]} />
 
-      <div className="figures">
+      <div className="figures five">
         <Figure label="Status" value={loading ? "—" : h.degraded ? "Degraded" : "Operational"} tone={loading ? undefined : h.degraded ? "warn" : "pass"} sub={h ? `${h.service} v${h.version}` : undefined} />
-        <Figure label="Audit trail" value={loading ? "—" : h.audit?.enabled ? "Writing" : "Off"} tone={loading ? undefined : h.audit?.enabled ? "pass" : "warn"} sub={h?.audit?.enabled ? `${fmt.bytes(h.audit.active_bytes ?? 0)} active, ${fmt.int(h.audit.archive_count ?? 0)} archived` : "verdicts are not being recorded"} />
+        {/* Round 30: while loading, this said "verdicts are not being
+            recorded" — a claim about a Core it had not heard from yet. */}
+        <Figure
+          label="Audit trail"
+          value={loading ? "—" : h.audit?.enabled ? "Writing" : "Off"}
+          tone={loading ? undefined : h.audit?.enabled ? "pass" : "warn"}
+          sub={loading ? undefined : h.audit?.enabled ? `${fmt.bytes(h.audit.active_bytes ?? 0)} active, ${fmt.int(h.audit.archive_count ?? 0)} archived` : "verdicts are not being recorded"}
+        />
         <Figure label="Graph snapshots" value={loading ? "—" : h.graph_persistence?.enabled ? fmt.int(h.graph_persistence.snapshots_ok ?? 0) : "Off"} tone={loading ? undefined : h.graph_persistence?.enabled && !(h.graph_persistence.snapshots_failed ?? 0) ? "pass" : "warn"} sub={h?.graph_persistence?.last_error ?? undefined} />
-        <Figure label="Inclusion witness" value={loading ? "—" : h.inclusion_witness ? "Configured" : "None"} tone={loading ? undefined : h.inclusion_witness ? "pass" : "idle"} sub={h && !h.inclusion_witness ? "L8 trusts a single RPC" : undefined} />
+        {/* Round 30: whether any approval can be executable at all. A Core
+            without an RPC simulates nothing, and every approval it makes is
+            for analysis only. "Not reported" when the Core does not say. */}
+        <Figure
+          label="Simulation RPC"
+          value={loading ? "—" : h.rpc_attached === undefined ? "Not reported" : h.rpc_attached ? "Attached" : "None"}
+          tone={loading ? undefined : h.rpc_attached === true ? "pass" : "warn"}
+          sub={loading ? undefined : h.rpc_attached === false ? "no approval is executable" : h.rpc_attached === undefined ? "this Core does not say" : undefined}
+        />
+        <Figure label="Inclusion witness" value={loading ? "—" : h.inclusion_witness === undefined ? "Not reported" : h.inclusion_witness ? "Configured" : "None"} tone={loading ? undefined : h.inclusion_witness ? "pass" : "idle"} sub={h && h.inclusion_witness === false ? "L8 trusts a single RPC" : undefined} />
       </div>
+
+      {!loading && ((h.frozen_baseline_count ?? 0) > 0 || (h.program_upgrades?.detected ?? 0) > 0) && (
+        <div className="banner warn" role="status">
+          <div>
+            {(h.frozen_baseline_count ?? 0) > 0 && (
+              <p>
+                <strong>{fmt.int(h.frozen_baseline_count ?? 0)} frozen simulation baseline{h.frozen_baseline_count === 1 ? "" : "s"}.</strong>{" "}
+                A trusted baseline is refusing clean executions; the authenticated <code translate="no">/api/frozen-baselines</code> names
+                the programs, and <code translate="no">graphite evidence promote-shadow</code> is the operator's decision to make.
+              </p>
+            )}
+            {(h.program_upgrades?.detected ?? 0) > 0 && (
+              <p>
+                <strong>{fmt.int(h.program_upgrades?.detected ?? 0)} program upgrade{h.program_upgrades?.detected === 1 ? "" : "s"} detected</strong>{" "}
+                since start{h.program_upgrades?.quarantine_on_upgrade ? "; upgraded programs are quarantined." : "; upgrades do not quarantine (GRAPHITE_QUARANTINE_ON_UPGRADE is off)."}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {h?.degraded && h.degraded_reasons && h.degraded_reasons.length > 0 && (
         <div className="banner warn" role="alert">

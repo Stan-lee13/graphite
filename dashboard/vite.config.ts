@@ -1,6 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { contentSecurityPolicy } from "./src/csp";
+import { contentSecurityPolicy, securityHeaders } from "./src/csp";
 
 // The dashboard polls the Graphite Core server's read-only /api endpoints.
 // In dev, Vite proxies the Core's read-only routes so the browser never needs
@@ -53,6 +53,12 @@ export default defineConfig({
       "/metrics": { target: apiTarget, changeOrigin: true },
       "/manifests": { target: apiTarget, changeOrigin: true },
     },
+  },
+  // Round 30: `vite preview` serves the built console with the headers a
+  // meta tag cannot carry (frame-ancestors, nosniff, referrer policy). A
+  // production static host needs the same set; see src/csp.ts.
+  preview: {
+    headers: securityHeaders(process.env.VITE_GRAPHITE_API),
   },
   build: {
     outDir: "dist",

@@ -26,10 +26,24 @@ test("https:// anywhere and http:// on this machine are allowed", () => {
     "http://localhost:7331",
     "http://127.0.0.1:7331",
     "http://127.1:7331",
-    "http://[::1]:7331",
   ]) {
     assert.equal(insecureBaseReason(base, LOCAL_PAGE), null, base);
   }
+});
+
+// Round 30: the built console's CSP cannot name an IPv6 literal or a
+// 127.0.0.0/8 range, so these were let through here and then blocked by the
+// browser as "No response". They are refused before sending, with the reason.
+test("loopback addresses the CSP cannot name are refused with the reason", () => {
+  for (const base of ["http://[::1]:7331", "http://127.0.0.2:7331"]) {
+    assert.match(insecureBaseReason(base, LOCAL_PAGE) ?? "", /Content-Security-Policy can only name/, base);
+  }
+  // ...unless it is the build-time Core, which the CSP names explicitly.
+  assert.equal(insecureBaseReason("http://127.0.0.2:7331", LOCAL_PAGE, "http://127.0.0.2:7331"), null);
+  // Same origin is 'self', whatever the address the console is served from.
+  assert.equal(insecureBaseReason("", "http://[::1]:5173"), null);
+  // https:// to an IPv6 loopback is the CSP's https: scheme source.
+  assert.equal(insecureBaseReason("https://[::1]:7331", LOCAL_PAGE), null);
 });
 
 test("an empty base means same origin, and the page's own origin is what is checked", () => {

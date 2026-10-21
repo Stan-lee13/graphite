@@ -20,11 +20,17 @@
 // inline React-refresh preamble and injects CSS through <style> tags, both
 // of which this policy (correctly) forbids.
 
-/** Loopback origins a plain-http Core may use (transport.ts isLoopbackHost). */
-const LOOPBACK_HTTP = ["http://localhost:*", "http://127.0.0.1:*", "http://[::1]:*"];
+/**
+ * Loopback origins a plain-http Core may use (transport.ts
+ * CSP_LOOPBACK_HOSTS). Round 30: `http://[::1]:*` stood here; a CSP host
+ * source cannot be an IPv6 literal, and Chrome ignored it with a console
+ * error on every load, so it never allowed anything. transport.ts now
+ * refuses http://[::1] with that reason instead.
+ */
+export const LOOPBACK_HTTP = ["http://localhost:*", "http://127.0.0.1:*"];
 
 /** The origin of a build-time `VITE_GRAPHITE_API`, if it is an http(s) URL. */
-function originOf(raw: string | undefined): string | null {
+export function originOf(raw: string | undefined): string | null {
   if (!raw) return null;
   try {
     const u = new URL(raw);
@@ -32,6 +38,26 @@ function originOf(raw: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Response headers for whatever serves the built console. Round 30: a CSP
+ * delivered in a <meta> tag cannot carry `frame-ancestors` (browsers ignore
+ * it there), so nothing stopped another site framing the console — which
+ * holds the operator key — and nothing set nosniff or a referrer policy.
+ * `vite preview` serves these (vite.config.ts); a production static host must
+ * be configured with the same set (README "Serving it"). The header CSP is
+ * the meta policy plus `frame-ancestors 'none'`.
+ */
+export function securityHeaders(buildApi?: string): Record<string, string> {
+  return {
+    "Content-Security-Policy": `${contentSecurityPolicy(buildApi)}; frame-ancestors 'none'`,
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  };
 }
 
 export function contentSecurityPolicy(buildApi?: string): string {

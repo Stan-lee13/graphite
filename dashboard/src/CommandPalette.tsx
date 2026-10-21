@@ -6,10 +6,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, CornerDownLeft, Search } from "lucide-react";
 import { api } from "./api";
-import { hrefFor, navigate, type View } from "./router";
+import { navigate, type View } from "./router";
 import { usePolling } from "./usePolling";
 import { TITLE } from "./App";
-import { TierBadge, shortId } from "./ui";
+import { TierBadge, shortId, useModal } from "./ui";
 
 interface Item {
   key: string;
@@ -26,11 +26,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
   const [cursor, setCursor] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
   const graph = usePolling(() => api.graph(), 30000);
-
-  useEffect(() => {
-    input.current?.focus();
-  }, []);
+  useModal(dialog, true, onClose, input);
 
   const items = useMemo<Item[]>(() => {
     const needle = q.trim().toLowerCase();
@@ -58,15 +56,25 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
+  // Round 30 (axe: nested-interactive; keyboard pass): the input is a
+  // combobox that owns the listbox and names the active option, so a screen
+  // reader announces the option the arrow keys move to; options are not
+  // links inside options. Focus is held in the dialog and returned on close.
+  const active = items[cursor] ? `palette-opt-${cursor}` : undefined;
   return (
     <>
       <div className="scrim" onClick={onClose} aria-hidden="true" />
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Search">
+      <div className="palette" role="dialog" aria-modal="true" aria-label="Search" ref={dialog}>
         <div className="palette-input">
           <Search aria-hidden="true" />
           <input
             ref={input}
-            type="search"
+            type="text"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-list"
+            aria-autocomplete="list"
+            aria-activedescendant={active}
             name="q"
             value={q}
             placeholder="Search views and programs…"
@@ -75,7 +83,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             aria-label="Search views and programs"
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") onClose();
               if (e.key === "ArrowDown") {
                 e.preventDefault();
                 setCursor((c) => Math.min(items.length - 1, c + 1));
@@ -89,29 +96,33 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           />
           <kbd>Esc</kbd>
         </div>
-        <ul className="palette-list" role="listbox">
-          {items.length === 0 && <li className="palette-empty">Nothing matches “{q}”.</li>}
+        <ul className="palette-list" role="listbox" id="palette-list" aria-label="Views and programs">
+          {items.length === 0 && (
+            <li className="palette-empty" role="presentation">
+              Nothing matches “{q}”.
+            </li>
+          )}
           {items.map((it, i) => (
-            <li key={it.key} role="option" aria-selected={i === cursor}>
-              <a
-                href={hrefFor(it.view, it.program)}
-                className={i === cursor ? "palette-item on" : "palette-item"}
-                onMouseEnter={() => setCursor(i)}
-                onClick={(e) => {
-                  e.preventDefault();
-                  go(it);
-                }}
-              >
-                {it.program ? <Boxes aria-hidden="true" /> : <span className="palette-go">{it.hint}</span>}
-                <span className="palette-label">{it.label}</span>
-                {it.program && (
-                  <span className="palette-hint" translate="no">
-                    {it.hint}
-                  </span>
-                )}
-                {it.tier && <TierBadge tier={it.tier} compact />}
-                {i === cursor && <CornerDownLeft className="palette-enter" aria-hidden="true" />}
-              </a>
+            <li
+              key={it.key}
+              id={`palette-opt-${i}`}
+              role="option"
+              aria-selected={i === cursor}
+              className={i === cursor ? "palette-item on" : "palette-item"}
+              onMouseEnter={() => setCursor(i)}
+              // Keep focus in the input: the option is chosen, not focused.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => go(it)}
+            >
+              {it.program ? <Boxes aria-hidden="true" /> : <span className="palette-go">{it.hint}</span>}
+              <span className="palette-label">{it.label}</span>
+              {it.program && (
+                <span className="palette-hint" translate="no">
+                  {it.hint}
+                </span>
+              )}
+              {it.tier && <TierBadge tier={it.tier} compact />}
+              {i === cursor && <CornerDownLeft className="palette-enter" aria-hidden="true" />}
             </li>
           ))}
         </ul>

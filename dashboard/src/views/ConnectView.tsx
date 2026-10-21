@@ -211,8 +211,9 @@ function Report({ report, hasKey }: { report: ConnectionReport; hasKey: boolean 
               Core reached, version <span translate="no">{report.version}</span>
               {report.degraded ? ", reporting itself degraded" : ""}
             </>
-          ) : report.reachError?.kind === "insecure" ? (
+          ) : report.reachError?.kind === "insecure" || report.reachError?.kind === "malformed" ? (
             // Round 19 (F-19-C6): refused before sending, not unreachable.
+            // Round 30: something answered, but it was not a Core.
             <>{report.reachError.message}</>
           ) : (
             <>

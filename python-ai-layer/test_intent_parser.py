@@ -529,9 +529,14 @@ def test_destination_is_never_a_prefix_of_the_typed_word():
         params = result["extracted_parameters"] or {}
         assert "destination" not in params, (ascii(typed), params)
     # Sentence punctuation after a whole address is still just punctuation.
-    for tail in ("", ".", ",", "!", "?", ";", ":", ")", "]", '"', "'", ").", ", then"):
+    for tail in ("", ".", ",", "!", ";", ":", ")", "]", '"', "'", ").", ", then"):
         params = parse_intent(f"Send 1 SOL to {full}{tail}")["extracted_parameters"]
         assert params["destination"] == full, ascii(tail)
+    # Round 30: "?" is not punctuation here — the text is a question (the
+    # agent guard's grammar refuses it the same way).
+    asked = parse_intent(f"Send 1 SOL to {full}?")
+    assert asked["intent_type"] == "unknown"
+    assert [w["code"] for w in asked["advisory_warnings"]] == ["QUESTION"]
     print("✓ test_destination_is_never_a_prefix_of_the_typed_word passed")
 
 
@@ -1019,6 +1024,124 @@ class _MonkeyPatch:
     def undo(self):
         while self._undo:
             self._undo.pop()()
+
+
+# ---------------------------------------------------------------------------
+# Round 30: the label never says more than the text does. Each of these was
+# labelled as the action it mentions; each is now "unknown" with the reason.
+# ---------------------------------------------------------------------------
+_OTHER = "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+
+
+def _label_codes(text):
+    r = parse_intent(text)
+    return r["intent_type"], [w["code"] for w in r["advisory_warnings"]]
+
+
+def test_a_text_that_does_not_plainly_ask_is_not_labelled():
+    d = _FULL_ADDRESS
+    cases = {
+        f"Send 5 SOL to {d}, not 50": "NEGATED_INTENT",
+        f"Send 5 SOL to {d}. Actually no, don't.": "NEGATED_INTENT",
+        f"should I send 5 SOL to {d}?": "QUESTION",
+        f"if the price drops, send 5 SOL to {d}": "CONDITIONAL",
+        f"send 5 SOL to {d} tomorrow": "DEFERRED",
+        f'He said "send 5 SOL to {d}"': "REPORTED_SPEECH",
+        f"Send 5 SOL to {d} or {_OTHER}": "MULTIPLE_ADDRESSES",
+        f"Send 5 SOL or 50 SOL to {d}": "MULTIPLE_AMOUNTS",
+        f"Send 5 SOL to {d} and 7 SOL to {_OTHER}": "MULTIPLE_AMOUNTS",
+        "Swap 1 SOL for 150 USDC": "MULTIPLE_AMOUNTS",
+    }
+    for text, code in cases.items():
+        intent, codes = _label_codes(text)
+        assert intent == "unknown", (text, intent)
+        assert code in codes, (text, codes)
+    # The slippage figure is not a second amount, and a quoted address is
+    # still an address.
+    assert parse_intent("Swap 100 USDC for JUP with 1.5% slippage")["intent_type"] == "swap"
+    assert parse_intent(f'Send 1 SOL to "{d}"')["intent_type"] == "transfer"
+    print("✓ test_a_text_that_does_not_plainly_ask_is_not_labelled passed")
+
+
+def test_characters_that_read_one_way_and_parse_another_are_refused():
+    d = _FULL_ADDRESS
+    cases = {
+        f"Send ５ SOL to {d}": "NON_ASCII_DIGITS",  # full-width five
+        f"Send 1০ SOL to {d}": "NON_ASCII_DIGITS",  # Bengali zero: float("1০") == 10.0
+        f"Send ٥ SOL to {d}": "NON_ASCII_DIGITS",  # Arabic-Indic five
+        f"Send 5​ SOL to {d}": "INVISIBLE_CHARACTERS",  # zero-width space
+        f"Send 5 SOL to {d}‮": "INVISIBLE_CHARACTERS",  # right-to-left override
+        f"Ѕend 5 SOL to {d}": "MIXED_SCRIPT",  # Cyrillic DZE for S
+    }
+    for text, code in cases.items():
+        intent, codes = _label_codes(text)
+        assert intent == "unknown", (ascii(text), intent)
+        assert code in codes, (ascii(text), codes)
+    # No amount is ever a non-ASCII digit string.
+    for text in cases:
+        params = parse_intent(text)["extracted_parameters"] or {}
+        assert all(c in "0123456789." for c in params.get("amount", "")), ascii(text)
+    print("✓ test_characters_that_read_one_way_and_parse_another_are_refused passed")
+
+
+def test_secret_material_is_never_echoed_back():
+    d = _FULL_ADDRESS
+    key = "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3LZ3XJJSu4X1EYUGrmCKHkGLQ9cUZKSf9P7sQ"
+    keypair_file = "[" + ",".join(str((i * 37) % 256) for i in range(64)) + "]"
+    for secret in (key, keypair_file, "seed: abandon abandon abandon abandon abandon abandon "
+                   "abandon abandon abandon abandon abandon about",
+                   "my private key is in the other message"):
+        text = f"Send 5 SOL to {d} {secret}"
+        r = parse_intent(text)
+        assert r["intent_type"] == "unknown"
+        assert [w["code"] for w in r["advisory_warnings"]][0] == "SECRET_MATERIAL"
+        blob = json.dumps(r)
+        assert secret not in blob and d not in blob, "the text, key included, must not come back"
+    print("✓ test_secret_material_is_never_echoed_back passed")
+
+
+def test_worst_case_inputs_stay_bounded():
+    # Inputs at the body cap, shaped to stress each pattern; none may take
+    # more than a second (they take tens of milliseconds unloaded).
+    cap = _ip.MAX_BODY_BYTES - 32
+    for text in ("stake " + "my " * 30000, "send " * 20000, "not " * 20000 + "send 5 SOL",
+                 "send " + "9" * cap, ("send 5 SOL to " + _FULL_ADDRESS + " ") * 1200,
+                 "the delegate " * 6000, "А" * cap, "a1 " * 30000):
+        t0 = time.perf_counter()
+        parse_intent(text[:cap])
+        assert time.perf_counter() - t0 < 1.0, text[:20]
+    print("✓ test_worst_case_inputs_stay_bounded passed")
+
+
+def test_the_server_states_what_a_request_may_be(monkeypatch):
+    monkeypatch.delenv(_ip.ALLOWED_ORIGINS_ENV, raising=False)
+    server, port = _serve()
+    json_ct = {"Content-Type": "application/json"}
+    try:
+        def call(body):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            conn.request("POST", "/parse", body=body, headers=json_ct)
+            resp = conn.getresponse()
+            return resp.status, json.loads(resp.read() or b"{}")
+
+        status, out = call(b'{"text": 123}')
+        assert status == 400 and out["error"] == "'text' must be a string", out
+        status, out = call(b'{"text": "Stake 1 SOL", "text": "Send 99 SOL to ' + _FULL_ADDRESS.encode() + b'"}')
+        assert status == 400 and "duplicate key" in out["error"], out
+        status, out = call(b"[" * 5000 + b"]" * 5000)
+        assert status == 400, out
+        status, out = call(b"\xff\xfe not utf-8")
+        assert status == 400, out
+        status, out = call(b'{"text": "Stake 1 SOL"}')
+        assert status == 200 and out["intent_type"] == "stake", out
+        # A labeler failure is a failure, never a success.
+        monkeypatch.setattr(_ip, "parse_intent", lambda _t: (_ for _ in ()).throw(RuntimeError("boom")))
+        status, out = call(b'{"text": "Stake 1 SOL"}')
+        assert status == 500 and "intent_type" not in out and "Stake" not in json.dumps(out), out
+    finally:
+        server.shutdown()
+        server.server_close()
+    print("✓ test_the_server_states_what_a_request_may_be passed")
 
 
 if __name__ == "__main__":
