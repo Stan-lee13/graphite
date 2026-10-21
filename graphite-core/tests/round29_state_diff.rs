@@ -693,3 +693,21 @@ fn a_multisig_never_decodes_as_an_account_or_a_mint() {
         "a Multisig is not an unreadable account"
     );
 }
+
+/// Audit 2026-10-20 (F4): a caller-supplied diff with a field the Core does
+/// not know is refused, not read with the field silently dropped.
+#[test]
+fn a_supplied_diff_with_an_unknown_field_is_refused() {
+    let ok = serde_json::json!({"deltas": [{"pubkey": "x"}]});
+    assert!(serde_json::from_value::<graphite_core::state_diff::StateDiff>(ok).is_ok());
+    for bad in [
+        serde_json::json!({"deltas": [], "covers_all_writeable": true}),
+        serde_json::json!({"deltas": [{"pubkey": "x", "befor": null}]}),
+        serde_json::json!({"deltas": [{"pubkey": "x", "after": {"pubkey": "x", "lamports": 1, "owner": "o", "data_len": 0, "tokn": null}}]}),
+    ] {
+        assert!(
+            serde_json::from_value::<graphite_core::state_diff::StateDiff>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
+}
