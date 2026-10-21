@@ -1096,7 +1096,7 @@ mod tests {
     // ───────────────────────────────────────────────────────────────────────
     // Drift + Kamino PDA grounding (C46) — every seed template and every
     // known-answer PDA below was verified against the OFFICIAL sources:
-    //   Drift:  velocity-exchange/protocol-v2 (IDL + sdk/src/addresses/pda.ts)
+    //   Drift:  github.com/drift-labs/protocol-v2 (IDL + sdk/src/addresses/pda.ts)
     //   Kamino: Kamino-Finance/klend libs/klend-interface/src/pda.rs
     //           (+ klend-sdk codegen + live on-chain decoded streams)
     // Known-answer addresses are computed with the OFFICIAL

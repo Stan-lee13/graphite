@@ -162,9 +162,15 @@ pub const HIGH_RISK_CLASSES: &[&str] =
 /// declared sibling) by the secondary-instruction pass, so they cannot
 /// disagree. An intent outside it declares nothing and fails closed. The
 /// empty class means the manifest does not say what the instruction does;
-/// only a swap (whose routes are unclassed, Jupiter's among them, and whose
-/// programs Check 9 restricts to swap programs) and a revoke (which L5 also
-/// holds to the instruction's name) declare it.
+/// only a swap (whose programs Check 9 restricts to swap programs) and a
+/// revoke (which L5 also holds to the instruction's name) declare it.
+///
+/// Swap-family instructions on swap programs stay UNCLASSED (`""`) BY RULE,
+/// not by omission (Round 29): `""` is the class only the swap intent
+/// declares (with `transfer`), so an unclassed swap can be declared only as a
+/// swap — and then held to the swap standard (Check 8, FakeSwap). Classing
+/// them `transfer` let a TRANSFER intent declare a swap, skipping that
+/// standard; the manifests leave them unclassed for that reason.
 ///
 /// `approve` declares NO class, on purpose (Round 29, audit 2026-10-20: the
 /// audit observed an approve intent can never pass L5, and that is the
@@ -499,9 +505,16 @@ impl InstructionDef {
     /// that class cleared them; external review R3's structural rule). The
     /// word `authority` is not used here: most IDLs name the user's own key
     /// that.
+    ///
+    /// An OPTIONAL admin signer does not count (Round 29): the instruction
+    /// runs without it, so it is not an operation only an administrator can
+    /// perform. OpenBook v2's `place_order`, `place_orders`, `edit_order` and
+    /// their kind carry an optional `open_orders_admin` signer, and counting
+    /// it made every order an authority change, refused under any intent.
     pub fn requires_an_admin_signature(&self) -> bool {
         self.all_layouts().flatten().any(|a| {
             a.is_signer
+                && !a.optional
                 && a.name
                     .chars()
                     .filter(char::is_ascii_alphabetic)
@@ -1337,7 +1350,9 @@ pub mod battle_tested_bar {
     pub const MIN_DECODE_RATE: f64 = 0.90;
 }
 
-/// Program ids whose recorded measurements clear `battle_tested_bar`.
+/// Program ids whose recorded measurements clear `battle_tested_bar`, with
+/// each record's decode rate RECOMPUTED against the shipped manifest (see
+/// [`qualifying_programs_against`]).
 ///
 /// Fail-closed twice over: a program with no record, or a record that falls
 /// short, is simply absent from the set, and the seed loader then refuses to
@@ -1348,12 +1363,34 @@ pub fn battle_tested_programs() -> std::collections::BTreeSet<String> {
 
 /// [`battle_tested_programs`], returning the error instead of stopping.
 pub fn try_battle_tested_programs() -> Result<std::collections::BTreeSet<String>, ManifestError> {
-    let doc: serde_json::Value = serde_json::from_str(BATTLE_TESTED_EVIDENCE).map_err(|e| {
+    let seeds = parse_seed_manifests()?;
+    let by_id: BTreeMap<&str, &ProtocolManifest> = seeds
+        .iter()
+        .map(|(_, m)| (m.protocol.program_id.as_str(), m))
+        .collect();
+    Ok(qualifying_programs_against(&evidence_document()?, |id| {
+        by_id.get(id).copied()
+    }))
+}
+
+fn evidence_document() -> Result<serde_json::Value, ManifestError> {
+    serde_json::from_str(BATTLE_TESTED_EVIDENCE).map_err(|e| {
         ManifestError::Invalid(format!(
             "battle_tested_evidence.json is not valid JSON ({e}) — trust tiers cannot be checked against it"
         ))
-    })?;
-    Ok(qualifying_programs(&doc))
+    })
+}
+
+/// Every shipped seed manifest, parsed, in `SEED_MANIFESTS` order.
+fn parse_seed_manifests() -> Result<Vec<(&'static str, ProtocolManifest)>, ManifestError> {
+    SEED_MANIFESTS
+        .iter()
+        .map(|(name, body)| {
+            serde_json::from_str(body)
+                .map(|m| (*name, m))
+                .map_err(|e| ManifestError::Invalid(format!("seed manifest {name}: {e}")))
+        })
+        .collect()
 }
 
 /// The one place a failure of the data COMPILED INTO this crate stops the
@@ -1376,28 +1413,127 @@ fn shipped_data_unusable(e: ManifestError) -> ! {
     panic!("graphite: the seed manifests compiled into this build are unusable — refusing to run without the audited trust anchor: {e}")
 }
 
-/// The gate itself, over any evidence document — the part the tests drive
-/// with hand-built records to prove what it refuses.
+/// The bar applied to one record, given its decode rate.
+fn record_clears_bar(p: &serde_json::Value, rate: Option<f64>) -> bool {
+    let executable = p["identity"]["executable"].as_bool().unwrap_or(false);
+    let txs = p["volume"]["successful_transactions_counted"]
+        .as_u64()
+        .unwrap_or(0);
+    let observed = p["decode"]["instructions_observed"].as_u64().unwrap_or(0);
+    executable
+        && txs >= battle_tested_bar::MIN_SUCCESSFUL_TRANSACTIONS
+        && observed >= battle_tested_bar::MIN_DECODED_INSTRUCTIONS
+        && rate.is_some_and(|r| r >= battle_tested_bar::MIN_DECODE_RATE)
+}
+
+/// The gate over a document's OWN recorded fields, decode rate included —
+/// for hand-built records in tests. The seed loader does not use it: it
+/// recomputes the decode rate ([`qualifying_programs_against`]).
 pub fn qualifying_programs(doc: &serde_json::Value) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
-    let Some(programs) = doc["programs"].as_array() else {
-        return out;
-    };
-    for p in programs {
-        let executable = p["identity"]["executable"].as_bool().unwrap_or(false);
-        let txs = p["volume"]["successful_transactions_counted"]
-            .as_u64()
-            .unwrap_or(0);
-        let observed = p["decode"]["instructions_observed"].as_u64().unwrap_or(0);
-        let rate = p["decode"]["decode_rate"].as_f64().unwrap_or(0.0);
-        if executable
-            && txs >= battle_tested_bar::MIN_SUCCESSFUL_TRANSACTIONS
-            && observed >= battle_tested_bar::MIN_DECODED_INSTRUCTIONS
-            && rate >= battle_tested_bar::MIN_DECODE_RATE
-        {
+    for p in doc["programs"].as_array().into_iter().flatten() {
+        if record_clears_bar(p, p["decode"]["decode_rate"].as_f64()) {
             if let Some(id) = p["program_id"].as_str() {
                 out.insert(id.to_string());
             }
+        }
+    }
+    out
+}
+
+/// Instructions renamed in a manifest since a census:
+/// (manifest file, name the census recorded, name the manifest uses now).
+/// Mirrors `scripts/recompute_evidence.py`'s `RENAMES`.
+const EVIDENCE_RENAMES: &[(&str, &str, &str)] = &[(
+    "marginfi-v2.json",
+    "onchain_observed_shape_7acct",
+    "lending_account_repay",
+)];
+
+/// A record's decode rate, recomputed from its stored observation against
+/// `manifest` — the manifest as LOADED, not as it stood on the day of the
+/// census (Round 29, audit 2026-10-20, MED-1).
+///
+/// The record keeps the census's histogram of instruction heads: the ones the
+/// manifest of the day named (`instructions_by_name`) and the rest
+/// (`unmatched_leading_bytes`, the commonest few). A name still in the
+/// manifest (after [`EVIDENCE_RENAMES`]) counts; a name the manifest no longer
+/// has does not; an unmatched head counts when an instruction's discriminator
+/// now prefixes it — the census's own rule, `scripts/recompute_evidence.py`.
+/// Divided by `instructions_observed`, which includes the heads the census
+/// did not list, so the rate can only under-count. `None` when nothing was
+/// observed or the manifest has no discriminator to decode by (a memo
+/// program): such a record cannot show the manifest names what is run.
+///
+/// The record's own `decode_rate` field was trusted until Round 29, so a
+/// manifest edited after its census — an instruction removed, a
+/// discriminator changed — kept a rate measured against a different surface.
+pub fn recomputed_decode_rate(
+    record: &serde_json::Value,
+    manifest: &ProtocolManifest,
+) -> Option<f64> {
+    let dec = &record["decode"];
+    let observed = dec["instructions_observed"].as_u64().filter(|n| *n > 0)?;
+    if !manifest
+        .instructions
+        .iter()
+        .any(|ix| !ix.discriminator.is_empty())
+    {
+        return None;
+    }
+    let file = record["manifest"].as_str().unwrap_or_default();
+    let names: std::collections::BTreeSet<&str> = manifest
+        .instructions
+        .iter()
+        .map(|ix| ix.name.as_str())
+        .collect();
+    let mut named: u64 = 0;
+    for (name, n) in dec["instructions_by_name"]
+        .as_object()
+        .into_iter()
+        .flatten()
+    {
+        let name = EVIDENCE_RENAMES
+            .iter()
+            .find(|(f, old, _)| *f == file && old == name)
+            .map(|(_, _, new)| *new)
+            .unwrap_or(name.as_str());
+        if names.contains(name) {
+            named = named.saturating_add(n.as_u64().unwrap_or(0));
+        }
+    }
+    for (head, n) in dec["unmatched_leading_bytes"]
+        .as_object()
+        .into_iter()
+        .flatten()
+    {
+        let head = head.to_lowercase();
+        if manifest.instructions.iter().any(|ix| {
+            let d = ix.discriminator.to_lowercase();
+            !d.is_empty() && head.starts_with(&d)
+        }) {
+            named = named.saturating_add(n.as_u64().unwrap_or(0));
+        }
+    }
+    Some((named as f64 / observed as f64).min(1.0))
+}
+
+/// The gate the seed loader applies: [`record_clears_bar`] with each record's
+/// decode rate recomputed against the manifest `manifest_for` returns for its
+/// program ([`recomputed_decode_rate`]). A record whose program has no
+/// manifest qualifies for nothing.
+pub fn qualifying_programs_against<'m>(
+    doc: &serde_json::Value,
+    manifest_for: impl Fn(&str) -> Option<&'m ProtocolManifest>,
+) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for p in doc["programs"].as_array().into_iter().flatten() {
+        let Some(id) = p["program_id"].as_str() else {
+            continue;
+        };
+        let rate = manifest_for(id).and_then(|m| recomputed_decode_rate(p, m));
+        if record_clears_bar(p, rate) {
+            out.insert(id.to_string());
         }
     }
     out
@@ -1417,10 +1553,15 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 /// of stopping (M-5).
 pub fn try_load_seed_manifests() -> Result<ManifestRegistry, ManifestError> {
     let mut registry = ManifestRegistry::new();
-    let earned = try_battle_tested_programs()?;
-    for (name, body) in SEED_MANIFESTS {
-        let mut manifest: ProtocolManifest = serde_json::from_str(body)
-            .map_err(|e| ManifestError::Invalid(format!("seed manifest {name}: {e}")))?;
+    let seeds = parse_seed_manifests()?;
+    let earned = {
+        let by_id: BTreeMap<&str, &ProtocolManifest> = seeds
+            .iter()
+            .map(|(_, m)| (m.protocol.program_id.as_str(), m))
+            .collect();
+        qualifying_programs_against(&evidence_document()?, |id| by_id.get(id).copied())
+    };
+    for (name, mut manifest) in seeds {
         // P7, applied to the shipped trust anchor: a tier is computed from
         // evidence, never asserted by whoever wrote the document — and a seed
         // manifest is still a document. `BattleTested` without a measurement
@@ -1715,6 +1856,110 @@ mod tests {
             try_load_seed_manifests().expect("seeds load").list().len(),
             manifests.len()
         );
+    }
+
+    /// Round 29: an OPTIONAL admin signer does not make an instruction an
+    /// authority change — OpenBook v2's orders carry one.
+    #[test]
+    fn an_optional_admin_signer_is_not_an_admin_requirement() {
+        let signer = |name: &str, optional: bool| AccountRoleDef {
+            name: name.to_string(),
+            role: "signer".to_string(),
+            is_writable: false,
+            is_signer: true,
+            pda_seeds: vec![],
+            expected_address: vec![],
+            optional,
+        };
+        let ix = |admin_optional: bool| InstructionDef {
+            account_layouts: vec![],
+            name: "place_order".to_string(),
+            discriminator: "33c29baf6d82606a".to_string(),
+            accounts: vec![
+                signer("owner", false),
+                signer("open_orders_admin", admin_optional),
+            ],
+            expected_state_changes: vec![],
+            allowed_cpis: vec![],
+            risk_rules: vec![],
+            variable_accounts: false,
+            risk_class: "transfer".to_string(),
+        };
+        assert!(!ix(true).requires_an_admin_signature());
+        assert_eq!(ix(true).security_class(), "transfer");
+        assert!(ix(false).requires_an_admin_signature());
+        assert_eq!(ix(false).security_class(), AUTHORITY_CHANGE_CLASS);
+        // And in the shipped manifest, wherever the slot is marked optional.
+        let registry = load_seed_manifests();
+        let openbook = registry
+            .get("opnb2LAfJYbRMAHHvqjCwQxanZn7ReEHp1k81EohpZb")
+            .expect("OpenBook v2 is a seed manifest");
+        for ix in &openbook.instructions {
+            let only_optional_admins = ix.all_layouts().flatten().all(|a| {
+                !(a.is_signer && a.name.to_ascii_lowercase().contains("admin")) || a.optional
+            });
+            if only_optional_admins {
+                assert!(!ix.requires_an_admin_signature(), "{}", ix.name);
+            }
+        }
+    }
+
+    /// Round 29 (MED-1): the seed loader recomputes a record's decode rate
+    /// from its stored histogram against the LOADED manifest, not the file's
+    /// `decode_rate` field.
+    #[test]
+    fn the_decode_rate_is_recomputed_against_the_loaded_manifest() {
+        let manifest: ProtocolManifest = serde_json::from_str(&format!(
+            r#"{{"graphite_manifest_version":"1.0","protocol":{{"name":"T","program_id":"{NON_SEED}"}},
+            "version":{{"label":"1"}},"instructions":[
+              {{"name":"a","discriminator":"01","accounts":[],"expected_state_changes":[],"allowed_cpis":[],"risk_rules":[]}},
+              {{"name":"b","discriminator":"02","accounts":[],"expected_state_changes":[],"allowed_cpis":[],"risk_rules":[]}}]}}"#
+        ))
+        .unwrap();
+        let record = |by_name: serde_json::Value, unmatched: serde_json::Value, rate: f64| {
+            serde_json::json!({
+                "program_id": NON_SEED,
+                "manifest": "t.json",
+                "identity": {"executable": true},
+                "volume": {"successful_transactions_counted": 5000},
+                "decode": {"instructions_observed": 100, "decode_rate": rate,
+                           "instructions_by_name": by_name, "unmatched_leading_bytes": unmatched}
+            })
+        };
+        // The file claims 1.0, but 40 of the 100 were a name the manifest no
+        // longer has.
+        let stale = record(
+            serde_json::json!({"a": 60, "gone": 40}),
+            serde_json::json!({}),
+            1.0,
+        );
+        assert_eq!(recomputed_decode_rate(&stale, &manifest), Some(0.6));
+        let doc = serde_json::json!({ "programs": [stale] });
+        assert_eq!(
+            qualifying_programs(&doc).len(),
+            1,
+            "the field alone qualifies"
+        );
+        assert!(
+            qualifying_programs_against(&doc, |_| Some(&manifest)).is_empty(),
+            "the recomputation does not"
+        );
+        // Heads the census could not name, which the manifest names now.
+        let grown = record(
+            serde_json::json!({"a": 50}),
+            serde_json::json!({"02ffee": 45, "99": 5}),
+            0.5,
+        );
+        assert_eq!(recomputed_decode_rate(&grown, &manifest), Some(0.95));
+        assert_eq!(
+            qualifying_programs_against(&serde_json::json!({ "programs": [grown] }), |_| Some(
+                &manifest
+            ))
+            .len(),
+            1
+        );
+        // No manifest: nothing qualifies.
+        assert!(qualifying_programs_against(&doc, |_| None).is_empty());
     }
 
     const NON_SEED: &str = "GdP9U5aYx7f2kQzVwNmT8jRcL4hB6eX3sDnWqA1uMoH";
@@ -2990,7 +3235,7 @@ mod test_v2_discriminators {
 /// C27 — Drift + Kamino Lending manifests (2026-08-09).
 ///
 /// Both were built from the official deployed-program IDLs (committed under
-/// scripts/): Drift from velocity-exchange/protocol-v2 sdk/src/idl/drift.json
+/// scripts/): Drift from github.com/drift-labs/protocol-v2 sdk/src/idl/drift.json
 /// (program dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH), Kamino from
 /// Kamino-Finance/klend-sdk src/idl/klend.json (program
 /// KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD). The IDLs carry no discriminator
