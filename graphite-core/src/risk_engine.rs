@@ -661,7 +661,7 @@ fn assess_impl(
             if !discriminator.is_empty() {
                 let declared = discriminator.as_str();
                 let selector = normalize_discriminator(pattern.discriminator);
-                if declared.len() < selector.len() && selector.starts_with(&declared) {
+                if declared.len() < selector.len() && selector.starts_with(declared) {
                     return Ok(RiskVerdict::Blocked {
                         pattern: pattern.pattern,
                         reason: format!(
