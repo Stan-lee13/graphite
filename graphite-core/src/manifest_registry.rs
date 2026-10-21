@@ -409,7 +409,7 @@ impl ManifestRegistryEngine {
                     quarantined: false,
                     quarantine_reason: None,
                 })
-                .expect("a recorded program id is never empty");
+                .map_err(|_| RegistryError::EmptyProgramId)?;
             touched += 1;
         }
         Ok(touched)
