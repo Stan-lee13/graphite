@@ -14,7 +14,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Verify a transaction from a JSON file
+    /// Verify a transaction from a JSON file, as the server would
+    ///
+    /// Reads the server's data directory, registry state and boundary
+    /// settings (GRAPHITE_WALLET_PROFILE, GRAPHITE_ALLOW_PERMISSIVE_PROFILES,
+    /// GRAPHITE_PLUGINS_DIR, GRAPHITE_ALLOW_DURABLE_NONCE,
+    /// GRAPHITE_QUARANTINE_ON_UPGRADE). Exits 1 when the transaction is blocked.
     Verify {
         /// Path to JSON verification input
         #[arg(short, long)]
@@ -22,8 +27,10 @@ enum Commands {
         /// Read JSON from stdin instead of file
         #[arg(long)]
         stdin: bool,
-        /// Override the wallet policy profile
-        /// (treasury|trading|gaming|enterprise|custom)
+        /// Override the input's wallet policy profile
+        /// (treasury|trading|gaming|enterprise|custom). Treated as the request
+        /// body's profile: a server pin wins, and a weak custom profile is
+        /// clamped as the server clamps it.
         #[arg(long)]
         profile: Option<String>,
         /// Custom profile: minimum confidence in [0.0, 1.0]
@@ -64,6 +71,11 @@ enum Commands {
         /// Port to probe (default: 7331)
         #[arg(short, long, default_value = "7331")]
         port: u16,
+        /// Address to probe: an IP (IPv4 or IPv6) or `localhost`
+        /// (default: 127.0.0.1). An unspecified bind address (0.0.0.0, ::)
+        /// is probed on the loopback address of its family.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
         /// Also fail when /health reports `degraded: true` (for example,
         /// failing audit writes). Off by default so a load balancer keeps a
         /// node that still refuses correctly.
@@ -102,8 +114,17 @@ enum Commands {
     },
     /// L8 - confirm a submitted transaction and reconcile it against the record
     ///
-    /// Exits 1 when Graphite blocked a transaction that executed anyway.
+    /// Exit status, for use as a monitoring check:
+    ///   0  reconciled; nothing to alarm on
+    ///   1  DISCREPANCY: Graphite blocked a transaction that executed anyway
+    ///   2  usage error (bad arguments)
+    ///   3  unavailable: the check could not be made (no RPC answer, no
+    ///      audit trail, or a configuration error)
+    ///   4  the RPC returned transaction bytes not bound to the signature
+    ///   5  the primary RPC contradicted itself about the signature
+    ///   6  the inclusion witness disagreed, or could not be asked
     #[cfg(feature = "rpc")]
+    #[command(verbatim_doc_comment)]
     Execution {
         /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
         #[arg(long)]
@@ -248,7 +269,8 @@ enum EvidenceAction {
         program: String,
     },
     /// Replace a frozen simulation baseline with the clean executions it
-    /// refused (/health lists them under `frozen_baselines`)
+    /// refused (/health counts them in `frozen_baseline_count`; the
+    /// authenticated GET /api/frozen-baselines lists them)
     PromoteShadow {
         /// Server durable state dir (default: GRAPHITE_DATA_DIR, else ./graphite-data)
         #[arg(long)]
@@ -438,8 +460,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // `--no-default-features --features cli` job, which is exactly why
         // that job exists — `--all-features` can never surface this.
         #[cfg(feature = "server")]
-        Commands::Healthcheck { port, strict } => {
-            graphite_core::cli::run(graphite_core::cli::CliCommand::Healthcheck { port, strict })
+        Commands::Healthcheck { port, host, strict } => {
+            graphite_core::cli::run(graphite_core::cli::CliCommand::Healthcheck {
+                port,
+                host,
+                strict,
+            })
         }
         Commands::Benchmark => graphite_core::cli::run(graphite_core::cli::CliCommand::Benchmark),
         Commands::Regression { action } => match action {

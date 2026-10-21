@@ -65,7 +65,8 @@ fn start_server() -> SocketAddr {
     let deadline = Instant::now() + Duration::from_secs(60);
     while Instant::now() < deadline {
         if let Ok(mut s) = TcpStream::connect(addr) {
-            let _ = s.write_all(b"GET /health HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let _ = s
+                .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
             let mut out = Vec::new();
             let _ = s.read_to_end(&mut out);
             if out.starts_with(b"HTTP/1.1 200") {
@@ -81,7 +82,7 @@ fn start_server() -> SocketAddr {
 fn an_idle_keep_alive_connection_is_closed_at_its_lifetime() {
     let addr = start_server();
     let mut s = TcpStream::connect(addr).unwrap();
-    s.write_all(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n")
+    s.write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
         .unwrap();
     // Read the one response; the connection stays open (keep-alive).
     s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();

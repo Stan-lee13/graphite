@@ -6,6 +6,297 @@ use crate::policy_engine::WalletProfile;
 use crate::verification::{GraphiteCore, VerificationInput};
 use std::path::{Path, PathBuf};
 
+/// What the server applies at its trust boundary from its environment, in
+/// one place for the server and for `graphite verify`/`explain`.
+///
+/// Audit 2026-10-20 (L11): the CLI answered "what would the gate decide about
+/// this?" with a different gate. It ignored `GRAPHITE_WALLET_PROFILE`, the
+/// clamp the server applies to a weak caller-supplied `Custom` profile (and
+/// its `GRAPHITE_ALLOW_PERMISSIVE_PROFILES` opt-out), the plugins in
+/// `GRAPHITE_PLUGINS_DIR` and `GRAPHITE_ALLOW_DURABLE_NONCE` /
+/// `GRAPHITE_QUARANTINE_ON_UPGRADE`, so an operator could read APPROVED here
+/// for a request the server refused, or the reverse. The rules now live here
+/// and both read them; nothing is restated.
+///
+/// It lives in this module because the `cli`-only build (a CI leg) has no
+/// `server` module, and the server needs it too; the `server` feature
+/// therefore enables `cli`.
+pub mod boundary {
+    use crate::confidence_engine::TrustTier;
+    use crate::policy_engine::{
+        WalletProfile, WEAKEST_BUILTIN_MIN_CONFIDENCE, WEAKEST_BUILTIN_MIN_TRUST_TIER,
+    };
+    use crate::verification::GraphiteCore;
+    use std::path::PathBuf;
+
+    /// A boolean switch from the environment, read strictly: unset, empty,
+    /// `0` or `false` is off; `1` or `true` is on (case and surrounding
+    /// whitespace ignored); anything else is a configuration error, so a
+    /// typo is never a silent "off" (audit 2026-10-20: several switches read
+    /// anything but `1`/`true` as off, one of them without trimming).
+    pub fn env_flag(name: &str, value: Option<&str>) -> Result<bool, String> {
+        match value.map(str::trim) {
+            None | Some("") | Some("0") => Ok(false),
+            Some("1") => Ok(true),
+            Some(v) if v.eq_ignore_ascii_case("true") => Ok(true),
+            Some(v) if v.eq_ignore_ascii_case("false") => Ok(false),
+            Some(v) => Err(format!(
+                "{name}={v:?} is not 1, true, 0 or false. REFUSING TO START."
+            )),
+        }
+    }
+
+    /// A non-negative integer from the environment: unset or empty is
+    /// `default`; anything that does not parse, or that `valid` refuses, is
+    /// a configuration error naming the variable and what it accepts (audit
+    /// 2026-10-20: these fell back to their defaults silently, so a typo'd
+    /// limit ran with a value nobody chose).
+    pub fn env_number<T: std::str::FromStr + Copy>(
+        name: &str,
+        value: Option<&str>,
+        default: T,
+        accepts: &str,
+        valid: impl Fn(T) -> bool,
+    ) -> Result<T, String> {
+        match value.map(str::trim) {
+            None | Some("") => Ok(default),
+            Some(v) => match v.parse::<T>() {
+                Ok(n) if valid(n) => Ok(n),
+                _ => Err(format!(
+                    "invalid {name} {v:?}: must be {accepts}. REFUSING TO START."
+                )),
+            },
+        }
+    }
+
+    /// Parse `GRAPHITE_WALLET_PROFILE`. Accepts the four built-in names, or
+    /// `custom:<min_confidence>:<TrustTier>`. An unparseable value is a
+    /// configuration error the operator must see, so it is reported rather
+    /// than silently ignored.
+    pub fn parse_pinned_profile(raw: &str) -> Result<WalletProfile, String> {
+        let v = raw.trim();
+        match v.to_ascii_lowercase().as_str() {
+            "treasury" => return Ok(WalletProfile::Treasury),
+            "trading" | "tradingbot" => return Ok(WalletProfile::TradingBot),
+            "gaming" => return Ok(WalletProfile::Gaming),
+            "enterprise" => return Ok(WalletProfile::Enterprise),
+            _ => {}
+        }
+        let parts: Vec<&str> = v.split(':').collect();
+        if parts.len() == 3 && parts[0].eq_ignore_ascii_case("custom") {
+            let min_confidence: f64 = parts[1]
+                .parse()
+                .map_err(|_| format!("invalid min_confidence {:?}", parts[1]))?;
+            if !min_confidence.is_finite() || !(0.0..=1.0).contains(&min_confidence) {
+                return Err(format!(
+                    "min_confidence {min_confidence} must be within [0.0, 1.0]"
+                ));
+            }
+            let min_trust_tier = match parts[2] {
+                "Unknown" => TrustTier::Unknown,
+                "HeuristicInferred" => TrustTier::HeuristicInferred,
+                "OfficialManifest" => TrustTier::OfficialManifest,
+                "SimulationValidated" => TrustTier::SimulationValidated,
+                "CommunityVerified" => TrustTier::CommunityVerified,
+                "BattleTested" => TrustTier::BattleTested,
+                other => return Err(format!("unknown trust tier {other:?}")),
+            };
+            return Ok(WalletProfile::Custom {
+                min_confidence,
+                min_trust_tier,
+            });
+        }
+        Err(format!(
+            "unrecognized profile {v:?} (expected treasury|trading|gaming|enterprise|custom:<min_confidence>:<TrustTier>)"
+        ))
+    }
+
+    /// Enforce the wallet policy profile at the network trust boundary.
+    ///
+    /// CRITICAL (2026-09-05 red-team, verified end-to-end against a live
+    /// server): `wallet_profile` arrives in the SAME request body, over the
+    /// SAME connection, as `proposed_intent`, `program_id` and every other
+    /// field the (possibly prompt-injected) agent supplies. Graphite has no
+    /// way to tell an operator's deliberate policy from an attacker's chosen
+    /// one. Sending `{"Custom":{"min_confidence":0.0,"min_trust_tier":"Unknown"}}`
+    /// therefore approved a transaction to a completely unmanifested program
+    /// at confidence 0.0 — P6's ceiling still computed correctly, it just no
+    /// longer gated anything, because the threshold it was compared against
+    /// was attacker-chosen.
+    ///
+    /// Two layers, both applied at the boundary rather than in the core (a
+    /// library embedder IS its own operator and may legitimately choose any
+    /// profile; an HTTP caller is not):
+    ///
+    /// 1. `GRAPHITE_WALLET_PROFILE` pins the profile server-side. When set,
+    ///    the request body's profile is ignored entirely — the operator's
+    ///    policy is configuration, not something the caller can negotiate.
+    /// 2. Otherwise a caller-supplied `Custom` profile is CLAMPED so it can
+    ///    never be weaker than the weakest built-in profile. Named profiles
+    ///    pass through untouched (all four are sane postures).
+    ///    `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` opts out for the genuinely
+    ///    trusted single-tenant case.
+    ///
+    /// Returns the effective profile and, when it differs from what was asked
+    /// for, a disclosure string so the override is visible in the response and
+    /// audit trail rather than silently applied (P3).
+    pub fn enforce_wallet_profile(
+        requested: WalletProfile,
+        pinned: Option<WalletProfile>,
+        allow_permissive: bool,
+    ) -> Result<(WalletProfile, Option<String>), String> {
+        // Round 17 (F-16-08): a confidence bar above 1.0 can never be met and
+        // is not a policy; it used to travel through the whole pipeline and
+        // come back as a 500 from the policy engine. Malformed input is a
+        // 400, and it is refused before anything is simulated or recorded.
+        //
+        // Round 19 (F-19-27): the same for a bar BELOW 0.0, NaN or infinite.
+        // They were clamped up to the weakest built-in by default — safe —
+        // but passed straight through under GRAPHITE_ALLOW_PERMISSIVE_PROFILES,
+        // carrying a NaN into the policy comparison. The operator's own
+        // `custom:<x>:<tier>` pin already refused all of them; the request
+        // path now agrees with it in every mode.
+        if let WalletProfile::Custom { min_confidence, .. } = requested {
+            if !(0.0..=1.0).contains(&min_confidence) {
+                return Err(format!(
+                    "wallet_profile.Custom.min_confidence must be within [0.0, 1.0], got {min_confidence}"
+                ));
+            }
+        }
+
+        if let Some(p) = pinned {
+            if p != requested {
+                return Ok((
+                    p,
+                    Some(
+                        "wallet profile is pinned server-side (GRAPHITE_WALLET_PROFILE); the \
+                         profile supplied in the request was ignored"
+                            .to_string(),
+                    ),
+                ));
+            }
+            return Ok((p, None));
+        }
+        if allow_permissive {
+            return Ok((requested, None));
+        }
+        match requested {
+            WalletProfile::Custom {
+                min_confidence,
+                min_trust_tier,
+            } if !min_confidence.is_finite()
+                || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE
+                || min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER =>
+            {
+                // Both axes (F-15-07): the confidence floor AND the tier floor
+                // of the weakest built-in profile. Each override is disclosed.
+                let confidence_raised =
+                    !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE;
+                let tier_raised = min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER;
+                let mut notes = Vec::new();
+                if confidence_raised {
+                    notes.push(format!(
+                        "min_confidence ({min_confidence}) was raised to {WEAKEST_BUILTIN_MIN_CONFIDENCE}"
+                    ));
+                }
+                if tier_raised {
+                    notes.push(format!(
+                        "min_trust_tier ({min_trust_tier:?}) was raised to {WEAKEST_BUILTIN_MIN_TRUST_TIER:?}"
+                    ));
+                }
+                Ok((
+                    WalletProfile::Custom {
+                        min_confidence: if confidence_raised {
+                            WEAKEST_BUILTIN_MIN_CONFIDENCE
+                        } else {
+                            min_confidence
+                        },
+                        min_trust_tier: if tier_raised {
+                            WEAKEST_BUILTIN_MIN_TRUST_TIER
+                        } else {
+                            min_trust_tier
+                        },
+                    },
+                    Some(format!(
+                        "requested custom profile is weaker than any built-in profile: {} — a \
+                         caller-supplied threshold cannot disable the confidence/trust-tier gate (set \
+                         GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 to allow, or pin the profile with \
+                         GRAPHITE_WALLET_PROFILE)",
+                        notes.join("; ")
+                    )),
+                ))
+            }
+            other => Ok((other, None)),
+        }
+    }
+
+    /// The operator's policy settings, read once from the environment.
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct OperatorPolicy {
+        /// `GRAPHITE_WALLET_PROFILE`: overrides every request's profile.
+        pub pinned_profile: Option<WalletProfile>,
+        /// `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`: no clamp on a weak `Custom`.
+        pub allow_permissive_profiles: bool,
+        /// `GRAPHITE_ALLOW_DURABLE_NONCE`.
+        pub allow_durable_nonce: bool,
+        /// `GRAPHITE_QUARANTINE_ON_UPGRADE`.
+        pub quarantine_on_upgrade: bool,
+        /// `GRAPHITE_PLUGINS_DIR`, when set and non-empty.
+        pub plugins_dir: Option<PathBuf>,
+    }
+
+    impl OperatorPolicy {
+        /// Read from the process environment.
+        pub fn from_env() -> Result<Self, String> {
+            Self::from_lookup(|k| std::env::var(k).ok())
+        }
+
+        /// Read through `get` (the environment, or a test's map). Every
+        /// value that does not parse is an error; none falls back.
+        pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
+            let pinned_profile = match get("GRAPHITE_WALLET_PROFILE") {
+                Some(v) if !v.trim().is_empty() => Some(
+                    parse_pinned_profile(&v)
+                        .map_err(|e| format!("invalid GRAPHITE_WALLET_PROFILE: {e}"))?,
+                ),
+                _ => None,
+            };
+            let flag = |name: &str| env_flag(name, get(name).as_deref());
+            Ok(Self {
+                pinned_profile,
+                allow_permissive_profiles: flag("GRAPHITE_ALLOW_PERMISSIVE_PROFILES")?,
+                allow_durable_nonce: flag("GRAPHITE_ALLOW_DURABLE_NONCE")?,
+                quarantine_on_upgrade: flag("GRAPHITE_QUARANTINE_ON_UPGRADE")?,
+                plugins_dir: get("GRAPHITE_PLUGINS_DIR")
+                    .filter(|d| !d.trim().is_empty())
+                    .map(PathBuf::from),
+            })
+        }
+
+        /// Apply the settings that live in the core: durable nonces, the
+        /// upgrade quarantine and the plugins directory. Returns the plugin
+        /// registration summary when a directory is configured. A directory
+        /// that does not load is an error: an operator who configured
+        /// plugins expects them to be running (Round 17, F-16-07).
+        pub fn apply_to_core(
+            &self,
+            core: &mut GraphiteCore,
+        ) -> Result<Option<crate::plugin_orchestrator::RegistrationSummary>, String> {
+            core.set_allow_durable_nonce(self.allow_durable_nonce);
+            core.set_quarantine_on_upgrade(self.quarantine_on_upgrade);
+            match &self.plugins_dir {
+                Some(dir) => core.attach_plugins_dir(dir).map(Some).map_err(|e| {
+                    format!(
+                        "plugins: FAILED to load {} (GRAPHITE_PLUGINS_DIR): {e} — refusing to run without the plugins the operator configured",
+                        dir.display()
+                    )
+                }),
+                None => Ok(None),
+            }
+        }
+    }
+}
+
 /// CLI-supplied policy profile override for `verify`.
 ///
 /// A named preset (`treasury|trading|gaming|enterprise`) replaces the
@@ -89,20 +380,45 @@ pub fn resolve_profile(arg: &ProfileArg) -> Result<Option<WalletProfile>, String
             "unknown profile '{other}' (expected treasury|trading|gaming|enterprise|custom)"
         )),
     };
-    // The CLI is the operator's own tool, so the operator's number stands —
-    // but never silently. A custom bar below the weakest built-in profile
-    // has switched the confidence gate off for this run, and the transcript
-    // must say so where the verdict is read.
-    if let Ok(Some(p)) = &resolved {
-        if p.is_weaker_than_any_builtin() {
-            let (bar, _) = p.thresholds();
-            eprintln!(
-                "WARNING: --profile custom --min-confidence {bar} is below the weakest built-in                  profile ({}); the confidence gate is effectively disabled for this run. The                  server clamps a caller-supplied profile to that floor; this tool does not.",
-                crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE
-            );
-        }
-    }
+    // A `--profile` here stands where the request body's profile stands at
+    // the server, and goes through the same boundary (`effective_input`):
+    // the pin and the weak-`Custom` clamp apply to it as they would there
+    // (audit 2026-10-20, L11). This tool used to apply the operator's number
+    // unclamped and warn that the server would not.
     resolved
+}
+
+/// The input as the server would judge it: `--profile` replaces the input's
+/// own profile (as a request body's would), then the server's boundary rules
+/// apply — `GRAPHITE_WALLET_PROFILE` pins it, a weak `Custom` is clamped
+/// unless `GRAPHITE_ALLOW_PERMISSIVE_PROFILES` is on. Returns the disclosure
+/// the server would attach to the verdict's summary, when there is one.
+pub fn effective_input(
+    mut input: VerificationInput,
+    arg: &ProfileArg,
+    policy: &boundary::OperatorPolicy,
+) -> Result<(VerificationInput, Option<String>), String> {
+    if let Some(p) = resolve_profile(arg)? {
+        input.wallet_profile = p;
+    }
+    let (profile, note) = boundary::enforce_wallet_profile(
+        input.wallet_profile,
+        policy.pinned_profile,
+        policy.allow_permissive_profiles,
+    )?;
+    if note.is_none() && profile.is_weaker_than_any_builtin() {
+        // Only reachable under GRAPHITE_ALLOW_PERMISSIVE_PROFILES (or a weak
+        // pin): the server would apply it too, and the transcript says so.
+        let (bar, _) = profile.thresholds();
+        eprintln!(
+            "WARNING: the effective profile's min_confidence {bar} is below the weakest built-in \
+             profile ({}); the confidence gate is effectively disabled, as it is at a server with \
+             the same configuration.",
+            crate::policy_engine::WEAKEST_BUILTIN_MIN_CONFIDENCE
+        );
+    }
+    input.wallet_profile = profile;
+    Ok((input, note))
 }
 
 pub enum CliCommand {
@@ -118,6 +434,10 @@ pub enum CliCommand {
     #[cfg(feature = "server")]
     Healthcheck {
         port: u16,
+        /// The address to probe: an IP literal or `localhost` (audit
+        /// 2026-10-20, L14: the probe was hard-coded to 127.0.0.1, so a server
+        /// bound only to `::1` or to one interface could not be checked).
+        host: String,
         /// Also fail when the node reports `degraded: true` (A6-13).
         strict: bool,
     },
@@ -163,8 +483,10 @@ pub enum CliCommand {
     /// L8 — confirm a submitted transaction on-chain and reconcile it against
     /// the verdict Graphite recorded for it.
     ///
-    /// Requires an RPC endpoint (`GRAPHITE_RPC_URL`). Exits 1 on a discrepancy,
-    /// so it can be used as a monitoring check.
+    /// Requires an RPC endpoint (`GRAPHITE_RPC_URL`). Exits non-zero whenever
+    /// the answer is not a clean reconciliation — 1 on a discrepancy, and a
+    /// distinct code for each way the check itself could not be trusted (see
+    /// [`execution_exit_code`]) — so it can be used as a monitoring check.
     #[cfg(feature = "rpc")]
     Execution {
         data_dir: Option<PathBuf>,
@@ -374,54 +696,19 @@ fn data_dir_path(explicit: Option<PathBuf>) -> PathBuf {
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         CliCommand::Verify { input, profile } => {
-            // Load the SERVER'S durable semantic graph, not a blank one.
-            // `graphite verify` is how an operator asks "what would the gate
-            // decide about this?", and a core with no earned trust, no
-            // simulation baselines and no quarantines answers a different
-            // question. Most visibly: a program the operator has withdrawn
-            // from trust would still verify as OfficialManifest here while the
-            // server blocked it. A missing directory is the normal first-run
-            // case and starts a fresh store.
-            let data_dir = data_dir_path(None);
-            // Read-only (Round 19, F-19-12): `verify` inspects the server's
-            // store and may run beside it, so it takes no lock and writes
-            // nothing back.
-            let mut core = GraphiteCore::open_data_dir_read_only(&data_dir)?;
-            let quarantined = core.quarantined_programs().len();
-            if quarantined > 0 {
-                eprintln!(
-                    "graph: {} ({quarantined} quarantined program(s))",
-                    data_dir.display()
-                );
+            // The SERVER'S durable semantic graph, registry and boundary
+            // policy, not a blank core: `graphite verify` is how an operator
+            // asks "what would the gate decide about this?". See
+            // `operator_core` and `effective_input`.
+            let (core, policy) = operator_core()?;
+            let (input, note) = effective_input(*input, &profile, &policy)?;
+            let mut result = core.verify(&input)?;
+            if let Some(note) = note {
+                // Disclosed where the verdict is read, as the server discloses
+                // it in the response's summary.
+                eprintln!("policy: {note}");
+                result.summary = format!("{} | policy: {}", result.summary, note);
             }
-            // C53: merge community-accepted manifests from the registry state
-            // (same contract as the server: `registry_state.json` or
-            // GRAPHITE_REGISTRY_STATE) so `graphite verify` sees the same
-            // registry as the running server. A missing or corrupt file is
-            // non-fatal — verification still runs against the seed registry.
-            let registry_path = registry_state_path(None);
-            match load_registry(&registry_path) {
-                Ok(engine) => {
-                    let merged = core.merge_community_manifests(&engine);
-                    if merged > 0 {
-                        eprintln!(
-                            "merged {merged} community-accepted manifest(s) from {}",
-                            registry_path.display()
-                        );
-                    }
-                }
-                Err(e) => eprintln!(
-                    "warning: registry state unreadable ({}): {}",
-                    registry_path.display(),
-                    e
-                ),
-            }
-            let mut input = *input;
-            // Apply the --profile override (fail-closed on unknown names).
-            if let Some(profile) = resolve_profile(&profile)? {
-                input.wallet_profile = profile;
-            }
-            let result = core.verify(&input)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
             // SECURITY FIX: Exit 1 on REJECT so CLI can be used as CI gate
             if !result.approved {
@@ -555,17 +842,30 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             audit_trail_id,
             rpc_url,
             witness_url,
-        } => run_execution(
-            data_dir,
-            &signature,
-            crate::verification::ExecutionKeys {
-                content_hash: content_hash.as_deref(),
-                transaction_sha256: transaction_sha256.as_deref(),
-                audit_trail_id: audit_trail_id.as_deref(),
-            },
-            rpc_url,
-            witness_url,
-        ),
+        } => {
+            // Every outcome has its own exit status (see
+            // `execution_exit_code`); a check that could not run at all —
+            // no endpoint, an unusable one, an unreadable data directory —
+            // is "unavailable", never the discrepancy's 1.
+            match run_execution(
+                data_dir,
+                &signature,
+                crate::verification::ExecutionKeys {
+                    content_hash: content_hash.as_deref(),
+                    transaction_sha256: transaction_sha256.as_deref(),
+                    audit_trail_id: audit_trail_id.as_deref(),
+                },
+                rpc_url,
+                witness_url,
+            ) {
+                Ok(0) => Ok(()),
+                Ok(code) => std::process::exit(code),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(EXIT_EXECUTION_UNAVAILABLE);
+                }
+            }
+        }
         CliCommand::ManifestVerify { path } => run_manifest_verify(&path),
         #[cfg(feature = "rpc")]
         CliCommand::RegressionSeedLive {
@@ -604,9 +904,9 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         #[cfg(feature = "server")]
-        CliCommand::Healthcheck { port, strict } => {
+        CliCommand::Healthcheck { port, host, strict } => {
+            let url = health_url(&host, port)?;
             let rt = tokio::runtime::Runtime::new()?;
-            let url = format!("http://127.0.0.1:{port}/health");
             let verdict = rt.block_on(async move {
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(4))
@@ -625,6 +925,37 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             verdict.map_err(Into::into)
         }
     }
+}
+
+/// The URL `graphite healthcheck` probes (audit 2026-10-20, L14).
+///
+/// `host` takes what `graphite server --host` takes, an IP literal, plus
+/// `localhost`. An IPv6 address is bracketed. The unspecified address
+/// (`0.0.0.0`, `::`), which a server binds to listen everywhere, is probed on
+/// the loopback address of the same family: it is not an address a client
+/// can connect to on every platform.
+#[cfg(feature = "server")]
+pub fn health_url(host: &str, port: u16) -> Result<String, String> {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+    let host = host.trim();
+    let ip: IpAddr = if host.eq_ignore_ascii_case("localhost") {
+        IpAddr::V4(Ipv4Addr::LOCALHOST)
+    } else {
+        host.trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse()
+            .map_err(|_| {
+                format!(
+                    "invalid --host {host:?}: expected an IP address (e.g. 127.0.0.1 or ::1) or localhost"
+                )
+            })?
+    };
+    let ip = match ip {
+        IpAddr::V4(v4) if v4.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(v6) if v6.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        other => other,
+    };
+    Ok(format!("http://{}/health", SocketAddr::new(ip, port)))
 }
 
 /// Whether a `/health` answer passes the healthcheck.
@@ -774,16 +1105,62 @@ fn load_corpus_for_seed(
     }
 }
 
-/// Build the same core `verify` uses, so an explanation cannot disagree with a
-/// verdict. Shared by `verify` and `explain`.
-fn operator_core() -> Result<GraphiteCore, String> {
+/// Build the core the server would verify with, so the CLI's answer is the
+/// server's. Shared by `verify` and `explain`, so an explanation cannot
+/// disagree with a verdict.
+///
+/// The server's durable semantic graph, not a blank one: a core with no
+/// earned trust, no simulation baselines and no quarantines answers a
+/// different question — most visibly, a program the operator has withdrawn
+/// from trust would still verify as OfficialManifest here while the server
+/// blocked it. A missing directory is the normal first-run case and starts a
+/// fresh store. Read-only (Round 19, F-19-12): this inspects the server's
+/// store and may run beside it, so it takes no lock and writes nothing back.
+///
+/// C53: the community-accepted manifests from the registry state (same
+/// contract as the server: `registry_state.json` or
+/// `GRAPHITE_REGISTRY_STATE`). A corrupt or unreadable registry file is an
+/// error, as it is for the server, which refuses to start on one (audit
+/// 2026-10-20); a missing one is the first-run case.
+///
+/// The operator's boundary policy (L11, audit 2026-10-20): see
+/// [`boundary`]. A setting that does not parse is an error here as it is a
+/// startup error there.
+fn operator_core() -> Result<(GraphiteCore, boundary::OperatorPolicy), String> {
+    let policy = boundary::OperatorPolicy::from_env()?;
     let data_dir = data_dir_path(None);
     let mut core = GraphiteCore::open_data_dir_read_only(&data_dir)?;
-    let registry_path = registry_state_path(None);
-    if let Ok(engine) = load_registry(&registry_path) {
-        core.merge_community_manifests(&engine);
+    let quarantined = core.quarantined_programs().len();
+    if quarantined > 0 {
+        eprintln!(
+            "graph: {} ({quarantined} quarantined program(s))",
+            data_dir.display()
+        );
     }
-    Ok(core)
+    let registry_path = registry_state_path(None);
+    let engine = load_registry(&registry_path).map_err(|e| {
+        format!(
+            "registry state {} is unreadable: {e} — the server refuses to start on it, so there is no decision to reproduce",
+            registry_path.display()
+        )
+    })?;
+    let merged = core.merge_community_manifests(&engine);
+    if merged > 0 {
+        eprintln!(
+            "merged {merged} community-accepted manifest(s) from {}",
+            registry_path.display()
+        );
+    }
+    if let Some(summary) = policy.apply_to_core(&mut core)? {
+        eprintln!(
+            "plugins: {} registered from GRAPHITE_PLUGINS_DIR",
+            summary.registered
+        );
+    }
+    if let Some(p) = policy.pinned_profile {
+        eprintln!("wallet profile PINNED by GRAPHITE_WALLET_PROFILE: {p:?}");
+    }
+    Ok((core, policy))
 }
 
 fn tier_label(tier: TrustTier) -> String {
@@ -792,14 +1169,15 @@ fn tier_label(tier: TrustTier) -> String {
 
 /// Render a verification result as prose rather than JSON.
 fn run_explain(
-    mut input: VerificationInput,
+    input: VerificationInput,
     profile: &ProfileArg,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(p) = resolve_profile(profile)? {
-        input.wallet_profile = p;
+    let (core, policy) = operator_core()?;
+    let (input, note) = effective_input(input, profile, &policy)?;
+    let mut result = core.verify(&input)?;
+    if let Some(note) = &note {
+        result.summary = format!("{} | policy: {}", result.summary, note);
     }
-    let core = operator_core()?;
-    let result = core.verify(&input)?;
     let (min_confidence, min_tier) = input.wallet_profile.thresholds();
 
     println!(
@@ -842,6 +1220,9 @@ fn run_explain(
         result.trust_tier,
         tier_label(min_tier)
     );
+    if let Some(note) = &note {
+        println!("  profile      {note}");
+    }
     println!("  policy       {}", result.policy_verdict);
     println!("  risk         {}", result.risk_verdict.status);
     println!();
@@ -1303,15 +1684,15 @@ fn run_execution(
     keys: crate::verification::ExecutionKeys<'_>,
     rpc_url: Option<String>,
     witness_url: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<i32, Box<dyn std::error::Error>> {
     use crate::verification::ExecutionReconciliation;
 
-    let endpoint = rpc_url
-        .or_else(|| std::env::var("GRAPHITE_RPC_URL").ok())
-        .filter(|u| !u.trim().is_empty())
+    // Validated before use, and reported without the URL (Round 12), under
+    // the name it came from: an endpoint read from the environment was
+    // reported as `--rpc-url:` (audit 2026-10-20).
+    let (endpoint, source) = endpoint_from(rpc_url, "--rpc-url", "GRAPHITE_RPC_URL")
         .ok_or("no RPC endpoint: pass --rpc-url or set GRAPHITE_RPC_URL")?;
-    // Validated before use, and reported without the URL (Round 12).
-    crate::rpc_client::validate_endpoint(&endpoint).map_err(|e| format!("--rpc-url: {e}"))?;
+    crate::rpc_client::validate_endpoint(&endpoint).map_err(|e| format!("{source}: {e}"))?;
 
     let dir = data_dir_path(data_dir);
     let mut core = GraphiteCore::open_data_dir_read_only(&dir)?;
@@ -1321,19 +1702,17 @@ fn run_execution(
             ..Default::default()
         },
     ));
-    if let Some(witness) = witness_url
-        .or_else(|| std::env::var("GRAPHITE_RPC_WITNESS_URL").ok())
-        .filter(|u| !u.trim().is_empty())
+    if let Some((witness, source)) =
+        endpoint_from(witness_url, "--witness-url", "GRAPHITE_RPC_WITNESS_URL")
     {
-        crate::rpc_client::validate_endpoint(&witness)
-            .map_err(|e| format!("--witness-url: {e}"))?;
+        crate::rpc_client::validate_endpoint(&witness).map_err(|e| format!("{source}: {e}"))?;
         core.attach_inclusion_witness(crate::rpc_client::SolanaRpcClient::new(
             crate::rpc_client::RpcConfig {
                 endpoint: witness,
                 ..Default::default()
             },
         ))
-        .map_err(|e| format!("--witness-url: {e}"))?;
+        .map_err(|e| format!("{source}: {e}"))?;
     }
 
     // Read the same audit trail the server writes, so the CLI reconciles
@@ -1384,7 +1763,6 @@ fn run_execution(
                  was bypassed rather than obeyed - an integration ignoring the verdict, a key\n\
                  used out of band, or an override. Investigate before trusting the next one."
             );
-            std::process::exit(1);
         }
         ExecutionReconciliation::ApprovedButFailedOnChain { error } => {
             println!(
@@ -1393,21 +1771,18 @@ fn run_execution(
                  these means the verified shape and the executable shape are drifting apart.",
                 error.as_deref().unwrap_or("no error reported")
             );
-            Ok(())
         }
         ExecutionReconciliation::Unavailable { reason } => {
             println!("Could not reconcile: {reason}");
             println!(
                 "An unavailable check reports that it is unavailable; it never reports a pass."
             );
-            Ok(())
         }
         ExecutionReconciliation::NoVerificationOnRecord => {
             println!(
                 "Graphite has no verification on file for this transaction - an execution it\n\
                  never saw. That is not proof of wrongdoing, but it is not coverage either."
             );
-            Ok(())
         }
         ExecutionReconciliation::RecordedForDifferentBytes {
             recorded_approved,
@@ -1433,13 +1808,175 @@ fn run_execution(
                     "DISCREPANCY: the cited verdict is a refusal and something carrying this\n\
                      signature executed. Investigate before trusting the next one."
                 );
-                std::process::exit(1);
             }
-            Ok(())
         }
-        _ => Ok(()),
+        _ => {}
+    }
+    Ok(execution_exit_code(
+        &result.reconciliation,
+        result.chain_bytes_rejected.is_some(),
+        result.chain_inconsistent.is_some(),
+        result.inclusion_witness.as_ref().is_some_and(|w| !w.agrees),
+    ))
+}
+
+/// `graphite execution`'s exit status: a discrepancy (the gate was bypassed).
+pub const EXIT_EXECUTION_DISCREPANCY: i32 = 1;
+/// The reconciliation could not be made (no RPC answer, no audit trail, a
+/// configuration error), so nothing was checked.
+pub const EXIT_EXECUTION_UNAVAILABLE: i32 = 3;
+/// The RPC returned transaction bytes not bound to the signature.
+pub const EXIT_EXECUTION_CHAIN_BYTES_REJECTED: i32 = 4;
+/// The primary RPC gave two accounts of the signature.
+pub const EXIT_EXECUTION_RPC_INCONSISTENT: i32 = 5;
+/// The inclusion witness disagreed with the primary, or could not be asked.
+pub const EXIT_EXECUTION_WITNESS_DISAGREES: i32 = 6;
+
+/// The exit status of `graphite execution` (audit 2026-10-20, L10).
+///
+/// The command is documented as a monitoring check, and it exited 0 whenever
+/// the answer was not a discrepancy — including when nothing could be checked
+/// (`Unavailable`), when the RPC handed back bytes that are not the
+/// signature's, when the RPC contradicted itself and when the inclusion
+/// witness disagreed. A check that cannot run reported the same as a check
+/// that passed. Each now has its own code, most severe first, so a monitor
+/// can page on the one that matters and tell a hostile RPC from an outage;
+/// 1 stays the discrepancy, and 2 is left to argument errors (clap's).
+pub fn execution_exit_code(
+    reconciliation: &crate::verification::ExecutionReconciliation,
+    chain_bytes_rejected: bool,
+    chain_inconsistent: bool,
+    witness_disagrees: bool,
+) -> i32 {
+    if reconciliation.is_discrepancy() {
+        EXIT_EXECUTION_DISCREPANCY
+    } else if chain_bytes_rejected {
+        EXIT_EXECUTION_CHAIN_BYTES_REJECTED
+    } else if chain_inconsistent {
+        EXIT_EXECUTION_RPC_INCONSISTENT
+    } else if witness_disagrees {
+        EXIT_EXECUTION_WITNESS_DISAGREES
+    } else if matches!(
+        reconciliation,
+        crate::verification::ExecutionReconciliation::Unavailable { .. }
+    ) {
+        EXIT_EXECUTION_UNAVAILABLE
+    } else {
+        0
     }
 }
+
+/// An endpoint from its flag, else from its environment variable, with the
+/// name it came from for error messages.
+#[cfg(feature = "rpc")]
+fn endpoint_from(
+    flag: Option<String>,
+    flag_name: &'static str,
+    env_name: &'static str,
+) -> Option<(String, &'static str)> {
+    flag.filter(|u| !u.trim().is_empty())
+        .map(|u| (u, flag_name))
+        .or_else(|| {
+            std::env::var(env_name)
+                .ok()
+                .filter(|u| !u.trim().is_empty())
+                .map(|u| (u, env_name))
+        })
+}
+
+/// A `--program` that changes the durable graph: a base58 32-byte public key,
+/// trimmed (audit 2026-10-20, L9). The server's `/admin/quarantine` refused
+/// anything else (Round 19, F-19-15) and this path did not: a typo'd id
+/// appended a record that can never match a program the gate verifies and
+/// that lives forever.
+fn program_id_arg(raw: &str) -> Result<String, String> {
+    let program_id = raw.trim();
+    if program_id.is_empty() {
+        return Err("--program must not be empty".to_string());
+    }
+    crate::solana_types::Pubkey::from_base58(program_id).map_err(|_| {
+        format!("--program {program_id:?} is not a base58-encoded 32-byte public key")
+    })?;
+    Ok(program_id.to_string())
+}
+
+/// The audit trail of the data directory an operator command changes (audit
+/// 2026-10-20, L9).
+///
+/// `quarantine add/lift` and `evidence seed/baseline/promote-shadow` change
+/// the durable graph the server loads, and left no row on the append-only
+/// trail; the same change through `/admin/quarantine` writes an
+/// `OperatorAction` row, and the server refuses a lift it cannot record.
+/// Opened BEFORE the change, so a trail that cannot be written refuses the
+/// command instead of discovering it afterwards. The command already holds
+/// the data directory's lock, so no server is appending beside it. Rotation
+/// follows the server's `GRAPHITE_AUDIT_ROTATE_BYTES` /
+/// `GRAPHITE_AUDIT_MAX_ARCHIVES`, read as strictly as the server reads them.
+struct OperatorTrail {
+    log: crate::durable::AuditLog,
+}
+
+impl OperatorTrail {
+    fn open(dir: &Path) -> Result<Self, String> {
+        let get = |k: &str| std::env::var(k).ok();
+        let rotate_bytes = boundary::env_number(
+            "GRAPHITE_AUDIT_ROTATE_BYTES",
+            get("GRAPHITE_AUDIT_ROTATE_BYTES").as_deref(),
+            crate::durable::DEFAULT_ROTATE_BYTES,
+            "a whole number of bytes (0 disables rotation)",
+            |_| true,
+        )?;
+        let max_archives = boundary::env_number(
+            "GRAPHITE_AUDIT_MAX_ARCHIVES",
+            get("GRAPHITE_AUDIT_MAX_ARCHIVES").as_deref(),
+            0usize,
+            "a whole number of archives (0 keeps every archive)",
+            |_| true,
+        )?;
+        let path = crate::durable::audit_path(dir);
+        crate::durable::AuditLog::open_with_rotation(&path, rotate_bytes, max_archives)
+            .map(|log| Self { log })
+            .map_err(|e| {
+                format!(
+                    "the audit trail {} cannot be opened ({e}); refusing an operator action that could not be recorded",
+                    path.display()
+                )
+            })
+    }
+
+    /// Append one `OperatorAction` row about `program_id`. False when the
+    /// row did not reach the trail.
+    fn record(&self, program_id: &str, detail: String) -> bool {
+        use crate::durable::{LifecycleEvent, LifecycleEventRecord};
+        self.log.append_lifecycle(&LifecycleEventRecord {
+            event_type: LifecycleEvent::OperatorAction,
+            timestamp: crate::durable::now_utc_rfc3339(),
+            // As `/admin/quarantine` writes it: the program id stands where a
+            // transaction's content_hash would.
+            content_hash: program_id.to_string(),
+            verdict_on_record: None,
+            verdict_on_record_key: None,
+            transaction_sha256: None,
+            audit_trail_id: None,
+            transaction_signature: None,
+            // The credential here is filesystem access to the data
+            // directory; the server names its operator key instead.
+            reported_by: Some(
+                "graphite CLI (local operator with write access to the data directory)".to_string(),
+            ),
+            detail: Some(detail),
+            observed_by_graphite: true,
+            sequence_anomalies: Vec::new(),
+        })
+    }
+}
+
+/// What every graph-changing command prints about a running server. The
+/// command took the data directory's lock (Round 19, F-19-12), so no server
+/// is running on it: the old text told the operator to restart one that
+/// could not exist (audit 2026-10-20).
+const NO_SERVER_HOLDS_THIS_DIRECTORY: &str =
+    "No server holds this data directory (this command took its lock); the next one started on it loads this change.";
 
 /// Seed operator-asserted evidence into the durable semantic graph.
 ///
@@ -1460,9 +1997,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             battle_tested,
             simulation_matches,
         } => {
-            if program_id.trim().is_empty() {
-                return Err("--program must not be empty".into());
-            }
+            let program_id = program_id_arg(&program_id)?;
             if !signed_manifest
                 && community_verified == 0
                 && battle_tested == 0
@@ -1475,6 +2010,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             }
             let dir = data_dir_path(data_dir);
             let mut core = GraphiteCore::open_data_dir(dir.clone())?;
+            let trail = OperatorTrail::open(&dir)?;
             let evidence = BehaviorEvidence {
                 has_signed_manifest: signed_manifest,
                 community_verified_count: community_verified,
@@ -1507,6 +2043,20 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 .program_behavior(&program_id)
                 .map(|b| format!("{:?}", b.trust_tier))
                 .unwrap_or_else(|| "Unknown".to_string());
+            // Seeded evidence raises trust, and an append-only graph has no
+            // undo, so a seed the trail cannot take is reported as a failure
+            // with the change in force, never as a success.
+            if !trail.record(
+                &program_id,
+                format!(
+                    "evidence seeded for {program_id} (operator-asserted): signed_manifest={signed_manifest} community={community_verified} battle_tested={battle_tested} simulation_matches={simulation_matches}; tier recomputed to {earned}"
+                ),
+            ) {
+                return Err(format!(
+                    "the evidence for {program_id} was seeded and is in force, but the audit trail did NOT record it"
+                )
+                .into());
+            }
             println!("SEEDED {program_id}  ({name})");
             println!(
                 "  evidence     signed_manifest={signed_manifest} community={community_verified} \
@@ -1521,10 +2071,8 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             println!(
                 "confidence signals as RPC-verified history, so seed it only for programs whose"
             );
-            println!(
-                "history you are restoring or can vouch for. A running server keeps its own copy"
-            );
-            println!("in memory - restart it to pick this up.");
+            println!("history you are restoring or can vouch for. Recorded on the audit trail.");
+            println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
 
@@ -1537,6 +2085,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             mean_account_writes,
             mean_cpi_hops,
         } => {
+            let program_id = program_id_arg(&program_id)?;
             if samples < crate::simulation_integrity::MIN_SAMPLES {
                 // Below MIN_SAMPLES the integrity check is skipped entirely, so
                 // a baseline seeded under it silently does nothing while the
@@ -1548,24 +2097,37 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 )
                 .into());
             }
-            if std_compute_units < 0.0 || mean_compute_units < 0.0 {
-                return Err("means and deviations must be non-negative".into());
-            }
+            let baseline = crate::simulation_integrity::ComputeBaseline {
+                mean_compute_units,
+                std_compute_units,
+                sample_count: samples,
+                mean_account_writes,
+                std_account_writes: (mean_account_writes * 0.25).max(0.5),
+                mean_cpi_hops,
+                std_cpi_hops: (mean_cpi_hops * 0.25).max(0.1),
+                ..Default::default()
+            };
+            // Every field, finite and non-negative, by the store's own rule,
+            // before the data directory is touched (audit 2026-10-20, L13:
+            // this checked only the compute pair, `< 0.0`, which NaN passes;
+            // the store refused the rest only after the lock was taken).
+            crate::semantic_graph_store::validate_baseline(&baseline)
+                .map_err(|e| format!("invalid baseline: {e}"))?;
             let dir = data_dir_path(data_dir);
             let core = GraphiteCore::open_data_dir(dir.clone())?;
-            core.seed_simulation_baseline(
+            let trail = OperatorTrail::open(&dir)?;
+            core.seed_simulation_baseline(&program_id, baseline)?;
+            if !trail.record(
                 &program_id,
-                crate::simulation_integrity::ComputeBaseline {
-                    mean_compute_units,
-                    std_compute_units,
-                    sample_count: samples,
-                    mean_account_writes,
-                    std_account_writes: (mean_account_writes * 0.25).max(0.5),
-                    mean_cpi_hops,
-                    std_cpi_hops: (mean_cpi_hops * 0.25).max(0.1),
-                    ..Default::default()
-                },
-            )?;
+                format!(
+                    "simulation baseline seeded for {program_id}: compute mean {mean_compute_units} sd {std_compute_units} over {samples} sample(s), writes {mean_account_writes}, hops {mean_cpi_hops}"
+                ),
+            ) {
+                return Err(format!(
+                    "the baseline for {program_id} was seeded and is in force, but the audit trail did NOT record it"
+                )
+                .into());
+            }
             println!("SEEDED BASELINE {program_id}");
             println!(
                 "  compute      mean {mean_compute_units} sd {std_compute_units} over {samples} sample(s)"
@@ -1580,6 +2142,7 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
                 "does not match real usage will flag legitimate traffic, so restore an exported"
             );
             println!("baseline rather than inventing one.");
+            println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
 
@@ -1621,25 +2184,34 @@ fn run_evidence(action: EvidenceAction) -> Result<(), Box<dyn std::error::Error>
             data_dir,
             program_id,
         } => {
-            if program_id.trim().is_empty() {
-                return Err("--program must not be empty".into());
-            }
+            let program_id = program_id_arg(&program_id)?;
             let dir = data_dir_path(data_dir);
             let core = GraphiteCore::open_data_dir(dir.clone())?;
+            let trail = OperatorTrail::open(&dir)?;
             let promoted = core.promote_shadow_baseline(&program_id)?;
-            println!("PROMOTED {program_id}");
-            println!(
-                "  baseline     {} samples, mean {:.0} CU (std {:.1}), {:.1} writes, {:.1} hops —                  the clean executions the frozen baseline had refused",
+            let summary = format!(
+                "{} samples, mean {:.0} CU (std {:.1}), {:.1} writes, {:.1} hops",
                 promoted.sample_count,
                 promoted.mean_compute_units,
                 promoted.std_compute_units,
                 promoted.mean_account_writes,
                 promoted.mean_cpi_hops
             );
-            println!("  graph        {}", dir.display());
+            if !trail.record(
+                &program_id,
+                format!("shadow baseline promoted for {program_id}: {summary}"),
+            ) {
+                return Err(format!(
+                    "the shadow baseline for {program_id} was promoted and is in force, but the audit trail did NOT record it"
+                )
+                .into());
+            }
+            println!("PROMOTED {program_id}");
             println!(
-                "A running server keeps its own copy in memory — restart it for the promotion to take effect."
+                "  baseline     {summary} — the clean executions the frozen baseline had refused"
             );
+            println!("  graph        {}", dir.display());
+            println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
     }
@@ -1657,32 +2229,71 @@ fn run_quarantine(action: QuarantineAction) -> Result<(), Box<dyn std::error::Er
             program_id,
             reason,
         } => {
+            let program_id = program_id_arg(&program_id)?;
             let dir = data_dir_path(data_dir);
             // Takes the data directory's lock (Round 19, F-19-12): beside a
             // running server this refuses, rather than writing a snapshot the
             // server's next one would overwrite. Use POST /admin/quarantine
             // against a running server.
             let core = GraphiteCore::open_data_dir(dir.clone())?;
+            let trail = OperatorTrail::open(&dir)?;
             core.quarantine_program_durably(&program_id, &reason)?
                 .map_err(|e| format!("the quarantine was not written to disk: {e}"))?;
+            // As at `/admin/quarantine`: a quarantine stays in force when the
+            // trail cannot take it (undoing it would fail open), and the
+            // command says the record is missing.
+            if !trail.record(
+                &program_id,
+                format!("quarantined {program_id}: {}", reason.trim()),
+            ) {
+                return Err(format!(
+                    "{program_id} is QUARANTINED, but the audit trail did NOT record it"
+                )
+                .into());
+            }
             println!("QUARANTINED {program_id} — {}", reason.trim());
             println!(
                 "trust tier forced to Unknown until lifted; graph: {}",
                 dir.display()
             );
-            println!("No server holds this data directory; the next one started on it enforces this quarantine.");
+            println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
         QuarantineAction::Lift {
             data_dir,
             program_id,
         } => {
+            let program_id = program_id_arg(&program_id)?;
             let dir = data_dir_path(data_dir);
             let core = GraphiteCore::open_data_dir(dir.clone())?;
+            let trail = OperatorTrail::open(&dir)?;
+            let reason_before_lift = core
+                .quarantined_programs()
+                .into_iter()
+                .find(|(p, _)| p == &program_id)
+                .map(|(_, reason)| reason);
             core.lift_program_quarantine_durably(&program_id)?
                 .map_err(|e| format!("the lift was not written to disk: {e}"))?;
+            if !trail.record(&program_id, format!("quarantine lifted for {program_id}")) {
+                // The server's rule (W21): restoring trust with no record of
+                // who restored it is the failing-open direction, so a lift the
+                // trail cannot take is undone.
+                let restored = core.quarantine_program_durably(
+                    &program_id,
+                    reason_before_lift
+                        .as_deref()
+                        .filter(|r| !r.trim().is_empty())
+                        .unwrap_or("quarantine restored"),
+                );
+                return Err(format!(
+                    "the audit trail could not record the lift, so it was not applied (quarantine restored: {})",
+                    if matches!(restored, Ok(Ok(()))) { "yes" } else { "NO" }
+                )
+                .into());
+            }
             println!("LIFTED {program_id} — tier recomputed from evidence (P7)");
             println!("graph: {}", dir.display());
+            println!("{NO_SERVER_HOLDS_THIS_DIRECTORY}");
             Ok(())
         }
         QuarantineAction::List { data_dir } => {
@@ -1750,6 +2361,11 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
             reputation,
         } => {
             let path = registry_state_path(state);
+            // The same read-modify-write lock `submit` takes (audit
+            // 2026-10-20, L12): a registration racing a submission (or
+            // another registration) each read the state, and the second
+            // write dropped the first's change.
+            let _registry_lock = lock_registry(&path)?;
             let mut engine = load_registry(&path)?;
             engine.register_reviewer(&pubkey, reputation)?;
             save_registry(&engine, &path)?;
@@ -1778,8 +2394,12 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 attestations: Vec::new(),
             };
             if let Some(key_hex) = signer_key_hex {
-                let bytes = hex::decode(&key_hex).map_err(|e| {
-                    format!("--signer-key must be 64 hex chars (32-byte ed25519 seed): {e}")
+                // The decode error is not quoted: it names the offending
+                // character and its position, which is key material on a
+                // terminal or in a CI log (audit 2026-10-20).
+                let bytes = hex::decode(key_hex.trim()).map_err(|_| {
+                    "--signer-key must be 64 hex chars (32-byte ed25519 seed); the value given is not hex"
+                        .to_string()
                 })?;
                 let seed: [u8; 32] = <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| {
                     "--signer-key must be exactly 32 bytes (64 hex chars)".to_string()
@@ -1914,6 +2534,11 @@ fn run_regression_seed_live(
     use crate::live_corpus::seed_corpus_from_live;
     use crate::rpc_client::{RpcConfig, SolanaRpcClient};
 
+    // The same check every other endpoint gets before a client is built on
+    // it (audit 2026-10-20): an unusable --rpc used to surface as "no
+    // fixtures recorded" after every fetch had failed. Reported without the
+    // URL, which may carry a provider key.
+    crate::rpc_client::validate_endpoint(&rpc_url).map_err(|e| format!("--rpc: {e}"))?;
     let client = SolanaRpcClient::new(RpcConfig {
         endpoint: rpc_url.clone(),
         ..Default::default()
@@ -2536,6 +3161,359 @@ mod tests {
             resolve_profile(&empty).is_err(),
             "empty tier must fail closed"
         );
+    }
+
+    // ── Audit 2026-10-20: CLI findings ──────────────────────────────────────
+
+    fn transfer_input() -> VerificationInput {
+        serde_json::from_value(serde_json::json!({
+            "proposed_intent": {
+                "intent_type": "transfer",
+                "raw_natural_language": "Transfer 1 SOL",
+                "confidence_of_parse": 0.95
+            },
+            "program_id": "11111111111111111111111111111111",
+            "instruction_discriminator": "02000000",
+            "account_addresses": [
+                "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
+                "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+            ],
+            "wallet_profile": { "Custom": { "min_confidence": 0.0, "min_trust_tier": "Unknown" } }
+        }))
+        .unwrap()
+    }
+
+    /// L11: `verify`/`explain` judged a weak caller-supplied `Custom`
+    /// profile as given, while the server clamps it; and they ignored a
+    /// `GRAPHITE_WALLET_PROFILE` pin. Both now go through the server's own
+    /// boundary, and a `--profile` stands where a request body's would.
+    #[test]
+    fn the_cli_applies_the_servers_profile_boundary() {
+        use crate::policy_engine::{
+            WEAKEST_BUILTIN_MIN_CONFIDENCE, WEAKEST_BUILTIN_MIN_TRUST_TIER,
+        };
+        let open = boundary::OperatorPolicy::default();
+
+        // A weak Custom in the input is clamped, with the server's note.
+        let (input, note) =
+            effective_input(transfer_input(), &ProfileArg::default(), &open).expect("valid input");
+        assert_eq!(
+            input.wallet_profile,
+            WalletProfile::Custom {
+                min_confidence: WEAKEST_BUILTIN_MIN_CONFIDENCE,
+                min_trust_tier: WEAKEST_BUILTIN_MIN_TRUST_TIER,
+            }
+        );
+        assert!(note.unwrap().contains("weaker than any built-in"));
+
+        // So is a weak --profile custom.
+        let weak = ProfileArg {
+            name: Some("custom".to_string()),
+            min_confidence: Some(0.1),
+            min_trust_tier: Some("Unknown".to_string()),
+        };
+        let (input, _) = effective_input(transfer_input(), &weak, &open).unwrap();
+        assert!(!input.wallet_profile.is_weaker_than_any_builtin());
+
+        // The opt-out applies it as given, as the server would.
+        let permissive = boundary::OperatorPolicy {
+            allow_permissive_profiles: true,
+            ..Default::default()
+        };
+        let (input, note) = effective_input(transfer_input(), &weak, &permissive).unwrap();
+        assert!(input.wallet_profile.is_weaker_than_any_builtin());
+        assert!(note.is_none());
+
+        // A pin beats both the input and --profile, and says so.
+        let pinned = boundary::OperatorPolicy {
+            pinned_profile: Some(WalletProfile::Treasury),
+            ..Default::default()
+        };
+        let (input, note) = effective_input(transfer_input(), &arg("gaming"), &pinned).unwrap();
+        assert_eq!(input.wallet_profile, WalletProfile::Treasury);
+        assert!(note.unwrap().contains("pinned"));
+
+        // Out-of-range is refused in every mode.
+        let mut bad = transfer_input();
+        bad.wallet_profile = WalletProfile::Custom {
+            min_confidence: 2.0,
+            min_trust_tier: TrustTier::BattleTested,
+        };
+        assert!(effective_input(bad, &ProfileArg::default(), &permissive).is_err());
+    }
+
+    /// L11: the plugins directory and the core switches the server applies
+    /// are applied by the CLI's core too, and an unloadable directory is an
+    /// error there as it is a startup error at the server.
+    #[test]
+    fn the_cli_core_carries_the_servers_switches_and_plugins() {
+        let policy = boundary::OperatorPolicy::from_lookup(|k| match k {
+            "GRAPHITE_ALLOW_DURABLE_NONCE" => Some("1".to_string()),
+            "GRAPHITE_QUARANTINE_ON_UPGRADE" => Some("true".to_string()),
+            "GRAPHITE_PLUGINS_DIR" => Some("/nonexistent/graphite-plugins".to_string()),
+            _ => None,
+        })
+        .unwrap();
+        assert!(policy.allow_durable_nonce && policy.quarantine_on_upgrade);
+        let mut core = GraphiteCore::new();
+        let e = policy.apply_to_core(&mut core).unwrap_err();
+        assert!(e.contains("GRAPHITE_PLUGINS_DIR"), "{e}");
+        assert!(core.quarantine_on_upgrade(), "the switch reached the core");
+
+        let dir = reg_dir();
+        let policy = boundary::OperatorPolicy {
+            plugins_dir: Some(dir.clone()),
+            ..Default::default()
+        };
+        let summary = policy.apply_to_core(&mut GraphiteCore::new()).unwrap();
+        assert_eq!(
+            summary.map(|s| s.registered),
+            Some(0),
+            "an empty directory loads"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// L14: the probe address was hard-coded to 127.0.0.1.
+    #[cfg(feature = "server")]
+    #[test]
+    fn the_healthcheck_probes_the_host_it_is_given() {
+        assert_eq!(
+            health_url("127.0.0.1", 7331).unwrap(),
+            "http://127.0.0.1:7331/health"
+        );
+        assert_eq!(health_url("::1", 7331).unwrap(), "http://[::1]:7331/health");
+        assert_eq!(health_url("[::1]", 80).unwrap(), "http://[::1]:80/health");
+        assert_eq!(
+            health_url("10.1.2.3", 9000).unwrap(),
+            "http://10.1.2.3:9000/health"
+        );
+        assert_eq!(
+            health_url("0.0.0.0", 7331).unwrap(),
+            "http://127.0.0.1:7331/health"
+        );
+        assert_eq!(health_url("::", 7331).unwrap(), "http://[::1]:7331/health");
+        assert_eq!(
+            health_url("localhost", 7331).unwrap(),
+            "http://127.0.0.1:7331/health"
+        );
+        assert!(health_url("example.com", 7331).is_err());
+    }
+
+    /// L10: `graphite execution` exited 0 for every outcome but a
+    /// discrepancy, including a check that could not run at all.
+    #[test]
+    fn every_execution_outcome_that_is_not_clean_exits_non_zero() {
+        use crate::verification::ExecutionReconciliation as R;
+        let unavailable = R::Unavailable {
+            reason: "no RPC".to_string(),
+        };
+        assert_eq!(
+            execution_exit_code(&R::ApprovedAndExecuted, false, false, false),
+            0
+        );
+        assert_eq!(
+            execution_exit_code(&R::NoVerificationOnRecord, false, false, false),
+            0
+        );
+        assert_eq!(
+            execution_exit_code(&R::BlockedButExecuted, false, false, false),
+            EXIT_EXECUTION_DISCREPANCY
+        );
+        assert_eq!(EXIT_EXECUTION_DISCREPANCY, 1, "1 stays the discrepancy");
+        assert_eq!(
+            execution_exit_code(&unavailable, false, false, false),
+            EXIT_EXECUTION_UNAVAILABLE
+        );
+        assert_eq!(
+            execution_exit_code(&unavailable, true, false, false),
+            EXIT_EXECUTION_CHAIN_BYTES_REJECTED
+        );
+        assert_eq!(
+            execution_exit_code(&R::ApprovedAndExecuted, false, true, false),
+            EXIT_EXECUTION_RPC_INCONSISTENT
+        );
+        assert_eq!(
+            execution_exit_code(&R::ApprovedAndExecuted, false, false, true),
+            EXIT_EXECUTION_WITNESS_DISAGREES
+        );
+        // A discrepancy outranks every doubt about the RPC.
+        assert_eq!(
+            execution_exit_code(&R::BlockedButExecuted, true, true, true),
+            EXIT_EXECUTION_DISCREPANCY
+        );
+        let codes = [
+            EXIT_EXECUTION_DISCREPANCY,
+            EXIT_EXECUTION_UNAVAILABLE,
+            EXIT_EXECUTION_CHAIN_BYTES_REJECTED,
+            EXIT_EXECUTION_RPC_INCONSISTENT,
+            EXIT_EXECUTION_WITNESS_DISAGREES,
+        ];
+        let distinct: std::collections::BTreeSet<_> = codes.iter().collect();
+        assert_eq!(distinct.len(), codes.len());
+        assert!(!codes.contains(&2), "2 is clap's usage error");
+    }
+
+    fn operator_rows(dir: &Path) -> Vec<serde_json::Value> {
+        std::fs::read_to_string(crate::durable::audit_path(dir))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+            .filter(|v| v["event_type"] == "operator_action")
+            .collect()
+    }
+
+    /// L9: the CLI's quarantine and evidence commands changed the durable
+    /// graph with no row on the audit trail and accepted any string as a
+    /// program id. Each writes an `OperatorAction` row now, and a program id
+    /// must be a base58 public key.
+    #[test]
+    fn graph_changing_commands_validate_the_program_and_leave_a_row() {
+        const PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+        let dir = reg_dir();
+        let data = Some(dir.clone());
+
+        let e = run_quarantine(QuarantineAction::Add {
+            data_dir: data.clone(),
+            program_id: "not-a-program".to_string(),
+            reason: "r".to_string(),
+        })
+        .unwrap_err();
+        assert!(e.to_string().contains("base58"), "{e}");
+        assert!(
+            operator_rows(&dir).is_empty(),
+            "a refused command writes nothing"
+        );
+
+        run_quarantine(QuarantineAction::Add {
+            data_dir: data.clone(),
+            program_id: format!("  {PROGRAM} "),
+            reason: "GHSA-test".to_string(),
+        })
+        .unwrap();
+        run_quarantine(QuarantineAction::Lift {
+            data_dir: data.clone(),
+            program_id: PROGRAM.to_string(),
+        })
+        .unwrap();
+        run_evidence(EvidenceAction::Seed {
+            data_dir: data.clone(),
+            program_id: PROGRAM.to_string(),
+            signed_manifest: true,
+            community_verified: 0,
+            battle_tested: 0,
+            simulation_matches: 0,
+        })
+        .unwrap();
+        run_evidence(EvidenceAction::Baseline {
+            data_dir: data.clone(),
+            program_id: PROGRAM.to_string(),
+            mean_compute_units: 1500.0,
+            std_compute_units: 10.0,
+            samples: crate::simulation_integrity::MIN_SAMPLES,
+            mean_account_writes: 2.0,
+            mean_cpi_hops: 0.0,
+        })
+        .unwrap();
+
+        let rows = operator_rows(&dir);
+        let details: Vec<&str> = rows.iter().map(|r| r["detail"].as_str().unwrap()).collect();
+        assert_eq!(rows.len(), 4, "{details:?}");
+        assert!(rows
+            .iter()
+            .all(|r| r["content_hash"] == PROGRAM && r["observed_by_graphite"] == true));
+        assert!(details[0].starts_with("quarantined"), "{details:?}");
+        assert!(details[1].starts_with("quarantine lifted"), "{details:?}");
+        assert!(details[2].starts_with("evidence seeded"), "{details:?}");
+        assert!(
+            details[3].starts_with("simulation baseline seeded"),
+            "{details:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// L13: `evidence baseline` checked `< 0.0` on the compute pair only, and
+    /// NaN passes `< 0.0`. Every field is checked by the store's own rule now,
+    /// before the data directory is opened.
+    #[test]
+    fn a_baseline_that_is_not_finite_is_refused_before_the_data_dir_is_touched() {
+        for (field, value) in [
+            ("mean_compute_units", f64::NAN),
+            ("std_compute_units", f64::INFINITY),
+            ("mean_account_writes", f64::NAN),
+            ("mean_cpi_hops", -1.0),
+        ] {
+            let dir = reg_dir().join("data");
+            let mut args = [1500.0, 10.0, 2.0, 0.0];
+            let i = match field {
+                "mean_compute_units" => 0,
+                "std_compute_units" => 1,
+                "mean_account_writes" => 2,
+                _ => 3,
+            };
+            args[i] = value;
+            let e = run_evidence(EvidenceAction::Baseline {
+                data_dir: Some(dir.clone()),
+                program_id: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(),
+                mean_compute_units: args[0],
+                std_compute_units: args[1],
+                samples: crate::simulation_integrity::MIN_SAMPLES,
+                mean_account_writes: args[2],
+                mean_cpi_hops: args[3],
+            })
+            .unwrap_err();
+            assert!(e.to_string().contains("invalid baseline"), "{field}: {e}");
+            assert!(!dir.exists(), "{field}: the data directory was opened");
+        }
+    }
+
+    /// L12: `registry register-reviewer` read, changed and wrote the state
+    /// with no lock, so it could drop a concurrent submission's record. It
+    /// waits for the registry lock now.
+    #[test]
+    fn register_reviewer_waits_for_the_registry_lock() {
+        let dir = reg_dir();
+        let state = dir.join("state.json");
+        let held = lock_registry(&state).unwrap();
+        let key = ed25519_dalek::SigningKey::from_bytes(&[3u8; 32]);
+        let pubkey = bs58::encode(key.verifying_key().to_bytes()).into_string();
+        let worker = {
+            let state = state.clone();
+            std::thread::spawn(move || {
+                run_registry(RegistryAction::RegisterReviewer {
+                    state: Some(state),
+                    pubkey,
+                    reputation: 200,
+                })
+                .map_err(|e| e.to_string())
+            })
+        };
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(
+            !state.exists(),
+            "the registration wrote the state while another command held the lock"
+        );
+        drop(held);
+        worker.join().unwrap().unwrap();
+        assert_eq!(load_registry(&state).unwrap().reviewers().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn program_ids_are_base58_public_keys() {
+        assert_eq!(
+            program_id_arg(" 11111111111111111111111111111111 ").unwrap(),
+            "11111111111111111111111111111111"
+        );
+        for bad in [
+            "",
+            "   ",
+            "not-a-program",
+            "1111",
+            "0OIl0OIl0OIl0OIl0OIl0OIl0OIl0OIl",
+        ] {
+            assert!(program_id_arg(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[test]
