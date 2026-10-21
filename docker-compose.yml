@@ -39,6 +39,14 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
       - graphite-data:/data
+      # Round 30, tamper-evident audit trail: mount the MAC key read-only from
+      # OUTSIDE the data volume and point GRAPHITE_AUDIT_KEY_FILE at it in
+      # .env. The server refuses a key file group/other can read, so on the
+      # host: `chown 10001:10001 audit.key && chmod 600 audit.key`.
+      # - ./secrets/audit.key:/run/secrets/audit.key:ro
+      # And for rotation checkpoints (GRAPHITE_AUDIT_ANCHOR_DIR=/anchors),
+      # ideally storage the container can write but not rewrite:
+      # - ./anchors:/anchors
     restart: unless-stopped
     # Round 30: on SIGTERM the server stops accepting, drains open requests
     # for up to its 10 s request timeout, then writes its final snapshot.
