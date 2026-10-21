@@ -1,0 +1,38 @@
+# path	depth(full|sections|historical)	note
+.dockerignore	full	allowlist context: Cargo.toml/lock, src, protocols
+.env.example	full	still documents GRAPHITE_LEARN_FROM_POLICY_REFUSALS (G-02)
+Dockerfile	full	digest-pinned bases; non-root 10001; healthcheck non-strict by design
+integrations/solana-agent-kit/.env.example	full	spend cap required; key deleted from env
+python-ai-layer/requirements.txt	full	pytest pinned only
+sdk/go/go.mod	full	go 1.26, no deps
+graphite-core/tests/proptest_engine.proptest-regressions	full	one seed
+.github/npm-audit/agent-guard.allow	full	4 moderate via jayson/web3.js 1.x
+.github/npm-audit/dashboard.allow	full	empty list
+.github/npm-audit/mcp-server.allow	full	stale comment: says package fails gate until MCP SDK >=1.32.0 (bumped in R29)
+.github/npm-audit/sdk-typescript.allow	full	empty list
+.github/npm-audit/solana-agent-kit.allow	full	bigint-buffer high + 4 moderate; stale MCP SDK paragraph
+.github/npm-audit/vercel-ai.allow	full	empty list
+.gitattributes	full	LF everywhere
+LICENSE	full	MIT
+dashboard/index.html	full	no inline script; CSP is injected at build (dashboard/src/csp.ts)
+graphite-core/scripts/metaplex_discriminators.txt	full	Shank u8 discriminators, 41 lines
+tools/mainnet-sample/fetch_mainnet.py	full	slot-pinned refetch; stops on 429; no key recorded
+tools/mainnet-sample/verify_sample.py	full	row-by-row comparison, every field
+tools/mainnet-sample/make_committed_subset.py	full	refuses an unrecorded source hash; whole blocks by position
+.gitignore	full	node_modules/ (dir only), .env*, data dirs
+.github/workflows/ci.yml	full	gates mapped in architecture.md §7; K-10
+AUDIT/01-findings.md	historical	every finding and break B01-B127 mapped in the regression matrix
+AUDIT/02-roadmap-gap.md	historical	K-05
+AUDIT/FINAL.md	historical	K-07
+docs/CURRENT.md	full	current-status claims cross-checked; K-04
+integrations/agent-guard/artifact.ts	full	BoundTransaction: digest re-serialize, signer set, single signing, message slice
+integrations/agent-guard/execution-lifecycle.ts	full	order: policy, confirm, sign, signing event (exact id, approved on record), send, submission, confirm, L8
+integrations/agent-guard/residual-policy.ts	full	inherent-only default; unknown code refuses; length pairing
+integrations/agent-guard/guard.ts	full	K-02; sink map
+integrations/agent-guard/devnet-test.ts	full	K-09
+integrations/solana-agent-kit/graphite-sak-bridge.ts	full	SAK gets the public key only
+integrations/mcp-server/graphite-mcp.ts	full	confirm hook after resolution; elicitation required by default
+integrations/vercel-ai/graphite-tools.ts	full	K-01
+sdk/typescript/src/client.ts	sections	transport, redirects, accept(); K-03
+graphite-core/src/server.rs	sections	1-420 (limits, connection caps), 1600-1700 (router, middleware order), auth middleware
+graphite-core/src/verification.rs	sections	359-420 (L1 status), 6735-6825 (identity → risk), 8650-8700, 8890-9450 (approval decision, observation rule, result)
