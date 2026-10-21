@@ -185,7 +185,7 @@ fn an_undescribed_primary_of_a_low_decode_manifest_is_never_approved() {
                     "transfer",
                     data.clone(),
                     three_accounts(),
-                    profile.clone(),
+                    profile,
                 ))
                 .unwrap_or_else(|e| panic!("{name}: {e}"));
             assert!(r.manifest_found, "{name}");
