@@ -513,7 +513,7 @@ fn check(grant: &IntentGrant, def: &InstructionDef, accounts: &[String]) -> Resu
             Grounding::SeededBy { account, owner } => {
                 let seeds = &layout[slot(account)?].pda_seeds;
                 let owner_seed = format!("{{account_{}}}", slot(owner)?);
-                if !seeds.iter().any(|s| *s == owner_seed) {
+                if !seeds.contains(&owner_seed) {
                     return Err(format!(
                         "`{account}`'s seeds {seeds:?} do not name `{owner}`"
                     ));
