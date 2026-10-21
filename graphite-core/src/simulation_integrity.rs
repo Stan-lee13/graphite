@@ -54,9 +54,13 @@ const ZERO_VARIANCE_EPSILON: f64 = 1e-6;
 /// pipeline's threshold of 2.0 (`verification.rs`), NO deviation of 50% of
 /// the centre or less is ever flagged, however tight the program's history
 /// is: a program centred on 100,000 CU is flagged above 150,000 or below
-/// 50,000 and not between. Deliberate: a baseline is kept per PROGRAM, not
-/// per instruction, and one program's instructions legitimately differ by
-/// that much — a tighter floor flagged honest traffic as spoofing. A
+/// 50,000 and not between. Deliberate: the figure judged is the whole
+/// transaction's compute, and even one instruction in one composition
+/// varies with its accounts and arguments (a swap's route, a loop's length);
+/// a tighter floor flagged honest traffic as spoofing. Since Round 30 the
+/// centre is the instruction's own (`SemanticGraphStore::shape_key`), with
+/// the program's as the fallback while that is immature, and the band can
+/// no longer drift past where it was anchored (`BaselineAnchor`). A
 /// simulation-aware program that stays within the band is not caught by this
 /// layer; the state diff (L4) judges what it does, not how much it costs.
 pub const MIN_RELATIVE_SPREAD: f64 = 0.25;
@@ -134,6 +138,79 @@ pub struct ComputeBaseline {
     // the baseline in `SemanticGraphStore` (`ObservationMemory`). A snapshot
     // written by an older build still loads: serde ignores the retired
     // `recent_observation_keys` field.
+    /// The band this baseline was first judged by (Round 30, G-03): fixed
+    /// when it reached `MIN_SAMPLES`, or when an operator seeded or promoted
+    /// it, and never moved by what it learns afterwards. See
+    /// [`BaselineAnchor`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<BaselineAnchor>,
+}
+
+/// The centre and spread a baseline had when it first became able to judge
+/// (Round 30, G-03).
+///
+/// Every observation a mature baseline learns is winsorized to one spread of
+/// its centre (A2-06, S1), which bounds how far one observation moves it but
+/// not how far many do: observations fed one after another at the edge of an
+/// adaptive band walk the band with them — the mean by one spread / n per
+/// step, the 256-sample window by up to one spread per window — and an
+/// attacker patient enough to drip them in, or a program that really drifts,
+/// ends up judged against a band nobody ever reviewed. The anchor does not
+/// adapt. `check_simulation_integrity` judges every simulation against the
+/// anchor as well as against the adaptive statistics, so whatever the
+/// baseline has learned, a value more than `threshold` anchor spreads from
+/// the anchor's centre is flagged — and a flagged observation is never
+/// learned. Total drift is bounded by the anchored band. A program that
+/// genuinely moved past it reaches its shadow accumulator, and an operator
+/// promoting that shadow sets a new anchor.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct BaselineAnchor {
+    pub compute_units: f64,
+    pub compute_units_spread: f64,
+    pub account_writes: f64,
+    pub account_writes_spread: f64,
+    pub cpi_hops: f64,
+    pub cpi_hops_spread: f64,
+}
+
+/// The anchor a baseline is fixed to: its centres, and the effective spreads
+/// (`MIN_RELATIVE_SPREAD` and `MIN_ABSOLUTE_SPREAD` floors included) those
+/// centres are judged with, as they stand now.
+pub fn anchor_of(baseline: &ComputeBaseline) -> BaselineAnchor {
+    BaselineAnchor {
+        compute_units: baseline.mean_compute_units,
+        compute_units_spread: effective_spread(
+            baseline.mean_compute_units,
+            baseline.std_compute_units,
+        ),
+        account_writes: baseline.mean_account_writes,
+        account_writes_spread: effective_spread(
+            baseline.mean_account_writes,
+            baseline.std_account_writes,
+        ),
+        cpi_hops: baseline.mean_cpi_hops,
+        cpi_hops_spread: effective_spread(baseline.mean_cpi_hops, baseline.std_cpi_hops),
+    }
+}
+
+/// Whether an anchor's numbers can judge anything: finite, and every spread
+/// positive. A snapshot carrying one that cannot is dropped like any other
+/// invalid baseline.
+pub fn anchor_is_valid(anchor: &BaselineAnchor) -> bool {
+    [
+        anchor.compute_units,
+        anchor.account_writes,
+        anchor.cpi_hops,
+    ]
+    .iter()
+    .all(|v| v.is_finite() && *v >= 0.0)
+        && [
+            anchor.compute_units_spread,
+            anchor.account_writes_spread,
+            anchor.cpi_hops_spread,
+        ]
+        .iter()
+        .all(|v| v.is_finite() && *v > 0.0)
 }
 
 /// Input for simulation integrity check.
@@ -298,6 +375,65 @@ pub fn check_simulation_integrity(
         return Err(SimulationIntegrityError::InvalidData {
             reason: "baseline is degenerate (zero mean AND zero variance for compute)".to_string(),
         });
+    }
+
+    // Round 30 (G-03): the anchor first. Whatever the adaptive statistics
+    // below have learned since, a value outside the band the baseline was
+    // anchored to is a divergence. A signal the baseline has not observed (a
+    // legacy baseline's unpopulated counter) is not judged here either.
+    if let Some(anchor) = &input.baseline.anchor {
+        if !anchor_is_valid(anchor) {
+            return Err(SimulationIntegrityError::InvalidData {
+                reason: "baseline anchor is not finite and positive".to_string(),
+            });
+        }
+        let signals = [
+            (
+                input.simulation_usage.compute_units as f64,
+                anchor.compute_units,
+                anchor.compute_units_spread,
+                true,
+                "Compute usage",
+            ),
+            (
+                f64::from(input.simulation_usage.account_writes),
+                anchor.account_writes,
+                anchor.account_writes_spread,
+                signal_is_observed(
+                    input.baseline.mean_account_writes,
+                    input.baseline.std_account_writes,
+                    recent_window(&input.baseline.recent_account_writes).len(),
+                ),
+                "Account write",
+            ),
+            (
+                f64::from(input.simulation_usage.cpi_hops),
+                anchor.cpi_hops,
+                anchor.cpi_hops_spread,
+                signal_is_observed(
+                    input.baseline.mean_cpi_hops,
+                    input.baseline.std_cpi_hops,
+                    recent_window(&input.baseline.recent_cpi_hops).len(),
+                ),
+                "CPI hop",
+            ),
+        ];
+        for (value, centre, spread, observed, label) in signals {
+            if !observed {
+                continue;
+            }
+            let z = (value - centre) / spread;
+            if z.abs() > input.divergence_threshold {
+                return Ok(SimulationIntegrityResult {
+                    flagged: true,
+                    divergence_score: z,
+                    reason: Some(format!(
+                        "{label} divergence: {z:.2}σ from the baseline's anchored band (threshold: {:.2}σ) — outside the band it was first judged by, whatever it has learned since",
+                        input.divergence_threshold
+                    )),
+                });
+            }
+        }
     }
 
     // Signal 1: Compute units — evaluate BOTH the mean/std z-score and the
@@ -669,6 +805,12 @@ pub fn update_baseline(
     trim_window(&mut baseline.recent_cpi_hops);
 
     baseline.sample_count += 1;
+
+    // Round 30 (G-03): the band the bootstrap establishes is the one the
+    // baseline is held to from now on.
+    if baseline.anchor.is_none() && baseline.sample_count >= MIN_SAMPLES {
+        baseline.anchor = Some(anchor_of(baseline));
+    }
 }
 
 #[cfg(test)]
@@ -1391,5 +1533,118 @@ mod tests {
                 .unwrap()
                 .is_finite());
         }
+    }
+
+    // ─── Round 30 (G-03): the anchored band ────────────────────────────────
+
+    /// Feed `steps` observations, each the largest compute figure the check
+    /// accepts at that moment (found by bisection), and return the largest
+    /// figure that was accepted and learned. `anchored` false strips the
+    /// anchor first: the pre-Round-30 adaptive-only baseline.
+    fn drip(steps: usize, anchored: bool, alternate: bool) -> u64 {
+        let mut b = ComputeBaseline::default();
+        for _ in 0..MIN_SAMPLES {
+            update_baseline(&mut b, 100_000, 2, 1);
+        }
+        if !anchored {
+            b.anchor = None;
+        }
+        let flags = |b: &ComputeBaseline, cu: u64| {
+            check_simulation_integrity(&SimulationIntegrityInput {
+                program_id: "P".to_string(),
+                simulation_usage: ComputeUsage {
+                    compute_units: cu,
+                    account_writes: 2,
+                    cpi_hops: 1,
+                },
+                baseline: b.clone(),
+                divergence_threshold: 2.0,
+            })
+            .map(|r| r.flagged)
+            .unwrap_or(true)
+        };
+        let mut highest = 0u64;
+        for i in 0..steps {
+            let up = !alternate || i % 2 == 0;
+            // The accepted region is an interval around the centre; bisect
+            // for its edge in the direction of travel.
+            let centre = b.mean_compute_units.round() as u64;
+            let (mut ok, mut bad) = if up {
+                (centre, 1_400_000u64)
+            } else {
+                (centre, 0u64)
+            };
+            if flags(&b, ok) {
+                break;
+            }
+            while ok.abs_diff(bad) > 1 {
+                let mid = (ok + bad) / 2;
+                if flags(&b, mid) {
+                    bad = mid;
+                } else {
+                    ok = mid;
+                }
+            }
+            highest = highest.max(ok);
+            update_baseline(&mut b, ok, 2, 1);
+        }
+        highest
+    }
+
+    /// A slow drip: 3,000 observations, each at the very edge of what the
+    /// check accepts. The adaptive-only baseline walks: the band its first
+    /// ten samples set ended at 150,000 CU; the drip gets well past it. The
+    /// anchored one never accepts a figure beyond that first band.
+    #[test]
+    fn a_slow_drip_cannot_walk_an_anchored_baseline() {
+        let unanchored = drip(3_000, false, false);
+        assert!(
+            unanchored > 200_000,
+            "the attack must work on the adaptive-only baseline for this test to mean anything: {unanchored}"
+        );
+        let anchored = drip(3_000, true, false);
+        assert!(
+            anchored <= 150_000,
+            "the anchored baseline accepted {anchored} CU, beyond its first band"
+        );
+    }
+
+    /// Alternating edge observations try to widen the spread instead of
+    /// moving the centre. The anchored band does not widen.
+    #[test]
+    fn alternating_outliers_cannot_widen_an_anchored_band() {
+        let anchored = drip(2_000, true, true);
+        assert!(anchored <= 150_000, "{anchored}");
+    }
+
+    /// The anchor is set by the bootstrap, kept through later learning, and
+    /// a corrupt one is an error (a flag at the caller), not a pass.
+    #[test]
+    fn the_anchor_is_fixed_at_maturity_and_validated() {
+        let mut b = ComputeBaseline::default();
+        for _ in 0..MIN_SAMPLES - 1 {
+            update_baseline(&mut b, 10_000, 1, 0);
+        }
+        assert!(b.anchor.is_none(), "no anchor before MIN_SAMPLES");
+        update_baseline(&mut b, 10_000, 1, 0);
+        let anchor = b.anchor.clone().expect("anchored at MIN_SAMPLES");
+        assert_eq!(anchor.compute_units, 10_000.0);
+        assert_eq!(anchor.compute_units_spread, 2_500.0);
+        for _ in 0..50 {
+            update_baseline(&mut b, 12_000, 1, 0);
+        }
+        assert_eq!(b.anchor.as_ref(), Some(&anchor), "learning never moves it");
+        b.anchor.as_mut().unwrap().compute_units_spread = f64::NAN;
+        assert!(check_simulation_integrity(&SimulationIntegrityInput {
+            program_id: "P".to_string(),
+            simulation_usage: ComputeUsage {
+                compute_units: 10_000,
+                account_writes: 1,
+                cpi_hops: 0,
+            },
+            baseline: b,
+            divergence_threshold: 2.0,
+        })
+        .is_err());
     }
 }

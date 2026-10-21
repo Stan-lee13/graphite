@@ -182,9 +182,18 @@ pub fn evaluate_policy(input: &PolicyInput) -> Result<PolicyVerdict, PolicyError
     // STEP 3: Check confidence threshold
     // Use epsilon comparison to avoid floating-point precision issues
     // (e.g., 0.7999999999999999 should pass a 0.80 threshold)
+    //
+    // Round 30 (K-13): NaN-safe. Every comparison with NaN is false, so a NaN
+    // confidence passed `actual < min` — and a NaN `min_confidence` (a
+    // `Custom` profile built in code; JSON cannot carry one) admitted every
+    // score. Neither is a number a threshold can be checked against, so
+    // either refuses: a gate that cannot be evaluated is closed.
     const EPSILON: f64 = 1e-9;
     let actual_confidence = input.confidence_result.confidence;
-    if actual_confidence < min_confidence - EPSILON {
+    if !actual_confidence.is_finite()
+        || !min_confidence.is_finite()
+        || actual_confidence < min_confidence - EPSILON
+    {
         return Ok(PolicyVerdict::RejectedBelowThreshold {
             required: min_confidence,
             actual: actual_confidence,
@@ -230,6 +239,47 @@ mod tests {
 
         let result = evaluate_policy(&input).unwrap();
         assert_eq!(result, PolicyVerdict::RejectedRiskEngineBlock);
+    }
+
+    /// Round 30 (K-13): a NaN on either side of the threshold refuses. Both
+    /// compared false with everything, so both used to pass.
+    #[test]
+    fn a_nan_on_either_side_of_the_threshold_refuses() {
+        let input = |confidence: f64, profile: WalletProfile| PolicyInput {
+            confidence_result: ConfidenceResult {
+                confidence,
+                breakdown: vec![],
+                trust_tier_applied: TrustTier::BattleTested,
+                ceiling_triggered: false,
+                ceiling_applied: 1.0,
+            },
+            risk_verdict: RiskVerdict::Passed,
+            profile,
+        };
+        for (confidence, profile) in [
+            (f64::NAN, WalletProfile::Gaming),
+            (f64::INFINITY, WalletProfile::Gaming),
+            (
+                0.99,
+                WalletProfile::Custom {
+                    min_confidence: f64::NAN,
+                    min_trust_tier: TrustTier::Unknown,
+                },
+            ),
+        ] {
+            assert!(
+                matches!(
+                    evaluate_policy(&input(confidence, profile)).unwrap(),
+                    PolicyVerdict::RejectedBelowThreshold { .. }
+                ),
+                "{confidence} under {profile:?}"
+            );
+        }
+        // The control: a real number above a real bar passes.
+        assert_eq!(
+            evaluate_policy(&input(0.99, WalletProfile::Gaming)).unwrap(),
+            PolicyVerdict::Approved
+        );
     }
 
     #[test]

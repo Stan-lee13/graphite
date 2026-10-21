@@ -148,9 +148,11 @@ fn core_at(endpoint: &str) -> GraphiteCore {
         ..Default::default()
     }));
     // `earn_baseline` earns the Gaming floor through policy-threshold
-    // refusals, which teach only with the operator's opt-in since the
+    // refusals, which teach only with the operator's bootstrap policy (`ObservationPolicy::OperatorBootstrap`, which the server cannot select since Round 30) since the
     // 2026-10-20 audit (M1).
-    core.set_learn_from_policy_refusals(true);
+    core.set_observation_policy(
+        graphite_core::verification::ObservationPolicy::OperatorBootstrap,
+    );
     core
 }
 

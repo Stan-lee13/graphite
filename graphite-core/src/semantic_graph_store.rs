@@ -300,6 +300,56 @@ pub struct SemanticGraphStore {
     /// after it. Omitted from the snapshot while empty.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     deployments: HashMap<String, ObservedDeployment>,
+    /// Round 30 (G-03): trusted baselines per transaction SHAPE — the
+    /// primary program, its instruction and the other programs the
+    /// transaction invokes at top level (`shape_key`). Written by the same
+    /// observations as the program's baseline, and nothing else; what L3
+    /// judges by once one has `MIN_SAMPLES`. Never migrated from a
+    /// program-level baseline: a shape's evidence is that shape's.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    shape_baselines: HashMap<String, ComputeBaseline>,
+    /// Round 30 (G-04): the earliest simulation slot among the observations
+    /// each program's current baseline has counted — what the evidence is
+    /// bound to, so a deployment newer than it is code the evidence never saw.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    evidence_since_slot: HashMap<String, u64>,
+    /// Round 30 (G-04): evidence withdrawn because the code it described was
+    /// replaced, kept for audit (`RETIRED_EVIDENCE_KEPT` most recent).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    retired_evidence: Vec<RetiredEvidence>,
+    /// The baseline schema this store follows. Always written as
+    /// `BASELINE_SCHEMA`; a snapshot without it was written before Round 30.
+    #[serde(default, serialize_with = "write_baseline_schema")]
+    baseline_schema: u32,
+}
+
+fn write_baseline_schema<S: serde::Serializer>(_: &u32, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_u32(BASELINE_SCHEMA)
+}
+
+/// The baseline schema written since Round 30: shape baselines exist, and
+/// every mature baseline carries its `BaselineAnchor`.
+pub const BASELINE_SCHEMA: u32 = 2;
+
+/// How many retired-evidence records a store keeps (Round 30, G-04).
+pub const RETIRED_EVIDENCE_KEPT: usize = 1024;
+
+/// Evidence withdrawn from a program because its code changed (Round 30,
+/// G-04): what was withdrawn, why, and the deployments either side.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RetiredEvidence {
+    pub program_id: String,
+    pub reason: String,
+    /// The deployment the evidence described, when Graphite had seen it.
+    pub previous_deployment: Option<ObservedDeployment>,
+    /// The deployment that replaced it.
+    pub deployment: ObservedDeployment,
+    /// The retired program-level baseline's sample count (0: none).
+    pub baseline_samples: u64,
+    /// How many shape baselines were retired with it.
+    pub shape_baselines: usize,
+    /// The Behavior evidence the program carried before the reset.
+    pub evidence: Option<BehaviorEvidence>,
 }
 
 /// A snapshot of [`SemanticGraphStore`] as written — every persisted field,
@@ -317,6 +367,14 @@ struct StoreSnapshot {
     shadow_observed: HashMap<String, ObservationMemory>,
     #[serde(default)]
     deployments: HashMap<String, ObservedDeployment>,
+    #[serde(default)]
+    shape_baselines: HashMap<String, ComputeBaseline>,
+    #[serde(default)]
+    evidence_since_slot: HashMap<String, u64>,
+    #[serde(default)]
+    retired_evidence: Vec<RetiredEvidence>,
+    #[serde(default)]
+    baseline_schema: u32,
 }
 
 impl From<StoreSnapshot> for SemanticGraphStore {
@@ -336,7 +394,28 @@ impl From<StoreSnapshot> for SemanticGraphStore {
             observed: s.observed,
             shadow_observed: s.shadow_observed,
             deployments: s.deployments,
+            shape_baselines: if s.baseline_schema >= BASELINE_SCHEMA {
+                s.shape_baselines
+            } else {
+                HashMap::new()
+            },
+            evidence_since_slot: s.evidence_since_slot,
+            retired_evidence: s.retired_evidence,
+            baseline_schema: BASELINE_SCHEMA,
         };
+        // Round 30 (G-03): a mature baseline written before anchors existed
+        // is anchored where it stands. What it learned before is kept; it
+        // can no longer drift past it.
+        for b in store
+            .baselines
+            .values_mut()
+            .chain(store.shadow_baselines.values_mut())
+            .chain(store.shape_baselines.values_mut())
+        {
+            if b.anchor.is_none() && b.sample_count >= crate::simulation_integrity::MIN_SAMPLES {
+                b.anchor = Some(crate::simulation_integrity::anchor_of(b));
+            }
+        }
         for mut b in s.behaviors {
             b.trust_tier = if b.quarantined {
                 TrustTier::Unknown
@@ -711,6 +790,14 @@ impl SemanticGraphStore {
             });
         }
         validate_baseline(&shadow)?;
+        // Round 30: the operator adopts the shadow's regime, so the anchor is
+        // the shadow's as it stands, and the program's shape baselines —
+        // learned under the regime being retired — start again (L3 judges by
+        // the promoted program baseline meanwhile).
+        let mut shadow = shadow;
+        shadow.anchor = Some(crate::simulation_integrity::anchor_of(&shadow));
+        let prefix = format!("{key}/");
+        self.shape_baselines.retain(|k, _| !k.starts_with(&prefix));
         self.baselines.insert(key.to_string(), shadow.clone());
         self.shadow_baselines.remove(key);
         // The adopted accumulator brings the identities it counted; the
@@ -750,6 +837,24 @@ impl SemanticGraphStore {
         usage: &ComputeUsage,
         observation_key: Option<&str>,
     ) -> ComputeBaseline {
+        self.record_observation(program_id, None, usage, observation_key, None)
+    }
+
+    /// Record one sound observation (Round 30): into the program's baseline,
+    /// into its shape's (`shape_key`) when one is named, and bind the
+    /// program's evidence to the earliest simulation `slot` it has counted
+    /// (G-04). The identity rule is the program's: an identity the program
+    /// has counted is counted nowhere again, and one its full memory cannot
+    /// remember goes to the shadow accumulator and to no baseline. A shape
+    /// that does not belong to `program_id` is ignored.
+    pub fn record_observation(
+        &mut self,
+        program_id: &str,
+        shape: Option<&str>,
+        usage: &ComputeUsage,
+        observation_key: Option<&str>,
+        slot: Option<u64>,
+    ) -> ComputeBaseline {
         if let Some(key) = observation_key {
             let memory = self.observed.entry(program_id.to_string()).or_default();
             if memory.contains(key) {
@@ -761,6 +866,23 @@ impl SemanticGraphStore {
             }
             memory.remember(key);
         }
+        let prefix = format!("{program_id}/");
+        if let Some(shape) = shape.filter(|s| s.starts_with(&prefix)) {
+            let entry = self.shape_baselines.entry(shape.to_string()).or_default();
+            crate::simulation_integrity::update_baseline(
+                entry,
+                usage.compute_units,
+                usage.account_writes,
+                usage.cpi_hops,
+            );
+        }
+        if let Some(slot) = slot {
+            let since = self
+                .evidence_since_slot
+                .entry(program_id.to_string())
+                .or_insert(slot);
+            *since = (*since).min(slot);
+        }
         let entry = self.baselines.entry(program_id.to_string()).or_default();
         crate::simulation_integrity::update_baseline(
             entry,
@@ -769,6 +891,122 @@ impl SemanticGraphStore {
             usage.cpi_hops,
         );
         entry.clone()
+    }
+
+    /// The baseline L3 judges a transaction of `shape` by (Round 30, G-03):
+    /// the shape's own once it has `MIN_SAMPLES` observations, else the
+    /// program's. The flag says which — `true` for the shape's.
+    pub fn baseline_for(
+        &self,
+        program_id: &str,
+        shape: Option<&str>,
+    ) -> Option<(&ComputeBaseline, bool)> {
+        if let Some(b) = shape.and_then(|s| self.shape_baselines.get(s)) {
+            if b.sample_count >= crate::simulation_integrity::MIN_SAMPLES {
+                return Some((b, true));
+            }
+        }
+        self.baselines.get(program_id).map(|b| (b, false))
+    }
+
+    /// One shape's baseline, mature or not.
+    pub fn shape_baseline(&self, shape: &str) -> Option<&ComputeBaseline> {
+        self.shape_baselines.get(shape)
+    }
+
+    /// Every shape baseline of a program, sorted by key.
+    pub fn shape_baselines_of(&self, program_id: &str) -> Vec<(String, ComputeBaseline)> {
+        let prefix = format!("{program_id}/");
+        let mut out: Vec<(String, ComputeBaseline)> = self
+            .shape_baselines
+            .iter()
+            .filter(|(k, _)| k.starts_with(&prefix))
+            .map(|(k, b)| (k.clone(), b.clone()))
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// The earliest simulation slot the program's current evidence was
+    /// observed at (Round 30, G-04).
+    pub fn evidence_since_slot(&self, program_id: &str) -> Option<u64> {
+        self.evidence_since_slot.get(program_id).copied()
+    }
+
+    /// Evidence retired because a program's code changed, oldest first.
+    pub fn retired_evidence(&self) -> &[RetiredEvidence] {
+        &self.retired_evidence
+    }
+
+    /// Withdraw everything Graphite has learned or been told about a
+    /// program's behaviour, because the code it described has been replaced
+    /// (Round 30, G-04): its trusted, shadow and shape baselines, the
+    /// identities they counted, the slot binding, and the Behavior evidence —
+    /// the battle-tested volume and the community attestations were about the
+    /// old code. The manifest's own signature is about the manifest and
+    /// stays. The Behavior reset is an append (P4) that keeps an active
+    /// quarantine; the retired figures are kept in `retired_evidence`.
+    ///
+    /// The program is back where a program Graphite has never observed
+    /// starts: its tier is what its manifest alone earns, its confidence has
+    /// no evidence signal, and L3 has no baseline until ten new observations
+    /// — refused by every built-in profile until an operator, having
+    /// reviewed the new code, seeds its evidence again.
+    pub fn retire_program_evidence(
+        &mut self,
+        program_id: &str,
+        reason: String,
+        previous_deployment: Option<ObservedDeployment>,
+        deployment: ObservedDeployment,
+    ) -> RetiredEvidence {
+        let baseline_samples = self
+            .baselines
+            .remove(program_id)
+            .map(|b| b.sample_count)
+            .unwrap_or(0);
+        self.shadow_baselines.remove(program_id);
+        self.observed.remove(program_id);
+        self.shadow_observed.remove(program_id);
+        self.evidence_since_slot.remove(program_id);
+        let prefix = format!("{program_id}/");
+        let before = self.shape_baselines.len();
+        self.shape_baselines.retain(|k, _| !k.starts_with(&prefix));
+        let shape_baselines = before - self.shape_baselines.len();
+        let evidence = self.get(program_id).map(|b| b.evidence.clone());
+        if let Some(latest) = self.get(program_id).cloned() {
+            let reset = BehaviorEvidence {
+                has_signed_manifest: latest.evidence.has_signed_manifest,
+                ..BehaviorEvidence::default()
+            };
+            if reset != latest.evidence {
+                let trust_tier = if latest.quarantined {
+                    TrustTier::Unknown
+                } else {
+                    compute_trust_tier(&reset)
+                };
+                self.push_behavior(Behavior {
+                    evidence: reset,
+                    trust_tier,
+                    ..latest
+                });
+            }
+        }
+        let retired = RetiredEvidence {
+            program_id: program_id.to_string(),
+            reason,
+            previous_deployment,
+            deployment,
+            baseline_samples,
+            shape_baselines,
+            evidence,
+        };
+        self.retired_evidence.push(retired.clone());
+        let excess = self
+            .retired_evidence
+            .len()
+            .saturating_sub(RETIRED_EVIDENCE_KEPT);
+        self.retired_evidence.drain(..excess);
+        retired
     }
 
     /// Trusted operator API: seed or override a program's simulation
@@ -799,6 +1037,17 @@ impl SemanticGraphStore {
             });
         }
         validate_baseline(&baseline)?;
+        // Round 30 (G-03): a seeded baseline mature enough to judge is
+        // anchored where the operator put it. The program's shape baselines
+        // were learned beside the baseline being replaced; they start again.
+        let mut baseline = baseline;
+        if baseline.anchor.is_none()
+            && baseline.sample_count >= crate::simulation_integrity::MIN_SAMPLES
+        {
+            baseline.anchor = Some(crate::simulation_integrity::anchor_of(&baseline));
+        }
+        let prefix = format!("{program_id}/");
+        self.shape_baselines.retain(|k, _| !k.starts_with(&prefix));
         self.baselines.insert(program_id.to_string(), baseline);
         Ok(())
     }
@@ -822,8 +1071,45 @@ impl SemanticGraphStore {
         store
             .shadow_baselines
             .retain(|_, b| validate_baseline(b).is_ok());
+        store
+            .shape_baselines
+            .retain(|_, b| validate_baseline(b).is_ok());
         Ok(store)
     }
+}
+
+/// The key of a transaction's SHAPE (Round 30, G-03): the primary program,
+/// the instruction its manifest names, and the set of other programs the
+/// transaction invokes at top level, the Compute Budget program aside.
+///
+/// The figure L3 judges is the whole transaction's compute. One program's
+/// instructions differ from each other by orders of magnitude, and one
+/// instruction costs a different amount beside an ATA creation than alone,
+/// so a baseline per program judged every simulation against a band wide
+/// enough for all of them. The shape is what makes two transactions'
+/// figures comparable. Compute-budget instructions set limits and prices,
+/// and are left out so a priority fee does not split a shape. The set is
+/// hashed to keep the key short; the program and instruction stay readable,
+/// and the program is the key's prefix (`<program>/`).
+pub fn shape_key<'a>(
+    program_id: &str,
+    instruction: &str,
+    top_level_programs: impl IntoIterator<Item = &'a str>,
+) -> String {
+    use sha2::{Digest, Sha256};
+    const COMPUTE_BUDGET: &str = "ComputeBudget111111111111111111111111111111";
+    let others: BTreeSet<&str> = top_level_programs
+        .into_iter()
+        .filter(|p| *p != COMPUTE_BUDGET && *p != program_id)
+        .collect();
+    let mut h = Sha256::new();
+    h.update(b"graphite/shape/v1\0");
+    for p in &others {
+        h.update(p.as_bytes());
+        h.update(b"\n");
+    }
+    let digest = h.finalize();
+    format!("{program_id}/{instruction}/{}", hex::encode(&digest[..8]))
 }
 
 /// Validate a simulation baseline before it enters the trusted accumulator.
@@ -864,6 +1150,13 @@ pub fn validate_baseline(baseline: &ComputeBaseline) -> Result<(), SemanticGraph
         return Err(SemanticGraphError::InvalidRecord {
             reason: "compute baseline is degenerate (zero mean and zero variance)".to_string(),
         });
+    }
+    if let Some(anchor) = &baseline.anchor {
+        if !crate::simulation_integrity::anchor_is_valid(anchor) {
+            return Err(SemanticGraphError::InvalidRecord {
+                reason: "baseline anchor must be finite, with positive spreads".to_string(),
+            });
+        }
     }
     Ok(())
 }
