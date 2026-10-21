@@ -12,7 +12,9 @@
 //! nonce instructions pinned the RecentBlockhashes sysvar in one place
 //! (AdvanceNonceAccount) and in no other.
 
-use graphite_core::account_resolution::{resolve_accounts, AccountResolutionInput, RealAccountMeta};
+use graphite_core::account_resolution::{
+    resolve_accounts, AccountResolutionInput, RealAccountMeta,
+};
 use graphite_core::manifest::load_seed_manifests;
 
 const SYSTEM: &str = "11111111111111111111111111111111";
@@ -57,8 +59,16 @@ const RUNTIME: &[(&str, &str, &[(bool, bool)])] = &[
         &[(true, false), (false, true)],
     ),
     ("Allocate", "08000000", &[(true, true)]),
-    ("AllocateWithSeed", "09000000", &[(true, false), (false, true)]),
-    ("AssignWithSeed", "0a000000", &[(true, false), (false, true)]),
+    (
+        "AllocateWithSeed",
+        "09000000",
+        &[(true, false), (false, true)],
+    ),
+    (
+        "AssignWithSeed",
+        "0a000000",
+        &[(true, false), (false, true)],
+    ),
     (
         "TransferWithSeed",
         "0b000000",
@@ -100,7 +110,11 @@ fn every_system_instruction_matches_the_runtime_layout() {
             } else {
                 "readonly"
             };
-            assert_eq!(a.role, role, "{name}.{}: role contradicts its flags", a.name);
+            assert_eq!(
+                a.role, role,
+                "{name}.{}: role contradicts its flags",
+                a.name
+            );
         }
         assert!(
             !ix.risk_class.is_empty(),

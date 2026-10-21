@@ -112,12 +112,19 @@ async fn l3_malformed_payload_fails_safely() {
     let client = client(&endpoint);
 
     // Garbage bytes must produce an error, never a fabricated success.
+    // Round 29 (audit 2026-10-20, LOW-4): this used to print a warning on a
+    // "successful" simulation of garbage and pass either way. A result is
+    // acceptable only if it carries the simulation's own error; a clean
+    // result for bytes that are not a transaction fails the test.
     let garbage = b"this is not a serialized solana transaction".to_vec();
     match client.simulate_transaction(&garbage).await {
         Ok(result) => {
-            eprintln!(
-                "WARN: garbage payload 'simulated' with units={} — RPC accepted malformed input?",
-                result.units_consumed
+            assert!(
+                result.err.is_some(),
+                "garbage payload 'simulated' cleanly (units={}, logs={:?}): the client \
+                 reported a success for bytes that are not a transaction",
+                result.units_consumed,
+                result.logs
             );
         }
         Err(e) => {

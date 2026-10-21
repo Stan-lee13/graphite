@@ -85,10 +85,13 @@ fn every_seed_program_is_protected() {
         .iter()
         .map(|m| m.protocol.program_id.clone())
         .collect();
-    assert!(
-        seed_ids.len() >= 30,
-        "expected the full seed set, got {}",
-        seed_ids.len()
+    // Round 29 (audit 2026-10-20, LOW-4): the exact size of the shipped seed
+    // list, not a floor of 30 that a registry missing a hundred manifests
+    // would still clear.
+    assert_eq!(
+        seed_ids.len(),
+        graphite_core::manifest::SEED_MANIFESTS.len(),
+        "expected every shipped seed manifest in the registry"
     );
 
     for pid in seed_ids {
@@ -230,9 +233,9 @@ fn every_shipped_seed_manifest_satisfies_the_stricter_validation() {
     // reaching this point at all proves the whole seed set passes. Assert the
     // set is non-trivial so the test cannot pass vacuously.
     let registry = load_seed_manifests();
-    assert!(
-        registry.list().len() >= 30,
-        "expected the full seed set to load under the stricter validation, got {}",
-        registry.list().len()
+    assert_eq!(
+        registry.list().len(),
+        graphite_core::manifest::SEED_MANIFESTS.len(),
+        "expected the full seed set to load under the stricter validation"
     );
 }

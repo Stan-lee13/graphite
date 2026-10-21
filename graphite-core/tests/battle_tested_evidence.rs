@@ -301,9 +301,7 @@ fn every_record_agrees_with_a_recomputation_from_its_raw_observations() {
                 ));
             }
         }
-        let unmatched = d["unmatched_leading_bytes"]
-            .as_object()
-            .expect("unmatched");
+        let unmatched = d["unmatched_leading_bytes"].as_object().expect("unmatched");
         for head in unmatched.keys() {
             if let Some(name) = census_resolves(m, head) {
                 problems.push(format!(
@@ -343,7 +341,9 @@ fn every_record_agrees_with_a_recomputation_from_its_raw_observations() {
             && p["volume"]["successful_transactions_counted"]
                 .as_u64()
                 .unwrap_or(0)
-                >= t["min_successful_transactions"].as_u64().expect("threshold")
+                >= t["min_successful_transactions"]
+                    .as_u64()
+                    .expect("threshold")
             && observed >= t["min_decoded_instructions"].as_u64().expect("threshold")
             && expected_rate
                 .is_some_and(|r| r >= t["min_decode_rate"].as_f64().expect("threshold"));
