@@ -140,6 +140,11 @@ pub enum CliCommand {
         input: Box<VerificationInput>,
         profile: ProfileArg,
     },
+    /// Check the audit trail's hash chain, or export a checkpoint of its
+    /// head (Round 30, G-07). Read-only: safe beside a running server.
+    Audit {
+        action: AuditAction,
+    },
     #[cfg(feature = "server")]
     Server {
         port: u16,
@@ -408,6 +413,173 @@ pub enum ProtocolAction {
     },
 }
 
+/// Audit-trail integrity action (dispatched by `CliCommand::Audit`).
+pub enum AuditAction {
+    /// Walk every archive and the active file against the hash chain and
+    /// the MACs, and against `checkpoint` when one is given. Exits 0 when
+    /// nothing failed, 1 on a break or a checkpoint that does not hold, 2
+    /// when the walk could not prove what it was asked to (MACs under a key
+    /// not supplied, a trail with no chained record, a checkpoint whose
+    /// records were pruned), 3 when the trail could not be read.
+    Verify {
+        data_dir: Option<PathBuf>,
+        /// Key files whose MACs to check; `GRAPHITE_AUDIT_KEY_FILE` is
+        /// added when set. Old keys after a rotation go here too.
+        key_files: Vec<PathBuf>,
+        checkpoint: Option<PathBuf>,
+        json: bool,
+    },
+    /// Verify the trail, then print (or write to `out`, never over an
+    /// existing file) a checkpoint of its head — MAC'd when a key is given —
+    /// for the operator to keep where the writer cannot alter it.
+    Checkpoint {
+        data_dir: Option<PathBuf>,
+        key_file: Option<PathBuf>,
+        out: Option<PathBuf>,
+    },
+}
+
+/// The keys `audit` commands check with: each named file, plus
+/// `GRAPHITE_AUDIT_KEY_FILE` when it is set and not already named.
+fn audit_keys(files: &[PathBuf], dir: &Path) -> Result<Vec<crate::durable::AuditKey>, String> {
+    let mut paths: Vec<PathBuf> = files.to_vec();
+    if let Some(env) = std::env::var(crate::durable::AUDIT_KEY_ENV)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+    {
+        let env = PathBuf::from(env.trim());
+        if !paths.contains(&env) {
+            paths.push(env);
+        }
+    }
+    paths
+        .iter()
+        .map(|p| crate::durable::AuditKey::load(p, Some(dir)))
+        .collect()
+}
+
+fn run_audit(action: AuditAction) -> Result<i32, Box<dyn std::error::Error>> {
+    match action {
+        AuditAction::Verify {
+            data_dir,
+            key_files,
+            checkpoint,
+            json,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let keys = audit_keys(&key_files, &dir)?;
+            let checkpoint = match checkpoint {
+                Some(p) => Some(
+                    serde_json::from_slice::<crate::durable::Checkpoint>(&std::fs::read(&p)?)
+                        .map_err(|e| format!("checkpoint {}: {e}", p.display()))?,
+                ),
+                None => None,
+            };
+            let report = match crate::durable::verify_audit_trail(
+                &crate::durable::audit_path(&dir),
+                &keys,
+                checkpoint.as_ref(),
+            ) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("audit trail {} could not be read: {e}", dir.display());
+                    return Ok(3);
+                }
+            };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("integrity        {:?}", report.integrity);
+                println!("files            {}", report.files.len());
+                println!(
+                    "records          {} chained, {} legacy (unchained)",
+                    report.chained_records, report.legacy_unchained_records
+                );
+                println!(
+                    "MACs             {} verified, {} under a key not supplied, {} records unkeyed",
+                    report.macs_verified, report.macs_unverified, report.unkeyed_records
+                );
+                if report.unparseable_lines > 0 {
+                    println!(
+                        "unparseable      {} line(s) (torn writes; a removed record would break the chain)",
+                        report.unparseable_lines
+                    );
+                }
+                if let (Some(seq), Some(hash)) = (report.head_seq, &report.head_hash) {
+                    println!("head             seq {seq} hash {hash}");
+                }
+                if let Some(first) = report.first_seq.filter(|s| *s > 0) {
+                    println!("first on disk    seq {first} (older records pruned or missing)");
+                }
+                if let Some(b) = &report.first_break {
+                    println!(
+                        "BREAK            {} line {} (byte {}){}: {}",
+                        b.file,
+                        b.line,
+                        b.offset,
+                        b.seq.map(|s| format!(", seq {s}")).unwrap_or_default(),
+                        b.reason
+                    );
+                }
+                if let Some(cp) = &report.checkpoint {
+                    println!("checkpoint       {cp:?}");
+                }
+            }
+            Ok(report.exit_code())
+        }
+        AuditAction::Checkpoint {
+            data_dir,
+            key_file,
+            out,
+        } => {
+            let dir = data_dir_path(data_dir);
+            let keys = audit_keys(key_file.as_slice(), &dir)?;
+            let path = crate::durable::audit_path(&dir);
+            let report = crate::durable::verify_audit_trail(&path, &keys, None)?;
+            if let Some(b) = &report.first_break {
+                return Err(format!(
+                    "the trail is broken at {} line {}: {} — no checkpoint of a broken trail",
+                    b.file, b.line, b.reason
+                )
+                .into());
+            }
+            let (Some(seq), Some(hash)) = (report.head_seq, report.head_hash.clone()) else {
+                return Err("the trail holds no chained record yet; nothing to checkpoint".into());
+            };
+            let log = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let cp = crate::durable::Checkpoint::new(
+                &log,
+                seq,
+                &hash,
+                report.chained_records,
+                keys.first(),
+            );
+            let text = serde_json::to_string_pretty(&cp)?;
+            match out {
+                Some(out) => {
+                    use std::io::Write;
+                    let mut f = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&out)?;
+                    f.write_all(text.as_bytes())?;
+                    f.write_all(b"\n")?;
+                    f.sync_all()?;
+                    eprintln!(
+                        "checkpoint seq {seq} written to {} — keep it where the server cannot alter it (WORM, object lock, another system)",
+                        out.display()
+                    );
+                }
+                None => println!("{text}"),
+            }
+            Ok(0)
+        }
+    }
+}
+
 /// The server's durable state directory: `--data-dir`, else
 /// `GRAPHITE_DATA_DIR`, else `./graphite-data` — the same resolution order
 /// `serve` uses, so the CLI and the server agree on which graph they mean.
@@ -559,6 +731,13 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
         }
         CliCommand::Registry { action } => run_registry(action),
         CliCommand::Quarantine { action } => run_quarantine(action),
+        CliCommand::Audit { action } => {
+            let code = run_audit(action)?;
+            if code != 0 {
+                std::process::exit(code);
+            }
+            Ok(())
+        }
         CliCommand::Explain { input, profile } => run_explain(*input, &profile),
         CliCommand::Protocol { action } => run_protocol(action),
         CliCommand::Evidence { action } => run_evidence(action),
@@ -1448,8 +1627,19 @@ fn run_execution(
     }
 
     // Read the same audit trail the server writes, so the CLI reconciles
-    // against the real record rather than a second source of truth.
-    let audit = crate::durable::AuditLog::open(crate::durable::audit_path(&dir)).ok();
+    // against the real record rather than a second source of truth. Read
+    // only (Round 30): this runs beside the server, which holds the trail's
+    // writer lock, and appends nothing.
+    let audit = match crate::durable::AuditLog::open_read_only(crate::durable::audit_path(&dir)) {
+        Ok(log) => Some(log),
+        Err(e) => {
+            eprintln!(
+                "audit trail {}: {e} — reconciling without a verdict on record",
+                crate::durable::audit_path(&dir).display()
+            );
+            None
+        }
+    };
 
     let rt = tokio::runtime::Runtime::new()?;
     let result = rt.block_on(core.audit_execution(signature, keys, audit.as_ref()));
@@ -1659,7 +1849,19 @@ impl OperatorTrail {
             |_| true,
         )?;
         let path = crate::durable::audit_path(dir);
-        crate::durable::AuditLog::open_with_rotation(&path, rotate_bytes, max_archives)
+        // The server's key and anchor settings (Round 30): a keyed trail
+        // refuses to be continued without its key.
+        let options = crate::durable::AuditOptions {
+            rotate_bytes,
+            max_archives,
+            ..Default::default()
+        }
+        .with_env_values(
+            get(crate::durable::AUDIT_KEY_ENV).as_deref(),
+            get(crate::durable::AUDIT_ANCHOR_ENV).as_deref(),
+            dir,
+        )?;
+        crate::durable::AuditLog::open_with_options(&path, options)
             .map(|log| Self { log })
             .map_err(|e| {
                 format!(

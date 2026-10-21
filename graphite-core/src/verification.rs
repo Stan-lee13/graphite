@@ -2610,8 +2610,12 @@ where
 /// A unique temp name (`pid` + monotonic counter) means concurrent writers
 /// can't clobber each other's temp files; the temp file is synced before the
 /// rename so the committed snapshot is complete on the device, not only in
-/// the page cache; and the rename is atomic, so readers only ever see
-/// complete documents.
+/// the page cache; the rename is atomic, so readers only ever see complete
+/// documents; and the directory is synced after it, so the NEW name survives
+/// a power loss. Round 30: the directory sync was missing — the rename lived
+/// only in the directory's write-back cache, and a power loss after a
+/// reported commit (a quarantine, an earned baseline) could bring back the
+/// previous snapshot. The audit log's rotation already synced it.
 pub(crate) fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<(), String> {
     use std::io::Write as _;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2634,6 +2638,7 @@ pub(crate) fn persist_json_atomic(path: &std::path::Path, json: &str) -> Result<
         let _ = std::fs::remove_file(&tmp);
         return Err(format!("commit {}: {e}", path.display()));
     }
+    crate::durable::sync_dir(path);
     Ok(())
 }
 
