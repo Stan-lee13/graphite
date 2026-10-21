@@ -78,9 +78,11 @@ package graphite
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -90,24 +92,37 @@ import (
 )
 
 // Client is the Graphite Core HTTP client.
+//
+// A Client literal works: a nil HTTPClient means the same client NewClient
+// installs (DefaultTimeout, no redirects).
 type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
 	// APIKey is the Bearer token for a secured Core server (GRAPHITE_API_KEY).
-	// When non-empty, Verify and ListManifests send
+	// When non-empty, every call but Health sends
 	// `Authorization: Bearer <APIKey>`. /health stays open by design.
 	APIKey string
+}
+
+// DefaultTimeout bounds every request of a client NewClient built, or of a
+// Client literal with no HTTPClient. A timeout means VERIFICATION DID NOT
+// HAPPEN: a hard stop, never an implicit pass.
+const DefaultTimeout = 30 * time.Second
+
+// newHTTPClient is the client NewClient installs.
+func newHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:       DefaultTimeout,
+		CheckRedirect: refuseRedirect,
+	}
 }
 
 // NewClient creates a new Graphite client pointing at the Core server
 // (no API key — for keyless dev deployments).
 func NewClient(baseURL string) *Client {
 	return &Client{
-		BaseURL: baseURL,
-		HTTPClient: &http.Client{
-			Timeout:       30 * time.Second,
-			CheckRedirect: refuseRedirect,
-		},
+		BaseURL:    baseURL,
+		HTTPClient: newHTTPClient(),
 	}
 }
 
@@ -127,12 +142,12 @@ func refuseRedirect(*http.Request, []*http.Request) error {
 // installed, and refuses a 3xx answer. HTTPClient is an exported field a
 // caller can replace with one that follows redirects; the policy is applied
 // to a copy per request rather than trusted to the field.
+//
+// Audit 2026-10-20: a nil HTTPClient (a `&graphite.Client{BaseURL: …}`
+// literal) used http.DefaultClient, which has no timeout, so a hung Core hung
+// Verify forever. It now gets NewClient's client: DefaultTimeout.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
-	hc := http.DefaultClient
-	if c.HTTPClient != nil {
-		hc = c.HTTPClient
-	}
-	noRedirect := *hc
+	noRedirect := *c.httpClient()
 	noRedirect.CheckRedirect = refuseRedirect
 	resp, err := noRedirect.Do(req)
 	if err != nil {
@@ -146,6 +161,15 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 			req.Method, req.URL.Path, resp.StatusCode, resp.Header.Get("Location"))
 	}
 	return resp, nil
+}
+
+// httpClient is the client a request goes through: HTTPClient, or for a nil
+// one NewClient's.
+func (c *Client) httpClient() *http.Client {
+	if c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return newHTTPClient()
 }
 
 // NewClientWithAPIKey creates a client for a secured Core deployment. The key
@@ -204,27 +228,37 @@ func (b ByteArray) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON decodes a JSON array of integers back to a byte slice.
+//
+// Every element must be an integer from 0 to 255, written as one. Audit
+// 2026-10-20: elements were read as float64 and truncated, so 1.5 decoded
+// as 1 — a different byte from the one written, silently. serde reads a
+// Vec<u8> the same strict way.
 func (b *ByteArray) UnmarshalJSON(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	var arr []interface{}
-	if err := json.Unmarshal(data, &arr); err != nil {
+	if err := dec.Decode(&arr); err != nil {
 		return err
 	}
 	result := make(ByteArray, 0, len(arr))
-	for _, v := range arr {
-		f, ok := v.(float64)
+	for i, v := range arr {
+		n, ok := v.(json.Number)
 		if !ok {
-			return fmt.Errorf("ByteArray: expected number, got %T", v)
+			return fmt.Errorf("ByteArray: element %d: expected a number, got %T", i, v)
 		}
-		if f < 0 || f > 255 {
-			return fmt.Errorf("ByteArray: value %v out of byte range", f)
+		u, err := strconv.ParseUint(string(n), 10, 8)
+		if err != nil {
+			return fmt.Errorf("ByteArray: element %d: %s is not a byte (an integer from 0 to 255)", i, n)
 		}
-		result = append(result, byte(f))
+		result = append(result, byte(u))
 	}
 	*b = result
 	return nil
 }
 
-// WalletProfile is the risk tolerance profile for policy evaluation.
+// WalletProfile is the risk tolerance profile for policy evaluation: one of
+// the four built-in names. For explicit thresholds set
+// VerificationInput.CustomWalletProfile instead.
 type WalletProfile string
 
 const (
@@ -233,6 +267,51 @@ const (
 	WalletProfileGaming     WalletProfile = "Gaming"
 	WalletProfileEnterprise WalletProfile = "Enterprise"
 )
+
+// Trust tiers, as the Core serializes them (graphite-core TrustTier).
+const (
+	TrustTierUnknown             = "Unknown"
+	TrustTierHeuristicInferred   = "HeuristicInferred"
+	TrustTierOfficialManifest    = "OfficialManifest"
+	TrustTierSimulationValidated = "SimulationValidated"
+	TrustTierCommunityVerified   = "CommunityVerified"
+	TrustTierBattleTested        = "BattleTested"
+)
+
+// CustomProfile is the Core's WalletProfile::Custom: explicit thresholds.
+// The server clamps a caller-supplied profile to the weakest built-in
+// (Gaming) unless the operator opted out.
+type CustomProfile struct {
+	MinConfidence float64 `json:"min_confidence"`
+	// MinTrustTier is one of the TrustTier* constants.
+	MinTrustTier string `json:"min_trust_tier"`
+}
+
+// walletProfileJSON is wallet_profile as serde's externally tagged enum
+// expects it: "Gaming" for a built-in, {"Custom":{...}} for thresholds, and
+// nothing at all (the Core's default, Treasury) for neither. nil means omit.
+func walletProfileJSON(name WalletProfile, custom *CustomProfile) (json.RawMessage, error) {
+	if custom != nil {
+		if name != "" {
+			return nil, fmt.Errorf("graphite: WalletProfile %q and CustomWalletProfile are both set; set one", name)
+		}
+		if math.IsNaN(custom.MinConfidence) || custom.MinConfidence < 0 || custom.MinConfidence > 1 {
+			return nil, fmt.Errorf("graphite: CustomWalletProfile.MinConfidence must be within [0, 1], got %v", custom.MinConfidence)
+		}
+		if !oneOf(custom.MinTrustTier, trustTiers...) {
+			return nil, fmt.Errorf("graphite: CustomWalletProfile.MinTrustTier %q is not a trust tier", custom.MinTrustTier)
+		}
+		return json.Marshal(map[string]*CustomProfile{"Custom": custom})
+	}
+	switch name {
+	case "":
+		return nil, nil
+	case WalletProfileTreasury, WalletProfileTradingBot, WalletProfileGaming, WalletProfileEnterprise:
+		return json.Marshal(string(name))
+	default:
+		return nil, fmt.Errorf("graphite: unknown WalletProfile %q (Treasury, TradingBot, Gaming, Enterprise, or set CustomWalletProfile)", name)
+	}
+}
 
 // VerificationInput is the full input to the verification pipeline.
 // This struct MUST match the Rust server's VerificationInput exactly.
@@ -282,8 +361,75 @@ type VerificationInput struct {
 	// flagged, never silently assumed to match. A length mismatch against
 	// AccountAddresses is treated the same way (fail-safe).
 	RealAccountMetas []RealAccountMeta `json:"real_account_metas,omitempty"`
+	// CustomWalletProfile, when set, sends the Core's Custom profile
+	// ({"Custom":{"min_confidence":…,"min_trust_tier":…}}) in place of a
+	// built-in WalletProfile; setting both is an error. Leaving both empty
+	// omits wallet_profile, and the Core applies its default (Treasury, the
+	// strictest built-in).
+	CustomWalletProfile *CustomProfile `json:"-"`
 	// Simulation baselines are TRUSTED SERVER STATE (earned via RPC-verified
 	// usage or seeded by the operator) — never sent from the client.
+}
+
+// verificationInputFields is VerificationInput without its methods, so the
+// methods below can marshal it without recursing.
+type verificationInputFields VerificationInput
+
+// MarshalJSON writes the request the Rust Core's serde accepts.
+//
+// Audit 2026-10-20 (G2): a zero-value VerificationInput sent
+// "wallet_profile":"" and "account_addresses":null, and serde refuses both
+// (no variant is named "", and account_addresses is a required Vec), so the
+// request failed with a 422 whose cause was the SDK. An empty WalletProfile
+// is now omitted (the Core's default applies), a nil AccountAddresses is
+// sent as [], and CustomWalletProfile is written as serde's externally
+// tagged Custom variant.
+func (in VerificationInput) MarshalJSON() ([]byte, error) {
+	profile, err := walletProfileJSON(in.WalletProfile, in.CustomWalletProfile)
+	if err != nil {
+		return nil, err
+	}
+	accounts := in.AccountAddresses
+	if accounts == nil {
+		accounts = []string{}
+	}
+	return json.Marshal(struct {
+		verificationInputFields
+		AccountAddresses []string        `json:"account_addresses"`
+		WalletProfile    json.RawMessage `json:"wallet_profile,omitempty"`
+	}{verificationInputFields(in), accounts, profile})
+}
+
+// UnmarshalJSON reads what MarshalJSON writes, Custom profile included.
+func (in *VerificationInput) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		verificationInputFields
+		WalletProfile json.RawMessage `json:"wallet_profile,omitempty"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*in = VerificationInput(wire.verificationInputFields)
+	in.WalletProfile, in.CustomWalletProfile = "", nil
+	raw := bytes.TrimSpace(wire.WalletProfile)
+	switch {
+	case len(raw) == 0 || bytes.Equal(raw, []byte("null")):
+	case raw[0] == '"':
+		var name string
+		if err := json.Unmarshal(raw, &name); err != nil {
+			return err
+		}
+		in.WalletProfile = WalletProfile(name)
+	default:
+		var custom struct {
+			Custom *CustomProfile `json:"Custom"`
+		}
+		if err := json.Unmarshal(raw, &custom); err != nil || custom.Custom == nil {
+			return fmt.Errorf("graphite: wallet_profile is neither a profile name nor {\"Custom\":{...}}")
+		}
+		in.CustomWalletProfile = custom.Custom
+	}
+	return nil
 }
 
 // RealAccountMeta is the real per-account signer/writable bits from an
@@ -352,9 +498,11 @@ type VerificationResult struct {
 	// verified or explicitly identified as unverified. Approved alone does not
 	// say which half applies.
 	//
-	// Nil for servers older than 2026-09-08. Nil is NOT "descriptive" — it
-	// means the server did not say, and a gate requiring artifact binding must
-	// treat it as unknown.
+	// Verify refuses a response without it (audit 2026-10-20: the Core has
+	// emitted it since 2026-09-08 and the schema requires it); it can be nil
+	// only in a result built or decoded by other means. Nil is NOT
+	// "descriptive" — it means nothing said, and a gate requiring artifact
+	// binding must treat it as unknown.
 	Scope *VerificationScope `json:"scope,omitempty"`
 }
 
@@ -471,9 +619,12 @@ func (r *VerificationResult) NonInherentUnobserved() (codes []string, ok bool) {
 //
 // An execution gate that can move funds should require this rather than gating
 // on Approved alone. False for a nil scope: a server that did not say has not
-// said yes.
+// said yes. False, too, for a scope that claims artifact_bound without a
+// well-formed digest of what it bound — 64 lowercase hex characters (audit
+// 2026-10-20, G1): a binding without its digest binds nothing.
 func (r *VerificationResult) IsArtifactBound() bool {
-	return r != nil && r.Scope != nil && r.Scope.Kind == "artifact_bound"
+	return r != nil && r.Scope != nil && r.Scope.Kind == "artifact_bound" &&
+		isLowerHex64(r.Scope.TransactionSHA256)
 }
 
 // Unobserved returns everything Graphite did not independently observe. Empty
@@ -630,94 +781,142 @@ type ManifestAccountRole struct {
 
 // ─── Client methods ───
 
-// Verify sends a verification request to the Graphite Core server.
-func (c *Client) Verify(input *VerificationInput) (*VerificationResult, error) {
-	body, err := json.Marshal(input)
-	if err != nil {
-		return nil, fmt.Errorf("marshal input: %w", err)
-	}
+// Response-size bounds (audit 2026-10-20). Error bodies were read with an
+// unbounded io.ReadAll and pasted into the error text, so a hostile or broken
+// server (or a proxy in front of it) could make one failed call allocate
+// without limit and put megabytes into a log line.
+const (
+	// MaxResponseBytes bounds a successful answer; the manifest list, the
+	// largest, is a small fraction of it.
+	MaxResponseBytes = 16 << 20
+	// maxErrorBodyBytes bounds what of a non-200 answer reaches an error.
+	maxErrorBodyBytes = 4 << 10
+)
 
-	endpoint, err := c.endpoint("/verify")
+// roundTrip sends one request and returns a 200's body. Everything else — a
+// refused base URL, a transport error, a redirect, a non-200, a body over
+// MaxResponseBytes — is an error: what was asked did not happen.
+func (c *Client) roundTrip(ctx context.Context, method, path string, body []byte, auth bool, what string) ([]byte, error) {
+	endpoint, err := c.endpoint(path)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	c.setAuth(req)
-
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if auth {
+		c.setAuth(req)
+	}
 	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("server error (status %d): %s", resp.StatusCode, string(respBody))
+		prefix, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
+		text := string(prefix)
+		if len(prefix) > maxErrorBodyBytes {
+			text = string(prefix[:maxErrorBodyBytes]) + "… (truncated)"
+		}
+		return nil, fmt.Errorf("graphite: %s failed: server error (status %d): %s", what, resp.StatusCode, text)
 	}
-
-	var result VerificationResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("graphite: %s: read response: %w", what, err)
 	}
+	if len(data) > MaxResponseBytes {
+		return nil, fmt.Errorf("%w: %s: the response exceeds %d bytes", ErrInvalidResponse, what, MaxResponseBytes)
+	}
+	return data, nil
+}
 
-	return &result, nil
+// Verify sends a verification request to the Graphite Core server.
+//
+// The answer is held to DecodeVerificationResult's rules before it is
+// returned (audit 2026-10-20, G1): a body that is not a whole, consistent
+// verdict is an error, never a zero-valued result.
+func (c *Client) Verify(input *VerificationInput) (*VerificationResult, error) {
+	return c.VerifyContext(context.Background(), input)
+}
+
+// VerifyContext is Verify with a context: cancelling it, or its deadline
+// passing, abandons the request. Like a timeout, that means verification did
+// not happen.
+func (c *Client) VerifyContext(ctx context.Context, input *VerificationInput) (*VerificationResult, error) {
+	if input == nil {
+		return nil, fmt.Errorf("graphite: no verification input")
+	}
+	body, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("marshal input: %w", err)
+	}
+	data, err := c.roundTrip(ctx, http.MethodPost, "/verify", body, true, "verification")
+	if err != nil {
+		return nil, err
+	}
+	return DecodeVerificationResult(data)
+}
+
+// HealthResponse is the answer of GET /health. Status stays "ok" while the
+// node serves traffic; Degraded is the operator signal.
+type HealthResponse struct {
+	Status          string   `json:"status"`
+	Service         string   `json:"service"`
+	Version         string   `json:"version"`
+	Degraded        bool     `json:"degraded"`
+	DegradedReasons []string `json:"degraded_reasons,omitempty"`
 }
 
 // Health checks if the Core server is running.
 func (c *Client) Health() error {
-	endpoint, err := c.endpoint("/health")
+	_, err := c.HealthContext(context.Background())
+	return err
+}
+
+// HealthContext is Health with a context, returning the server's answer. A
+// 200 whose body is not a health response is an error (audit 2026-10-20).
+func (c *Client) HealthContext(ctx context.Context) (*HealthResponse, error) {
+	data, err := c.roundTrip(ctx, http.MethodGet, "/health", nil, false, "health check")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return err
+	var h HealthResponse
+	if err := decodeStrict(data, &h, "health response", healthViolation); err != nil {
+		return nil, err
 	}
-	resp, err := c.do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("health check failed: status %d", resp.StatusCode)
-	}
-	return nil
+	return &h, nil
 }
 
 // ListManifests returns all loaded protocol manifests, typed.
 func (c *Client) ListManifests() ([]ProtocolManifest, error) {
-	endpoint, err := c.endpoint("/manifests")
+	return c.ListManifestsContext(context.Background())
+}
+
+// ListManifestsContext is ListManifests with a context.
+//
+// Round 19 (F-19-C6): the status was ignored, so a 401 (wrong key), 429 or
+// 503 body was handed to the JSON decoder — an error object decodes into an
+// empty or partial list, and a caller got "no manifests" instead of "that
+// request failed". Every call refuses a non-200; since the 2026-10-20 audit
+// a 200 that is not a manifest list is refused too.
+func (c *Client) ListManifestsContext(ctx context.Context) ([]ProtocolManifest, error) {
+	data, err := c.roundTrip(ctx, http.MethodGet, "/manifests", nil, true, "list manifests")
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	c.setAuth(req)
-
-	resp, err := c.do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Round 19 (F-19-C6): the status was ignored, so a 401 (wrong key), 429
-	// or 503 body was handed to the JSON decoder — an error object decodes
-	// into an empty or partial list, and a caller got "no manifests" instead
-	// of "that request failed". Every other call refuses non-200; so does
-	// this one.
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("list manifests failed (status %d): %s", resp.StatusCode, string(respBody))
-	}
-
 	var manifests []ProtocolManifest
-	if err := json.NewDecoder(resp.Body).Decode(&manifests); err != nil {
+	if err := decodeStrict(data, &manifests, "manifest list", manifestListViolation); err != nil {
 		return nil, err
 	}
 	return manifests, nil
@@ -757,9 +956,15 @@ func CheckBaseURL(baseURL string) error {
 }
 
 // isLoopbackHost reports whether a hostname is the local machine. Only
-// canonical forms count: "localhost", a dotted-quad IPv4 in 127.0.0.0/8, or
-// the IPv6 loopback. Go's URL parser does not canonicalise "127.1", so that
-// spelling is refused rather than guessed at.
+// canonical forms count: "localhost", a dotted-quad IPv4 in 127.0.0.0/8, the
+// IPv6 loopback, or 127.0.0.0/8 written as an IPv4-mapped IPv6 address
+// (::ffff:127.0.0.1 — To4 unwraps it). Go's URL parser does not canonicalise
+// "127.1", so that spelling is refused rather than guessed at.
+//
+// Audit 2026-10-20: this accepted the IPv4-mapped form and the TypeScript
+// SDK refused it. A mapped address is the IPv4 address — a connection to it
+// is a connection to 127.0.0.1 — so the TypeScript SDK now accepts it too.
+// The deprecated IPv4-compatible form (::127.0.0.1) is refused by both.
 func isLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true

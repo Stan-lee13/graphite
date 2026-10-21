@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Stan-lee13/graphite/main/schemas/verification-result-v1.json",
   "title": "Graphite VerificationResult",
-  "description": "Output of the Graphite verification pipeline. Field parity with graphite-core/src/verification.rs VerificationResult and the TypeScript/Go SDKs. SECURITY CONTRACT: `approved` is the only field carrying a DECISION \u2014 confidence, policy_verdict, risk_verdict and trust_tier are evidence for audit and explanation, never a gate. But `approved` alone is not sufficient to execute on, because it does not say WHAT was verified: read `scope` as well. scope.kind == 'artifact_bound' means the verdict covers the exact transaction bytes supplied, subject to scope.unobserved; 'descriptive' means it covers only caller-supplied metadata and nothing constrains what is actually signed; an ABSENT scope means a pre-2026-09-08 server did not say and must be treated as unknown rather than as either answer. An execution-capable integration MUST enforce the scope it requires. A transport error, timeout or non-200 means verification did not happen: a hard stop, never an implicit pass.",
+  "description": "Output of the Graphite verification pipeline. Field parity with graphite-core/src/verification.rs VerificationResult and the TypeScript/Go SDKs. SECURITY CONTRACT: `approved` is the only field carrying a DECISION \u2014 confidence, policy_verdict, risk_verdict and trust_tier are evidence for audit and explanation, never a gate. But `approved` alone is not sufficient to execute on, because it does not say WHAT was verified: read `scope` as well. scope.kind == 'artifact_bound' means the verdict covers the exact transaction bytes supplied, subject to scope.unobserved; 'descriptive' means it covers only caller-supplied metadata and nothing constrains what is actually signed; `scope` is required: a payload without it (a pre-2026-09-08 server) does not satisfy this schema and must be treated as unknown rather than as either answer. An execution-capable integration MUST enforce the scope it requires. A transport error, timeout or non-200 means verification did not happen: a hard stop, never an implicit pass.",
   "type": "object",
   "required": [
     "approved",
@@ -19,7 +19,12 @@
     "instruction_name",
     "manifest_found",
     "unknown_protocol",
-    "summary"
+    "summary",
+    "manifest_version",
+    "simulation_flagged",
+    "simulation_divergence",
+    "layers",
+    "scope"
   ],
   "properties": {
     "approved": {
@@ -54,7 +59,8 @@
           "contribution": {
             "type": "number"
           }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "trust_tier": {
@@ -97,16 +103,24 @@
               "reason": {
                 "type": "string"
               }
-            }
+            },
+            "additionalProperties": false
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "policy_verdict": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "Approved",
+        "Rejected"
+      ],
+      "description": "Evidence, not a gate. The Core emits exactly \"Approved\" when `approved` is true and \"Rejected\" otherwise (verification.rs folds the final risk status in, so the two can never disagree); the root's if/then/else enforces that pairing."
     },
     "audit_trail_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "content_hash": {
       "type": "string",
@@ -180,7 +194,8 @@
               "is_writable": {
                 "type": "boolean"
               }
-            }
+            },
+            "additionalProperties": false
           }
         },
         "data_hex": {
@@ -190,7 +205,8 @@
           "type": "integer",
           "minimum": 0
         }
-      }
+      },
+      "additionalProperties": false
     },
     "resolved_accounts": {
       "type": "array",
@@ -202,7 +218,11 @@
           "is_pda",
           "is_signer",
           "is_writable",
-          "pda_seeds"
+          "pda_seeds",
+          "identity",
+          "expected_address_mismatch",
+          "pda_mismatch",
+          "privilege_mismatch"
         ],
         "properties": {
           "address": {
@@ -250,7 +270,8 @@
             "type": "boolean",
             "description": "A caller-supplied real AccountMeta disagreed with the manifest in a security-relevant direction: a required signer that is not actually signed, or a manifest-readonly slot marked writable. Hard-blocks approval."
           }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "protocol_name": {
@@ -292,14 +313,41 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["program_id", "previous_deploy_slot", "deploy_slot", "previous_upgrade_authority", "upgrade_authority", "quarantined"],
+        "required": [
+          "program_id",
+          "previous_deploy_slot",
+          "deploy_slot",
+          "previous_upgrade_authority",
+          "upgrade_authority",
+          "quarantined"
+        ],
         "properties": {
-          "program_id": { "type": "string" },
-          "previous_deploy_slot": { "type": "integer", "minimum": 0 },
-          "deploy_slot": { "type": "integer", "minimum": 0 },
-          "previous_upgrade_authority": { "type": ["string", "null"] },
-          "upgrade_authority": { "type": ["string", "null"] },
-          "quarantined": { "type": "boolean" }
+          "program_id": {
+            "type": "string"
+          },
+          "previous_deploy_slot": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deploy_slot": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "previous_upgrade_authority": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "upgrade_authority": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quarantined": {
+            "type": "boolean"
+          }
         }
       }
     },
@@ -310,6 +358,7 @@
         "required": [
           "layer",
           "passed",
+          "status",
           "reason"
         ],
         "properties": {
@@ -330,11 +379,37 @@
           "reason": {
             "type": "string"
           }
-        }
+        },
+        "additionalProperties": false,
+        "if": {
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "const": "passed"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "passed": {
+              "const": true
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "passed": {
+              "const": false
+            }
+          }
+        },
+        "description": "One pipeline layer. `status` is the tri-state truth and `passed` is derived from it: true exactly when status is \"passed\" (GAP-2026-08-06-3)."
       }
     },
     "scope": {
-      "description": "What this verdict is BOUND to, and what it did not observe. This is the field that makes Graphite's central promise checkable rather than assumed: the thing it approved is the thing that gets signed and executed, and every security-relevant property of that thing was either independently verified or explicitly identified as unverified. `approved` alone does not say which half applies \u2014 a verdict describing caller-supplied metadata and one bound to real signed bytes are otherwise the same shape. An execution gate that can move funds should require kind == 'artifact_bound' rather than gating on `approved` alone. ABSENT is not the same as 'descriptive': it means a pre-2026-09-08 server did not say, and must be treated as unknown. ENFORCED SHAPE: the two kinds are separate schemas, not one object with optional fields. A payload claiming kind == 'artifact_bound' without transaction_sha256, transaction_bytes and simulated is INVALID \u2014 previously it validated, because those fields were described as 'artifact_bound only' in prose and required nowhere, so the one field a consumer is told to gate execution on could be asserted without the evidence that gives it meaning (found by review 2026-09-11).",
+      "description": "What this verdict is BOUND to, and what it did not observe. This is the field that makes Graphite's central promise checkable rather than assumed: the thing it approved is the thing that gets signed and executed, and every security-relevant property of that thing was either independently verified or explicitly identified as unverified. `approved` alone does not say which half applies \u2014 a verdict describing caller-supplied metadata and one bound to real signed bytes are otherwise the same shape. An execution gate that can move funds should require kind == 'artifact_bound' rather than gating on `approved` alone. Required: the Core has emitted it on every verdict since 2026-09-08. A payload without it is not a valid v1 result and must be treated as unknown, never as 'descriptive'. ENFORCED SHAPE: the two kinds are separate schemas, not one object with optional fields. A payload claiming kind == 'artifact_bound' without transaction_sha256, transaction_bytes and simulated is INVALID \u2014 previously it validated, because those fields were described as 'artifact_bound only' in prose and required nowhere, so the one field a consumer is told to gate execution on could be asserted without the evidence that gives it meaning (found by review 2026-09-11).",
       "type": "object",
       "oneOf": [
         {
@@ -399,26 +474,77 @@
                 ]
               },
               "minItems": 1,
-              "description": "unobserved_codes[i] names unobserved[i]: same length, same order. The stable identifiers a consumer decides on. `program_semantics` and `inner_instructions` are inherent to every artifact-bound verdict; every other code names an observation that was possible and did not happen, and an execution-capable integration MUST NOT execute on a verdict carrying one it has not explicitly accepted (the SAK bridge's ResidualPolicy refuses them by default)."
+              "description": "unobserved_codes[i] names unobserved[i]: same length, same order. The stable identifiers a consumer decides on. `program_semantics` and `inner_instructions` are inherent to every artifact-bound verdict; every other code names an observation that was possible and did not happen, and an execution-capable integration MUST NOT execute on a verdict carrying one it has not explicitly accepted (the SAK bridge's ResidualPolicy refuses them by default). Same length as `unobserved`: JSON Schema cannot state that two arrays are equally long, so the SDK validators (validateVerificationResult, DecodeVerificationResult) enforce it."
             },
             "message_version": {
               "type": "string",
-              "enum": ["legacy", "v0", "v1"],
+              "enum": [
+                "legacy",
+                "v0",
+                "v1"
+              ],
               "description": "The message version the supplied bytes carry, read from them (Round 24). Absent when the bytes did not parse, and from servers before Round 24."
             },
             "compute_budget": {
               "type": "object",
               "description": "artifact_bound only, Round 21. What the transaction asks of the runtime's compute budget, read from its bytes: the v1 header, or the Compute Budget program's instructions for legacy and v0. Absent when the bytes could not be parsed. `priority_fee_lamports` is the priority fee the fee payer pays (at most this, when no limit is set); a request above the plausible-fee ceiling is refused with risk pattern ExcessivePriorityFee.",
-              "required": ["source", "effective_compute_unit_limit", "priority_fee_lamports"],
+              "required": [
+                "source",
+                "compute_unit_limit",
+                "effective_compute_unit_limit",
+                "priority_fee_lamports"
+              ],
               "properties": {
-                "source": {"type": "string", "enum": ["v1_header", "compute_budget_instructions"]},
-                "compute_unit_limit": {"type": ["integer", "null"], "minimum": 0},
-                "effective_compute_unit_limit": {"type": "integer", "minimum": 0},
-                "compute_unit_price_micro_lamports": {"type": ["integer", "null"], "minimum": 0},
-                "priority_fee_lamports": {"type": "integer", "minimum": 0},
-                "heap_bytes": {"type": ["integer", "null"], "minimum": 0},
-                "loaded_accounts_data_size_limit": {"type": ["integer", "null"], "minimum": 0},
-                "problems": {"type": "array", "items": {"type": "string"}, "description": "What the runtime would refuse: a duplicated or malformed Compute Budget instruction, a heap request outside its rules."}
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "v1_header",
+                    "compute_budget_instructions"
+                  ]
+                },
+                "compute_unit_limit": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "effective_compute_unit_limit": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "compute_unit_price_micro_lamports": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "priority_fee_lamports": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "heap_bytes": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "loaded_accounts_data_size_limit": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                },
+                "problems": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "What the runtime would refuse: a duplicated or malformed Compute Budget instruction, a heap request outside its rules."
+                }
               },
               "additionalProperties": false
             }
@@ -470,12 +596,44 @@
                 ]
               },
               "minItems": 1,
-              "description": "unobserved_codes[i] names unobserved[i]: same length, same order. The stable identifiers a consumer decides on. `program_semantics` and `inner_instructions` are inherent to every artifact-bound verdict; every other code names an observation that was possible and did not happen, and an execution-capable integration MUST NOT execute on a verdict carrying one it has not explicitly accepted (the SAK bridge's ResidualPolicy refuses them by default)."
+              "description": "unobserved_codes[i] names unobserved[i]: same length, same order. The stable identifiers a consumer decides on. `program_semantics` and `inner_instructions` are inherent to every artifact-bound verdict; every other code names an observation that was possible and did not happen, and an execution-capable integration MUST NOT execute on a verdict carrying one it has not explicitly accepted (the SAK bridge's ResidualPolicy refuses them by default). Same length as `unobserved`: JSON Schema cannot state that two arrays are equally long, so the SDK validators (validateVerificationResult, DecodeVerificationResult) enforce it."
             }
           },
           "additionalProperties": false
         }
       ]
+    }
+  },
+  "additionalProperties": false,
+  "if": {
+    "required": [
+      "approved"
+    ],
+    "properties": {
+      "approved": {
+        "const": true
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "risk_verdict": {
+        "properties": {
+          "status": {
+            "const": "Clear"
+          }
+        }
+      },
+      "policy_verdict": {
+        "const": "Approved"
+      }
+    }
+  },
+  "else": {
+    "properties": {
+      "policy_verdict": {
+        "const": "Rejected"
+      }
     }
   }
 }
