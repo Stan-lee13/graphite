@@ -16,6 +16,8 @@ fn rec(id: &str, approved: bool) -> AuditRecord {
         protocol_name: "system-program".to_string(),
         manifest_version: None,
         approved,
+        decision: None,
+        executable: None,
         confidence: 0.9,
         risk_status: "Clear".to_string(),
         policy_verdict: "Approved".to_string(),

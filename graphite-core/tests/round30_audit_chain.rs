@@ -61,6 +61,8 @@ fn rec(i: usize) -> AuditRecord {
         protocol_name: "system-program".into(),
         manifest_version: None,
         approved: true,
+        decision: None,
+        executable: None,
         confidence: 0.9,
         risk_status: "Clear".into(),
         policy_verdict: "Approved".into(),
