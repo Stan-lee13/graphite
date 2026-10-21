@@ -505,6 +505,7 @@ _SECRET_WORDS = re.compile(
     re.IGNORECASE,
 )
 _REDACTED = "[redacted: the text contained what looks like a private key or seed phrase]"
+_ASCII_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def _secret_material(text: str) -> bool:
@@ -518,11 +519,9 @@ def _unsafe_characters(text: str) -> Optional[Dict[str, Any]]:
     mix Latin with Cyrillic or Greek letters. Each can make a text read one
     way and parse another: "Ѕend" (a Cyrillic S) does not match "send", an
     RLO can reorder what is displayed, a zero-width space splits a number."""
-    if text.isascii():
+    if text.isascii() and not _ASCII_CONTROL.search(text):
         # Only C0 controls and DEL can be wrong in ASCII text.
-        bad = next((c for c in text if (c < " " and c not in "\t\n\r") or c == "\x7f"), None)
-        if bad is None:
-            return None
+        return None
     for ch in text:
         cat = unicodedata.category(ch)
         if cat == "Cf" or (cat == "Cc" and ch not in "\t\n\r"):
