@@ -1672,13 +1672,14 @@ fn build_holdout() -> (RegressionCorpus, Vec<Note>) {
     // environment); `scripts/fetch_real_fixtures.py` now keeps only
     // transactions with `meta.err == null` whose top-level instructions invoke
     // the target program.
-    for (json, prefer, label, label_source) in [(
-        JUP_MAINNET_JSON,
-        "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
-        "real-mainnet-jupiter",
-        "provenance: a successful (meta.err == null) mainnet Jupiter v6 swap by an ordinary \
-         wallet, slot 438012579 — benign, so approve",
-    )] {
+    {
+        let (json, prefer, label, label_source) = (
+            JUP_MAINNET_JSON,
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+            "real-mainnet-jupiter",
+            "provenance: a successful (meta.err == null) mainnet Jupiter v6 swap by an ordinary \
+             wallet, slot 438012579 — benign, so approve",
+        );
         let tx: serde_json::Value = serde_json::from_str(json).expect("mainnet fixture parses");
         assert!(
             tx["meta"]["err"].is_null(),

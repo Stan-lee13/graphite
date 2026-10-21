@@ -21,9 +21,12 @@ const SYSTEM: &str = "11111111111111111111111111111111";
 const RECENT_BLOCKHASHES: &str = "SysvarRecentB1ockHashes11111111111111111111";
 const RENT: &str = "SysvarRent111111111111111111111111111111111";
 
+/// One instruction's accounts as (writable, signer) pairs.
+type Flags = &'static [(bool, bool)];
+
 /// (name, tag, [(writable, signer)]) exactly as the runtime documents each
 /// instruction's accounts.
-const RUNTIME: &[(&str, &str, &[(bool, bool)])] = &[
+const RUNTIME: &[(&str, &str, Flags)] = &[
     ("CreateAccount", "00000000", &[(true, true), (true, true)]),
     ("Assign", "01000000", &[(true, true)]),
     ("Transfer", "02000000", &[(true, true), (true, false)]),
