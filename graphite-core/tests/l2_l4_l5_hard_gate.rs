@@ -127,6 +127,15 @@ fn l2_failed_blocks_approval_at_battle_tested_tier_and_tradingbot_threshold() {
     // fail L5 as well (external review R2) — either would hide whether L2's
     // hard gate or something else refused them.
     input.instruction_data = Some(vec![0x0b, 0x00, 0x00, 0x00, 1, 0, 0, 0, 0, 0, 0, 0]);
+    // TransferWithSeed takes three accounts (funding, base, recipient) since
+    // its manifest was corrected (audit 2026-10-20, MED-4); give it three, so
+    // the confidence is not lowered by a shortfall that has nothing to do
+    // with the L2 contradiction this test is about.
+    input.account_addresses = vec![
+        RECIPIENT.to_string(),
+        SIGNER.to_string(),
+        RECIPIENT.to_string(),
+    ];
 
     let result = core.verify(&input).unwrap();
 
