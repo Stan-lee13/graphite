@@ -1090,11 +1090,9 @@ mod tests {
         let signer_b58 = pubkey_b58(&signer);
         engine.register_reviewer(&signer_b58, 1000).unwrap();
 
-        let mut m = manifest(
-            "Prog1111111111111111111111111111111111",
-            "Ambiguous",
-            "v1.0",
-        );
+        // A valid program id: the registry runs the runtime's full validation
+        // (MR-5), which refuses a malformed id before reaching discriminators.
+        let mut m = manifest(NON_SEED, "Ambiguous", "v1.0");
         let mut second = m.instructions[0].clone();
         second.name = "SecondOp".to_string();
         second.discriminator = "0100".to_string(); // "01" is a proper prefix of "0100"
