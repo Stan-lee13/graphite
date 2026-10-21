@@ -274,6 +274,21 @@ pub enum RegistryAction {
         attestations: Vec<String>,
         corpus_dir: Option<PathBuf>,
     },
+    /// Revoke a reviewer (audit 2026-10-20, MR-6): the key no longer signs or
+    /// attests, and the graph tiers its attestations helped earn are
+    /// recomputed without it. Permanent.
+    RevokeReviewer {
+        state: Option<PathBuf>,
+        graph_state: Option<PathBuf>,
+        pubkey: String,
+    },
+    /// Retire one fixture of the registry's own regression corpus (audit
+    /// 2026-10-20, MR-1): a submission cannot drop a fixture the registry
+    /// holds, so an outdated one is retired here, by the operator.
+    DeprecateFixture {
+        state: Option<PathBuf>,
+        content_hash: String,
+    },
     /// Record a regression fixture for a program under a manifest that is not
     /// installed yet.
     ///
@@ -1071,7 +1086,10 @@ fn run_protocol(action: ProtocolAction) -> Result<(), Box<dyn std::error::Error>
             let earned = core.program_behavior(&program_id);
             match &earned {
                 Some(b) => {
-                    println!("  trust tier     {:?}   (earned)", b.trust_tier);
+                    println!(
+                        "  trust tier     {:?}   (computed from the graph's evidence; battle-tested volume is operator-asserted)",
+                        b.trust_tier
+                    );
                     println!(
                         "  evidence       battle-tested {} tx, community-verified {}, \
                          simulation matches {}, signed manifest {}",
@@ -2112,8 +2130,10 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 })?;
                 let signing = ed25519_dalek::SigningKey::from_bytes(&seed);
                 use ed25519_dalek::Signer;
-                let hash = submission.content_hash();
-                let sig = hex::encode(signing.sign(hash.as_bytes()).to_bytes());
+                // The domain-tagged message (audit 2026-10-20, MR-3), never the
+                // bare hash: a key that also signs anything else cannot be
+                // replayed into an attestation here.
+                let sig = hex::encode(signing.sign(&submission.signing_message()).to_bytes());
                 submission.signer_pubkey =
                     Some(bs58::encode(signing.verifying_key().to_bytes()).into_string());
                 submission.signature_hex = Some(sig);
@@ -2156,9 +2176,55 @@ fn run_registry(action: RegistryAction) -> Result<(), Box<dyn std::error::Error>
                 }
                 RegistryDecision::Rejected { reason } => {
                     println!("REJECTED — {reason}");
+                    // A refusal by the replay gate is recorded by the engine
+                    // (audit 2026-10-20, MR-2: a refused version is never
+                    // retaken), and it only holds if it is saved.
+                    save_registry(&engine, &state_path)?;
                     std::process::exit(1);
                 }
             }
+        }
+        RegistryAction::RevokeReviewer {
+            state,
+            graph_state,
+            pubkey,
+        } => {
+            let state_path = registry_state_path(state);
+            let graph_path = graph_state_path(graph_state);
+            let _registry_lock = lock_registry(&state_path)?;
+            let mut engine = load_registry(&state_path)?;
+            let mut store = load_graph(&graph_path)?;
+            let affected = engine.revoke_reviewer(&mut store, &pubkey)?;
+            save_registry(&engine, &state_path)?;
+            save_graph(&store, &graph_path)?;
+            println!(
+                "revoked reviewer {pubkey}; {affected} program tier(s) recomputed without its attestations (state: {}, graph: {})",
+                state_path.display(),
+                graph_path.display()
+            );
+            Ok(())
+        }
+        RegistryAction::DeprecateFixture {
+            state,
+            content_hash,
+        } => {
+            let state_path = registry_state_path(state);
+            let _registry_lock = lock_registry(&state_path)?;
+            let mut engine = load_registry(&state_path)?;
+            if !engine.deprecate_regression_fixture(content_hash.trim()) {
+                return Err(format!(
+                    "no fixture with content_hash {} in the registry's corpus",
+                    content_hash.trim()
+                )
+                .into());
+            }
+            save_registry(&engine, &state_path)?;
+            println!(
+                "fixture {} deprecated: it no longer counts toward the promotion gate (state: {})",
+                content_hash.trim(),
+                state_path.display()
+            );
+            Ok(())
         }
         RegistryAction::RecordFixture {
             corpus_dir,

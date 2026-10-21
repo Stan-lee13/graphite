@@ -4325,7 +4325,7 @@ fn top_protocols_limit(query: Option<&str>) -> Result<usize, String> {
 }
 
 /// Dashboard: the top protocols (5, or `?limit=` up to 500) by battle-tested
-/// volume (earned evidence, P7) plus verified observation count from the
+/// volume (operator-asserted evidence, P7) plus verified observation count from the
 /// audit log. Sorted descending by volume; ties broken deterministically by
 /// program id. `program_count` is how many programs there are in all.
 async fn top_protocols_handler(
@@ -5957,14 +5957,21 @@ mod tests {
     async fn dashboard_registry_returns_records_and_reviewers() {
         let (state, dir) = test_state();
         let mut engine = crate::manifest_registry::ManifestRegistryEngine::new();
-        engine.register_reviewer("reviewerPubkey1", 1000).unwrap();
+        // A real ed25519 key: the registry refuses anything else (MR-6).
+        let reviewer = bs58::encode(
+            ed25519_dalek::SigningKey::from_bytes(&[1u8; 32])
+                .verifying_key()
+                .to_bytes(),
+        )
+        .into_string();
+        engine.register_reviewer(&reviewer, 1000).unwrap();
         let mut state = state;
         state.registry_engine = Arc::new(engine);
         let app = build_app(state, vec![]);
         let (status, json) = get_json(&app, "/api/registry").await;
         assert_eq!(status, axum::http::StatusCode::OK);
         assert_eq!(json["record_count"], 0, "no submissions yet (read-only)");
-        assert_eq!(json["reviewers"][0]["pubkey"], "reviewerPubkey1");
+        assert_eq!(json["reviewers"][0]["pubkey"], reviewer.as_str());
         assert_eq!(json["reviewers"][0]["reputation_score"], 1000);
         let _ = dir;
     }

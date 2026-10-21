@@ -397,6 +397,28 @@ enum RegistryAction {
         #[arg(long)]
         corpus_dir: Option<PathBuf>,
     },
+    /// Revoke a reviewer: its signatures and attestations stop counting, and
+    /// the tiers they helped earn are recomputed (permanent)
+    RevokeReviewer {
+        /// Registry state file (default: registry_state.json)
+        #[arg(long)]
+        state: Option<PathBuf>,
+        /// Semantic Graph state file (default: graph_state.json)
+        #[arg(long)]
+        graph_state: Option<PathBuf>,
+        /// Reviewer Solana pubkey (base58)
+        #[arg(long)]
+        pubkey: String,
+    },
+    /// Retire one fixture of the registry's own regression corpus
+    DeprecateFixture {
+        /// Registry state file (default: registry_state.json)
+        #[arg(long)]
+        state: Option<PathBuf>,
+        /// The fixture's content_hash
+        #[arg(long)]
+        content_hash: String,
+    },
     /// Record a regression fixture under a manifest that is not installed yet
     ///
     /// The onboarding step the P10 gate requires: a brand-new program has no
@@ -549,6 +571,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                 })
             }
+            RegistryAction::RevokeReviewer {
+                state,
+                graph_state,
+                pubkey,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
+                action: graphite_core::cli::RegistryAction::RevokeReviewer {
+                    state,
+                    graph_state,
+                    pubkey,
+                },
+            }),
+            RegistryAction::DeprecateFixture {
+                state,
+                content_hash,
+            } => graphite_core::cli::run(graphite_core::cli::CliCommand::Registry {
+                action: graphite_core::cli::RegistryAction::DeprecateFixture {
+                    state,
+                    content_hash,
+                },
+            }),
             RegistryAction::RecordFixture {
                 corpus_dir,
                 manifest,

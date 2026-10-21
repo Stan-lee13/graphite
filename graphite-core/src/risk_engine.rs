@@ -900,22 +900,31 @@ fn assess_impl(
     }
 
     // P0 Check 10a: System-account impersonation (ISA) — a fund movement
-    // whose DESTINATION vanity-impersonates an official account.
+    // whose destination (four trailing '1's) or source (five) vanity-
+    // impersonates an official account.
     //
     // Grounding: SolPhishHunter (arXiv:2505.04094) documents this as a real
     // attack class — phishers grind addresses that end in a run of '1' chars
     // or start with "Compu" (e.g. `...DxbLhV11111`, `CompuV3LmCTW7AG...`) so
     // wallet UIs that truncate addresses display them as official system
     // accounts. See `detect_system_account_impersonation` for the threshold
-    // and why only the destination is judged.
+    // and for why the destination and the source are held to different
+    // thresholds and the signing authority to none.
     if let Some(impersonator) =
         detect_system_account_impersonation(&input.program_id, &discriminator, &input.accounts)
     {
+        let direction =
+            if fund_movement_destinations(&input.program_id, &discriminator, &input.accounts)
+                .contains(&&impersonator)
+            {
+                "to"
+            } else {
+                "from"
+            };
         return Ok(RiskVerdict::Blocked {
             pattern: RiskPattern::Impersonation,
             reason: format!(
-                "System-account impersonation: fund movement to {} whose address shape impersonates an official system account (vanity run of trailing 1s or Compu prefix)",
-                impersonator
+                "System-account impersonation: fund movement {direction} {impersonator} whose address shape impersonates an official system account (vanity run of trailing 1s or Compu prefix)"
             ),
         });
     }
@@ -1678,9 +1687,10 @@ fn detect_unspendable_counterparty(
 /// (`fixtures/mainnet/sample-2026-09-23-last-2-blocks.json`) and the pinned
 /// real transactions: no address there ends in four or more '1's except the
 /// official accounts listed above and a Jito read-only marker account, which
-/// is never a transfer destination. Only destinations are judged, so the
-/// residual false-positive rate is that ~1 in 11.3 million per transfer — and
-/// the error is a refusal, the safe direction.
+/// is never a transfer destination. The residual false-positive rate is that
+/// ~1 in 11.3 million per transfer for a destination (plus ~1 in 656 million
+/// for a source, see [`VANITY_SOURCE_TRAILING_ONES`]) — and the error is a
+/// refusal, the safe direction.
 const VANITY_TRAILING_ONES: usize = 4;
 
 /// Value sent to an address ground to resemble an official system account
@@ -1691,21 +1701,54 @@ const VANITY_TRAILING_ONES: usize = 4;
 /// 10b's unspendable destination, not an impersonation.
 ///
 /// Only fund movements are considered ([`is_fund_movement`]); non-fund
-/// instructions (assign, approve, mint, ...) have their own P0 checks. Only
-/// the DESTINATION is judged (see `fund_movement_destinations`).
+/// instructions (assign, approve, mint, ...) have their own P0 checks. The
+/// destination is judged at [`VANITY_TRAILING_ONES`], the source at
+/// [`VANITY_SOURCE_TRAILING_ONES`], the signing authority not at all.
 fn detect_system_account_impersonation(
     program_id: &str,
     discriminator: &str,
     accounts: &[String],
 ) -> Option<String> {
-    let vanity_suffix = "1".repeat(VANITY_TRAILING_ONES);
-    fund_movement_destinations(program_id, discriminator, accounts)
+    let impersonates = |acc: &&String, trailing_ones: usize| {
+        acc.len() >= 32 // not a plausible pubkey — ignore garbage inputs
+            && !UNSPENDABLE_ADDRESSES.contains(&acc.as_str())
+            && (acc.ends_with(&"1".repeat(trailing_ones)) || acc.starts_with("Compu"))
+    };
+    if let Some(destination) = fund_movement_destinations(program_id, discriminator, accounts)
         .into_iter()
-        .filter(|acc| acc.len() >= 32) // not a plausible pubkey — ignore garbage inputs
-        .filter(|acc| !UNSPENDABLE_ADDRESSES.contains(&acc.as_str()))
-        .find(|acc| acc.ends_with(&vanity_suffix) || acc.starts_with("Compu"))
+        .find(|acc| impersonates(acc, VANITY_TRAILING_ONES))
+    {
+        return Some(destination.clone());
+    }
+    fund_movement_source(program_id, discriminator, accounts)
+        .filter(|acc| impersonates(acc, VANITY_SOURCE_TRAILING_ONES))
         .cloned()
 }
+
+/// The account a fund movement takes value FROM, when the list reaches it.
+fn fund_movement_source<'a>(
+    program_id: &str,
+    discriminator: &str,
+    accounts: &'a [String],
+) -> Option<&'a String> {
+    let movement = crate::tx_pattern_analysis::value_movement(program_id, discriminator)?;
+    accounts.get(movement.source)
+}
+
+/// The SOURCE of a fund movement is held to the threshold every address was
+/// held to before the audit of 2026-10-20 (five trailing '1's), not to the
+/// destination's four.
+///
+/// R-4 stopped judging the source at all, so that a user sending from their
+/// own vanity wallet is not refused. That approved five documented
+/// address-poisoning transfers in the real holdout: sends FROM a phisher's
+/// ground vanity address TO a victim, which plant the look-alike in the
+/// victim's history. Graphite keeps refusing those. The cost is the one the
+/// pre-audit rule already carried, now only for a source with five or more
+/// trailing '1's (about one random address in 656 million) instead of every
+/// account in the list; the signing authority of an SPL transfer, and a
+/// source with four, are not judged.
+const VANITY_SOURCE_TRAILING_ONES: usize = 5;
 
 #[cfg(test)]
 mod tests {
@@ -1832,11 +1875,26 @@ mod tests {
         );
     }
 
-    /// Round 29 (R-4): the sender is not judged — a user's own wallet may end
-    /// in a run of '1's — and four trailing '1's on a DESTINATION are enough.
+    /// Round 29 (R-4): four trailing '1's on a DESTINATION are enough; the
+    /// signing authority is not judged; a SOURCE is held to the old five, so
+    /// a phisher's address-poisoning send from a ground vanity address is
+    /// still refused while a sender's ordinary four is not.
     #[test]
     fn impersonation_judges_the_destination_not_the_signing_wallet() {
         let vanity_wallet = "iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhV11111";
+        let four_ones_wallet = "iBGtY2LBEmTiVrmPCgHRGdCPZJcDEmmkDxbLhVc1111";
+        let v = assess(&input(
+            SYSTEM_PROGRAM_ID,
+            "02000000",
+            &[four_ones_wallet, WALLET_B],
+            "transfer",
+        ))
+        .unwrap();
+        assert_eq!(
+            v,
+            RiskVerdict::Passed,
+            "sending FROM a wallet that ends in four '1's"
+        );
         let v = assess(&input(
             SYSTEM_PROGRAM_ID,
             "02000000",
@@ -1845,9 +1903,9 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(
-            v,
-            RiskVerdict::Passed,
-            "sending FROM one's own vanity wallet"
+            pattern_of(&v),
+            Some(RiskPattern::Impersonation),
+            "an address-poisoning send from a five-'1' vanity source: {v:?}"
         );
         // SPL transfer [source, dest, authority]: an authority ending in 1s is
         // the signer, not a counterparty.

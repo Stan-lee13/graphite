@@ -14,7 +14,7 @@ use crate::confidence_engine::{
 use crate::manifest::{load_seed_manifests, ManifestRegistry};
 use crate::plugin_orchestrator::{LayerId, PluginContext, PluginVerdict};
 use crate::policy_engine::{evaluate_policy, PolicyInput, PolicyVerdict, WalletProfile};
-use crate::risk_engine::{assess_with_warnings, RiskAssessmentInput, RiskPattern, RiskVerdict};
+use crate::risk_engine::{assess_with_warnings_in, RiskAssessmentInput, RiskPattern, RiskVerdict};
 #[cfg(feature = "rpc")]
 use crate::rpc_client::SolanaRpcClient;
 use crate::semantic_graph_store::{Behavior, BehaviorEvidence, SemanticGraphStore};
@@ -4802,7 +4802,8 @@ impl GraphiteCore {
             );
         }
 
-        match Self::intent_describes_instruction(
+        match Self::intent_describes_instruction_in(
+            &self.registry,
             &proposed_intent.intent_type,
             program_id,
             instruction_name,
@@ -4821,6 +4822,48 @@ impl GraphiteCore {
     /// honest agent could declare for an instruction (the mainnet conformance
     /// harness) ask the same function rather than a copy of it.
     pub fn intent_describes_instruction(
+        intent_type: &str,
+        program_id: &str,
+        instruction_name: &str,
+        security_class: &str,
+        expected_state_changes: &[String],
+    ) -> Result<String, String> {
+        Self::intent_describes_instruction_with(
+            &|program, intent| crate::risk_engine::program_supports_intent(program, intent),
+            intent_type,
+            program_id,
+            instruction_name,
+            security_class,
+            expected_state_changes,
+        )
+    }
+
+    /// `intent_describes_instruction` judged against `registry` rather than
+    /// the seed manifests alone (audit 2026-10-20, R-8): a community manifest
+    /// tagged `swap` serves the swap intent in L5 exactly as it does in the
+    /// Risk Engine's Check 9.
+    pub fn intent_describes_instruction_in(
+        registry: &ManifestRegistry,
+        intent_type: &str,
+        program_id: &str,
+        instruction_name: &str,
+        security_class: &str,
+        expected_state_changes: &[String],
+    ) -> Result<String, String> {
+        Self::intent_describes_instruction_with(
+            &|program, intent| {
+                crate::risk_engine::program_supports_intent_in(registry, program, intent)
+            },
+            intent_type,
+            program_id,
+            instruction_name,
+            security_class,
+            expected_state_changes,
+        )
+    }
+
+    fn intent_describes_instruction_with(
+        program_supports_intent: &dyn Fn(&str, &str) -> bool,
         intent_type: &str,
         program_id: &str,
         instruction_name: &str,
@@ -4897,7 +4940,7 @@ impl GraphiteCore {
         // enough: a `stake` intent declares the `transfer` class (a liquid
         // staking deposit is one), and without this a System Transfer would
         // pass L5 as a stake.
-        if !crate::risk_engine::program_supports_intent(program_id, intent) {
+        if !program_supports_intent(program_id, intent) {
             return Err(format!(
                     "a '{raw_intent}' intent does not describe {instruction_name}: program {program_id} does not serve that intent"
                 ),
@@ -5105,7 +5148,7 @@ impl GraphiteCore {
     ///     would otherwise fire: "account creation but declared intent is
     ///     swap").
     ///   - An empty intent naturally no-ops every intent-DEPENDENT check
-    ///     (6a/6b/7/8/9 in risk_engine.rs — each requires a non-empty,
+    ///     (6a/6b/8/9/9b in risk_engine.rs — each requires a non-empty,
     ///     MISMATCHED intent to fire), so secondary instructions never trip
     ///     those false-positive-prone gates.
     ///   - Every intent-INDEPENDENT structural check stays fully active: the
@@ -5114,7 +5157,7 @@ impl GraphiteCore {
     ///     CloseAccount), the CPI checks (1/1b/4), the drainer/hidden-
     ///     transfer heuristics (3/3b/5), and system-account impersonation
     ///     (Check 10a).
-    ///   - Check 10b ("manifest declares this instruction's class as
+    ///   - Check 10 ("manifest declares this instruction's class as
     ///     one of `manifest::HIGH_RISK_CLASSES` and NO intent was declared —
     ///     fail closed") is DELIBERATELY activated by the empty intent for
     ///     every secondary instruction: the agent's declaration never
@@ -5323,7 +5366,8 @@ impl GraphiteCore {
                     .and_then(|m| m.instruction_for(&ix.instruction_discriminator))
                     .filter(|def| def.security_class().is_empty())
                 {
-                    if let Err(why) = Self::intent_describes_instruction(
+                    if let Err(why) = Self::intent_describes_instruction_in(
+                        &self.registry,
                         declared_intent,
                         &ix.program_id,
                         &def.name,
@@ -5394,7 +5438,7 @@ impl GraphiteCore {
                     && is_token_close(&ix.program_id, &ix.instruction_discriminator),
                 ..ix_input
             };
-            let detail = assess_with_warnings(&ix_input)?;
+            let detail = assess_with_warnings_in(&ix_input, &self.registry)?;
             warnings.extend(
                 detail
                     .warnings
@@ -6452,26 +6496,29 @@ impl GraphiteCore {
             }
             _ => None,
         };
-        let risk_detail = assess_with_warnings(&RiskAssessmentInput {
-            writable_extra_accounts,
-            verified_self_refund_close: primary_instruction_index
-                .is_some_and(|p| closes.refunding.contains(&p)),
-            program_id: input.program_id.clone(),
-            accounts: input.account_addresses.clone(),
-            cpi_targets: input.cpi_targets.clone(),
-            expected_state_changes: risk_expected_state_changes.clone(),
-            allowed_cpis: allowed_cpis.clone(),
-            instruction_discriminator: risk_discriminator.clone(),
-            expected_account_count,
-            variable_accounts,
-            proposed_intent_type: input.proposed_intent.intent_type.clone(),
-            extracted_output_token: input
-                .proposed_intent
-                .extracted_parameters
-                .as_ref()
-                .and_then(|p| p.output_token.clone()),
-            manifest_risk_class: manifest_risk_class.clone(),
-        })?;
+        let risk_detail = assess_with_warnings_in(
+            &RiskAssessmentInput {
+                writable_extra_accounts,
+                verified_self_refund_close: primary_instruction_index
+                    .is_some_and(|p| closes.refunding.contains(&p)),
+                program_id: input.program_id.clone(),
+                accounts: input.account_addresses.clone(),
+                cpi_targets: input.cpi_targets.clone(),
+                expected_state_changes: risk_expected_state_changes.clone(),
+                allowed_cpis: allowed_cpis.clone(),
+                instruction_discriminator: risk_discriminator.clone(),
+                expected_account_count,
+                variable_accounts,
+                proposed_intent_type: input.proposed_intent.intent_type.clone(),
+                extracted_output_token: input
+                    .proposed_intent
+                    .extracted_parameters
+                    .as_ref()
+                    .and_then(|p| p.output_token.clone()),
+                manifest_risk_class: manifest_risk_class.clone(),
+            },
+            &self.registry,
+        )?;
         // `assess_with_warnings` returns non-blocking warnings (e.g. an
         // out-of-manifest CPI on a known protocol) alongside the binary verdict.
         // These are surfaced in the L7 layer report and the summary below so the
@@ -8011,25 +8058,28 @@ impl GraphiteCore {
                 if undeclared.is_empty() {
                     (risk_summary, risk_warnings)
                 } else {
-                    let detail = assess_with_warnings(&RiskAssessmentInput {
-                        verified_self_refund_close: false,
-                        writable_extra_accounts: None,
-                        program_id: input.program_id.clone(),
-                        accounts: input.account_addresses.clone(),
-                        cpi_targets: undeclared.clone(),
-                        expected_state_changes: risk_expected_state_changes.clone(),
-                        allowed_cpis: allowed_cpis.clone(),
-                        instruction_discriminator: risk_discriminator.clone(),
-                        expected_account_count,
-                        variable_accounts,
-                        proposed_intent_type: input.proposed_intent.intent_type.clone(),
-                        extracted_output_token: input
-                            .proposed_intent
-                            .extracted_parameters
-                            .as_ref()
-                            .and_then(|p| p.output_token.clone()),
-                        manifest_risk_class: manifest_risk_class.clone(),
-                    })?;
+                    let detail = assess_with_warnings_in(
+                        &RiskAssessmentInput {
+                            verified_self_refund_close: false,
+                            writable_extra_accounts: None,
+                            program_id: input.program_id.clone(),
+                            accounts: input.account_addresses.clone(),
+                            cpi_targets: undeclared.clone(),
+                            expected_state_changes: risk_expected_state_changes.clone(),
+                            allowed_cpis: allowed_cpis.clone(),
+                            instruction_discriminator: risk_discriminator.clone(),
+                            expected_account_count,
+                            variable_accounts,
+                            proposed_intent_type: input.proposed_intent.intent_type.clone(),
+                            extracted_output_token: input
+                                .proposed_intent
+                                .extracted_parameters
+                                .as_ref()
+                                .and_then(|p| p.output_token.clone()),
+                            manifest_risk_class: manifest_risk_class.clone(),
+                        },
+                        &self.registry,
+                    )?;
                     risk_warnings.push(format!(
                         "the simulator observed CPI target(s) the request did not declare: {} — judged by the same rules as a declaration",
                         undeclared.join(", ")
@@ -8105,6 +8155,44 @@ impl GraphiteCore {
                 _ => risk_summary,
             };
             (risk_summary, risk_warnings)
+        };
+
+        // Audit 2026-10-20 (R-5): the compositional-drain rule on what the
+        // simulator executed, with multiplicity. The undeclared callees above
+        // reach the Risk Engine sorted and deduplicated, so its "a program
+        // revisited three times" rule could never fire on an observed CPI,
+        // and its "five or more distinct" count could be split between the
+        // declaration and the undeclared remainder. Every node of the
+        // observed call tree under the primary is counted here, repeats kept,
+        // together with what was declared.
+        #[cfg(feature = "rpc")]
+        let risk_summary = match &observed_cpi_tree {
+            Some(tree) if !tree.children.is_empty() => {
+                let mut executed: Vec<String> = Vec::new();
+                let mut stack: Vec<&crate::tx_pattern_analysis::CpiTraceNode> =
+                    tree.children.iter().collect();
+                while let Some(node) = stack.pop() {
+                    executed.push(node.program_id.clone());
+                    stack.extend(node.children.iter());
+                }
+                match crate::risk_engine::compositional_drain_in_execution(
+                    &input.program_id,
+                    &input.cpi_targets,
+                    &executed,
+                ) {
+                    Some(RiskVerdict::Blocked { pattern, reason }) => {
+                        let mut summary = risk_summary;
+                        summary.status = "Blocked".to_string();
+                        summary.findings.push(RiskFinding {
+                            pattern: format!("{pattern:?}"),
+                            reason: format!("observed CPI execution: {reason}"),
+                        });
+                        summary
+                    }
+                    _ => risk_summary,
+                }
+            }
+            _ => risk_summary,
         };
 
         // W14 (external review, verified 2026-10-03): what each OTHER
