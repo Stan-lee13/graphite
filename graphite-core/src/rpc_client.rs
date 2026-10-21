@@ -234,6 +234,16 @@ pub fn simulation_result_from_value_for_test(
     parse_simulation_value(value)
 }
 
+/// Test seam for the account-object parser, for the same reason as the
+/// simulation seam above: the coverage-guided fuzzer (`fuzz/`, Round 30)
+/// drives it with hostile shapes no live RPC can be made to send.
+pub fn account_from_value_for_test(
+    pubkey: &str,
+    value: &serde_json::Value,
+) -> Result<Option<AccountState>, RpcError> {
+    parse_account_value(pubkey, value)
+}
+
 /// Decode a `simulateTransaction` `result.value` object.
 ///
 /// Shared by the plain simulate call and the state-diff one so the two can

@@ -85,5 +85,6 @@ pub use verification::{
 pub mod server;
 
 pub mod benchmark;
+pub mod release_eval;
 #[cfg(feature = "cli")]
 pub mod cli;

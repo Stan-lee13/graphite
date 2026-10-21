@@ -158,7 +158,13 @@ pub enum CliCommand {
     Manifests,
     /// List wallet policy profiles and their thresholds.
     Profiles,
-    Benchmark,
+    /// The hand-built benchmark, or with `json` the release evaluation over
+    /// every committed labelled input (`release_eval`).
+    Benchmark {
+        json: bool,
+        /// The `graphite-core` directory holding the committed inputs.
+        root: Option<PathBuf>,
+    },
     /// Replay a regression corpus and enforce the P10 promotion gate.
     /// Exits 0 on PROMOTE, 1 on BLOCK (usable as a CI gate).
     Regression {
@@ -422,6 +428,16 @@ fn data_dir_path(explicit: Option<PathBuf>) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("graphite-data"))
 }
 
+/// Where `graphite benchmark --json` finds the committed inputs when no
+/// `--root` is given: the current directory if it is `graphite-core`, its
+/// `graphite-core` child if it is the repository root.
+fn release_eval_root() -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    [cwd.clone(), cwd.join("graphite-core")]
+        .into_iter()
+        .find(|dir| dir.join(crate::release_eval::CORPUS_DIR).is_dir())
+}
+
 pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         CliCommand::Verify { input, profile } => {
@@ -502,8 +518,19 @@ pub fn run(command: CliCommand) -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
-        CliCommand::Benchmark => {
+        CliCommand::Benchmark { json: false, .. } => {
             crate::benchmark::run_benchmark();
+            Ok(())
+        }
+        CliCommand::Benchmark { json: true, root } => {
+            let root = match root {
+                Some(root) => root,
+                None => release_eval_root().ok_or(
+                    "cannot find the committed inputs (fixtures/corpus): run from graphite-core or the repository root, or pass --root",
+                )?,
+            };
+            let report = crate::release_eval::evaluate(&root)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
         CliCommand::Regression { corpus_dir } => {

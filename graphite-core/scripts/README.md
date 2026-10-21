@@ -57,3 +57,13 @@ and the "transaction versions in the same sample" line is the 80-block census's 
 `fetch_onchain_idls.py` fetches a program's own on-chain Anchor IDL. The older
 `fetch_idl.py` and its `verified_idls.json` output were removed in Round 29: the script
 derived the IDL address with a wrong on-curve test and its output was empty.
+
+## Assurance (Round 30)
+
+| Tool | What it does |
+|---|---|
+| `mutation_floor.py` | Reads the outcomes file a `cargo mutants` run writes and fails below a mutation-score floor (caught + timeout over tested; unviable excluded; an empty run fails). The weekly job in `.github/workflows/assurance.yml` runs it. |
+| `../fuzz/make_seeds.py` | Regenerates the committed fuzz seed corpora in `fuzz/seeds/` from the committed mainnet blocks, the shipped manifests and hand-built valid layouts. |
+
+The release evaluation is not a script: `graphite benchmark --json` (`src/release_eval.rs`)
+scores every committed labelled input per split, and `tests/release_evaluation.rs` pins it.

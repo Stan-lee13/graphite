@@ -1,0 +1,172 @@
+name: Assurance
+
+# Round 30 (roadmap R-P11, R-P12, R-P15): continuous assurance beside the CI
+# gate. Coverage-guided fuzzing of the parsers that read untrusted bytes, the
+# mutation score of the security-critical modules, and a line-coverage floor.
+#
+# - Every pull request touching the core runs a SHORT, DETERMINISTIC fuzz
+#   smoke of every target (fixed seed, fixed run count from the committed
+#   seeds), so a parser change that panics or breaks an invariant fails here.
+# - The schedule runs every target for 30 minutes, the mutation tests and the
+#   coverage measurement. A crash is uploaded as an artifact and fails the run.
+on:
+  pull_request:
+    paths:
+      - "graphite-core/**"
+      - ".github/workflows/assurance.yml"
+  schedule:
+    # Daily: long fuzz runs and the coverage floor.
+    - cron: "17 3 * * *"
+    # Weekly (Sunday): the mutation tests, which take hours.
+    - cron: "41 4 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The nightly cargo-fuzz needs, pinned to a dated release so the
+  # instrumentation does not change under a run.
+  FUZZ_TOOLCHAIN: nightly-2026-10-21
+  CARGO_FUZZ_VERSION: 0.13.2
+  CARGO_MUTANTS_VERSION: 27.1.0
+  CARGO_LLVM_COV_VERSION: 0.9.1
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    if: github.event_name != 'schedule' || github.event.schedule == '17 3 * * *'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - parse_transaction
+          - lookup_table
+          - manifest_json
+          - token_extensions
+          - state_diff
+          - rpc_json
+    defaults:
+      run:
+        working-directory: graphite-core/fuzz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch, 2026-09-12
+        with:
+          toolchain: ${{ env.FUZZ_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: graphite-core/fuzz
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked --version "$CARGO_FUZZ_VERSION"
+      - name: Build
+        run: cargo +"$FUZZ_TOOLCHAIN" fuzz build -O "${{ matrix.target }}"
+      # Pull requests: deterministic. A fixed seed and a fixed number of runs
+      # from the committed seeds give the same inputs on every run, so a red
+      # result reproduces locally with the same command.
+      - name: Smoke (deterministic)
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p "corpus/${{ matrix.target }}"
+          cargo +"$FUZZ_TOOLCHAIN" fuzz run -O "${{ matrix.target }}" \
+            "corpus/${{ matrix.target }}" "seeds/${{ matrix.target }}" -- \
+            -seed=20261021 -runs=200000 -max_len=4096
+      - name: Long run
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p "corpus/${{ matrix.target }}"
+          cargo +"$FUZZ_TOOLCHAIN" fuzz run -O "${{ matrix.target }}" \
+            "corpus/${{ matrix.target }}" "seeds/${{ matrix.target }}" -- \
+            -max_total_time=1800 -max_len=4096
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: graphite-core/fuzz/artifacts/${{ matrix.target }}
+          retention-days: 30
+
+  mutants:
+    name: Mutation tests (security-critical modules)
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '41 4 * * 0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: graphite-core
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch, 2026-09-12
+        with:
+          toolchain: 1.98.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: graphite-core
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked --version "$CARGO_MUTANTS_VERSION"
+      - name: Mutate
+        # A mutant is "caught" when ANY test in the crate fails on it, not
+        # only the module's own. cargo-mutants exits non-zero when a mutant
+        # is missed; the floor step below is what judges the run, from the
+        # outcomes file, so that exit is recorded rather than fatal here.
+        run: |
+          set +e
+          cargo mutants --no-shuffle --timeout-multiplier 3 --jobs 2 \
+            --file src/risk_engine.rs --file src/state_diff.rs \
+            --file src/tx_artifact.rs --file src/simulation_integrity.rs \
+            --cargo-test-arg=--release
+          echo "cargo-mutants exit: $?"
+      - name: Enforce the mutation-score floor
+        run: python3 scripts/mutation_floor.py mutants.out/outcomes.json MUTATION_FLOOR
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants-out
+          path: graphite-core/mutants.out
+          retention-days: 30
+
+  coverage:
+    name: Line coverage floor
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 3 * * *'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: graphite-core
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch, 2026-09-12
+        with:
+          toolchain: 1.98.1
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: graphite-core
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked --version "$CARGO_LLVM_COV_VERSION"
+      - name: Measure, and fail below the floor
+        # The floor is the measured line coverage of the library when this
+        # job was added, rounded down (see the Round 30 report). It only ever
+        # moves up.
+        run: |
+          cargo llvm-cov --release --all-features --lib --tests \
+            --fail-under-lines 70 --summary-only --json --output-path coverage.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: graphite-core/coverage.json
+          retention-days: 30
