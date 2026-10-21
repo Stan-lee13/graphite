@@ -120,15 +120,24 @@ fn a_non_seed_manifest_still_loads() {
 
 /// A registry built from scratch (no seed set) has no protected programs, so
 /// the rule cannot accidentally block a caller managing their own registry.
+///
+/// Round 29 (audit 2026-10-20, M-2): replacing its own entry is an explicit
+/// call (`replace_from_json`). A second LOAD for the same program is refused
+/// — it used to replace the first silently.
 #[test]
 fn a_registry_without_a_seed_set_has_no_protected_programs() {
     let mut registry = ManifestRegistry::new();
     registry
         .load_from_json(&manifest_for(SPL_TOKEN, "First"))
         .expect("first load into an empty registry");
+    assert!(matches!(
+        registry.load_from_json(&manifest_for(SPL_TOKEN, "Second")),
+        Err(ManifestError::AlreadyLoaded(_))
+    ));
+    assert_eq!(registry.get(SPL_TOKEN).unwrap().protocol.name, "First");
     registry
-        .load_from_json(&manifest_for(SPL_TOKEN, "Second"))
-        .expect("a self-managed registry may replace its own entries");
+        .replace_from_json(&manifest_for(SPL_TOKEN, "Second"))
+        .expect("a self-managed registry may replace its own entries explicitly");
     assert_eq!(registry.get(SPL_TOKEN).unwrap().protocol.name, "Second");
 }
 
@@ -226,10 +235,12 @@ fn an_empty_discriminator_loads_only_as_the_sole_instruction() {
 /// validator nothing passes is not a validator.
 #[test]
 fn every_shipped_seed_manifest_satisfies_the_stricter_validation() {
-    // load_seed_manifests aborts the process on any validation failure, so
-    // reaching this point at all proves the whole seed set passes. Assert the
-    // set is non-trivial so the test cannot pass vacuously.
-    let registry = load_seed_manifests();
+    // try_load_seed_manifests returns the first seed that fails validation
+    // (load_seed_manifests panics with it), so an Ok here proves the whole
+    // seed set passes. Assert the set is non-trivial so the test cannot pass
+    // vacuously.
+    let registry = graphite_core::manifest::try_load_seed_manifests()
+        .expect("every shipped seed manifest passes the runtime validation");
     assert!(
         registry.list().len() >= 30,
         "expected the full seed set to load under the stricter validation, got {}",

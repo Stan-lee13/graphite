@@ -115,7 +115,11 @@ pub struct ResolvedAccount {
 /// `is_writable`, which are manifest-declared EXPECTATIONS, not
 /// observations — this is the ground truth to check those expectations
 /// against.
+///
+/// Unknown fields are refused (Round 29, audit 2026-10-20, F4): `isSigner`
+/// (camel case) was dropped and the field read as missing.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct RealAccountMeta {
     pub is_signer: bool,
     pub is_writable: bool,
@@ -296,11 +300,26 @@ pub fn resolve_accounts(
                                     }
                                     r.pda_seeds.clone()
                                 }
+                                // Round 29 (audit 2026-10-20, A-1): a seed set the
+                                // runtime cannot derive from — a seed past 32 bytes,
+                                // which an open-ended `{instruction_data}` template
+                                // can produce on a long request — is the same
+                                // fact as a template this request cannot satisfy:
+                                // the slot's identity is not established. It was a
+                                // hard `Err` that aborted the whole verification
+                                // while the unsatisfiable template next to it was
+                                // a flagged slot with a reason; both are now the
+                                // flagged slot, so the verdict refuses and says why.
                                 Err(e) => {
-                                    return Err(AccountResolutionError::PdaDerivationFailed {
-                                        account: pk.to_base58(),
-                                        reason: e.to_string(),
-                                    })
+                                    pda_mismatches.push(i);
+                                    unresolvable_seed_templates.push((
+                                        i,
+                                        format!(
+                                            "seed templates {:?}: PDA derivation failed: {e}",
+                                            r.pda_seeds
+                                        ),
+                                    ));
+                                    r.pda_seeds.clone()
                                 }
                             }
                         }
@@ -532,9 +551,9 @@ fn resolve_pda_seed_template(
             },
             other => match other.strip_prefix("account_") {
                 Some(idx) => {
-                    let index: usize = idx
-                        .parse()
-                        .map_err(|_| format!("account index {idx:?} is not an unsigned integer"))?;
+                    let index = parse_decimal(idx).ok_or_else(|| {
+                        format!("account index {idx:?} is not an unsigned integer")
+                    })?;
                     match pubkeys.get(index) {
                         Some(pk) => pk.as_bytes().to_vec(),
                         None => {
@@ -569,8 +588,7 @@ fn resolve_pda_seed_template(
 /// data cannot supply.
 fn slice_template(source: &[u8], range: &[&str]) -> Result<Vec<u8>, String> {
     let parse = |v: &str, what: &str| -> Result<usize, String> {
-        v.parse::<usize>()
-            .map_err(|_| format!("range {what} {v:?} is not an unsigned integer"))
+        parse_decimal(v).ok_or_else(|| format!("range {what} {v:?} is not an unsigned integer"))
     };
     match range {
         [] => Ok(source.to_vec()),
@@ -600,9 +618,64 @@ fn slice_template(source: &[u8], range: &[&str]) -> Result<Vec<u8>, String> {
     }
 }
 
+/// A decimal index or offset: one or more ASCII digits and nothing else.
+///
+/// Round 29 (audit 2026-10-20, M-4): `str::parse::<usize>` accepts a leading
+/// `+`, so `{account_+1}` parsed as account 1 here while the load-time check
+/// in `manifest.rs` — which read the digits after `account_` and found none —
+/// skipped its index checks entirely: the self-reference and past-the-list
+/// rules never ran for it. One strict reading for both.
+pub(crate) fn parse_decimal(v: &str) -> Option<usize> {
+    if v.is_empty() || !v.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    v.parse().ok()
+}
+
+/// Whether a template's length depends on the request: the whole instruction
+/// data, or the data from an offset to its end. Every other template has a
+/// length fixed by the template itself.
+fn is_open_ended(seed: &str) -> bool {
+    match seed
+        .strip_prefix("{instruction_data")
+        .and_then(|r| r.strip_suffix('}'))
+    {
+        Some(rest) => rest.is_empty() || rest.matches(':').count() == 1,
+        None => false,
+    }
+}
+
+/// Validate one account slot's whole seed list: every template
+/// ([`validate_seed_template`]) and the runtime's seed-count limit — at most
+/// `MAX_SEEDS - 1` seeds, because the bump is the last of the runtime's
+/// `MAX_SEEDS` (Round 29, audit 2026-10-20, M-3: a slot with sixteen seeds
+/// loaded and could never derive).
+pub fn validate_seed_templates(seeds: &[String]) -> Result<(), String> {
+    if seeds.len() >= solana_types::MAX_SEEDS {
+        return Err(format!(
+            "{} seeds plus the bump exceed the runtime's {} — no address can be derived",
+            seeds.len(),
+            solana_types::MAX_SEEDS
+        ));
+    }
+    for seed in seeds {
+        validate_seed_template(seed).map_err(|reason| format!("seed {seed:?}: {reason}"))?;
+    }
+    Ok(())
+}
+
 /// Validate one seed template against the grammar alone, without a request.
 /// Used by `manifest.rs::validate` so a malformed template is refused at
 /// load rather than at the first verification that reaches it.
+///
+/// Round 29 (audit 2026-10-20, M-3): also against the runtime's PDA limits.
+/// A template whose length is fixed by the template — a literal, `0x` bytes,
+/// a closed `{instruction_data:a:b}` range — and exceeds the runtime's
+/// 32-byte seed bound (`solana_types::MAX_SEED_LEN`) can never derive an
+/// address, so no program can have one; it loaded, and every verification
+/// that reached it failed. An open-ended `{instruction_data}` or
+/// `{instruction_data:a}` depends on the request and is judged there: a
+/// request that makes it too long gets a flagged slot with the reason (A-1).
 pub fn validate_seed_template(seed: &str) -> Result<(), String> {
     // A throwaway request that satisfies every index the grammar allows:
     // 256 accounts and 1232 bytes of data (the packet bound). What survives
@@ -618,7 +691,15 @@ pub fn validate_seed_template(seed: &str) -> Result<(), String> {
         real_account_metas: vec![],
         fee_payer: None,
     };
-    resolve_pda_seed_template(seed, &input, &program_pk, &pubkeys).map(|_| ())
+    let bytes = resolve_pda_seed_template(seed, &input, &program_pk, &pubkeys)?;
+    if !is_open_ended(seed) && bytes.len() > solana_types::MAX_SEED_LEN {
+        return Err(format!(
+            "the seed is {} bytes; the runtime's limit is {} bytes per seed, so no address can be derived from it",
+            bytes.len(),
+            solana_types::MAX_SEED_LEN
+        ));
+    }
+    Ok(())
 }
 
 /// Derive a PDA from seeds (public API for external use).
@@ -871,6 +952,59 @@ mod tests {
     const DEADBEEF_PDA: &str = "EyRyjhh8yQDgt7R2CZ4admNJgCaganGp1kwi8eCghZnP";
     /// Seeds [b"prefix", 0xdeadbeef] under DATA_SEED_PROGRAM:
     const PREFIX_DEADBEEF_PDA: &str = "UnoGavuCdb13po8gKXpjdj6833NHsw4vXHoi8aq7W71";
+
+    /// Round 29 (A-1): an open-ended data template that the request makes
+    /// longer than the runtime's 32-byte seed bound is a flagged slot with a
+    /// reason — the same answer as any other identity that cannot be
+    /// re-derived — not an error that aborts the verification.
+    #[test]
+    fn a_seed_the_runtime_cannot_derive_from_is_a_flagged_slot_not_an_error() {
+        let result = resolve_data_seeded(
+            DATA_SEED_PROGRAM,
+            &["{instruction_data}"],
+            vec![7u8; 40],
+            DEADBEEF_PDA,
+        );
+        assert!(result.resolved_accounts[1].pda_mismatch);
+        let (slot, reason) = &result.unresolvable_seed_templates[0];
+        assert_eq!(*slot, 1);
+        assert!(reason.contains("PDA derivation failed"), "{reason}");
+    }
+
+    /// Round 29 (M-3, M-4): templates the runtime could never derive from,
+    /// and an index the strict parser refuses, are refused at load.
+    #[test]
+    fn templates_past_the_runtime_limits_are_refused() {
+        let long_literal = "a".repeat(33);
+        let long_hex = format!("0x{}", "ab".repeat(33));
+        for bad in [
+            long_literal.as_str(),
+            long_hex.as_str(),
+            "{instruction_data:0:100}",
+            "{account_+1}",
+            "{account_1:+0:4}",
+            "{instruction_data:+2}",
+        ] {
+            assert!(validate_seed_template(bad).is_err(), "{bad:?}");
+        }
+        for ok in [
+            "a".repeat(32).as_str(),
+            "{instruction_data}",
+            "{instruction_data:4}",
+            "{instruction_data:0:32}",
+            "{account_1:0:4}",
+            "{program_id}",
+        ] {
+            assert!(validate_seed_template(ok).is_ok(), "{ok:?}");
+        }
+        let fifteen: Vec<String> = (0..15).map(|i| format!("s{i}")).collect();
+        assert!(validate_seed_templates(&fifteen).is_ok());
+        let sixteen: Vec<String> = (0..16).map(|i| format!("s{i}")).collect();
+        assert!(validate_seed_templates(&sixteen).is_err());
+        assert_eq!(parse_decimal("+1"), None);
+        assert_eq!(parse_decimal(""), None);
+        assert_eq!(parse_decimal("012"), Some(12));
+    }
 
     /// The `{instruction_data:start:end}` slice template must extract the
     /// EXACT bytes the manifest declares and derive the correct PDA — the

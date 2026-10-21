@@ -24,7 +24,13 @@
 use serde::{Deserialize, Serialize};
 
 /// A single compiled instruction inside a Solana transaction message.
+///
+/// Unknown fields are refused (Round 29, audit 2026-10-20, F4): a typo'd
+/// `account_address` or `cpi_target` used to deserialize as an EMPTY list —
+/// no accounts for the sweep rules to correlate, no CPIs for Check 1 to judge
+/// — instead of an error.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct TransactionInstruction {
     pub program_id: String,
     #[serde(default)]
@@ -41,7 +47,11 @@ pub struct TransactionInstruction {
 ///
 /// `depth == 0` is the root (the instruction being verified); each child is
 /// one Cross-Program Invocation made by its parent, in order.
+///
+/// Unknown fields are refused (Round 29, F4): a typo'd `child` dropped a whole
+/// subtree from every trace rule without a word.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct CpiTraceNode {
     pub program_id: String,
     #[serde(default)]
@@ -1566,6 +1576,34 @@ mod tests {
                 .contains(&format!("unknown program {SYSTEM_PROGRAM} at depth 6"))),
             "{findings:?}"
         );
+    }
+
+    /// Round 29 (F4): request types refuse fields they do not define, so a
+    /// typo is an error instead of an empty list.
+    #[test]
+    fn request_types_refuse_unknown_fields() {
+        assert!(serde_json::from_str::<TransactionInstruction>(
+            r#"{"program_id":"p","account_address":["a"]}"#
+        )
+        .is_err());
+        assert!(serde_json::from_str::<TransactionInstruction>(
+            r#"{"program_id":"p","account_addresses":["a"]}"#
+        )
+        .is_ok());
+        assert!(
+            serde_json::from_str::<CpiTraceNode>(r#"{"program_id":"p","depth":0,"child":[]}"#)
+                .is_err()
+        );
+        assert!(
+            serde_json::from_str::<crate::account_resolution::RealAccountMeta>(
+                r#"{"is_signer":true,"is_writable":false,"isSigner":true}"#
+            )
+            .is_err()
+        );
+        assert!(serde_json::from_str::<crate::semantic_graph_store::BehaviorEvidence>(
+            r#"{"has_signed_manifest":true,"community_verified_count":0,"battle_tested_tx_count":0,"simulation_match_count":0,"battle_tested":5}"#
+        )
+        .is_err());
     }
 
     /// Round 29 (R-3): one value-movement table, read through the shared

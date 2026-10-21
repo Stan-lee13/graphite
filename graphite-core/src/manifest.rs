@@ -38,10 +38,28 @@ pub enum ManifestError {
     /// signature/reputation/regression gates in `manifest_registry.rs`.
     #[error("refusing to replace shipped seed manifest for program {0}: seed manifests are the audited trust anchor and are immutable at runtime (community manifests must go through the registry's review gate)")]
     SeedManifestImmutable(String),
+    /// A runtime-loaded manifest is already registered for this program.
+    ///
+    /// Round 29 (audit 2026-10-20, M-2): `load_from_json` / `load_manifest`
+    /// replaced an existing non-seed manifest without saying so — loading a
+    /// second document for a program silently redefined its instruction
+    /// surface. Replacement is now a separate, explicit call
+    /// ([`ManifestRegistry::replace_manifest`]); loading refuses.
+    #[error("a manifest for program {0} is already loaded; replacing it is an explicit operation (ManifestRegistry::replace_manifest), never a side effect of loading")]
+    AlreadyLoaded(String),
 }
 
 /// A single instruction definition in a protocol manifest.
+///
+/// Round 29 (audit 2026-10-20, M-6): every manifest struct refuses a field it
+/// does not define (`deny_unknown_fields`). Serde dropped unknown keys, so a
+/// typo — `risk-class`, `allowed_cpi`, `pda_seed` — loaded as the field's
+/// DEFAULT: no class, no CPIs, no PDA check, each the permissive reading. The
+/// fields the shipped manifests use beyond the runtime's own were found by
+/// reading every key of every `protocols/*.json` at every level and are
+/// declared explicitly (see [`ProtocolInfo`] and [`ProtocolManifest`]).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct InstructionDef {
     pub name: String,
     /// Hex-encoded discriminator bytes (e.g., "02000000" for System Transfer).
@@ -146,8 +164,19 @@ pub const HIGH_RISK_CLASSES: &[&str] =
 /// empty class means the manifest does not say what the instruction does;
 /// only a swap (whose routes are unclassed, Jupiter's among them, and whose
 /// programs Check 9 restricts to swap programs) and a revoke (which L5 also
-/// holds to the instruction's name) declare it. `approve` declares no class:
-/// every delegate grant is an `authority_change`, refused under any intent.
+/// holds to the instruction's name) declare it.
+///
+/// `approve` declares NO class, on purpose (Round 29, audit 2026-10-20: the
+/// audit observed an approve intent can never pass L5, and that is the
+/// design). A delegate grant is a hand-over — its security class is
+/// `authority_change` (`names_a_delegation_grant`, the `authority` tag) —
+/// and the Risk Engine refuses every SPL / Token-2022 `Approve` and
+/// `ApproveChecked` under any intent (Check 2). The vocabulary RECOGNISES
+/// `approve` (Check 9 accepts it on the token programs, so the refusal names
+/// the delegate grant rather than an unknown word), and nothing can be
+/// VERIFIED as one: an agent wallet granting a delegate is never what Graphite
+/// approves. The explicit empty entry says so rather than leaving `approve`
+/// to fall outside the table.
 pub const INTENT_DECLARES: &[(&str, &[&str])] = &[
     ("transfer", &["transfer"]),
     ("swap", &["transfer", ""]),
@@ -503,8 +532,9 @@ impl InstructionDef {
     }
 }
 
-/// Account role in an instruction.
+/// Account role in an instruction. Unknown fields are refused (M-6).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct AccountRoleDef {
     pub name: String,
     pub role: String, // "signer" | "writable" | "readonly" | "pda"
@@ -545,7 +575,12 @@ pub struct AccountRoleDef {
 }
 
 /// A protocol manifest — describes one Solana program's instruction surface.
+///
+/// Read through [`ProtocolManifestDoc`], which refuses unknown fields (M-6)
+/// and accepts the documentation-only `verification` block the shipped
+/// manifests carry.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(from = "ProtocolManifestDoc")]
 pub struct ProtocolManifest {
     pub graphite_manifest_version: String,
     pub protocol: ProtocolInfo,
@@ -555,7 +590,59 @@ pub struct ProtocolManifest {
     pub trust_tier: String,
 }
 
+/// The manifest document as written (Round 29, audit 2026-10-20, M-6): every
+/// field [`ProtocolManifest`] has, plus the documentation-only `verification`
+/// block, and nothing else.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProtocolManifestDoc {
+    graphite_manifest_version: String,
+    protocol: ProtocolInfo,
+    version: ManifestVersion,
+    instructions: Vec<InstructionDef>,
+    #[serde(default)]
+    trust_tier: String,
+    /// How the manifest's program id and discriminators were checked (eleven
+    /// shipped manifests carry it). Provenance for a human reviewer; read by
+    /// no rule, and not kept on the parsed manifest.
+    #[serde(default)]
+    #[allow(dead_code)]
+    verification: Option<ManifestVerificationDoc>,
+}
+
+/// The `verification` provenance block of a manifest document. Its fields are
+/// the ones the shipped manifests use; any other is refused.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct ManifestVerificationDoc {
+    #[serde(default)]
+    program_id_verified_on_chain: Option<bool>,
+    #[serde(default)]
+    program_id_source: Option<String>,
+    #[serde(default)]
+    discriminators_source: Option<String>,
+    #[serde(default)]
+    verified_at: Option<String>,
+    #[serde(default)]
+    notes: Option<String>,
+}
+
+impl From<ProtocolManifestDoc> for ProtocolManifest {
+    fn from(d: ProtocolManifestDoc) -> Self {
+        Self {
+            graphite_manifest_version: d.graphite_manifest_version,
+            protocol: d.protocol,
+            version: d.version,
+            instructions: d.instructions,
+            trust_tier: d.trust_tier,
+        }
+    }
+}
+
+/// Read through [`ProtocolInfoDoc`], which refuses unknown fields (M-6).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(from = "ProtocolInfoDoc")]
 pub struct ProtocolInfo {
     pub name: String,
     pub program_id: String,
@@ -571,7 +658,55 @@ pub struct ProtocolInfo {
     pub category: String,
 }
 
+/// The `protocol` block as written (M-6): [`ProtocolInfo`]'s fields plus the
+/// documentation-only ones the shipped manifests use, and nothing else.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProtocolInfoDoc {
+    name: String,
+    program_id: String,
+    #[serde(default)]
+    website: String,
+    #[serde(default)]
+    github: String,
+    #[serde(default)]
+    category: String,
+    /// A note for a human reviewer. Read by no rule.
+    #[serde(default)]
+    #[allow(dead_code)]
+    note: Option<String>,
+    /// Where the instruction surface was taken from (an IDL URL). Read by
+    /// no rule.
+    #[serde(default)]
+    #[allow(dead_code)]
+    idl_source: Option<String>,
+    /// `true`: the ecosystem has moved to another program for this purpose
+    /// (`legacy-memo-program.json`: the legacy SPL Memo, superseded by
+    /// `Memo4c2p…`). The program is still deployed and executable, and
+    /// Graphite verifies a call to it exactly like a call to any other
+    /// manifested program — the flag documents the program's status for a
+    /// reviewer and changes no verdict (Round 29, audit 2026-10-20: it was
+    /// accepted with no stated meaning; this is its meaning).
+    #[serde(default)]
+    #[allow(dead_code)]
+    superseded: bool,
+}
+
+impl From<ProtocolInfoDoc> for ProtocolInfo {
+    fn from(d: ProtocolInfoDoc) -> Self {
+        Self {
+            name: d.name,
+            program_id: d.program_id,
+            website: d.website,
+            github: d.github,
+            category: d.category,
+        }
+    }
+}
+
+/// A manifest's version and lineage. Unknown fields are refused (M-6).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ManifestVersion {
     pub label: String,
     #[serde(default)]
@@ -604,38 +739,80 @@ impl ManifestRegistry {
         Self::default()
     }
 
-    /// Load a manifest from JSON.
+    /// Load a manifest from JSON for a program that has none yet. See
+    /// [`Self::load_manifest`].
     pub fn load_from_json(&mut self, json: &str) -> Result<&ProtocolManifest, ManifestError> {
         let manifest: ProtocolManifest = serde_json::from_str(json)?;
         self.load_manifest(manifest)
     }
 
-    /// Load an already-parsed manifest. Same validation and same seed-wins
-    /// rule as `load_from_json`; separate so the seed loader can clamp a
-    /// declared trust tier to the evidence before the manifest is inserted.
+    /// Load an already-parsed manifest for a program that has none yet.
+    ///
+    /// Validated exactly as a seed manifest is ([`validate_manifest`]); a
+    /// program that already has a manifest is refused — a seed one
+    /// ([`ManifestError::SeedManifestImmutable`]) or a runtime-loaded one
+    /// ([`ManifestError::AlreadyLoaded`]; replacing it is
+    /// [`Self::replace_manifest`]). The declared tier is clamped to what a
+    /// document can support ([`clamp_unmeasured_tier`]).
+    ///
+    /// Round 29 (audit 2026-10-20, M-2): this replaced an existing non-seed
+    /// manifest silently and kept whatever tier the document declared — the
+    /// clamp ran for community and candidate manifests but not here.
     pub fn load_manifest(
         &mut self,
         manifest: ProtocolManifest,
     ) -> Result<&ProtocolManifest, ManifestError> {
-        self.validate(&manifest)?;
+        let key = manifest.protocol.program_id.clone();
+        if self.manifests.contains_key(&key) && !self.seed_program_ids.contains(&key) {
+            validate_manifest(&manifest)?;
+            return Err(ManifestError::AlreadyLoaded(key));
+        }
+        self.replace_manifest(manifest)
+    }
+
+    /// Replace a runtime-loaded manifest, or load one for a program that has
+    /// none — the EXPLICIT replacement [`Self::load_manifest`] refuses to do
+    /// as a side effect (M-2). A seed program's manifest is still never
+    /// replaced ([`ManifestError::SeedManifestImmutable`]), and the
+    /// replacement is validated and tier-clamped exactly as a load is.
+    pub fn replace_manifest(
+        &mut self,
+        mut manifest: ProtocolManifest,
+    ) -> Result<&ProtocolManifest, ManifestError> {
+        validate_manifest(&manifest)?;
         let key = manifest.protocol.program_id.clone();
         // Seed manifests are the audited trust anchor and are immutable at
         // runtime — see `ManifestError::SeedManifestImmutable`. This mirrors
-        // the seed-wins rule `merge_community` already enforced; the gap was
-        // that this entry point did not.
+        // the seed-wins rule `merge_community` already enforced.
         if self.seed_program_ids.contains(&key) {
             return Err(ManifestError::SeedManifestImmutable(key));
         }
+        clamp_unmeasured_tier(&mut manifest);
         self.manifests.insert(key.clone(), manifest);
-        // Safe: attempt to retrieve the manifest we just inserted; return a
-        // meaningful error if retrieval fails instead of panicking.
-        match self.manifests.get(&key) {
-            Some(m) => Ok(m),
-            None => Err(ManifestError::Invalid(format!(
-                "manifest insertion failed for key {}",
-                key
-            ))),
+        self.manifests.get(&key).ok_or_else(|| {
+            ManifestError::Invalid(format!("manifest insertion failed for key {key}"))
+        })
+    }
+
+    /// [`Self::replace_manifest`] from JSON.
+    pub fn replace_from_json(&mut self, json: &str) -> Result<&ProtocolManifest, ManifestError> {
+        let manifest: ProtocolManifest = serde_json::from_str(json)?;
+        self.replace_manifest(manifest)
+    }
+
+    /// Insert one shipped seed manifest: validated like any other, but its
+    /// tier is the one the seed loader settled against the evidence, not
+    /// clamped (a measured `BattleTested` seed keeps it).
+    fn load_seed(&mut self, manifest: ProtocolManifest) -> Result<(), ManifestError> {
+        validate_manifest(&manifest)?;
+        let key = manifest.protocol.program_id.clone();
+        if self.manifests.contains_key(&key) {
+            return Err(ManifestError::Invalid(format!(
+                "two shipped seed manifests describe program {key}"
+            )));
         }
+        self.manifests.insert(key, manifest);
+        Ok(())
     }
 
     /// Get a manifest by program ID (base58 string).
@@ -724,6 +901,22 @@ impl ManifestRegistry {
     }
 
     fn validate(&self, manifest: &ProtocolManifest) -> Result<(), ManifestError> {
+        validate_manifest(manifest)
+    }
+
+    /// Mark every currently-loaded manifest as a shipped seed, making them
+    /// immutable to `load_from_json`. Called once by `load_seed_manifests`.
+    fn freeze_as_seed_set(&mut self) {
+        self.seed_program_ids = self.manifests.keys().cloned().collect();
+    }
+}
+
+/// The runtime's manifest validation — every rule a manifest must satisfy to
+/// be loaded, seed or not. The one validator: the community registry runs it
+/// on every submission too (Round 29, audit 2026-10-20, MR-5), so a reviewer
+/// can never accept a manifest the runtime would refuse to load.
+pub fn validate_manifest(manifest: &ProtocolManifest) -> Result<(), ManifestError> {
+    {
         if manifest.protocol.program_id.is_empty() {
             return Err(ManifestError::Invalid("program_id is empty".into()));
         }
@@ -790,20 +983,27 @@ impl ManifestRegistry {
             // derived PDAs nobody authored. An `{account_N}` index must also
             // name a declared slot of the SAME instruction, and a byte range
             // on an account key must fit in 32 bytes.
+            //
+            // Round 29 (audit 2026-10-20, M-3, M-4): the slot's seed list is
+            // also held to the runtime's PDA limits (at most fifteen seeds
+            // beside the bump, at most 32 bytes per fixed-length seed), and
+            // an index is digits only — `{account_+1}` used to pass the
+            // grammar and skip the index checks below, which read no digits
+            // after `account_` and so never ran.
             for layout in ix.all_layouts() {
                 for (slot, a) in layout.iter().enumerate() {
-                    for seed in &a.pda_seeds {
-                        if let Err(reason) = crate::account_resolution::validate_seed_template(seed)
-                        {
-                            return Err(ManifestError::Invalid(format!(
-                            "instruction '{}' account {slot} has an unsupported PDA seed template {seed:?}: {reason}",
+                    if let Err(reason) =
+                        crate::account_resolution::validate_seed_templates(&a.pda_seeds)
+                    {
+                        return Err(ManifestError::Invalid(format!(
+                            "instruction '{}' account {slot} has an unsupported PDA seed list: {reason}",
                             ix.name
                         )));
-                        }
+                    }
+                    for seed in &a.pda_seeds {
                         if let Some(rest) = seed.strip_prefix("{account_") {
-                            let idx_str: String =
-                                rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-                            if let Ok(idx) = idx_str.parse::<usize>() {
+                            let idx_str = rest.split([':', '}']).next().unwrap_or_default();
+                            if let Some(idx) = crate::account_resolution::parse_decimal(idx_str) {
                                 // A slot whose address is derived from its own
                                 // address can only be a fixed point of the
                                 // derivation: every real call fails it (A3-08,
@@ -893,12 +1093,6 @@ impl ManifestRegistry {
             }
         }
         Ok(())
-    }
-
-    /// Mark every currently-loaded manifest as a shipped seed, making them
-    /// immutable to `load_from_json`. Called once by `load_seed_manifests`.
-    fn freeze_as_seed_set(&mut self) {
-        self.seed_program_ids = self.manifests.keys().cloned().collect();
     }
 }
 
@@ -1127,11 +1321,16 @@ pub const BATTLE_TESTED_EVIDENCE: &str = include_str!("../protocols/battle_teste
 /// The bar a shipped manifest must clear to DECLARE `BattleTested`.
 ///
 /// `MIN_SUCCESSFUL_TRANSACTIONS` is the same 1,000 that
-/// `semantic_graph_store::thresholds::BATTLE_TESTED_TX` requires of evidence
-/// the node earns at runtime — the declaration is held to the bar the engine
-/// applies to itself. The decode rate is the part a transaction count cannot
-/// show: that the manifest actually names the instructions the program is
-/// being asked to run, rather than describing a surface that has drifted.
+/// `semantic_graph_store::thresholds::BATTLE_TESTED_TX` requires of a
+/// program's graph evidence — evidence that is OPERATOR-ASSERTED (seeded by an
+/// operator; nothing in the pipeline increments `battle_tested_tx_count`;
+/// audit 2026-10-20, G-2). The decode rate is the part a transaction count
+/// cannot show: that the manifest actually names the instructions the program
+/// is being asked to run, rather than describing a surface that has drifted.
+///
+/// Clearing the bar changes what the manifest DISPLAYS, not any verdict: the
+/// verdict path caps manifest tiers at `OfficialManifest` (see
+/// [`try_load_seed_manifests`], M-1).
 pub mod battle_tested_bar {
     pub const MIN_SUCCESSFUL_TRANSACTIONS: u64 = 1_000;
     pub const MIN_DECODED_INSTRUCTIONS: u64 = 20;
@@ -1144,14 +1343,37 @@ pub mod battle_tested_bar {
 /// short, is simply absent from the set, and the seed loader then refuses to
 /// let that manifest claim the tier.
 pub fn battle_tested_programs() -> std::collections::BTreeSet<String> {
-    let doc: serde_json::Value = match serde_json::from_str(BATTLE_TESTED_EVIDENCE) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(error = %e, "battle_tested_evidence.json is not valid JSON — refusing to start with unverifiable trust tiers");
-            std::process::exit(1);
-        }
-    };
-    qualifying_programs(&doc)
+    try_battle_tested_programs().unwrap_or_else(|e| shipped_data_unusable(e))
+}
+
+/// [`battle_tested_programs`], returning the error instead of stopping.
+pub fn try_battle_tested_programs() -> Result<std::collections::BTreeSet<String>, ManifestError> {
+    let doc: serde_json::Value = serde_json::from_str(BATTLE_TESTED_EVIDENCE).map_err(|e| {
+        ManifestError::Invalid(format!(
+            "battle_tested_evidence.json is not valid JSON ({e}) — trust tiers cannot be checked against it"
+        ))
+    })?;
+    Ok(qualifying_programs(&doc))
+}
+
+/// The one place a failure of the data COMPILED INTO this crate stops the
+/// process (Round 29, audit 2026-10-20, M-5).
+///
+/// `load_seed_manifests` and `battle_tested_programs` called
+/// `std::process::exit(1)` on a seed that did not parse or validate — from
+/// library code, so an embedding application was terminated without unwinding,
+/// without running its destructors, and with no error it could catch. The
+/// condition is still fatal — the seeds are the audited trust anchor, and
+/// running without them is running in a weakened, unknown state — but it is
+/// a panic with the reason, which an embedder can see, catch or let abort, and
+/// callers that want an error use [`try_load_seed_manifests`] /
+/// [`try_battle_tested_programs`]. The seed files are `include_str!`'d, so this
+/// can only fire on a broken build, and the seed-loading tests run it on every
+/// build.
+#[cold]
+fn shipped_data_unusable(e: ManifestError) -> ! {
+    tracing::error!(error = %e, "the seed manifests compiled into this build are unusable");
+    panic!("graphite: the seed manifests compiled into this build are unusable — refusing to run without the audited trust anchor: {e}")
 }
 
 /// The gate itself, over any evidence document — the part the tests drive
@@ -1183,25 +1405,40 @@ pub fn qualifying_programs(doc: &serde_json::Value) -> std::collections::BTreeSe
 
 /// Load the built-in seed protocol manifests.
 /// These are embedded at compile time - no file system access needed.
+///
+/// Fail-closed: a seed that does not parse or validate panics with the reason
+/// (see `shipped_data_unusable`) rather than run in a weakened,
+/// unknown-protocol state. [`try_load_seed_manifests`] returns the error.
 pub fn load_seed_manifests() -> ManifestRegistry {
+    try_load_seed_manifests().unwrap_or_else(|e| shipped_data_unusable(e))
+}
+
+/// [`load_seed_manifests`], returning the first failing seed's error instead
+/// of stopping (M-5).
+pub fn try_load_seed_manifests() -> Result<ManifestRegistry, ManifestError> {
     let mut registry = ManifestRegistry::new();
-    let earned = battle_tested_programs();
-    // Fail-closed: if one fails to parse or validate, log the error and abort
-    // with a non-zero exit rather than run in a weakened, unknown-protocol
-    // state.
+    let earned = try_battle_tested_programs()?;
     for (name, body) in SEED_MANIFESTS {
-        let mut manifest: ProtocolManifest = match serde_json::from_str(body) {
-            Ok(m) => m,
-            Err(e) => {
-                tracing::error!(manifest = %name, error = %e, "Failed to parse seed manifest");
-                std::process::exit(1);
-            }
-        };
+        let mut manifest: ProtocolManifest = serde_json::from_str(body)
+            .map_err(|e| ManifestError::Invalid(format!("seed manifest {name}: {e}")))?;
         // P7, applied to the shipped trust anchor: a tier is computed from
         // evidence, never asserted by whoever wrote the document — and a seed
         // manifest is still a document. `BattleTested` without a measurement
         // that clears the bar is lowered to `OfficialManifest`, which is what
         // a hand-written manifest alone can support.
+        //
+        // What a seed's `BattleTested` buys, exactly (M-1): DISPLAY. The tier
+        // shows in `graph_snapshot`, `graphite protocol` and the dashboard.
+        // The verdict path does not read it above `OfficialManifest` —
+        // `verification.rs` caps every MANIFEST tier at `OfficialManifest`
+        // when it computes the confidence ceiling, so a seed's measured
+        // `BattleTested` never lifts a verdict. The cap is deliberate and
+        // stays: the measurement behind it counts transactions that MENTION
+        // the program and decode against the manifest, which is evidence
+        // the manifest describes the program, not that a given request is
+        // safe. A verdict above `OfficialManifest` comes only from the
+        // Semantic Graph tier (`max(graph, manifest)` in verification.rs),
+        // never from a manifest's declaration.
         if manifest.trust_tier == "BattleTested" && !earned.contains(&manifest.protocol.program_id)
         {
             tracing::warn!(
@@ -1211,14 +1448,13 @@ pub fn load_seed_manifests() -> ManifestRegistry {
             );
             manifest.trust_tier = "OfficialManifest".to_string();
         }
-        if let Err(e) = registry.load_manifest(manifest) {
-            tracing::error!(manifest = %name, error = %e, "Failed to load seed manifest");
-            std::process::exit(1);
-        }
+        registry
+            .load_seed(manifest)
+            .map_err(|e| ManifestError::Invalid(format!("seed manifest {name}: {e}")))?;
     }
 
     registry.freeze_as_seed_set();
-    registry
+    Ok(registry)
 }
 
 /// A manifest that is not a measured seed cannot declare a tier above
@@ -1226,11 +1462,12 @@ pub fn load_seed_manifests() -> ManifestRegistry {
 ///
 /// The seed loader already lowers an unearned `BattleTested` against
 /// `battle_tested_evidence.json`; community and candidate manifests skipped
-/// that and kept whatever they declared. The verdict never
-/// used it — manifest tiers are capped at `OfficialManifest` on the verdict
-/// path — but `graph_snapshot` and `graphite protocol` showed it, and an
-/// operator reads those. A tier is computed from evidence (P7); a string in a
-/// submission is not evidence.
+/// that and kept whatever they declared, and so did a manifest loaded with
+/// `load_from_json` until Round 29 (M-2). The verdict never used it —
+/// `verification.rs` caps every manifest tier at `OfficialManifest` on the
+/// verdict path — but `graph_snapshot` and `graphite protocol` showed it, and
+/// an operator reads those. A tier is computed from evidence (P7); a string in
+/// a document is not evidence.
 fn clamp_unmeasured_tier(manifest: &mut ProtocolManifest) {
     const ABOVE_OFFICIAL: [&str; 3] = ["SimulationValidated", "CommunityVerified", "BattleTested"];
     if ABOVE_OFFICIAL.contains(&manifest.trust_tier.as_str()) {
@@ -1472,7 +1709,124 @@ mod tests {
     fn test_seed_manifests_load_successfully() {
         let registry = load_seed_manifests();
         let manifests = registry.list();
-        assert!(manifests.len() >= 10, "expected at least 2 seed manifests");
+        assert!(manifests.len() >= 10, "expected at least 10 seed manifests");
+        // M-5: the fallible loader is the one the panicking one wraps.
+        assert_eq!(
+            try_load_seed_manifests().expect("seeds load").list().len(),
+            manifests.len()
+        );
+    }
+
+    const NON_SEED: &str = "GdP9U5aYx7f2kQzVwNmT8jRcL4hB6eX3sDnWqA1uMoH";
+
+    fn doc(protocol_extra: &str, top_extra: &str, ix_extra: &str, acct_extra: &str) -> String {
+        format!(
+            r#"{{"graphite_manifest_version":"1.0",
+            "protocol":{{"name":"T","program_id":"{NON_SEED}"{protocol_extra}}},
+            "version":{{"label":"1.0"}},
+            "instructions":[{{"name":"x","discriminator":"01",
+              "accounts":[{{"name":"a","role":"signer","is_signer":true,"is_writable":true,"pda_seeds":[]{acct_extra}}}],
+              "expected_state_changes":[],"allowed_cpis":[],"risk_rules":[]{ix_extra}}}],
+            "trust_tier":"OfficialManifest"{top_extra}}}"#
+        )
+    }
+
+    /// Round 29 (M-6): an unknown field is refused at every level, and the
+    /// documentation fields the shipped manifests use are accepted.
+    #[test]
+    fn unknown_manifest_fields_are_refused_and_documented_ones_accepted() {
+        let load = |json: String| ManifestRegistry::new().load_from_json(&json).map(|_| ());
+        assert!(load(doc("", "", "", "")).is_ok());
+        for (p, t, i, a) in [
+            (r#","descripton":"typo""#, "", "", ""),
+            ("", r#","trust":"BattleTested""#, "", ""),
+            ("", "", r#","risk-class":"drain""#, ""),
+            ("", "", "", r#","pda_seed":["x"]"#),
+        ] {
+            let json = doc(p, t, i, a);
+            assert!(
+                matches!(load(json.clone()), Err(ManifestError::Json(_))),
+                "{p}{t}{i}{a} must be refused"
+            );
+        }
+        let version_typo = doc("", "", "", "").replace(
+            r#""version":{"label":"1.0"}"#,
+            r#""version":{"label":"1.0","previous":"0.9"}"#,
+        );
+        assert!(load(version_typo).is_err());
+        // The shipped documentation fields.
+        assert!(load(doc(
+            r#","note":"n","idl_source":"https://x","superseded":true"#,
+            r#","verification":{"program_id_verified_on_chain":true,"program_id_source":"s","discriminators_source":"d","verified_at":"2026","notes":"n"}"#,
+            "",
+            ""
+        ))
+        .is_ok());
+        assert!(load(doc("", r#","verification":{"verified_by":"me"}"#, "", "")).is_err());
+    }
+
+    /// Round 29 (M-2): loading never replaces silently; replacing is explicit
+    /// and clamps the declared tier, as loading does.
+    #[test]
+    fn loading_refuses_to_replace_and_replacement_is_explicit() {
+        let mut r = ManifestRegistry::new();
+        let first = doc("", "", "", "").replace(
+            r#""trust_tier":"OfficialManifest""#,
+            r#""trust_tier":"BattleTested""#,
+        );
+        r.load_from_json(&first).expect("first load");
+        assert_eq!(
+            r.get(NON_SEED).unwrap().trust_tier,
+            "OfficialManifest",
+            "a document's BattleTested is clamped on load"
+        );
+        let second = doc("", "", "", "").replace(r#""name":"T""#, r#""name":"Second""#);
+        assert!(matches!(
+            r.load_from_json(&second),
+            Err(ManifestError::AlreadyLoaded(_))
+        ));
+        assert_eq!(r.get(NON_SEED).unwrap().protocol.name, "T");
+        r.replace_from_json(&second).expect("explicit replacement");
+        assert_eq!(r.get(NON_SEED).unwrap().protocol.name, "Second");
+        // A seed is never replaced, either way.
+        let mut seeds = load_seed_manifests();
+        let spl = second.replace(NON_SEED, "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+        assert!(matches!(
+            seeds.replace_from_json(&spl),
+            Err(ManifestError::SeedManifestImmutable(_))
+        ));
+    }
+
+    /// Round 29 (M-3, M-4): the loader holds seed lists to the runtime's PDA
+    /// limits and reads an account index as digits only.
+    #[test]
+    fn seed_lists_past_runtime_limits_are_refused_at_load() {
+        let with_seeds = |seeds: &[String]| {
+            let seeds = serde_json::to_string(seeds).unwrap();
+            format!(
+                r#"{{"graphite_manifest_version":"1.0","protocol":{{"name":"T","program_id":"{NON_SEED}"}},"version":{{"label":"1.0"}},"instructions":[{{"name":"x","discriminator":"01","accounts":[{{"name":"pda","role":"pda","is_signer":false,"is_writable":false,"pda_seeds":{seeds}}},{{"name":"a","role":"a","is_signer":false,"is_writable":false,"pda_seeds":[]}}],"expected_state_changes":[],"allowed_cpis":[],"risk_rules":[]}}]}}"#
+            )
+        };
+        let load = |seeds: Vec<String>| {
+            ManifestRegistry::new()
+                .load_from_json(&with_seeds(&seeds))
+                .map(|_| ())
+        };
+        assert!(load(vec!["a".repeat(32)]).is_ok());
+        assert!(load(vec!["a".repeat(33)]).is_err(), "literal past 32 bytes");
+        assert!(load(vec!["{instruction_data:0:100}".into()]).is_err());
+        assert!(load((0..15).map(|i| format!("s{i}")).collect()).is_ok());
+        assert!(
+            load((0..16).map(|i| format!("s{i}")).collect()).is_err(),
+            "16 seeds"
+        );
+        // `{account_+1}` names slot 1 — a declared slot — but it is not
+        // digits, and `{account_+0}` would have been a self-derivation the
+        // index check never saw.
+        assert!(load(vec!["{account_+1}".into()]).is_err());
+        assert!(load(vec!["{account_+0}".into()]).is_err());
+        assert!(load(vec!["{account_1}".into()]).is_ok());
+        assert!(load(vec!["{account_0}".into()]).is_err(), "self-derivation");
     }
 
     #[test]
@@ -1551,9 +1905,9 @@ mod tests {
     fn manifest_category_aligns_with_swap_set() {
         // Maintainability contract (P1D): every manifest tagged "swap" must
         // be in the risk engine's canonical swap set, and every swap-set
-        // program must carry the category in its manifest. Adding a swap
-        // protocol = tag the manifest + extend `is_swap_program` — the sync
-        // test catches drift in either direction.
+        // program must carry the category in its manifest. `is_swap_program`
+        // reads the tag, so adding a swap protocol = tagging its manifest;
+        // this pins that the reading and the canonical venues agree.
         let registry = load_seed_manifests();
         let tagged: Vec<String> = registry
             .list()
@@ -2486,6 +2840,8 @@ mod tests {
         assert!(registry
             .load_from_json(&base("https://example.org"))
             .is_ok());
+        // A fresh registry: loading the same program twice is refused (M-2).
+        let mut registry = ManifestRegistry::new();
         assert!(registry.load_from_json(&base("")).is_ok());
         let mut registry = ManifestRegistry::new();
         let err = registry
