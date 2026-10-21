@@ -11,7 +11,23 @@ export type IntentType =
   | "close" | "close_account"
   | "create" | "create_account"
   | "approve" | "revoke"
+  // Round 30: these describe only the instructions a grounded grant names
+  // (graphite-core/src/intent_grants.rs), when the transaction's accounts
+  // show the operation is the signer's own; anything else is refused.
+  | "withdraw" | "redeem" | "remove_liquidity" | "decrease_liquidity"
+  | "claim" | "claim_fees" | "claim_rewards" | "collect_fees" | "harvest"
+  | "burn"
+  | "configure" | "update_config"
   | "unknown";
+
+/** Every `IntentType`, in the order of `schemas/proposed-intent-v1.json`. */
+export const INTENT_TYPES: readonly IntentType[] = [
+  "swap", "trade", "exchange", "transfer", "send", "stake", "delegate",
+  "close", "close_account", "create", "create_account", "approve", "revoke",
+  "withdraw", "redeem", "remove_liquidity", "decrease_liquidity",
+  "claim", "claim_fees", "claim_rewards", "collect_fees", "harvest",
+  "burn", "configure", "update_config", "unknown",
+];
 
 export interface ExtractedParameters {
   input_token?: string;

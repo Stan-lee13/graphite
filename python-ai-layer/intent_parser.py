@@ -53,7 +53,15 @@ from typing import Dict, Any, List, Optional, Tuple
 # closed ("Unknown intent type"), which is safe but not useful; so the
 # labeler only emits these, plus "unknown" as the honest fallback.
 # ---------------------------------------------------------------------------
-CORE_INTENTS = ("swap", "transfer", "stake", "close", "create", "approve", "revoke")
+#
+# Round 30 (roadmap R-M14): withdraw, claim, burn and configure. The Core
+# declares each only for the instructions a grounded grant names
+# (graphite-core/src/intent_grants.rs) — a liquidity withdrawal paid to the
+# signer's own token accounts, a fee claim, a burn from the signer's own
+# account, an owner updating its own offer — and refuses the rest. The label
+# is still only a label.
+CORE_INTENTS = ("swap", "transfer", "stake", "close", "create", "approve", "revoke",
+                "withdraw", "claim", "burn", "configure")
 
 # Canonical intent -> display label used in advisory output.
 INTENT_LABELS = {
@@ -64,6 +72,10 @@ INTENT_LABELS = {
     "create": "create/initialize account",
     "approve": "approve delegate",
     "revoke": "revoke delegate",
+    "withdraw": "withdraw liquidity",
+    "claim": "claim fees/rewards",
+    "burn": "burn own tokens",
+    "configure": "update own offer/configuration",
     "unknown": "unknown",
 }
 
@@ -138,6 +150,20 @@ _RX = {
         re.IGNORECASE,
     ),
     "revoke": re.compile(r"\brevoke\b", re.IGNORECASE),
+    # Round 30: burning the signer's own tokens.
+    "burn": re.compile(
+        r"\bburn\s+" + _DETERMINERS +
+        r"(?:(?P<amount>\d+(?:\.\d+)?)\s+)?"
+        r"(?P<token>[A-Za-z0-9]+)?",
+        re.IGNORECASE,
+    ),
+    # Round 30 (R-M13): an owner changing its own offer, bid or listing.
+    # Changing an authority or an owner is NOT this (authority_change below).
+    "configure": re.compile(
+        r"\b(?:update|edit|modify|change|reprice)\s+(?:my\s+|our\s+|the\s+)?(?:own\s+)?"
+        r"(?P<object>offer|bid|listing)\b",
+        re.IGNORECASE,
+    ),
     # Unmodeled-but-detectable intents -> label "unknown" + advisory warning.
     "mint": re.compile(
         r"\bmint\s+(?:(?P<amount>[0-9]+(?:\.[0-9]+)?)\s+)?(?P<token>[A-Za-z0-9]+)",
@@ -195,10 +221,15 @@ _NOT_A_TOKEN = frozenset({
 
 # Objects of withdraw/claim that are not a stake withdrawal: claiming rewards
 # or fees and withdrawing liquidity or collateral are different operations on
-# different programs, and the Core has no class for them.
+# different programs. Round 30: they are the Core's `claim` and `withdraw`
+# intents (declared only for granted instructions); the name is kept for
+# the objects that make a withdrawal one of those.
 _UNMODELED_WITHDRAWAL_OBJECTS = frozenset({
     "rewards", "reward", "liquidity", "lp", "fees", "fee", "collateral", "position", "yield",
 })
+# Of those, the ones whose withdrawal is a claim of accrued value, not of
+# principal.
+_CLAIMED_OBJECTS = frozenset({"rewards", "reward", "fees", "fee", "yield"})
 
 
 def _token(m: "re.Match[str]", group: str = "token") -> Optional[str]:
@@ -223,6 +254,11 @@ FALLBACK_CANONICAL = {
     "create": ("ata-program.json", "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", "CreateAssociatedTokenAccount"),
     "approve": ("spl-token.json", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "Approve"),
     "revoke": ("spl-token.json", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "Revoke"),
+    # Round 30: one granted instruction per new intent (intent_grants.rs).
+    "withdraw": ("meteora-dlmm.json", "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", "remove_liquidity"),
+    "claim": ("meteora-dlmm.json", "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo", "claim_fee"),
+    "burn": ("spl-token.json", "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "Burn"),
+    "configure": ("marketplace-ccmrkt.json", "CcmRKTuZCGJBWQwMHvDYApBRvSZNHqGJXkznqpDTSQUr", "update_offer"),
 }
 
 # intent -> instruction-name keywords used to derive protocol candidates
@@ -235,6 +271,12 @@ INTENT_KEYWORDS = {
     "create": ("create", "initialize", "allocate", "assign", "open"),
     "approve": ("approve",),
     "revoke": ("revoke",),
+    # Round 30: the names of the granted instructions (intent_grants.rs), not
+    # every instruction named "withdraw" — the Core refuses the rest.
+    "withdraw": ("remove_liquidity", "remove_all_liquidity", "decrease_liquidity_v2"),
+    "claim": ("claim_fee",),
+    "burn": ("burn",),
+    "configure": ("update_offer",),
 }
 
 # ---------------------------------------------------------------------------
@@ -400,6 +442,16 @@ def _risk_hints(intent: str, params: Dict[str, Any], text: str) -> List[Dict[str
                 "message": f"token symbol '{tok}' is not in the advisory knowledge base — "
                            "verify the mint address rather than trusting the symbol",
             })
+    if intent in ("withdraw", "claim", "burn", "configure"):
+        warnings.append({
+            "code": "GRANT_SCOPED_INTENT",
+            "severity": "medium",
+            "message": f"the Core declares a '{intent}' only for the instructions a grounded "
+                       "grant names, when the transaction's own accounts show the operation is "
+                       "the signer's own (proceeds to the signer's associated token accounts, "
+                       "rent to the signer, an object seeded by the signer) — anything else is "
+                       "refused",
+        })
     if intent == "approve":
         warnings.append({
             "code": "APPROVE_DELEGATE",
@@ -601,6 +653,8 @@ _KIND_TO_INTENT = {
     "create": "create",
     "approve": "approve",
     "revoke": "revoke",
+    "burn": "burn",
+    "configure": "configure",
 }
 
 
@@ -727,20 +781,30 @@ def parse_intent(natural_language: str) -> Dict[str, Any]:
         # class (the Core's stake keywords include withdraw). Claiming, and
         # withdrawing liquidity, rewards, fees or collateral, are not stake
         # withdrawals (Round 29, PY3: "claim rewards" and "withdraw liquidity
-        # from Orca" were labelled stake).
+        # from Orca" were labelled stake). Since Round 30 the Core has the
+        # `withdraw` and `claim` intents for them: a claim (of fees or
+        # rewards, whatever the verb) is `claim`, a withdrawal of liquidity,
+        # a position or collateral is `withdraw`. The Core declares either
+        # only for the instructions a grounded grant names.
         obj = (m.group("token") or "").lower()
-        if m.group("verb").lower() == "claim" or obj in _UNMODELED_WITHDRAWAL_OBJECTS:
-            return _unknown_result(natural_language, [{
-                "code": "WITHDRAWAL_UNMODELED",
-                "severity": "medium",
-                "message": f"'{m.group(0).strip()}' is not a stake withdrawal and has no modeled "
-                           "intent class in the Core — the verification will treat it as "
-                           "unknown intent and fail closed",
-            }])
+        verb = m.group("verb").lower()
+        if verb == "claim" or obj in _CLAIMED_OBJECTS:
+            intent = "claim"
+        elif obj in _UNMODELED_WITHDRAWAL_OBJECTS:
+            intent = "withdraw"
+        if intent != "stake" and obj:
+            params["account_type"] = obj
         if m.group("amount"):
             params["amount"] = m.group("amount")
         if _token(m):
             params["input_token"] = _token(m)
+    elif matched_kind == "burn":
+        if m.group("amount"):
+            params["amount"] = m.group("amount")
+        if _token(m):
+            params["input_token"] = _token(m)
+    elif matched_kind == "configure":
+        params["account_type"] = m.group("object").lower()
     elif matched_kind in ("stake", "approve"):
         if m.group("amount"):
             params["amount"] = m.group("amount")

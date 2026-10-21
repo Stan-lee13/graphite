@@ -9,7 +9,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { ACCOUNT_IDENTITIES, type AccountIdentity, type ResolvedAccount, type VerificationResult } from "./types.js";
+import {
+  ACCOUNT_IDENTITIES,
+  INTENT_TYPES,
+  type AccountIdentity,
+  type IntentType,
+  type ResolvedAccount,
+  type VerificationResult,
+} from "./types.js";
 
 const repo = (path: string) => new URL(`../../../${path}`, import.meta.url);
 
@@ -60,4 +67,15 @@ test("resolved_accounts[].name is an optional string in the schema and the SDK t
   const named: ResolvedAccount = { ...base, name: "system_program" };
   assert.equal(named.name, "system_program");
   assert.equal((base as ResolvedAccount).name, undefined);
+});
+
+test("Round 30: IntentType is the request schema's intent_type enum, in order", () => {
+  const schema = JSON.parse(readFileSync(repo("schemas/proposed-intent-v1.json"), "utf8"));
+  assert.deepEqual([...INTENT_TYPES], schema.properties.intent_type.enum);
+  // Type-level pins, checked by `npm run check`.
+  const withdraw: IntentType = "withdraw";
+  // @ts-expect-error — `lend` is not in the Core's vocabulary.
+  const lend: IntentType = "lend";
+  assert.ok(INTENT_TYPES.includes(withdraw));
+  assert.ok(!(INTENT_TYPES as readonly string[]).includes(lend));
 });

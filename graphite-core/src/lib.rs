@@ -13,6 +13,7 @@
 pub mod account_resolution;
 pub mod confidence_engine;
 pub mod durable;
+pub mod intent_grants;
 pub mod live_corpus;
 pub mod manifest;
 pub mod manifest_registry;

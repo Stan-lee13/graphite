@@ -861,7 +861,12 @@ fn assess_impl(
     }
 
     // P0 Check 9: Intent-Program mismatch — intent type not supported by the program
+    //
+    // A grounded class (Round 30, `intent_grants`) answers this question
+    // itself: it exists only when a grant names this program's instruction
+    // for this intent and the transaction's accounts make it the owner's own.
     if !input.proposed_intent_type.is_empty()
+        && !crate::intent_grants::is_grounded_class(&input.manifest_risk_class)
         && !program_supports_intent_with(&input.program_id, &input.proposed_intent_type, is_swap)
     {
         return Ok(RiskVerdict::Blocked {
@@ -1457,6 +1462,14 @@ pub(crate) fn canonical_intent(intent_type: &str) -> &str {
         "stake" | "delegate" => "stake",
         "close" | "close_account" => "close",
         "create" | "create_account" => "create",
+        // Round 30 (R-M14): the intents only `intent_grants` serves. A
+        // liquidity removal is a withdrawal of principal; a fee or reward
+        // claim is not, and stays a separate intent so a claim label never
+        // declares the principal leaving.
+        "withdraw" | "redeem" | "remove_liquidity" | "decrease_liquidity" => "withdraw",
+        "claim" | "claim_fees" | "claim_rewards" | "collect_fees" | "harvest" => "claim",
+        "burn" => "burn",
+        "configure" | "update_config" => "configure",
         // approve and revoke are OPPOSITE directions of the delegate
         // capability, and are kept apart (A3-01, 2026-09-29 audit). Merging
         // them made "revoke" a valid declaration for an Approve, and an
