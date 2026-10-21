@@ -15,18 +15,30 @@ superseded.
 
 | Lead | Status at `29e4356` | Evidence in the code | Owner of the fix (Round 30) |
 |---|---|---|---|
-| G-01 `approved: true` without a simulation | **still open** (design) | `approved = l6_passed && !simulation_layer_failed && risk_summary.status == "Clear"` (`verification.rs:9143`) never reads `scope`; without an RPC L3 is Inconclusive (`verification.rs:8980`) and the scope carries `not_simulated`. Only the agent guard's `ResidualPolicy` refuses (`residual-policy.ts:111-161`). The Go SDK's package doc still calls `Approved` "the only field carrying a DECISION" (`sdk/go/graphite.go:29-31`) | WS-A (`decision`/`executable`) |
+| G-01 `approved: true` without a simulation | **still open** (design) | `approved = l6_passed && !simulation_layer_failed && risk_summary.status == "Clear"` (`verification.rs:9143`) never reads `scope`; without an RPC L3 is Inconclusive (`verification.rs:8980`) and the scope carries `not_simulated`. Only the agent guard's `ResidualPolicy` refuses (`residual-policy.ts:111-161`). The Go SDK's package doc still calls `Approved` "the only field carrying a DECISION" (`sdk/go/graphite.go:29-31`), and `AUDIT/00-map.md:58` lists "a missing RPC … refuses; it never approves" as an invariant the design rests on, which the code at `29e4356` does not do | WS-A (`decision`/`executable`) |
 | G-02 learning from policy refusals | **still open** (opt-in exists) | `OperatorPolicy.learn_from_policy_refusals` from `GRAPHITE_LEARN_FROM_POLICY_REFUSALS` (`operator_boundary.rs:267`), honoured at `verification.rs:9217-9222`; startup warns (`server.rs:1079-1082`); `.env.example:75-78` offers it | WS-B |
 | G-03 program-level L3 baselines | **still open** (A2-08) | baselines keyed by program id; `CURRENT.md:446-449` states deviations up to 50% are never flagged | WS-B |
 | G-04 first sighting is the baseline; evidence not reset on upgrade | **still open** | `note_deployments` (`verification.rs:3328-3390`): `DeploymentChange::First` stores silently; `Changed` counts, optionally quarantines, and reports — no baseline, observation or graph evidence is reset | WS-B |
 | G-05 manifest coverage below the decode bar | **still open** (data) | the ledger re-validated all 137 manifests (3,541 instructions, unique program ids, unique discriminators and names, hex discriminators); the 13 sub-90% records are in `battle_tested_evidence.json` | WS-F |
 | G-06 intent vocabulary refuses whole classes (R-M13, R-M14) | **still open** | `manifest::INTENT_DECLARES`; R2-c measured cost 219 / 48,855 | WS-G |
 | G-07 audit trail not tamper-evident | **still open** | no MAC, chain or signature in `durable.rs` or `durable/archive_index.rs` (no occurrence of any); unkeyed SHA-256 only | WS-C |
-| G-08 single-primary L8, no light client | **still open** | the witness is optional; nothing requires one or checks provider independence beyond `same_endpoint` URL normalisation | WS-D |
+| G-08 single-primary L8, no light client | **still open** | the witness is optional; nothing requires one, and independence is checked only by `same_endpoint` (`verification.rs:585-602`), which compares scheme, host, port, path AND query — so the same provider under a second API key (`?api-key=B`), or a second hostname of one provider, is accepted as an "independent" witness | WS-D |
 | G-09 no generated release evaluation; holdout 38 rows | **still open** | `docs/release-evaluation-report.md` is a dated Phase document; no `graphite benchmark --json` | WS-E |
 | G-10 no fuzzing / mutation / coverage gates | **still open** | no `fuzz/` directory; no such job in `ci.yml` | WS-E |
 | G-11 branch protection absent | **still open — owner action** | `main` reported `protected: false` by the GitHub branches API on 2026-10-21 (this pass). Two stale non-dependabot branches exist (`copilot/fix-rust-core-actions-job`, `phase2-development`) | Owner (STOP-SHIP) |
 | G-12 operations and external decisions | **owner / external** | see the table below | Owner |
+
+### The pre-audit's state-diff lead (`DeclaredEffects::parse`, mixed declarations)
+
+Read at `state_diff.rs:1637-1756`. `unrecognised` is set only when no line maps to any effect, so a
+declaration mixing a recognised line with an unrecognised one is *interpretable*. That is the
+stricter direction, not the looser one: under an interpretable declaration an undeclared effect of
+a class L4 checks (debit, close, create, delegate, authority, mint, burn, freeze) is Critical, while
+under an unrecognised one it is a warning. An unrecognised line therefore cannot excuse anything; it
+only fails to declare. Status: **not a bypass by reading**; a test that pins the mixed case (one
+recognised line + one unmapped line + an undeclared debit = Critical) would make that explicit — WS-F.
+The wider property that a line naming no account (`transfers fees`) excuses a debit of that class on
+any account is the design (A2-01, F2: a signer's own token account is still judged).
 
 ## Every open, partial, limitation or owner item in the records
 

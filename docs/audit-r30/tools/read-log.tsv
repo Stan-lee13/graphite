@@ -35,4 +35,31 @@ integrations/mcp-server/graphite-mcp.ts	full	confirm hook after resolution; elic
 integrations/vercel-ai/graphite-tools.ts	full	K-01
 sdk/typescript/src/client.ts	sections	transport, redirects, accept(); K-03
 graphite-core/src/server.rs	sections	1-420 (limits, connection caps), 1600-1700 (router, middleware order), auth middleware
+graphite-core/src/policy_engine.rs	sections	1-240 (all production code); K-13
+graphite-core/src/operator_boundary.rs	full	strict env flags; profile clamp on both axes; learn flag (G-02)
+graphite-core/src/confidence_engine.rs	sections	1-320 (all production code); K-16
+graphite-core/src/transaction_builder.rs	sections	1-150 (all production code): a summary, no serialization
+integrations/agent-guard/rpc-simulator.ts	sections	145-445: no-redirect fetch, unsigned simulations, bounded reads
+integrations/agent-guard/spend-policy.ts	sections	SpendLedger, transfer/swap checks: synchronous reserve, in-memory
+dashboard/src/usePolling.ts	full	K-15
+dashboard/src/App.tsx	sections	95-140: app-level polls survive a connection change (K-15)
+python-ai-layer/intent_parser.py	sections	800-1049: bounded body, Origin/Host refusal, JSON only, connection cap
+sdk/go/graphite.go	sections	1-80 package doc (teaches Approved as the decision, G-01), 590-650 residual helpers
+graphite-core/src/lib.rs	full	module graph; rpc and server feature-gated
+graphite-core/src/unknown_protocol_mode.rs	full	one ceiling table
+graphite-core/src/plugins/fake_rewards_drainer.rs	sections	1-170 (all production code): request-text keyed, veto only, limits stated
+graphite-core/src/solana_types.rs	sections	1-260: PDA derivation matches the runtime (marker, bump 255..1, seed limits, curve test)
+graphite-core/src/tx_artifact.rs	sections	480-800: frame layout (legacy/v0/v1), unsigned digest, filled-slot refusal, simulation identity, chain-byte binding (first slot + verify_strict under the fee payer)
+graphite-core/src/server.rs	sections	2209-2506 verify_handler: profile clamp before verify, audit append before the response (503 if not recorded), observation committed only after
+docker-compose.yml	full	loopback publish, read-only root, caps dropped, limits; no RPC configured by default (G-01)
+AUDIT/00-map.md	historical	its "a missing RPC refuses" invariant does not hold (G-01)
+integrations/agent-guard/tool-results.ts	full	structured refusals; reasons redacted and bounded
+integrations/agent-guard/intent-grounding.ts	sections	180-300: anchored ASCII transfer grammar, echo checks, class from the method
+graphite-core/src/state_diff.rs	sections	1500-1800: DeclaredEffects::parse (mixed declarations are stricter, not looser)
+graphite-core/src/regression_engine.rs	sections	94-513: fixture integrity, corpus load, replay, P10 gate; K-17
+dashboard/src/api.ts	full	K-18
+.github/npm-audit/gate.mjs	full	fails closed on a missing/npm-error report, unlisted moderate+, stale entries, unscoped ids
+.github/ISSUE_TEMPLATE/config.yml	full	blank issues off; private channel = SECURITY.md mailbox (private vulnerability reporting not enabled)
+.github/ISSUE_TEMPLATE/bug_report.md	full	—
+.github/PULL_REQUEST_TEMPLATE.md	full	still says "SAK integration npm test" (the guard is integrations/agent-guard since R-P8)
 graphite-core/src/verification.rs	sections	359-420 (L1 status), 6735-6825 (identity → risk), 8650-8700, 8890-9450 (approval decision, observation rule, result)

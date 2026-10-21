@@ -89,6 +89,17 @@ What decides `approved` (`verification.rs:8949-9143`):
 - An L1 identity failure is folded into the risk summary as `MaliciousAccountChange` /
   `AccountIdentityMismatch` (`verification.rs:6764-6823, 8661-8700`), so it refuses through
   `risk_summary`, not through L1's own status.
+- Confidence (`build_signals`, `verification.rs:9603-9704`): six weighted signals — ManifestMatch
+  0.20 (manifest found), TrustTierLevel 0.20 (the verdict's tier: the minimum over every top-level
+  program, `verification.rs:8793-8819`), SimulationMatch 0.20 (the **program's** baseline
+  `sample_count` over a threshold), HistoricalVolume 0.15 and CommunityVerification 0.15 (graph
+  evidence an operator seeds), IntentAlignment 0.10 (only when L5 Passed). Request-body
+  `behavior_evidence` is ignored. The tier ceiling caps the sum (0.55 / 0.75 / 0.85 / 1.0), then
+  L2/L4/L5 penalties. A manifested program with no history sits at about 0.44, below Gaming's
+  0.55; the only verify-path input that raises it is SimulationMatch, which grows from approved
+  observations per program — and, with `GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1`, from refused ones
+  (G-02). Because the key is the program, not the instruction, one instruction's traffic earns
+  confidence for every instruction of that program (G-03).
 - `approved` does **not** consult `scope`: an approval without an RPC carries `not_simulated`
   and an approval of a description is `descriptive`. Only a consumer's residual policy refuses
   those (lead G-01; WS-A's `decision`/`executable` contract).
