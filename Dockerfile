@@ -50,7 +50,11 @@ COPY graphite-core/protocols ./graphite-core/protocols
 RUN touch graphite-core/src/lib.rs \
     && cargo build --manifest-path graphite-core/Cargo.toml --locked --release --features server,cli
 
-FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+# Runtime base re-pinned 2026-10-21 (Round 30) to what `bookworm-slim` resolved
+# to that day (read through mirror.gcr.io, Docker Hub's pull-through mirror; a
+# digest is the content's hash, so the mirror cannot substitute it). This
+# supersedes Dependabot's 2026-10-05 bump (#24): there was a newer one.
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 # ca-certificates is required for outbound TLS to GRAPHITE_RPC_URL (reqwest +
 # rustls needs a trust store). curl is NOT installed: the healthcheck uses the
 # binary's own `healthcheck` subcommand instead, keeping curl and its
