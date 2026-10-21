@@ -95,6 +95,25 @@ npm test           # tsx --test (Node 22+): transport, router, connection storag
   payment and USB. `npm run preview` serves exactly these; configure your
   static host (nginx `add_header`, a CDN's header rules) with the same.
 
+## Browser smoke test (Round 30)
+
+`e2e/smoke.mjs` walks every view of the built console in Chromium, at
+desktop and phone width, against a running Core, and fails on a CSP
+violation, a page error or a view's error boundary, a page wider than the
+viewport, any axe-core violation (when `AXE_CORE_PATH` names `axe.min.js`),
+or a verdict drawn "executable" that the Core's `/api/confidence-history`
+did not report as `executable_approved`:
+
+```bash
+npm run build && npm run preview -- --port 4173 &   # serves dist/ with the security headers
+# a Core on loopback with GRAPHITE_CORS_ORIGINS=http://127.0.0.1:4173
+node e2e/smoke.mjs http://127.0.0.1:4173/ http://127.0.0.1:7331 "$GRAPHITE_API_KEY"
+```
+
+Playwright is not a dependency of the console; the script finds it in this
+package or under `PLAYWRIGHT_NODE_PATH`. Breaking the colour rule (drawing an
+unreported bound approval green) makes it fail on every such row.
+
 ## What a verdict's colour means (Round 30)
 
 Green is spent on one thing: an approval the Core reports as
