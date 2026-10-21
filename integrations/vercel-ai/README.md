@@ -24,7 +24,11 @@ const guard = await GraphiteGuard.create({
 
 const result = await generateText({
   model, // any AI SDK model
-  tools: graphiteTools(guard), // fund-moving tools carry needsApproval: true
+  // Fund-moving tools carry needsApproval: true (the person approves the model's
+  // request), and `confirm` is called with the RESOLVED transaction — destination,
+  // amount, route minimum, simulated wallet effect, verdict, and the SHA-256 of the
+  // exact bytes — immediately before signing. Anything but `true` signs nothing.
+  tools: graphiteTools(guard, { confirm: (summary) => askThePerson(summary) }),
   // Approvals come back in the message history the client sends. With a
   // secret, the SDK signs the approval requests it issues and refuses an
   // approval it did not issue (one a client wrote into replayed history).
@@ -43,6 +47,15 @@ tool, and a per-tool entry decides that tool — so switching approval off for t
 takes an explicit entry naming them. Keep `experimental_toolApprovalSecret` set whenever
 approvals round-trip through a client.
 
+The SDK's approval is asked BEFORE the tool runs, so what the person approves is the
+model's request, not the transaction (Round 30, audit finding K-01). `graphiteTools`
+therefore requires a `confirm` hook — the guard's own confirmation, asked after grounding,
+the spend policy, the build, the simulation, Graphite's verdict and the residual policy,
+with the resolved values and the digest of the exact bytes, and bounded by the guard's
+`confirmTimeoutMs` — or the operator's explicit `{ confirmation: "request-only" }`, which
+states that approving the request is all this deployment asks of a person. Without one of
+the two, `graphiteTools` refuses.
+
 | Tool | What it does |
 |---|---|
 | `graphite_wallet` | The wallet's address and the operator's limits. Moves nothing. |
@@ -52,7 +65,10 @@ approvals round-trip through a client.
 Every tool returns a structured result (`GraphiteToolResult`): `executed`, and when it did
 not, `refusedBy` — `spend-policy`, `request-grounding`, `swap-route`, `residual-policy`, `person`,
 `graphite`, `submission-unknown` (signed and handed to the RPC with an unknown outcome:
-`signature` is set, and must be checked before any retry) or `error` — with the reason.
+`signature` is set, and must be checked before any retry; also a repeat refused because an
+earlier submission of the same request may still land), `duplicate-request` (the same
+request is already running), `unsupported` (a capability the guard does not have, named in
+`unsupported`, e.g. `wrap_sol`) or `error` — with the reason.
 Reasons are bounded and have URLs, bearer tokens and key-like values redacted before the
 model sees them. When the Core was asked, the result carries its verdict: what the approval
 covers (`scope`: the exact bytes, or only a description), the transaction's SHA-256, the

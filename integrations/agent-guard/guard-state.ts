@@ -183,9 +183,14 @@ export class GuardState {
           throw new GuardStateError(`the lock ${lockPath} could not be created: ${(e as Error).message}. REFUSING TO START.`);
         }
         const owner = Number(readFileSync(lockPath, "utf8").trim());
-        if (Number.isSafeInteger(owner) && owner > 0 && owner !== process.pid && pidAlive(owner)) {
+        // This process holds it when one of its own open states does. The
+        // same pid with no open state is an earlier incarnation that crashed
+        // (in a container the guard is often pid 1 every time).
+        const heldHere = owner === process.pid && [...OPEN].some((s) => s.#lockPath === lockPath);
+        const heldElsewhere = owner !== process.pid && Number.isSafeInteger(owner) && owner > 0 && pidAlive(owner);
+        if (heldHere || heldElsewhere) {
           throw new GuardStateError(
-            `${lockPath} is held by process ${owner}, which is running. One guard process per state file: two would ` +
+            `${lockPath} is held by process ${owner}, which is running. One guard per state file: two would ` +
               "each spend the whole aggregate allowance. REFUSING TO START.",
           );
         }

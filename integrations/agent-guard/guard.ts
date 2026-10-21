@@ -554,7 +554,7 @@ export class GraphiteGuard {
   // module, a patched getter, a heap walk through the object graph — can read
   // the private key back out of the guard, only ask the one signing path to
   // sign with it.
-  #signer: { readonly publicKey: PublicKey; readonly keyPair: CryptoKeyPair };
+  #signer: WalletSigner;
   #simulator: RpcSimulator;
   #residualPolicy: ResidualPolicy;
   #transactionVersion: BridgeTransactionVersion;
@@ -581,7 +581,7 @@ export class GraphiteGuard {
 
   private constructor(c: {
     graphite: GraphiteClient; connection: Connection; walletProfile: WalletProfile; aiLayerUrl: string;
-    signer: { readonly publicKey: PublicKey; readonly keyPair: CryptoKeyPair }; residualPolicy: ResidualPolicy;
+    signer: WalletSigner; residualPolicy: ResidualPolicy;
     aiLayerTimeoutMs: number; transactionVersion: BridgeTransactionVersion; reporterName: string;
     spendPolicy: SpendPolicy; swapPolicy: SwapPolicy; swapEnvelope: SwapEnvelopeConfig; rpcUrl: string;
     state: GuardState; confirmTimeoutMs: number;
@@ -685,24 +685,7 @@ export class GraphiteGuard {
       throw new Error(`[Graphite] confirmTimeoutMs ${String(confirmTimeoutMs)} is not a positive integer. REFUSING TO START.`);
     }
 
-    // Round 30: the key, imported once into a non-extractable WebCrypto key
-    // pair; the decoded bytes are zeroed whatever happens. `createKeyPairFromBytes`
-    // checks that the public half belongs to the private half by signing and
-    // verifying, so a 64-byte value whose halves do not match is refused here.
-    const secret = Uint8Array.from(bs58.decode(privateKey));
-    let signer: { readonly publicKey: PublicKey; readonly keyPair: CryptoKeyPair };
-    try {
-      if (secret.length !== 64) {
-        throw new Error(`SOLANA_PRIVATE_KEY decodes to ${secret.length} bytes, not the 64 of a Solana secret key`);
-      }
-      const keyPair = await createKeyPairFromBytes(secret, false);
-      const publicKey = new PublicKey(await getAddressFromPublicKey(keyPair.publicKey));
-      signer = Object.freeze({ publicKey, keyPair });
-    } catch (e) {
-      throw new Error(`[Graphite] the wallet key is not usable: ${(e as Error).message}. REFUSING TO START.`);
-    } finally {
-      secret.fill(0);
-    }
+    const signer = await walletSignerFrom(privateKey);
     const connection = connectionWithoutRedirects(rpcUrl);
 
     const graphite = new GraphiteClient({ baseUrl: graphiteCoreUrl, apiKey: graphiteApiKey });
@@ -1596,6 +1579,42 @@ export class GraphiteGuard {
 // Round 29 (M8): no method of the class can be replaced at runtime either.
 Object.freeze(GraphiteGuard.prototype);
 Object.freeze(GraphiteGuard);
+
+/** What the guard signs with (Round 30): a public key and a non-extractable WebCrypto key pair. */
+export interface WalletSigner {
+  readonly publicKey: PublicKey;
+  readonly keyPair: CryptoKeyPair;
+}
+
+/**
+ * The wallet key, imported once into a NON-EXTRACTABLE WebCrypto key pair
+ * (Round 30); the decoded bytes are zeroed whatever happens.
+ * `createKeyPairFromBytes` checks that the public half belongs to the private
+ * half by signing and verifying, so a 64-byte value whose halves do not match
+ * is refused here. The base58 string itself cannot be zeroed (JavaScript
+ * strings are immutable); the guard drops its reference to it, and to the
+ * environment variable, once this returns.
+ */
+export async function walletSignerFrom(privateKeyBase58: string): Promise<WalletSigner> {
+  let secret: Uint8Array;
+  try {
+    secret = Uint8Array.from(bs58.decode(privateKeyBase58));
+  } catch {
+    throw new Error("[Graphite] the wallet key is not base58. REFUSING TO START.");
+  }
+  try {
+    if (secret.length !== 64) {
+      throw new Error(`it decodes to ${secret.length} bytes, not the 64 of a Solana secret key`);
+    }
+    const keyPair = await createKeyPairFromBytes(secret, false);
+    const publicKey = new PublicKey(await getAddressFromPublicKey(keyPair.publicKey));
+    return Object.freeze({ publicKey, keyPair });
+  } catch (e) {
+    throw new Error(`[Graphite] the wallet key is not usable: ${(e as Error).message}. REFUSING TO START.`);
+  } finally {
+    secret.fill(0);
+  }
+}
 
 /**
  * SOLANA_RPC_URL under the Core's transport rule (Round 29, audit 2026-10-20,
