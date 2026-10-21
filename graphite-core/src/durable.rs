@@ -526,12 +526,16 @@ pub enum LifecycleEvent {
     Signing,
     /// The caller submitted it to the network. Caller-reported.
     Submission,
-    /// The network confirmed it. Caller-reported.
+    /// The network confirmed it. Caller-reported, and written by Graphite at
+    /// `/verify/execution` when L8 itself saw the signature included at
+    /// cluster-backed commitment (`confirmed` or `finalized`).
     Confirmation,
     /// The transaction reached finalized commitment. Caller-reported.
     Finalization,
-    /// An operator changed the gate's own state — today, withdrawing a program
-    /// from trust or restoring it.
+    /// An operator changed the gate's own state: withdrawing a program from
+    /// trust or restoring it (`/admin/quarantine`, `graphite quarantine`), or
+    /// seeding or promoting the evidence a program's tier is computed from
+    /// (`graphite evidence seed|baseline|promote-shadow`).
     ///
     /// Self-observed: Graphite performs the action itself, so a caller must not
     /// be able to report one. Otherwise anyone could write "quarantine lifted
@@ -540,6 +544,18 @@ pub enum LifecycleEvent {
     /// `content_hash` carries the program id rather than a transaction hash —
     /// this event is about a program, not a transaction.
     OperatorAction,
+    /// L8 checked a signature against the chain and did NOT see it included
+    /// at cluster-backed commitment: unknown to the cluster, seen only at
+    /// `processed`, or the RPC could not answer (audit 2026-10-20, M4).
+    ///
+    /// Until then every `/verify/execution` call wrote a Graphite-attested
+    /// `confirmation` row whatever the chain said, so a client polling a
+    /// pending transaction, or anyone holding the verify key and a made-up
+    /// signature, put "Graphite observed this confirmed" on the trail. The
+    /// caller's later, truthful `submission` then read as out of order. The
+    /// check is still recorded, under its own name, and ranks nowhere in the
+    /// lifecycle order.
+    ExecutionCheck,
 }
 
 /// Where a lifecycle event reaches the audit trail (Constitution P9;
@@ -562,7 +578,7 @@ impl LifecycleEvent {
     /// Every lifecycle event. `every_lifecycle_event_reaches_the_trail`
     /// checks this list against the enum serde derives, so a variant left
     /// out of it fails the build's tests.
-    pub const ALL: [LifecycleEvent; 8] = [
+    pub const ALL: [LifecycleEvent; 9] = [
         LifecycleEvent::Construction,
         LifecycleEvent::Simulation,
         LifecycleEvent::Verification,
@@ -571,6 +587,7 @@ impl LifecycleEvent {
         LifecycleEvent::Confirmation,
         LifecycleEvent::Finalization,
         LifecycleEvent::OperatorAction,
+        LifecycleEvent::ExecutionCheck,
     ];
 
     /// Where this event reaches the trail.
@@ -607,6 +624,9 @@ impl LifecycleEvent {
             },
             LifecycleEvent::OperatorAction => Emission::GraphiteRow {
                 route: "/admin/quarantine",
+            },
+            LifecycleEvent::ExecutionCheck => Emission::GraphiteRow {
+                route: "/verify/execution",
             },
         }
     }
@@ -931,7 +951,7 @@ pub struct AuditErrorRecord {
 ///
 /// Generous for a genuine diagnostic and small enough that no request can turn
 /// the audit trail into storage the caller controls.
-const MAX_AUDIT_FIELD_CHARS: usize = 256;
+pub const MAX_AUDIT_FIELD_CHARS: usize = 256;
 
 /// The longest a lifecycle event's free-form `detail` may be, at the
 /// boundary (`/audit/event`) and on disk alike. One constant on purpose:

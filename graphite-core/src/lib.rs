@@ -16,6 +16,7 @@ pub mod durable;
 pub mod live_corpus;
 pub mod manifest;
 pub mod manifest_registry;
+pub mod operator_boundary;
 pub mod plugin_orchestrator;
 pub mod plugins;
 pub mod policy_engine;

@@ -23,13 +23,13 @@
 //! - Graceful shutdown on SIGTERM/SIGINT (container-friendly)
 
 use crate::account_resolution::AccountResolutionError;
-use crate::cli::boundary::{enforce_wallet_profile, env_number, OperatorPolicy};
-#[cfg(test)]
-use crate::cli::boundary::{env_flag, parse_pinned_profile};
 use crate::durable::{
     audit_path, AuditErrorRecord, AuditLog, AuditRecord, AuditSelector, LifecycleEvent,
     LifecycleEventRecord, VerdictOnRecord, VerificationKey, VerificationKeyKind,
 };
+use crate::operator_boundary::{enforce_wallet_profile, env_number, OperatorPolicy};
+#[cfg(test)]
+use crate::operator_boundary::{env_flag, parse_pinned_profile};
 use crate::verification::{GraphiteCore, VerificationError, VerificationInput, VerificationResult};
 use axum::extract::{ConnectInfo, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
@@ -1076,6 +1076,11 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
             "a program redeployed since Graphite last saw it is QUARANTINED until the operator lifts it (GRAPHITE_QUARANTINE_ON_UPGRADE=1)",
         );
     }
+    if policy.learn_from_policy_refusals {
+        tracing_log(
+            "requests refused ONLY by the confidence/tier threshold TRAIN the simulation baseline (GRAPHITE_LEARN_FROM_POLICY_REFUSALS=1): anyone holding the verify key can raise a program's confidence for every caller",
+        );
+    }
     if policy.allow_durable_nonce {
         tracing_log(
             "durable-nonce transactions PERMITTED (GRAPHITE_ALLOW_DURABLE_NONCE=1): they do not expire; each one is verified against its nonce account on-chain before L2 passes",
@@ -1271,6 +1276,14 @@ pub async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Erro
     // audit history is always an explicit operator decision.
     let rotate_bytes = limits.rotate_bytes;
     let max_archives = limits.max_archives;
+    if rotate_bytes == 0 {
+        // Audit 2026-10-20: rotation off keeps one active file, and the
+        // in-memory indexes over it (three keys per verification), for the
+        // life of the process.
+        tracing::warn!(
+            "GRAPHITE_AUDIT_ROTATE_BYTES=0: the active audit file and its in-memory indexes grow without bound for the life of the process"
+        );
+    }
     let audit =
         match AuditLog::open_with_rotation(audit_path(&data_dir), rotate_bytes, max_archives) {
             Ok(log) => {
@@ -2167,7 +2180,7 @@ fn classify_error(e: &VerificationError) -> VerificationHttpError {
 /// same text (`durable`'s `MAX_AUDIT_FIELD_CHARS`, 256), with the same
 /// truncation marker. The extractor's message quotes the offending input, so
 /// a megabyte body produced a megabyte log line and a megabyte response.
-const MAX_REJECTION_TEXT_CHARS: usize = 256;
+const MAX_REJECTION_TEXT_CHARS: usize = crate::durable::MAX_AUDIT_FIELD_CHARS;
 
 /// `text`, bounded to [`MAX_REJECTION_TEXT_CHARS`], saying what was cut.
 fn bounded_rejection_text(text: &str) -> String {
@@ -3123,7 +3136,19 @@ async fn execution(
             append_lifecycle_off_runtime(
                 log,
                 LifecycleEventRecord {
-                    event_type: LifecycleEvent::Confirmation,
+                    // A confirmation only when L8 saw one (audit 2026-10-20,
+                    // M4): included at cluster-backed commitment. Anything
+                    // else — unknown, `processed` only, unavailable — is a
+                    // check, recorded as such and outside the lifecycle order.
+                    event_type: if matches!(
+                        result.chain_status,
+                        crate::verification::ExecutionVerification::Confirmed { commitment, .. }
+                            if commitment.is_cluster_backed()
+                    ) {
+                        LifecycleEvent::Confirmation
+                    } else {
+                        LifecycleEvent::ExecutionCheck
+                    },
                     timestamp: crate::durable::now_utc_rfc3339(),
                     // Trimmed, as it was validated and looked up (audit
                     // 2026-10-20): the row carried the caller's raw value,
@@ -6910,6 +6935,17 @@ mod tests {
                             )
                             .await
                         }
+                        "/verify/execution" => {
+                            // No RPC is attached, so the chain cannot answer:
+                            // the row is a check, never a confirmation.
+                            post_json(
+                                &app,
+                                "/verify/execution",
+                                Some(VERIFY_TEST_KEY),
+                                serde_json::json!({"signature": signature}),
+                            )
+                            .await
+                        }
                         other => panic!("{name}: no driver for {other}; add one here"),
                     };
                     assert_eq!(status, axum::http::StatusCode::OK, "{route}: {body}");
@@ -7376,6 +7412,50 @@ mod tests {
         );
         drop(first);
         let _again = lock_data_dir(&dir).expect("free once released");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Audit 2026-10-20 (M4): an L8 check that did not see the transaction
+    /// included writes an `execution_check` row, never a Graphite-attested
+    /// `confirmation`, so the caller's truthful `submission` that follows is
+    /// not reported as arriving after a confirmation.
+    #[tokio::test]
+    async fn an_l8_check_that_saw_nothing_is_not_a_confirmation() {
+        let (state, dir) = test_state();
+        let app = build_app(state, vec![]);
+        let signature = sig(5);
+        let (s, body) = post_json(
+            &app,
+            "/verify/execution",
+            None,
+            serde_json::json!({ "signature": signature, "content_hash": "48c65c638aceb5de" }),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let contents = std::fs::read_to_string(audit_path(&dir)).unwrap();
+        let row: serde_json::Value =
+            serde_json::from_str(contents.lines().last().unwrap()).unwrap();
+        assert_eq!(row["event_type"], "execution_check", "{row}");
+        assert_eq!(row["observed_by_graphite"], true);
+        let (s, body) = post_json(
+            &app,
+            "/audit/event",
+            None,
+            serde_json::json!({
+                "event_type": "submission",
+                "content_hash": "48c65c638aceb5de",
+                "transaction_signature": signature,
+            }),
+        )
+        .await;
+        assert_eq!(s, axum::http::StatusCode::OK, "{body}");
+        let anomalies = body["sequence_anomalies"].as_array().unwrap();
+        assert!(
+            !anomalies
+                .iter()
+                .any(|a| a.as_str().unwrap_or_default().contains("out of order")),
+            "a check that saw nothing ordered the caller's report: {body}"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -8025,6 +8105,7 @@ Connection: close
             "GRAPHITE_ALLOW_PERMISSIVE_PROFILES",
             "GRAPHITE_ALLOW_DURABLE_NONCE",
             "GRAPHITE_QUARANTINE_ON_UPGRADE",
+            "GRAPHITE_LEARN_FROM_POLICY_REFUSALS",
         ] {
             assert!(policy(name, "yes").is_err(), "{name}=yes");
         }

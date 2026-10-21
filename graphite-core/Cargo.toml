@@ -54,11 +54,7 @@ ed25519-dalek = { version = "2", default-features = false, features = ["std", "f
 
 [features]
 default = ["server", "cli"]
-# `cli` because the trust-boundary rules the server applies live in
-# `cli::boundary`, shared with `graphite verify`/`explain` so the CLI
-# reproduces the server's decision (audit 2026-10-20, L11); a `cli`-only
-# build has no `server` module to hold them.
-server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "dep:tracing-subscriber", "dep:hyper", "dep:hyper-util", "rpc", "cli"]
+server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tower", "dep:tracing-subscriber", "dep:hyper", "dep:hyper-util", "rpc"]
 # cli pulls tokio: the synchronous verify() wrapper needs an async runtime,
 # and the CLI's verify subcommand uses it. A no-feature LIBRARY build still
 # compiles (verify() degrades to a fail-closed stub) — only the library core

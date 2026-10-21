@@ -10,6 +10,7 @@
 # carried GHSA-fx2h-pf6j-xcff, GHSA-4w7w-66w2-5vf9 and GHSA-v6wh-96g9-6wx3,
 # and its esbuild GHSA-67mh-4wv8-2f99).
 #
-# Re-recorded 2026-10-20: that is no longer true. `npm audit` reports 1
-# moderate, 0 high, 0 critical, 0 low:
-GHSA-698v-4r3x-3vcv@vite  # moderate  vite >=8.3.0 <=8.3.2: launch-editor's escapeCmdArgs() omits % escaping on Windows. Dev-server only (the "open in editor" endpoint of `vite dev`); the built dashboard bundle contains no vite code and CI builds on Linux. npm reports a non-breaking fix: bump vite to >=8.3.3 in dashboard/package.json and its lockfile, then delete this line.
+# Re-recorded 2026-10-20: `npm audit` reported 1 moderate
+# (GHSA-698v-4r3x-3vcv, vite >=8.3.0 <=8.3.2, dev server only). vite was
+# bumped to 8.3.4 in the same change, and `npm audit` again reports 0
+# vulnerabilities at any level, so nothing is listed.

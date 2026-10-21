@@ -6,296 +6,10 @@ use crate::policy_engine::WalletProfile;
 use crate::verification::{GraphiteCore, VerificationInput};
 use std::path::{Path, PathBuf};
 
-/// What the server applies at its trust boundary from its environment, in
-/// one place for the server and for `graphite verify`/`explain`.
-///
-/// Audit 2026-10-20 (L11): the CLI answered "what would the gate decide about
-/// this?" with a different gate. It ignored `GRAPHITE_WALLET_PROFILE`, the
-/// clamp the server applies to a weak caller-supplied `Custom` profile (and
-/// its `GRAPHITE_ALLOW_PERMISSIVE_PROFILES` opt-out), the plugins in
-/// `GRAPHITE_PLUGINS_DIR` and `GRAPHITE_ALLOW_DURABLE_NONCE` /
-/// `GRAPHITE_QUARANTINE_ON_UPGRADE`, so an operator could read APPROVED here
-/// for a request the server refused, or the reverse. The rules now live here
-/// and both read them; nothing is restated.
-///
-/// It lives in this module because the `cli`-only build (a CI leg) has no
-/// `server` module, and the server needs it too; the `server` feature
-/// therefore enables `cli`.
-pub mod boundary {
-    use crate::confidence_engine::TrustTier;
-    use crate::policy_engine::{
-        WalletProfile, WEAKEST_BUILTIN_MIN_CONFIDENCE, WEAKEST_BUILTIN_MIN_TRUST_TIER,
-    };
-    use crate::verification::GraphiteCore;
-    use std::path::PathBuf;
-
-    /// A boolean switch from the environment, read strictly: unset, empty,
-    /// `0` or `false` is off; `1` or `true` is on (case and surrounding
-    /// whitespace ignored); anything else is a configuration error, so a
-    /// typo is never a silent "off" (audit 2026-10-20: several switches read
-    /// anything but `1`/`true` as off, one of them without trimming).
-    pub fn env_flag(name: &str, value: Option<&str>) -> Result<bool, String> {
-        match value.map(str::trim) {
-            None | Some("") | Some("0") => Ok(false),
-            Some("1") => Ok(true),
-            Some(v) if v.eq_ignore_ascii_case("true") => Ok(true),
-            Some(v) if v.eq_ignore_ascii_case("false") => Ok(false),
-            Some(v) => Err(format!(
-                "{name}={v:?} is not 1, true, 0 or false. REFUSING TO START."
-            )),
-        }
-    }
-
-    /// A non-negative integer from the environment: unset or empty is
-    /// `default`; anything that does not parse, or that `valid` refuses, is
-    /// a configuration error naming the variable and what it accepts (audit
-    /// 2026-10-20: these fell back to their defaults silently, so a typo'd
-    /// limit ran with a value nobody chose).
-    pub fn env_number<T: std::str::FromStr + Copy>(
-        name: &str,
-        value: Option<&str>,
-        default: T,
-        accepts: &str,
-        valid: impl Fn(T) -> bool,
-    ) -> Result<T, String> {
-        match value.map(str::trim) {
-            None | Some("") => Ok(default),
-            Some(v) => match v.parse::<T>() {
-                Ok(n) if valid(n) => Ok(n),
-                _ => Err(format!(
-                    "invalid {name} {v:?}: must be {accepts}. REFUSING TO START."
-                )),
-            },
-        }
-    }
-
-    /// Parse `GRAPHITE_WALLET_PROFILE`. Accepts the four built-in names, or
-    /// `custom:<min_confidence>:<TrustTier>`. An unparseable value is a
-    /// configuration error the operator must see, so it is reported rather
-    /// than silently ignored.
-    pub fn parse_pinned_profile(raw: &str) -> Result<WalletProfile, String> {
-        let v = raw.trim();
-        match v.to_ascii_lowercase().as_str() {
-            "treasury" => return Ok(WalletProfile::Treasury),
-            "trading" | "tradingbot" => return Ok(WalletProfile::TradingBot),
-            "gaming" => return Ok(WalletProfile::Gaming),
-            "enterprise" => return Ok(WalletProfile::Enterprise),
-            _ => {}
-        }
-        let parts: Vec<&str> = v.split(':').collect();
-        if parts.len() == 3 && parts[0].eq_ignore_ascii_case("custom") {
-            let min_confidence: f64 = parts[1]
-                .parse()
-                .map_err(|_| format!("invalid min_confidence {:?}", parts[1]))?;
-            if !min_confidence.is_finite() || !(0.0..=1.0).contains(&min_confidence) {
-                return Err(format!(
-                    "min_confidence {min_confidence} must be within [0.0, 1.0]"
-                ));
-            }
-            let min_trust_tier = match parts[2] {
-                "Unknown" => TrustTier::Unknown,
-                "HeuristicInferred" => TrustTier::HeuristicInferred,
-                "OfficialManifest" => TrustTier::OfficialManifest,
-                "SimulationValidated" => TrustTier::SimulationValidated,
-                "CommunityVerified" => TrustTier::CommunityVerified,
-                "BattleTested" => TrustTier::BattleTested,
-                other => return Err(format!("unknown trust tier {other:?}")),
-            };
-            return Ok(WalletProfile::Custom {
-                min_confidence,
-                min_trust_tier,
-            });
-        }
-        Err(format!(
-            "unrecognized profile {v:?} (expected treasury|trading|gaming|enterprise|custom:<min_confidence>:<TrustTier>)"
-        ))
-    }
-
-    /// Enforce the wallet policy profile at the network trust boundary.
-    ///
-    /// CRITICAL (2026-09-05 red-team, verified end-to-end against a live
-    /// server): `wallet_profile` arrives in the SAME request body, over the
-    /// SAME connection, as `proposed_intent`, `program_id` and every other
-    /// field the (possibly prompt-injected) agent supplies. Graphite has no
-    /// way to tell an operator's deliberate policy from an attacker's chosen
-    /// one. Sending `{"Custom":{"min_confidence":0.0,"min_trust_tier":"Unknown"}}`
-    /// therefore approved a transaction to a completely unmanifested program
-    /// at confidence 0.0 — P6's ceiling still computed correctly, it just no
-    /// longer gated anything, because the threshold it was compared against
-    /// was attacker-chosen.
-    ///
-    /// Two layers, both applied at the boundary rather than in the core (a
-    /// library embedder IS its own operator and may legitimately choose any
-    /// profile; an HTTP caller is not):
-    ///
-    /// 1. `GRAPHITE_WALLET_PROFILE` pins the profile server-side. When set,
-    ///    the request body's profile is ignored entirely — the operator's
-    ///    policy is configuration, not something the caller can negotiate.
-    /// 2. Otherwise a caller-supplied `Custom` profile is CLAMPED so it can
-    ///    never be weaker than the weakest built-in profile. Named profiles
-    ///    pass through untouched (all four are sane postures).
-    ///    `GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1` opts out for the genuinely
-    ///    trusted single-tenant case.
-    ///
-    /// Returns the effective profile and, when it differs from what was asked
-    /// for, a disclosure string so the override is visible in the response and
-    /// audit trail rather than silently applied (P3).
-    pub fn enforce_wallet_profile(
-        requested: WalletProfile,
-        pinned: Option<WalletProfile>,
-        allow_permissive: bool,
-    ) -> Result<(WalletProfile, Option<String>), String> {
-        // Round 17 (F-16-08): a confidence bar above 1.0 can never be met and
-        // is not a policy; it used to travel through the whole pipeline and
-        // come back as a 500 from the policy engine. Malformed input is a
-        // 400, and it is refused before anything is simulated or recorded.
-        //
-        // Round 19 (F-19-27): the same for a bar BELOW 0.0, NaN or infinite.
-        // They were clamped up to the weakest built-in by default — safe —
-        // but passed straight through under GRAPHITE_ALLOW_PERMISSIVE_PROFILES,
-        // carrying a NaN into the policy comparison. The operator's own
-        // `custom:<x>:<tier>` pin already refused all of them; the request
-        // path now agrees with it in every mode.
-        if let WalletProfile::Custom { min_confidence, .. } = requested {
-            if !(0.0..=1.0).contains(&min_confidence) {
-                return Err(format!(
-                    "wallet_profile.Custom.min_confidence must be within [0.0, 1.0], got {min_confidence}"
-                ));
-            }
-        }
-
-        if let Some(p) = pinned {
-            if p != requested {
-                return Ok((
-                    p,
-                    Some(
-                        "wallet profile is pinned server-side (GRAPHITE_WALLET_PROFILE); the \
-                         profile supplied in the request was ignored"
-                            .to_string(),
-                    ),
-                ));
-            }
-            return Ok((p, None));
-        }
-        if allow_permissive {
-            return Ok((requested, None));
-        }
-        match requested {
-            WalletProfile::Custom {
-                min_confidence,
-                min_trust_tier,
-            } if !min_confidence.is_finite()
-                || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE
-                || min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER =>
-            {
-                // Both axes (F-15-07): the confidence floor AND the tier floor
-                // of the weakest built-in profile. Each override is disclosed.
-                let confidence_raised =
-                    !min_confidence.is_finite() || min_confidence < WEAKEST_BUILTIN_MIN_CONFIDENCE;
-                let tier_raised = min_trust_tier < WEAKEST_BUILTIN_MIN_TRUST_TIER;
-                let mut notes = Vec::new();
-                if confidence_raised {
-                    notes.push(format!(
-                        "min_confidence ({min_confidence}) was raised to {WEAKEST_BUILTIN_MIN_CONFIDENCE}"
-                    ));
-                }
-                if tier_raised {
-                    notes.push(format!(
-                        "min_trust_tier ({min_trust_tier:?}) was raised to {WEAKEST_BUILTIN_MIN_TRUST_TIER:?}"
-                    ));
-                }
-                Ok((
-                    WalletProfile::Custom {
-                        min_confidence: if confidence_raised {
-                            WEAKEST_BUILTIN_MIN_CONFIDENCE
-                        } else {
-                            min_confidence
-                        },
-                        min_trust_tier: if tier_raised {
-                            WEAKEST_BUILTIN_MIN_TRUST_TIER
-                        } else {
-                            min_trust_tier
-                        },
-                    },
-                    Some(format!(
-                        "requested custom profile is weaker than any built-in profile: {} — a \
-                         caller-supplied threshold cannot disable the confidence/trust-tier gate (set \
-                         GRAPHITE_ALLOW_PERMISSIVE_PROFILES=1 to allow, or pin the profile with \
-                         GRAPHITE_WALLET_PROFILE)",
-                        notes.join("; ")
-                    )),
-                ))
-            }
-            other => Ok((other, None)),
-        }
-    }
-
-    /// The operator's policy settings, read once from the environment.
-    #[derive(Debug, Clone, Default, PartialEq)]
-    pub struct OperatorPolicy {
-        /// `GRAPHITE_WALLET_PROFILE`: overrides every request's profile.
-        pub pinned_profile: Option<WalletProfile>,
-        /// `GRAPHITE_ALLOW_PERMISSIVE_PROFILES`: no clamp on a weak `Custom`.
-        pub allow_permissive_profiles: bool,
-        /// `GRAPHITE_ALLOW_DURABLE_NONCE`.
-        pub allow_durable_nonce: bool,
-        /// `GRAPHITE_QUARANTINE_ON_UPGRADE`.
-        pub quarantine_on_upgrade: bool,
-        /// `GRAPHITE_PLUGINS_DIR`, when set and non-empty.
-        pub plugins_dir: Option<PathBuf>,
-    }
-
-    impl OperatorPolicy {
-        /// Read from the process environment.
-        pub fn from_env() -> Result<Self, String> {
-            Self::from_lookup(|k| std::env::var(k).ok())
-        }
-
-        /// Read through `get` (the environment, or a test's map). Every
-        /// value that does not parse is an error; none falls back.
-        pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
-            let pinned_profile = match get("GRAPHITE_WALLET_PROFILE") {
-                Some(v) if !v.trim().is_empty() => Some(
-                    parse_pinned_profile(&v)
-                        .map_err(|e| format!("invalid GRAPHITE_WALLET_PROFILE: {e}"))?,
-                ),
-                _ => None,
-            };
-            let flag = |name: &str| env_flag(name, get(name).as_deref());
-            Ok(Self {
-                pinned_profile,
-                allow_permissive_profiles: flag("GRAPHITE_ALLOW_PERMISSIVE_PROFILES")?,
-                allow_durable_nonce: flag("GRAPHITE_ALLOW_DURABLE_NONCE")?,
-                quarantine_on_upgrade: flag("GRAPHITE_QUARANTINE_ON_UPGRADE")?,
-                plugins_dir: get("GRAPHITE_PLUGINS_DIR")
-                    .filter(|d| !d.trim().is_empty())
-                    .map(PathBuf::from),
-            })
-        }
-
-        /// Apply the settings that live in the core: durable nonces, the
-        /// upgrade quarantine and the plugins directory. Returns the plugin
-        /// registration summary when a directory is configured. A directory
-        /// that does not load is an error: an operator who configured
-        /// plugins expects them to be running (Round 17, F-16-07).
-        pub fn apply_to_core(
-            &self,
-            core: &mut GraphiteCore,
-        ) -> Result<Option<crate::plugin_orchestrator::RegistrationSummary>, String> {
-            core.set_allow_durable_nonce(self.allow_durable_nonce);
-            core.set_quarantine_on_upgrade(self.quarantine_on_upgrade);
-            match &self.plugins_dir {
-                Some(dir) => core.attach_plugins_dir(dir).map(Some).map_err(|e| {
-                    format!(
-                        "plugins: FAILED to load {} (GRAPHITE_PLUGINS_DIR): {e} — refusing to run without the plugins the operator configured",
-                        dir.display()
-                    )
-                }),
-                None => Ok(None),
-            }
-        }
-    }
-}
+/// The operator-boundary rules (`GRAPHITE_WALLET_PROFILE`, the weak-`Custom`
+/// clamp, durable nonces, upgrade quarantine, plugins) the server applies,
+/// shared so `graphite verify`/`explain` answer with the same gate.
+pub use crate::operator_boundary as boundary;
 
 /// CLI-supplied policy profile override for `verify`.
 ///
@@ -1785,30 +1499,22 @@ fn run_execution(
             );
         }
         ExecutionReconciliation::RecordedForDifferentBytes {
-            recorded_approved,
             recorded_transaction_sha256,
             chain_transaction_sha256,
+            ..
         } => {
+            // Kept so recorded results still parse; no longer produced (audit
+            // 2026-10-20, F5): a cited verdict about other bytes is reported
+            // in `caller_keys_disagree`, never as a discrepancy.
             println!(
                 "The audit_trail_id you supplied names a verification of DIFFERENT bytes\n\
-                 (recorded {} for {}, the chain's bytes digest to {}). Nothing on the trail\n\
+                 (recorded for {}, the chain's bytes digest to {}). Nothing on the trail\n\
                  covers what actually executed under this signature.",
-                if *recorded_approved {
-                    "approved"
-                } else {
-                    "REFUSED"
-                },
                 recorded_transaction_sha256
                     .as_deref()
                     .unwrap_or("a descriptive verification"),
                 chain_transaction_sha256
             );
-            if !recorded_approved {
-                println!(
-                    "DISCREPANCY: the cited verdict is a refusal and something carrying this\n\
-                     signature executed. Investigate before trusting the next one."
-                );
-            }
         }
         _ => {}
     }
