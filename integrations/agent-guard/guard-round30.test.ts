@@ -497,16 +497,17 @@ test("state: replay keeps unresolved submissions, drops releases and reservation
 test("consent: a confirmation that never answers is a decline after the timeout; nothing is signed", async () => {
   const h = await harness({ config: { confirmTimeoutMs: 150 } });
   try {
-    const started = Date.now();
-    await assert.rejects(
-      h.agent.executeTransfer(REQUEST, { confirm: () => new Promise<boolean>(() => {}) }),
-      (e: unknown) => {
-        assert.ok(e instanceof ConfirmationDeclined, String(e));
-        assert.match((e as Error).message, /no answer within 150 ms/);
-        return true;
-      },
-    );
-    assert.ok(Date.now() - started < 10_000);
+    // Raced against a bound of its own, so a guard that waits forever fails
+    // this test instead of hanging the suite.
+    const outcome = await Promise.race([
+      h.agent.executeTransfer(REQUEST, { confirm: () => new Promise<boolean>(() => {}) }).then(
+        () => "executed",
+        (e: unknown) => e,
+      ),
+      new Promise((resolve) => setTimeout(() => resolve("still waiting after 10 s"), 10_000).unref()),
+    ]);
+    assert.ok(outcome instanceof ConfirmationDeclined, String(outcome));
+    assert.match((outcome as Error).message, /no answer within 150 ms/);
     assertNothingSigned(h);
   } finally {
     await h.close();
@@ -632,32 +633,35 @@ test("escape: the guard's wallet key is non-extractable, and nothing on the guar
 
 test("escape: a config key the guard does not have is refused, not ignored", async () => {
   for (const key of ["connection", "wallet", "signer", "graphite", "spendpolicy"]) {
+    let started: H | undefined;
     await assert.rejects(
-      harness({ config: { [key]: {} } as unknown as Partial<GuardConfig> }),
+      (async () => {
+        started = await harness({ config: { [key]: {} } as unknown as Partial<GuardConfig> });
+      })(),
       new RegExp(`unknown key\\(s\\) "${key}"`),
-    );
+    ).finally(() => started?.close());
   }
 });
 
 test("escape: replacing globalThis.fetch after the guard loaded does not answer its RPC or AI-layer calls", async () => {
   const h = await harness();
   const original = globalThis.fetch;
-  let intercepted = 0;
-  globalThis.fetch = (async () => {
-    intercepted += 1;
-    throw new Error("intercepted");
+  const intercepted: string[] = [];
+  // A later module answers every request except the Core's: the SDK client
+  // (sdk/typescript) still reads globalThis.fetch per request, so the Core's
+  // requests are passed through, and what is checked is the guard's own.
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.startsWith(h.core.url)) return original(input, init);
+    intercepted.push(url);
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: null }), { status: 200 });
   }) as typeof globalThis.fetch;
   try {
     const outcome = await h.agent.executeTransfer(REQUEST);
     assert.equal(outcome.executed, true);
-    assert.equal(intercepted <= 3, true, "only the SDK client's own requests can go through a later fetch");
+    assert.deepEqual(intercepted, [], "no RPC or AI-layer request went through the replaced fetch");
     assert.ok(h.rpc.calls.some((c) => c.method === "sendTransaction"), "the guard's RPC calls reached the RPC");
     assert.ok(h.ai.calls.length >= 1, "the AI layer was asked directly");
-  } catch (e) {
-    // The SDK client (sdk/typescript) reads globalThis.fetch per request, so
-    // a replaced fetch can stop a verification — a refusal, never a signature.
-    assert.match(String(e), /intercepted/);
-    assert.equal(sends(h), 0);
   } finally {
     globalThis.fetch = original;
     await h.close();
