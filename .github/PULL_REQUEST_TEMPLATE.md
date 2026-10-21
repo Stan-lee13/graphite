@@ -16,6 +16,7 @@ Brief description of what this PR changes.
 - [ ] A security fix carries its reproduction as a test, and the fix was reverted once to show the test fails without it
 - [ ] No credential, RPC secret or key in source, fixtures, logs or this PR
 - [ ] No new `unwrap()` or `panic!()` in hot path
+- [ ] No test newly ignored or skipped unless listed in `.github/test-allowlists/` with a reason; no test floor in `ci.yml` lowered without saying why
 - [ ] Constitution principles checked (P1-P16)
 - [ ] No public performance claim without reproducible benchmark (P16)
 - [ ] If a protocol manifest was added or changed: it is listed in `SEED_MANIFESTS`, in
